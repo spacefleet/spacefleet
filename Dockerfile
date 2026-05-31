@@ -16,7 +16,12 @@ RUN npm run build
 # ---- Go build ----------------------------------------------------------------
 # Also pinned to BUILDPLATFORM — we cross-compile via GOARCH=$TARGETARCH
 # instead of running the Go toolchain under emulation.
-FROM --platform=$BUILDPLATFORM golang:1.25.8-alpine AS go
+#
+# Keep this >= the `go` directive in go.mod: the official golang images set
+# GOTOOLCHAIN=local, so an older base won't auto-download the required toolchain
+# and `go mod download` fails with "go.mod requires go >= X". The rest of CI
+# tracks go.mod via setup-go's go-version-file, so this is the one spot to bump.
+FROM --platform=$BUILDPLATFORM golang:1.26.3-alpine AS go
 WORKDIR /src
 
 ARG TARGETOS
