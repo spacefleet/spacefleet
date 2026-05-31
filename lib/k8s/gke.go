@@ -33,7 +33,7 @@ func gkeRESTConfig(ctx context.Context, conn Connection) (*rest.Config, error) {
 	// The key is the org's own service-account credential, supplied to reach
 	// their own cluster — the trusted-input case the deprecation note warns
 	// about does not apply.
-	creds, err := google.CredentialsFromJSON(ctx, []byte(saKey), container.CloudPlatformScope)
+	creds, err := google.CredentialsFromJSON(ctx, []byte(saKey), container.CloudPlatformScope) //nolint:staticcheck // SA1019: input is the org's own trusted credential, see above
 	if err != nil {
 		return nil, fmt.Errorf("k8s/gke: parse service-account key: %w", err)
 	}

@@ -22,10 +22,10 @@ func TestRESTConfigToken(t *testing.T) {
 	if cfg.BearerToken != "sa-bearer-token" {
 		t.Errorf("BearerToken = %q", cfg.BearerToken)
 	}
-	if string(cfg.TLSClientConfig.CAData) == "" {
+	if string(cfg.CAData) == "" {
 		t.Error("expected CAData to be set")
 	}
-	if cfg.TLSClientConfig.Insecure {
+	if cfg.Insecure {
 		t.Error("expected TLS verification enabled when CA provided")
 	}
 }
@@ -41,7 +41,7 @@ func TestRESTConfigTokenInsecure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RESTConfig: %v", err)
 	}
-	if !cfg.TLSClientConfig.Insecure {
+	if !cfg.Insecure {
 		t.Error("expected Insecure TLS when insecure_skip_tls=true")
 	}
 }

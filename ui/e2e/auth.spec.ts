@@ -21,19 +21,29 @@ test("log in via Dex, set up an organization, land on Home, sign out", async ({
   await page.waitForURL(/localhost:2424\//);
   await expect(page.getByText("No route matched")).toHaveCount(0);
 
-  // A brand-new user has no organization, so the org gate sends them to the
-  // create-org screen. On repeat runs the org already exists and we land in the
-  // app directly — handle both so the test is idempotent against a shared DB.
+  // After login the app settles into one of two terminal states: a brand-new
+  // user with no organization lands on the create-org screen (the org gate
+  // sends them there); a user who already belongs to an org lands in the app
+  // with the org switcher in the top bar. Both are valid, so the test handles
+  // either — but it must WAIT for one of them to appear first. The post-login
+  // callback is still being processed (token exchange, the /api/me fetch) when
+  // waitForURL resolves, so a bare isVisible() check here races and reports the
+  // create-org form as absent, stranding the test on that screen.
   const orgNameField = page.getByPlaceholder("Organization name");
-  if (await orgNameField.isVisible().catch(() => false)) {
+  const orgSwitcher = page.getByRole("button", {
+    name: /Select organization|E2E Org/,
+  });
+  await expect(orgNameField.or(orgSwitcher).first()).toBeVisible();
+
+  // Fresh user: fill in the org and create it. (An existing-org user skips
+  // this and is already looking at the switcher.)
+  if (await orgNameField.isVisible()) {
     await orgNameField.fill(`E2E Org ${Date.now()}`);
     await page.getByRole("button", { name: "Create organization" }).click();
   }
 
   // We're in the app: the org switcher is visible in the top bar.
-  await expect(
-    page.getByRole("button", { name: /Select organization|E2E Org/ }),
-  ).toBeVisible();
+  await expect(orgSwitcher).toBeVisible();
 
   // Sign out clears the session and returns us to the Dex login form.
   await page.getByRole("button", { name: "Sign out" }).click();

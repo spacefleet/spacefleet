@@ -11,10 +11,8 @@ import {
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
-import {
-  RegisterClusterDialog,
-  CONNECTION_METHODS,
-} from "../components/RegisterClusterDialog";
+import { RegisterClusterDialog } from "../components/RegisterClusterDialog";
+import { CONNECTION_METHODS } from "../components/connectionMethods";
 
 type Cluster = components["schemas"]["Cluster"];
 
