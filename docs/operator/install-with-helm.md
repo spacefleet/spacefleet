@@ -1,7 +1,7 @@
 ---
 title: Install & Configure with Helm
 description: Deploy Spacefleet to Kubernetes with the official Helm chart — from a one-command trial to a production setup with external datastores, OIDC, and Ingress.
-category: Deployment
+category: Operator
 tags: [helm, kubernetes, install, configuration, oidc, postgres, redis]
 ---
 
@@ -230,8 +230,8 @@ becomes reachable.
 
 ## Commonly configured values
 
-The full reference lives inline in the chart's
-[`values.yaml`](../../deploy/charts/spacefleet/values.yaml). The keys you'll
+The chart documents every value it accepts inline; print the full, annotated
+list with `helm show values` (shown at the end of this section). The keys you'll
 reach for most:
 
 | Key | Default | Purpose |
@@ -316,7 +316,7 @@ the package is private you'll need to `helm registry login ghcr.io` first.
 
 ## See also
 
-- The chart's maintainer-level reference:
-  [`deploy/charts/spacefleet/README.md`](../../deploy/charts/spacefleet/README.md)
-- Inline-documented defaults:
-  [`values.yaml`](../../deploy/charts/spacefleet/values.yaml)
+- [Authentication](authentication.md) — connect Spacefleet to your identity
+  provider so the deployment isn't left in the insecure dev mode.
+- `helm show values oci://ghcr.io/spacefleet/charts/spacefleet --version X.Y.Z`
+  — the complete, annotated list of every value the chart accepts.

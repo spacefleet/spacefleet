@@ -5,11 +5,14 @@ program serves `/api/*` and the embedded Vite build from the same origin in
 production. A shared OpenAPI spec drives both the server stubs and the
 TypeScript client.
 
-This codebase is a clean starting point (stripped from an earlier, larger
-app): Go + Postgres (ent) + Redis + a React/Vite/Tailwind SPA, with an
-OpenAPI-driven contract, Dex (OIDC) authentication, and an example `notes`
-resource wired end-to-end. Tests span Go unit/integration, frontend unit
-(Vitest), and browser e2e (Playwright) — see [TESTING.md](TESTING.md).
+The stack: Go + Postgres (ent) + Redis + a React/Vite/Tailwind SPA, with an
+OpenAPI-driven contract and Dex (OIDC) authentication. The domain is
+multi-tenant — users belong to **organizations** (via memberships) and most
+resources are scoped to an org; **Kubernetes cluster registration** is the
+first such resource and is the worked example for how a resource is built end
+to end (see [How a resource is built](#how-a-resource-is-built)). Tests span Go
+unit/integration, frontend unit (Vitest), and browser e2e (Playwright) — see
+[TESTING.md](TESTING.md).
 
 **This is an open-source project** (Apache-2.0, see [LICENSE](LICENSE)). The
 entire platform is open source, and it may be self-hosted by anyone, so nothing
@@ -22,12 +25,13 @@ and then continue with the rest of this document.
 ## Architecture essentials
 
 - **Entrypoint**: [cmd/spacefleet/main.go](cmd/spacefleet/main.go) dispatches by subcommand — `serve` (HTTP API, the default), `worker` (River background jobs), `migrate` (SQL migrations).
-- **HTTP server**: built in [lib/server/server.go](lib/server/server.go) (wires Postgres+ent and Redis), routed in [lib/server/routes.go](lib/server/routes.go).
+- **HTTP server**: built in [lib/server/server.go](lib/server/server.go) (wires Postgres+ent, Redis, the credential sealer ([lib/secrets](lib/secrets)), and the domain services), routed in [lib/server/routes.go](lib/server/routes.go).
 - **Routing** mounts three things on one `*http.ServeMux`:
   1. Generated `/api/*` handlers behind the `RequireAuth` middleware.
   2. `/config.js` — emits `window.appConfig` with non-secret OIDC values.
   3. `/` → [ui/embed.go](ui/embed.go), the embedded SPA, with `index.html` fallback for client-side routing.
-- **Auth**: **Dex (OIDC)**, behind a seam in [lib/auth](lib/auth). `RequireAuth` takes a `TokenVerifier`; when `OIDC_ISSUER` is set, [server.go](lib/server/server.go) builds an OIDC verifier ([lib/auth/oidc.go](lib/auth/oidc.go)) that validates Dex-issued **ID tokens** (signature via JWKS, `iss`/`exp`/`aud`) and passes it in [routes.go](lib/server/routes.go). When `OIDC_ISSUER` is empty, it falls back to a **dev passthrough** that accepts every request as `dev-user` (NEVER use in production). `publicAPIPaths` lists the bypass paths (`/api/health`). Dex itself runs in Docker Compose, bootstrapped from [dev/dex/config.yaml](dev/dex/config.yaml).
+- **Auth**: **Dex (OIDC)**, behind a seam in [lib/auth](lib/auth). `RequireAuth` takes a `TokenVerifier`; when `OIDC_ISSUER` is set, [server.go](lib/server/server.go) builds an OIDC verifier ([lib/auth/oidc.go](lib/auth/oidc.go)) that validates Dex-issued **ID tokens** (signature via JWKS, `iss`/`exp`/`aud`) and passes it in [routes.go](lib/server/routes.go). When `OIDC_ISSUER` is empty, it falls back to a **dev passthrough** that accepts every request as `dev-user` (NEVER use in production). `publicAPIPaths` lists the bypass paths (`/api/health`). Dex itself runs in Docker Compose, bootstrapped from [dev/dex/config.yaml](dev/dex/config.yaml). Operator-facing setup instructions (not code internals) live in [docs/operator/authentication.md](docs/operator/authentication.md) — see [End-user docs](#end-user-docs-docs).
+- **Tenancy**: a second middleware, `OrgContext` ([lib/auth/org.go](lib/auth/org.go)), lifts the SPA's `X-Organization-ID` header onto the request context. It does **no** authorization — org-scoped handlers resolve the org and check the caller's membership themselves (`Server.currentOrg`). Auth runs outermost, then org resolution.
 - **Frontend**: Vite + React 18 + TS, React Router v7, Tailwind v4. The typed API client is in [ui/src/api/client.ts](ui/src/api/client.ts). Login uses `react-oidc-context` (Authorization Code + PKCE, public client): `AuthProvider` is configured in [main.tsx](ui/src/main.tsx) from `window.appConfig`, `AuthGate` redirects unauthenticated users to Dex, and `ApiAuthBinder` feeds the ID token to the API client as the bearer token.
 
 ## The OpenAPI contract is the source of truth
@@ -39,7 +43,7 @@ and then continue with the rest of this document.
 Workflow for a new/changed endpoint:
 1. Edit `api/openapi.yaml`.
 2. Run `make gen`.
-3. Implement the new method on `*Server` in [lib/api/handlers.go](lib/api/handlers.go). The build breaks until you do — that's the gate.
+3. Implement the new method on `*Server`. The build breaks until you do — that's the gate. Cross-cutting handlers (`GetHealth`, `GetMe`, organizations) live in [lib/api/handlers.go](lib/api/handlers.go); a resource gets its own file (e.g. [lib/api/clusters.go](lib/api/clusters.go)).
 4. Call it from the UI via `api.GET("/api/...")` — types flow through automatically.
 
 Never edit `gen.go` or `schema.d.ts` by hand.
@@ -128,6 +132,41 @@ Dex's `web.allowedOrigins` must list the app origins (`:2424`, `:8080`).
 See [TESTING.md](TESTING.md) for the testing strategy (layers, when to use
 which, and how the harnesses work).
 
+## End-user docs (`docs/`)
+
+[docs/](docs) is product documentation for the **people who run and use
+Spacefleet**, split by audience:
+
+- **`docs/operator/`** — for whoever installs, configures, and operates a
+  Spacefleet deployment (e.g. [install-with-helm.md](docs/operator/install-with-helm.md),
+  [authentication.md](docs/operator/authentication.md)).
+- **`docs/user/`** — for people using the running app (organizations, clusters,
+  the features they interact with).
+
+**These are not developer docs, and they are not this file.** Write them for a
+reader who will *never* open the source and does not care how it's built — only
+how to accomplish their task. Concretely:
+
+- **No code internals.** Don't name Go/TS symbols (`RequireAuth`,
+  `NewDevVerifier`, …), packages, function/middleware names, or describe request
+  pipelines and code structure. Describe observable behavior and the actions the
+  reader takes (settings, commands, UI steps).
+- **No source links.** Never link into `lib/…`, `ui/src/…`, or other repo paths
+  — the reader doesn't have a checkout. Link to other docs in `docs/`, to the
+  provider/tool's own documentation, or give a command (`helm show values …`)
+  instead.
+- **Operator docs are about deploying/running** (Helm values, environment
+  settings, identity-provider setup, troubleshooting from logs and `kubectl`);
+  **user docs are about using the app** (what a feature does and how to use it).
+  Local-from-source dev workflows (`make dev`, editing `dev/dex/config.yaml`,
+  etc.) are *contributor* concerns — keep them out of `docs/`; they live here in
+  CLAUDE.md and the README.
+- **Self-hostable framing.** Per the open-source/self-host rule above, never
+  assume "we" run the deployment — the reader might be running their own.
+
+Architecture and implementation detail for *contributors* belong in this file
+and inline in the code, not in `docs/`.
+
 ## Gotchas
 
 - **Empty `ui/dist` breaks Go builds.** `//go:embed all:dist` needs at least one file. `make ui-build` keeps a `.gitkeep`; if you wiped `ui/dist/`, run `make ui-build` before `go build`.
@@ -140,12 +179,50 @@ which, and how the harnesses work).
 - **Don't clean up the OIDC callback URL with raw `history.replaceState`.** It desyncs React Router (URL changes, router doesn't), landing you on NotFound. The `/auth/callback` route ([ui/src/routes/AuthCallback.tsx](ui/src/routes/AuthCallback.tsx)) navigates home *through the router* instead.
 - **Integration tests are tag-gated.** `make test` runs unit tests only; real-Postgres tests need `make test-integration` (build tag `integration`).
 
-## The example `notes` resource
+## How a resource is built
 
-`Note` (ent schema, migration, `/api/notes` endpoints in
-[lib/api/handlers.go](lib/api/handlers.go) + [lib/notes](lib/notes), and the
-`Home` page) exists only to demonstrate the full data path. Delete it once you
-have real resources.
+Every resource is wired through the same layers, in the same order. Clusters
+([ent/schema/cluster.go](ent/schema/cluster.go), [lib/clusters](lib/clusters),
+[lib/api/clusters.go](lib/api/clusters.go),
+[ui/src/routes/Clusters.tsx](ui/src/routes/Clusters.tsx)) is the reference
+implementation — copy its shape.
+
+1. **ent schema** ([ent/schema](ent/schema)) — define the entity. Org-scoped
+   resources carry an immutable `organization_id` field bound to an `edge.To`
+   the `Organization`, plus an `index.Fields("organization_id", …)`. Mark
+   credential fields `.Sensitive()`. Run `make gen`.
+2. **SQL migration** ([db/migrations](db/migrations)) — hand-write the matching
+   `CREATE TABLE` (the ent generator does *not* produce these). FK to
+   `organizations(id) ON DELETE CASCADE` for org-scoped tables. Filename is
+   `YYYYMMDDHHMMSS_name.sql`.
+3. **OpenAPI** ([api/openapi.yaml](api/openapi.yaml)) — add the paths/schemas,
+   `make gen`, implement the handler (see the contract section above).
+4. **Service** ([lib/<resource>](lib)) — a thin, testable wrapper over the ent
+   client (`NewService(entClient, …)`). Every query is **scoped by org id**
+   (`Where(cluster.OrganizationID(orgID), …)`); the service never trusts an id
+   alone. Domain logic (credential sealing via [lib/secrets](lib/secrets),
+   probing via [lib/k8s](lib/k8s)) lives here, not in the handler.
+5. **Handler** ([lib/api](lib/api)) — thin: resolve + authorize, call the
+   service, map `*ent.X` → the API type. Org-scoped handlers start with the
+   `resolveOrg` preamble (confirm services, resolve the user via
+   `EnsureUser`, resolve + authorize the org via `currentOrg`). A `toAPIX`
+   mapper converts ent rows to generated API types and **must never expose
+   sealed/sensitive columns**. Use the `errResp[…]` generic for typed error
+   bodies; map `ent.IsNotFound` → 404, `errNoOrg` → 400, non-membership → 403.
+6. **UI** ([ui/src/routes](ui/src/routes)) — a page component calling
+   `api.GET/POST("/api/…")`; types flow from the generated schema. The selected
+   org is sent automatically as `X-Organization-ID` by the client middleware.
+
+Conventions that hold across resources:
+
+- **Services may be nil.** `NewServer` accepts nil services so route-level tests
+  run without a database; a handler whose service is missing returns a clear
+  "not configured" (503) rather than panicking.
+- **Tenancy is enforced in the service query, not just the handler.** Scoping
+  every `Where` by org id is the actual security boundary; the handler's
+  membership check is the gate in front of it.
+- **Secrets are sealed before they touch the DB** ([lib/secrets](lib/secrets))
+  and are decrypted only inside the service — never returned to a caller.
 
 ## Project layout
 
@@ -158,23 +235,27 @@ spacefleet-app/
 ├── dev/dex/config.yaml      # Dex (OIDC) bootstrap for local dev — static client + dev login
 ├── ent/                     # ent ORM: schema/ (hand-written) + generated client
 ├── lib/
-│   ├── api/                 # gen.go (generated) + handlers.go (hand-written)
-│   ├── auth/                # RequireAuth middleware + OIDC verifier (oidc.go) + dev passthrough
+│   ├── api/                 # gen.go (generated) + handlers.go + per-resource handler files (clusters.go, …)
+│   ├── auth/                # RequireAuth + OIDC verifier (oidc.go) + dev passthrough + OrgContext (org.go)
 │   ├── cache/               # Redis client
+│   ├── clusters/            # cluster-registration domain service (worked-example resource)
 │   ├── config/              # env loading
 │   ├── db/                  # Postgres + ent wiring
+│   ├── k8s/                 # Kubernetes connectivity probing (in-cluster, kubeconfig, token, eks/gke/aks)
 │   ├── migrate/             # SQL migration runner
-│   ├── notes/               # example domain service
+│   ├── organizations/       # organizations + memberships (tenancy)
 │   ├── queue/               # River wrapper (worker registry, migrations)
+│   ├── secrets/             # envelope encryption for credentials at rest (the Sealer)
 │   ├── server/              # http.Server, request logging, route mounting
-│   └── testsupport/         # integration-test harness (isolated Postgres per test)
+│   ├── testsupport/         # integration-test harness (isolated Postgres per test)
+│   └── users/               # user provisioning (EnsureUser from the OIDC subject)
 ├── ui/
 │   ├── embed.go             # //go:embed all:dist
 │   ├── e2e/                 # Playwright browser tests (auth journey)
 │   ├── playwright.config.ts # e2e config (starts/reuses API + Vite dev server)
 │   ├── src/api/             # generated schema + openapi-fetch client
-│   ├── src/components/      # ApiAuthBinder, AuthGate, Layout (+ *.test.tsx unit tests)
-│   ├── src/routes/          # page-level components (Home, NotFound, AuthCallback)
+│   ├── src/components/      # auth/org gates (ApiAuthBinder, AuthGate, OrgGate), Layout, Sidebar (+ *.test.tsx)
+│   ├── src/routes/          # page-level components (Home, AuthCallback, CreateOrganization, per-resource pages)
 │   ├── src/test/            # Vitest setup
 │   └── vite.config.ts       # dev server (:2424) /api + /config.js proxy; Vitest config
 ├── Makefile
