@@ -76,14 +76,27 @@ The chart ([deploy/charts/spacefleet](deploy/charts/spacefleet)) deploys `serve`
 (post-install, not pre-, so it can reach the bundled Postgres), and builds
 `DATABASE_URL`/`REDIS_URL` into a Secret. Postgres + Redis are bundled as small
 **first-party StatefulSets running the official upstream images** (the same
-`postgres:17-alpine`/`redis:7-alpine` as docker-compose) — no third-party chart
-dependencies. On by default for one-command trials; disable + use
-`externalDatabase`/`externalRedis` for prod. `config.oidc.issuer` is empty by
-default → backend runs the dev passthrough; set it for real deployments.
+`postgres:18-alpine`/`redis:7-alpine` as docker-compose). On by default for
+one-command trials; disable + use `externalDatabase`/`externalRedis` for prod.
 
-When changing chart templates, run `make helm-lint` — the `lint-helm` CI job
-gates the same way the Go/UI linters do. The chart has no external dependencies,
-so there's no `helm dependency`/`Chart.lock` step.
+**Auth has three modes.** `config.oidc.issuer` set → external provider. Else
+`dex.enabled=true` → the chart **bundles Dex** via the official `dexidp/dex`
+**subchart**: it renders Dex's config itself (so the issuer, the app's PKCE
+client + derived redirect URIs, storage, and connectors are a single source of
+truth) and hands it to the subchart as an existing Secret
+(`dex.configSecret.create=false`, name `dex.configSecret.name`, key
+`config.yaml`). The issuer defaults to same-origin `https://<ingress host>/dex`
+(an ingress path routes to the Dex Service); storage defaults to `crd`
+(Kubernetes CRDs, no DB). The backend verifies tokens against the in-cluster Dex
+Service via `OIDC_JWKS_URL` (see [lib/auth/oidc.go](lib/auth/oidc.go)) so it
+never depends on the public issuer being reachable in-cluster. Else (neither) →
+dev passthrough. Bundled Dex is **off by default** (it needs a public host).
+
+The dex subchart is this chart's one third-party dependency — pinned in
+`Chart.lock`, vendored under `charts/`. When changing chart templates, run
+`make helm-lint` (it runs `helm dependency build` first, via `helm-deps`); the
+`lint-helm` CI job gates the same way and renders the bundled-Dex value set
+(`ci/dex-values.yaml`) too.
 
 ## UI components
 
@@ -174,7 +187,7 @@ and inline in the code, not in `docs/`.
 - **`window.appConfig` only ships non-secrets.** Anything added to `appConfigHandler` is visible to every browser.
 - **New `/api/*` routes need `make gen` first.** If a request returns HTML, the route isn't mounted — you forgot to regenerate or didn't register the handler.
 - **Air's `exclude_dir` skips `ui/`.** Changing TS/TSX won't restart the Go server — Vite HMR handles the UI side.
-- **Dex reads its config only at startup.** After editing [dev/dex/config.yaml](dev/dex/config.yaml), `make services-up` won't pick it up (the service definition is unchanged) — run `docker compose restart dex`.
+- **Dex reads its config only at startup.** After editing [dev/dex/config.yaml](dev/dex/config.yaml), `make services-up` won't pick it up (the service definition is unchanged) — run `docker compose restart dex`. (That file is **dev only**; the Helm chart's bundled Dex config is rendered from `dex.*` values into a Secret by [templates/dex-config.yaml](deploy/charts/spacefleet/templates/dex-config.yaml) — change the values and `helm upgrade`, never hand-edit the rendered Secret.)
 - **The UI dev port (`2424`) is pinned in three places.** [vite.config.ts](ui/vite.config.ts) (`strictPort`), and Dex's `redirectURIs` + `allowedOrigins`. Changing it means updating all of them, then restarting Dex.
 - **Don't clean up the OIDC callback URL with raw `history.replaceState`.** It desyncs React Router (URL changes, router doesn't), landing you on NotFound. The `/auth/callback` route ([ui/src/routes/AuthCallback.tsx](ui/src/routes/AuthCallback.tsx)) navigates home *through the router* instead.
 - **Integration tests are tag-gated.** `make test` runs unit tests only; real-Postgres tests need `make test-integration` (build tag `integration`).

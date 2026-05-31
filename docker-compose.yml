@@ -1,11 +1,16 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-spacefleet}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spacefleet}
       POSTGRES_DB: ${POSTGRES_DB:-spacefleet}
+      # Pin PGDATA to a subdir of the mounted volume. The postgres:18 image
+      # changed its default PGDATA to /var/lib/postgresql/<major>/docker; setting
+      # it explicitly keeps data on the named volume regardless of version
+      # (mirrors the Helm chart's bundled Postgres).
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "127.0.0.1:5432:5432"
     volumes:

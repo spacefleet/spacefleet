@@ -12,12 +12,28 @@ Components:
 Data services:
   • Postgres: {{ if .Values.postgresql.enabled }}bundled (release-managed){{ else }}external{{ end }}
   • Redis:    {{ if .Values.redis.enabled }}bundled (release-managed){{ else }}external{{ end }}
+  • Dex:      {{ if .Values.dex.enabled }}bundled (release-managed, storage={{ .Values.dex.storage }}){{ else if .Values.config.oidc.issuer }}external OIDC provider{{ else }}none (dev passthrough){{ end }}
 
-{{- if not .Values.config.oidc.issuer }}
+{{- $issuer := include "spacefleet.oidc.issuer" . }}
+{{- if .Values.dex.enabled }}
 
-⚠  config.oidc.issuer is EMPTY. The backend is running its dev passthrough,
-   which authenticates EVERY request as "dev-user". Set config.oidc.issuer to
-   your OIDC provider before exposing this deployment.
+Authentication: bundled Dex at {{ $issuer }}
+{{- if and .Values.dex.enablePasswordDB .Values.dex.staticPasswords }}
+{{- if eq (first .Values.dex.staticPasswords).hash "$2y$10$BFlbl0.lcQSwywdpBVArUuBjeOAgb37/kb7Lyy8I.rB08PxAKFV0m" }}
+
+⚠  Dex is seeded with the DEFAULT admin login {{ (first .Values.dex.staticPasswords).email }} / "password".
+   This is a publicly known credential. Before exposing the deployment, replace
+   dex.staticPasswords (regenerate the hash with
+   `htpasswd -bnBC 10 "" <pw> | tr -d ':\n'`) or configure a connector
+   (dex.connectors) and clear it.
+{{- end }}
+{{- end }}
+{{- else if not $issuer }}
+
+⚠  No OIDC issuer is configured. The backend is running its dev passthrough,
+   which authenticates EVERY request as "dev-user". Bundle Dex (dex.enabled=true,
+   with ingress enabled) or set config.oidc.issuer to an external provider before
+   exposing this deployment.
 {{- end }}
 {{- if and .Values.postgresql.enabled (eq .Values.postgresql.auth.password "spacefleet") }}
 

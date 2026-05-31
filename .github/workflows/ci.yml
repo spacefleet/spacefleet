@@ -71,9 +71,9 @@ jobs:
       - run: npm ci
       - run: npm run lint
 
-  # Lints the Helm chart and renders it under two value sets (bundled
-  # datastores, and external datastores + ingress + HPA) so packaging breaks
-  # are caught on PRs — the same gate the image build sits behind.
+  # Lints the Helm chart and renders it under three value sets (bundled
+  # datastores; external datastores + ingress + HPA; bundled Dex) so packaging
+  # breaks are caught on PRs — the same gate the image build sits behind.
   lint-helm:
     runs-on: ubuntu-latest
     steps:
@@ -83,17 +83,25 @@ jobs:
         with:
           version: v3.19.0
 
+      - name: helm dependency build
+        working-directory: deploy/charts/spacefleet
+        run: |
+          helm repo add dexidp https://charts.dexidp.io
+          helm dependency build
+
       - name: helm lint
         working-directory: deploy/charts/spacefleet
         run: |
           helm lint . -f ci/default-values.yaml
           helm lint . -f ci/external-values.yaml
+          helm lint . -f ci/dex-values.yaml
 
-      - name: helm template (render both value sets)
+      - name: helm template (render all value sets)
         working-directory: deploy/charts/spacefleet
         run: |
           helm template rel . -f ci/default-values.yaml > /dev/null
           helm template rel . -f ci/external-values.yaml > /dev/null
+          helm template rel . -f ci/dex-values.yaml > /dev/null
 
   test-go:
     runs-on: ubuntu-latest
@@ -123,7 +131,7 @@ jobs:
     # creates an isolated, migrated database per test against this service.
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: spacefleet
           POSTGRES_PASSWORD: spacefleet
@@ -309,6 +317,12 @@ jobs:
           owner="${GITHUB_REPOSITORY%%/*}"
           echo "CHART_DEST=oci://ghcr.io/${owner,,}/charts" >> "$GITHUB_ENV"
           echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Build chart dependencies
+        working-directory: deploy/charts/spacefleet
+        run: |
+          helm repo add dexidp https://charts.dexidp.io
+          helm dependency build
 
       - name: Package chart
         working-directory: deploy/charts/spacefleet

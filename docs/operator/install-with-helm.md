@@ -79,8 +79,24 @@ A real deployment changes three things from the trial:
 
 ### 1. Configure authentication (OIDC)
 
-Spacefleet authenticates users against any OIDC provider (Dex, Keycloak, Auth0,
-Okta, …). Set the issuer and the client ID the app registers as:
+You have two options — see [Authentication](authentication.md) for the full
+walkthrough.
+
+**Option A — bundle Dex** (no separate identity system to run):
+
+```sh
+--set dex.enabled=true \
+--set ingress.enabled=true \
+--set ingress.hosts[0].host=spacefleet.example.com
+```
+
+This deploys a self-contained OIDC provider served same-origin at
+`https://spacefleet.example.com/dex`, seeded with an `admin@example.com` login
+you must change. To add "Log in with GitHub/Google/…", change the seeded admin,
+or choose where Dex stores its data, see
+[Authenticate with the bundled Dex](authentication-with-dex.md).
+
+**Option B — connect your own provider** (Keycloak, Auth0, Okta, your own Dex, …):
 
 ```sh
 --set config.oidc.issuer=https://auth.example.com \
@@ -91,10 +107,10 @@ These two values are **not secrets** — they are also surfaced to the browser v
 `/config.js` so the SPA can drive the login flow. Register a **public client**
 (Authorization Code + PKCE) with your provider, and add the app's redirect URI
 (`https://spacefleet.example.com/auth/callback`) to that client's allowed
-redirect URIs.
+redirect URIs. `config.oidc.issuer` takes precedence over bundled Dex.
 
-Until `config.oidc.issuer` is set, the backend stays in the insecure dev
-passthrough — so this is the single most important value to set before exposing
+Until one of these is configured, the backend stays in the insecure dev
+passthrough — so this is the single most important thing to set before exposing
 the deployment.
 
 ### 2. Use external datastores
@@ -236,8 +252,11 @@ reach for most:
 
 | Key | Default | Purpose |
 | --- | --- | --- |
-| `config.oidc.issuer` | `""` | OIDC issuer URL — **set for production** |
+| `config.oidc.issuer` | `""` | external OIDC issuer URL (overrides bundled Dex) |
 | `config.oidc.clientID` | `spacefleet` | OIDC client ID the app uses |
+| `dex.enabled` | `false` | bundle Dex as the OIDC provider (needs a hostname) |
+| `dex.storage` | `crd` | Dex storage backend — `crd` keeps state in-cluster |
+| `dex.connectors` | `[]` | upstream logins (GitHub, Google, …) for bundled Dex |
 | `config.workerConcurrency` | `4` | max parallel background jobs |
 | `config.extraEnv` | `[]` | extra env vars for web + worker pods |
 | `image.repository` / `image.tag` | `ghcr.io/spacefleet/app` / chart appVersion | app image |
@@ -316,7 +335,9 @@ the package is private you'll need to `helm registry login ghcr.io` first.
 
 ## See also
 
-- [Authentication](authentication.md) — connect Spacefleet to your identity
-  provider so the deployment isn't left in the insecure dev mode.
+- [Authentication](authentication.md) — how sign-in works and the ways to
+  provide a login, so the deployment isn't left in the insecure dev mode.
+- [Authenticate with the bundled Dex](authentication-with-dex.md) — enable the
+  bundled provider, add GitHub/Google logins, and harden it.
 - `helm show values oci://ghcr.io/spacefleet/charts/spacefleet --version X.Y.Z`
   — the complete, annotated list of every value the chart accepts.

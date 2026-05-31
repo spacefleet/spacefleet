@@ -12,13 +12,22 @@ type Config struct {
 	DatabaseURL string
 	RedisURL    string
 
-	// OIDC (Dex) auth seam. These are read but not yet consumed — wire them
-	// into a TokenVerifier (lib/auth) when Dex integration lands. Issuer is
-	// the Dex issuer URL; ClientID is this app's OIDC client. Both are also
-	// surfaced to the browser via /config.js so the SPA can run its own
-	// OIDC flow. They are non-secret by design.
+	// OIDC (Dex) auth seam. Issuer is the OIDC issuer URL; ClientID is this
+	// app's OIDC client. Both are also surfaced to the browser via /config.js
+	// so the SPA can run its own OIDC flow. They are non-secret by design.
 	OIDCIssuer   string
 	OIDCClientID string
+
+	// OIDCJWKSURL, when set, is the JWKS (signing keys) endpoint the backend
+	// fetches keys from to verify ID tokens — instead of learning it via OIDC
+	// discovery against OIDCIssuer. This decouples token *verification* (a
+	// server-side, in-cluster concern) from the public issuer URL the browser
+	// uses: with bundled in-cluster Dex it points at the Dex Service (e.g.
+	// http://<release>-dex:5556/dex/keys), so the backend never has to reach
+	// the public issuer URL (no ingress "hairpin"). Tokens are still validated
+	// against OIDCIssuer in their `iss` claim. Empty = use discovery. This is
+	// non-secret. Only the browser uses OIDCIssuer for its OIDC flow.
+	OIDCJWKSURL string
 
 	// SecretKey is the symmetric key used to envelope-encrypt credentials at
 	// rest (e.g. registered cluster tokens/kubeconfigs). It is a base64-encoded
@@ -42,6 +51,7 @@ func Load() (*Config, error) {
 		RedisURL:     os.Getenv("REDIS_URL"),
 		OIDCIssuer:   os.Getenv("OIDC_ISSUER"),
 		OIDCClientID: os.Getenv("OIDC_CLIENT_ID"),
+		OIDCJWKSURL:  os.Getenv("OIDC_JWKS_URL"),
 		SecretKey:    os.Getenv("SPACEFLEET_SECRET_KEY"),
 	}
 

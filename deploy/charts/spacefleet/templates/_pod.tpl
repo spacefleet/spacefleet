@@ -9,12 +9,18 @@ the ConfigMap, the DATABASE_URL / REDIS_URL secret refs, and any extraEnv.
   value: {{ .Values.config.env | quote }}
 - name: WORKER_CONCURRENCY
   value: {{ .Values.config.workerConcurrency | quote }}
-{{- if .Values.config.oidc.issuer }}
+{{- $issuer := include "spacefleet.oidc.issuer" . }}
+{{- if $issuer }}
 - name: OIDC_ISSUER
-  value: {{ .Values.config.oidc.issuer | quote }}
+  value: {{ $issuer | quote }}
 {{- end }}
 - name: OIDC_CLIENT_ID
   value: {{ .Values.config.oidc.clientID | quote }}
+{{- $jwks := include "spacefleet.oidc.jwksURL" . }}
+{{- if $jwks }}
+- name: OIDC_JWKS_URL
+  value: {{ $jwks | quote }}
+{{- end }}
 {{- include "spacefleet.databaseEnv" . | nindent 0 }}
 {{- include "spacefleet.redisEnv" . | nindent 0 }}
 {{- with .Values.config.extraEnv }}

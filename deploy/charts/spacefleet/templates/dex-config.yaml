@@ -1,0 +1,73 @@
+{{- if .Values.dex.enabled }}
+{{- include "spacefleet.validate" . -}}
+{{- $issuer := include "spacefleet.oidc.issuer" . -}}
+{{/*
+Dex's config, rendered by this chart and handed to the dexidp/dex subchart as an
+existing Secret (dex.configSecret.create=false). Owning the config here lets us
+derive the issuer + the app's PKCE client/redirect URIs and inject connectors,
+keeping a single source of truth with the app's OIDC_ISSUER env.
+*/}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.dex.configSecret.name }}
+  labels:
+    {{- include "spacefleet.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dex
+type: Opaque
+stringData:
+  config.yaml: |
+    issuer: {{ $issuer | quote }}
+    storage:
+    {{- if eq .Values.dex.storage "crd" }}
+      type: kubernetes
+      config:
+        inCluster: true
+        {{- with .Values.dex.storageConfig }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    {{- else }}
+      type: {{ .Values.dex.storage }}
+      {{- with .Values.dex.storageConfig }}
+      config:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    web:
+      http: 0.0.0.0:5556
+      {{- with .Values.dex.web.allowedOrigins }}
+      allowedOrigins:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    oauth2:
+      {{- toYaml .Values.dex.oauth2 | nindent 6 }}
+    {{- with .Values.dex.expiry }}
+    expiry:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    staticClients:
+      - id: {{ .Values.dex.clientID | quote }}
+        name: Spacefleet
+        public: true
+        redirectURIs:
+        {{- range .Values.ingress.hosts }}
+          - {{ printf "https://%s/auth/callback" .host | quote }}
+        {{- end }}
+        {{- range .Values.dex.extraRedirectURIs }}
+          - {{ . | quote }}
+        {{- end }}
+      {{- with .Values.dex.extraStaticClients }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+    {{- if .Values.dex.enablePasswordDB }}
+    enablePasswordDB: true
+      {{- with .Values.dex.staticPasswords }}
+    staticPasswords:
+        {{- toYaml . | nindent 6 }}
+      {{- end }}
+    {{- end }}
+    {{- with .Values.dex.connectors }}
+    connectors:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+{{- end }}

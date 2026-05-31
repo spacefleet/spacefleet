@@ -19,9 +19,19 @@ keywords:
   - openapi
 
 # Postgres and Redis are bundled as small first-party StatefulSets running the
-# official upstream images (postgres / redis on Docker Hub) — no third-party
-# chart dependencies. Enabled by default so `helm install` yields a working app
-# out of the box; disable either (postgresql.enabled=false / redis.enabled=false)
-# and point at a managed service via externalDatabase / externalRedis for
-# production. The bundled datastores are single-replica and intended for trials
-# and small deployments, not HA.
+# official upstream images (postgres / redis on Docker Hub). Enabled by default
+# so `helm install` yields a working app out of the box; disable either
+# (postgresql.enabled=false / redis.enabled=false) and point at a managed service
+# via externalDatabase / externalRedis for production. The bundled datastores are
+# single-replica and intended for trials and small deployments, not HA.
+#
+# Dex (the OIDC provider) can optionally be bundled too, via the official
+# dexidp/dex subchart below (dex.enabled, off by default). That dependency means
+# `helm dependency build` must run before lint/package (CI and the Makefile do
+# this), and a Chart.lock is committed.
+
+dependencies:
+  - name: dex
+    version: 0.24.1
+    repository: https://charts.dexidp.io
+    condition: dex.enabled

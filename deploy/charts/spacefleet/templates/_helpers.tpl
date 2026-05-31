@@ -80,6 +80,60 @@ Names of the bundled datastore StatefulSets/Services.
 {{- end -}}
 
 {{/*
+Name of the bundled Dex Service/Deployment. Must mirror the dexidp/dex chart's
+own "dex.fullname" so we can reference its Service and so the config Secret we
+render lands where the subchart mounts it.
+*/}}
+{{- define "spacefleet.dex.fullname" -}}
+{{- $dex := .Values.dex | default dict -}}
+{{- if $dex.fullnameOverride -}}
+{{- $dex.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- $name := default "dex" $dex.nameOverride -}}
+{{- if contains $name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+OIDC issuer resolution (browser-facing). Precedence:
+  1. config.oidc.issuer (explicit / external provider)
+  2. dex.issuer (bundled Dex on a dedicated host)
+  3. https://<first ingress host>/dex (bundled Dex, same-origin default)
+Empty string means "not resolvable" — validate fails on that when Dex is on.
+*/}}
+{{- define "spacefleet.oidc.issuer" -}}
+{{- if .Values.config.oidc.issuer -}}
+{{- .Values.config.oidc.issuer -}}
+{{- else if .Values.dex.enabled -}}
+{{- if .Values.dex.issuer -}}
+{{- .Values.dex.issuer -}}
+{{- else if and .Values.ingress.enabled (gt (len .Values.ingress.hosts) 0) -}}
+{{- printf "https://%s/dex" (index .Values.ingress.hosts 0).host -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+JWKS URL the backend uses to verify tokens, pointing at the in-cluster Dex
+Service so verification never depends on the public issuer being reachable from
+inside the cluster (no ingress hairpin). Path mirrors the issuer's path, since
+Dex serves its routes under the issuer path prefix. Empty unless bundled Dex.
+*/}}
+{{- define "spacefleet.oidc.jwksURL" -}}
+{{- $issuer := include "spacefleet.oidc.issuer" . -}}
+{{- if and .Values.dex.enabled $issuer -}}
+{{- $path := (urlParse $issuer).path -}}
+{{- $port := 5556 -}}
+{{- with .Values.dex.service }}{{ with .ports }}{{ with .http }}{{ with .port }}{{ $port = . }}{{ end }}{{ end }}{{ end }}{{ end -}}
+{{- printf "http://%s:%v%s/keys" (include "spacefleet.dex.fullname" .) $port $path -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 DATABASE_URL resolution
 ------------------------
 Constructed DSN for the bundled Postgres, else the user-provided DSN.
@@ -158,5 +212,13 @@ Fail fast on incoherent value combinations.
 {{- end -}}
 {{- if and (not .Values.redis.enabled) (not .Values.externalRedis.url) (not .Values.externalRedis.existingSecret) -}}
 {{- fail "Redis not configured: enable the bundled redis, or set externalRedis.url / externalRedis.existingSecret." -}}
+{{- end -}}
+{{- if .Values.dex.enabled -}}
+{{- if not (include "spacefleet.oidc.issuer" .) -}}
+{{- fail "Bundled Dex (dex.enabled=true) needs a public issuer URL. Enable ingress (the issuer derives to https://<host>/dex), or set dex.issuer for a dedicated host, or set dex.enabled=false to use an external provider via config.oidc.issuer / the dev passthrough." -}}
+{{- end -}}
+{{- if and (not .Values.ingress.enabled) (not .Values.dex.extraRedirectURIs) -}}
+{{- fail "Bundled Dex: no redirect URIs for the app's login callback. Enable ingress (so the app's public origin is known) or set dex.extraRedirectURIs." -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}

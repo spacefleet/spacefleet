@@ -90,13 +90,14 @@ func buildHandler(cfg *config.Config, usersSvc *users.Service, orgsSvc *organiza
 }
 
 // buildVerifier returns the OIDC TokenVerifier when OIDC_ISSUER is set, or nil
-// to let RequireAuth fall back to the dev passthrough. Construction does OIDC
-// discovery (network), so it's bounded by a timeout.
+// to let RequireAuth fall back to the dev passthrough. When OIDC_JWKS_URL is
+// unset construction does OIDC discovery (network), so it's bounded by a
+// timeout; when set, keys are fetched lazily and no startup network call runs.
 func buildVerifier(cfg *config.Config) (auth.TokenVerifier, error) {
 	if cfg.OIDCIssuer == "" {
 		return nil, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	return auth.NewOIDCVerifier(ctx, cfg.OIDCIssuer, cfg.OIDCClientID)
+	return auth.NewOIDCVerifier(ctx, cfg.OIDCIssuer, cfg.OIDCClientID, cfg.OIDCJWKSURL)
 }

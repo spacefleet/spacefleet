@@ -1,6 +1,6 @@
 .PHONY: run build test test-integration e2e fmt vet tidy dev worker clean gen \
 	ui-install ui-dev ui-build services-up services-down services-logs \
-	services-reset migrate-up migrate-status secret-key helm-lint helm-template
+	services-reset migrate-up migrate-status secret-key helm-deps helm-lint helm-template
 
 BINARY := bin/spacefleet
 PKG    := ./cmd/spacefleet
@@ -97,14 +97,23 @@ services-reset:
 	docker compose down -v
 
 # --- Helm chart -------------------------------------------------------------
-# The chart has no external dependencies (bundled Postgres/Redis are
-# first-party StatefulSets on official images), so no `helm dependency` step.
+# The chart depends on the official dexidp/dex subchart (for the optional
+# bundled OIDC provider), so the dependency must be fetched before lint/render.
 
-# Lint the chart against both CI value sets (bundled + external datastores).
-helm-lint:
+# Fetch chart dependencies (the dex subchart) from Chart.lock into charts/.
+# The repo must be registered for `helm dependency build` to resolve it; the
+# vendored charts/*.tgz still makes lint/template/package work offline.
+helm-deps:
+	helm repo add dexidp https://charts.dexidp.io >/dev/null 2>&1 || true
+	cd $(CHART) && helm dependency build
+
+# Lint the chart against all CI value sets (bundled + external datastores,
+# bundled Dex).
+helm-lint: helm-deps
 	cd $(CHART) && helm lint . -f ci/default-values.yaml
 	cd $(CHART) && helm lint . -f ci/external-values.yaml
+	cd $(CHART) && helm lint . -f ci/dex-values.yaml
 
 # Render the chart locally for inspection (bundled-datastore defaults).
-helm-template:
+helm-template: helm-deps
 	helm template spacefleet $(CHART) -f $(CHART)/ci/default-values.yaml

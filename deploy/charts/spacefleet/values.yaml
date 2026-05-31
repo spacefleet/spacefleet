@@ -29,11 +29,15 @@ config:
   # -- Address the HTTP server binds. Keep in sync with service.targetPort.
   addr: ":8080"
   oidc:
-    # -- OIDC issuer URL (e.g. your Dex/Keycloak/Auth0). REQUIRED for a secure
-    # deployment. When empty the backend falls back to a dev passthrough that
-    # authenticates EVERY request as "dev-user" — never run that in production.
+    # -- OIDC issuer URL (e.g. your Dex/Keycloak/Auth0). Set this to use an
+    # EXTERNAL provider; it takes precedence over the bundled Dex (see the `dex`
+    # block). When this is empty AND bundled Dex is enabled, the issuer is
+    # derived automatically as https://<first ingress host>/dex. When it is
+    # empty and bundled Dex is off, the backend falls back to a dev passthrough
+    # that authenticates EVERY request as "dev-user" — never run that exposed.
     issuer: ""
-    # -- OIDC client ID this app authenticates as.
+    # -- OIDC client ID this app authenticates as. With bundled Dex, keep this
+    # in sync with dex.clientID (the static client the chart registers in Dex).
     clientID: spacefleet
   # -- Max background jobs the worker process runs in parallel.
   workerConcurrency: 4
@@ -147,7 +151,7 @@ readinessProbe:
 postgresql:
   enabled: true
   # -- Official Postgres image. Matches docker-compose for dev/prod parity.
-  image: postgres:17-alpine
+  image: postgres:18-alpine
   imagePullPolicy: IfNotPresent
   auth:
     username: spacefleet
@@ -211,3 +215,113 @@ externalRedis:
   existingSecret: ""
   # -- Key within existingSecret holding the URL.
   existingSecretKey: REDIS_URL
+
+# ---------------------------------------------------------------------------
+# Bundled Dex — an optional in-cluster OIDC provider, via the official
+# dexidp/dex subchart. OFF by default: bundled Dex needs a public hostname to
+# be useful, and ingress is off by default, so a bare `helm install` stays on
+# the dev passthrough. Turn it on once you have a host:
+#
+#   helm install spacefleet … \
+#     --set dex.enabled=true \
+#     --set ingress.enabled=true \
+#     --set ingress.hosts[0].host=spacefleet.example.com
+#
+# This chart RENDERS Dex's config (issuer, the app's PKCE client + redirect
+# URIs, storage, connectors) from the values below and hands it to the subchart
+# as an existing Secret; the subchart owns the Deployment/Service/RBAC. Keys
+# under `dex` that aren't listed here are passed straight through to the
+# dexidp/dex subchart (resources, nodeSelector, image, autoscaling, …).
+dex:
+  # -- Bundle Dex as the OIDC provider. Requires a derivable issuer (ingress
+  # enabled, or dex.issuer set) — the chart fails the render otherwise.
+  enabled: false
+
+  # ---- Dex config rendered by this chart -------------------------------------
+
+  # -- Public issuer URL the browser uses. Leave empty to derive
+  # https://<first ingress host>/dex (same-origin: no CORS). Set it for a
+  # dedicated Dex host (then also set dex.web.allowedOrigins to the app origin).
+  issuer: ""
+  # -- The app's OIDC client id registered in Dex. Keep in sync with
+  # config.oidc.clientID. Registered as a public (PKCE) client, no secret.
+  clientID: spacefleet
+  # -- Signing/session storage: crd (Kubernetes CRDs, no DB) | postgres | memory
+  # | sqlite3. crd is durable and HA-safe with no extra dependency. memory is
+  # single-replica/trial only (new signing keys on every restart).
+  storage: crd
+  # -- Extra storage.config keys merged into the rendered config (e.g. a
+  # postgres DSN for storage=postgres). For crd, {inCluster: true} is the default.
+  storageConfig: {}
+
+  # -- Seed Dex's local password DB so a fresh install is immediately loginnable.
+  enablePasswordDB: true
+  # -- Static users. The default seeds admin@example.com / "password" so trials
+  # work out of the box. CHANGE THIS (or clear it and configure a connector)
+  # before exposing the deployment — this is a publicly known credential.
+  # Regenerate a hash with: htpasswd -bnBC 10 "" <pw> | tr -d ':\n'
+  staticPasswords:
+    - email: admin@example.com
+      hash: "$2y$10$BFlbl0.lcQSwywdpBVArUuBjeOAgb37/kb7Lyy8I.rB08PxAKFV0m"
+      username: admin
+      userID: "5a9f6c2e-9b1a-4f3d-8c7b-2e4d6a8f0c11"
+
+  # -- Upstream identity connectors (GitHub, Google, OIDC, LDAP, …), passed
+  # through verbatim to Dex's `connectors:`. Dex expands $VAR references at load,
+  # so keep client secrets out of values: reference them as env (see dex.envFrom
+  # below) instead of inlining. Example (GitHub):
+  #   connectors:
+  #     - type: github
+  #       id: github
+  #       name: GitHub
+  #       config:
+  #         clientID: <oauth app id>
+  #         clientSecret: $GITHUB_CLIENT_SECRET
+  #         orgs: [{name: your-org}]
+  connectors: []
+
+  # -- Additional OIDC clients beyond the app's own (verbatim Dex staticClients).
+  extraStaticClients: []
+  # -- Extra redirect URIs for the app client, beyond the auto-derived
+  # https://<each ingress host>/auth/callback.
+  extraRedirectURIs: []
+  # -- Dex oauth2 settings (passthrough). skipApprovalScreen avoids a consent
+  # click for the first-party app.
+  oauth2:
+    skipApprovalScreen: true
+  web:
+    # -- CORS origins for the browser→Dex calls. Only needed for a dedicated Dex
+    # host; empty/unneeded for the default same-origin /dex path.
+    allowedOrigins: []
+  # -- Token/key lifetimes (Dex `expiry:` passthrough), e.g. {idTokens: 24h}.
+  expiry: {}
+
+  # ---- dexidp/dex subchart passthrough ---------------------------------------
+  # This chart renders the config Secret, so the subchart must not create one;
+  # both sides reference dex.configSecret.name. For multiple spacefleet releases
+  # in one namespace, give each a unique name here.
+  configSecret:
+    create: false
+    name: spacefleet-dex-config
+  # RBAC defaults (create + createClusterScoped) grant the namespaced
+  # dex.coreos.com role and the cluster-scoped CRD permissions that storage=crd
+  # needs. For storage=postgres/memory you can set createClusterScoped=false.
+  rbac:
+    create: true
+    createClusterScoped: true
+  serviceAccount:
+    create: true
+  replicaCount: 1
+  https:
+    enabled: false
+  grpc:
+    enabled: false
+  # -- envFrom for the Dex pod (subchart passthrough). Use this to inject
+  # connector client secrets that the `connectors` config references as $VAR,
+  # e.g. [{secretRef: {name: spacefleet-dex-connectors}}].
+  envFrom: []
+  resources: {}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}

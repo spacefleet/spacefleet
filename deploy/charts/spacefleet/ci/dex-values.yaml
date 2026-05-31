@@ -1,0 +1,31 @@
+# Render coverage: bundled Dex (the official dexidp/dex subchart) with the
+# same-origin /dex issuer derived from the ingress host, CRD storage, the seeded
+# admin, and a GitHub connector referencing a client secret via envFrom.
+dex:
+  enabled: true
+  storage: crd
+  connectors:
+    - type: github
+      id: github
+      name: GitHub
+      config:
+        clientID: example-github-client-id
+        clientSecret: $GITHUB_CLIENT_SECRET
+        orgs:
+          - name: example-org
+  envFrom:
+    - secretRef:
+        name: spacefleet-dex-connectors
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: spacefleet.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: spacefleet-tls
+      hosts:
+        - spacefleet.example.com
