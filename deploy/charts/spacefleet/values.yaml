@@ -1,0 +1,213 @@
+# Default values for the spacefleet chart.
+# This is a YAML-formatted file. Values are documented inline; see
+# deploy/charts/spacefleet/README.md for the full reference and examples.
+
+# -- Number of `serve` (web/API) replicas. Ignored when web.autoscaling.enabled.
+replicaCount: 2
+
+image:
+  # -- Image repository. CI publishes to ghcr.io/spacefleet/app.
+  repository: ghcr.io/spacefleet/app
+  # -- Image tag. Defaults to the chart's appVersion when empty.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# -- Secrets for pulling the app image (and bundled Postgres/Redis images) from
+# a private registry. List of {name: <secret>}.
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Application configuration. Non-secret values are injected as plain env on
+# the web/worker pods (the OIDC ones are also surfaced to the browser via
+# /config.js). Secrets (DATABASE_URL, REDIS_URL) are handled separately — see
+# postgresql / externalDatabase below.
+config:
+  # -- ENV the binary runs under (production|development).
+  env: production
+  # -- Address the HTTP server binds. Keep in sync with service.targetPort.
+  addr: ":8080"
+  oidc:
+    # -- OIDC issuer URL (e.g. your Dex/Keycloak/Auth0). REQUIRED for a secure
+    # deployment. When empty the backend falls back to a dev passthrough that
+    # authenticates EVERY request as "dev-user" — never run that in production.
+    issuer: ""
+    # -- OIDC client ID this app authenticates as.
+    clientID: spacefleet
+  # -- Max background jobs the worker process runs in parallel.
+  workerConcurrency: 4
+  # -- Extra environment variables for both web and worker pods. Standard
+  # core/v1 EnvVar entries, e.g. [{name: FOO, value: bar}].
+  extraEnv: []
+
+# Web (the `serve` subcommand): stateless HTTP API + embedded SPA.
+web:
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+    # targetMemoryUtilizationPercentage: 80
+  resources: {}
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # limits:
+    #   memory: 256Mi
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Worker (the `worker` subcommand): River background-job processor.
+worker:
+  # -- Deploy the background worker. Disable if you have no registered jobs yet.
+  enabled: true
+  replicaCount: 1
+  resources: {}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Database migrations (`migrate up`), run as a pre-install/pre-upgrade Helm
+# hook Job before web/worker roll out.
+migrations:
+  enabled: true
+  # -- Job backoffLimit (retries on failure, e.g. DB not yet reachable).
+  backoffLimit: 6
+  resources: {}
+  annotations: {}
+
+service:
+  type: ClusterIP
+  # -- Service port. Routes to the pod's targetPort.
+  port: 80
+  # -- Container port the app listens on. Must match config.addr.
+  targetPort: 8080
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # cert-manager.io/cluster-issuer: letsencrypt
+  hosts:
+    - host: spacefleet.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: spacefleet-tls
+    #   hosts:
+    #     - spacefleet.local
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Pod- and container-level security. Defaults match the distroless/static
+# nonroot runtime image (uid/gid 65532, read-only rootfs, no privilege).
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# HTTP probes against the public /api/health endpoint.
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+# ---------------------------------------------------------------------------
+# Bundled Postgres — a single-replica StatefulSet running the official postgres
+# image. Enabled by default for a one-command trial. For production, prefer
+# postgresql.enabled=false + externalDatabase (a managed/HA database).
+# ---------------------------------------------------------------------------
+postgresql:
+  enabled: true
+  # -- Official Postgres image. Matches docker-compose for dev/prod parity.
+  image: postgres:17-alpine
+  imagePullPolicy: IfNotPresent
+  auth:
+    username: spacefleet
+    # -- Bundled-Postgres password. CHANGE THIS for any real deployment, or
+    # disable the bundle and use a managed database.
+    password: spacefleet
+    database: spacefleet
+  persistence:
+    enabled: true
+    size: 8Gi
+    # -- StorageClass for the data PVC. Empty uses the cluster default.
+    storageClass: ""
+  resources: {}
+  # -- Pod securityContext for the Postgres pod. Empty lets the official image
+  # manage its own user (root entrypoint → drops to postgres). Set fsGroup/
+  # runAsUser to run under "restricted" PodSecurity (see README).
+  podSecurityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Used only when postgresql.enabled=false. Provide a full DSN via `url`, or a
+# reference to an existing Secret holding it.
+externalDatabase:
+  # -- Full Postgres DSN, e.g. postgres://user:pass@host:5432/db?sslmode=require
+  url: ""
+  # -- Name of an existing Secret containing the DSN (takes precedence over url).
+  existingSecret: ""
+  # -- Key within existingSecret holding the DSN.
+  existingSecretKey: DATABASE_URL
+
+# ---------------------------------------------------------------------------
+# Bundled Redis — a single-replica StatefulSet running the official redis image.
+# ---------------------------------------------------------------------------
+redis:
+  enabled: true
+  # -- Official Redis image. Matches docker-compose for dev/prod parity.
+  image: redis:7-alpine
+  imagePullPolicy: IfNotPresent
+  auth:
+    enabled: true
+    # -- Bundled-Redis password. CHANGE THIS for any real deployment.
+    password: spacefleet
+  persistence:
+    enabled: true
+    size: 8Gi
+    # -- StorageClass for the data PVC. Empty uses the cluster default.
+    storageClass: ""
+  resources: {}
+  # -- Pod securityContext for the Redis pod. See postgresql.podSecurityContext.
+  podSecurityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Used only when redis.enabled=false.
+externalRedis:
+  # -- Full Redis URL, e.g. redis://:pass@host:6379/0
+  url: ""
+  # -- Name of an existing Secret containing the URL (takes precedence over url).
+  existingSecret: ""
+  # -- Key within existingSecret holding the URL.
+  existingSecretKey: REDIS_URL

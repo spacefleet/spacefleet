@@ -1,0 +1,52 @@
+{{- if .Values.migrations.enabled }}
+{{/*
+Runs `spacefleet migrate up` as a Helm hook.
+
+  - post-install: the bundled Postgres StatefulSet is a normal resource, so it
+    only exists *after* install hooks would run — post-install lets the job
+    reach it. backoffLimit covers the gap while Postgres becomes ready.
+  - pre-upgrade: on upgrades the DB already exists, so migrate before the new
+    web/worker code rolls out.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "spacefleet.fullname" . }}-migrate
+  labels:
+    {{- include "spacefleet.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    "helm.sh/hook": post-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    {{- with .Values.migrations.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "spacefleet.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "spacefleet.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "spacefleet.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["migrate", "up"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            {{- include "spacefleet.databaseEnv" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+{{- end }}

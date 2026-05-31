@@ -1,0 +1,327 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+# On PRs, new commits cancel older in-progress runs. On main and tags,
+# queue everything so each push produces its own test run (and each tag
+# produces its own pushed image).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # golangci-lint compiles packages, and ui/embed.go's //go:embed all:dist
+      # needs at least one file to match. Seed it so the linter can build.
+      - name: Seed embed directory
+        run: |
+          mkdir -p ui/dist
+          touch ui/dist/.gitkeep
+          printf '<!doctype html><title>test</title>' > ui/dist/index.html
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go mod tidy is clean
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      # Pin the exact linter version (matches .golangci.yml's `version: "2"`).
+      - name: golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/v2.11.3/install.sh \
+            | sh -s -- -b "$(go env GOPATH)/bin" v2.11.3
+          golangci-lint run ./...
+
+  lint-ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+
+  # Lints the Helm chart and renders it under two value sets (bundled
+  # datastores, and external datastores + ingress + HPA) so packaging breaks
+  # are caught on PRs — the same gate the image build sits behind.
+  lint-helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: helm lint
+        working-directory: deploy/charts/spacefleet
+        run: |
+          helm lint . -f ci/default-values.yaml
+          helm lint . -f ci/external-values.yaml
+
+      - name: helm template (render both value sets)
+        working-directory: deploy/charts/spacefleet
+        run: |
+          helm template rel . -f ci/default-values.yaml > /dev/null
+          helm template rel . -f ci/external-values.yaml > /dev/null
+
+  test-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # ui/embed.go's //go:embed all:dist needs at least one file to match,
+      # and TestSPAFallback reads index.html to serve the fallback response.
+      # Seed both so test-go stays decoupled from the UI build.
+      - name: Seed embed directory
+        run: |
+          mkdir -p ui/dist
+          touch ui/dist/.gitkeep
+          printf '<!doctype html><title>test</title>' > ui/dist/index.html
+
+      - run: go vet ./...
+      - run: go test ./...
+
+  test-integration:
+    runs-on: ubuntu-latest
+    # Real-Postgres tests (build tag `integration`). The testsupport harness
+    # creates an isolated, migrated database per test against this service.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: spacefleet
+          POSTGRES_PASSWORD: spacefleet
+          POSTGRES_DB: spacefleet
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U spacefleet -d spacefleet"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Seed embed directory
+        run: |
+          mkdir -p ui/dist
+          touch ui/dist/.gitkeep
+          printf '<!doctype html><title>test</title>' > ui/dist/index.html
+
+      - run: go test -tags=integration ./...
+        env:
+          TEST_DATABASE_URL: postgres://spacefleet:spacefleet@localhost:5432/spacefleet?sslmode=disable
+
+  test-ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  # Browser end-to-end (Playwright) against the full dev stack: Postgres +
+  # Redis + Dex (OIDC). The Playwright config starts the Go API and Vite dev
+  # server itself; this job brings up the backing services and applies
+  # migrations first.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      # The Go `serve` binary embeds ui/dist (//go:embed all:dist) and needs a
+      # file present to build. The browser hits the Vite dev server for the SPA,
+      # so a placeholder is enough.
+      - name: Seed embed directory
+        run: |
+          mkdir -p ui/dist
+          touch ui/dist/.gitkeep
+          printf '<!doctype html><title>test</title>' > ui/dist/index.html
+
+      - name: Start services (Postgres + Redis + Dex)
+        run: docker compose up -d --wait
+
+      # config.Load() (and the Playwright-started `serve`) read .env from the
+      # repo root. The example points OIDC at the Dex container.
+      - name: Configure environment
+        run: cp .env.example .env
+
+      - name: Apply migrations
+        run: go run ./cmd/spacefleet migrate up
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: ui
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        working-directory: ui
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: ui/playwright-report/
+          retention-days: 7
+
+  # Builds and pushes the single-binary app image on version tags, once every
+  # lint/test gate has passed.
+  docker-app:
+    needs: [lint-go, lint-ui, lint-helm, test-go, test-integration, test-ui, e2e]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # GHCR requires a lowercase image path; normalise here in case the
+      # org/repo uses mixed case.
+      - name: Resolve image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+            type=sha,format=long
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Packages the Helm chart and pushes it as an OCI artifact to GHCR, mirroring
+  # the image release. Runs after docker-app so the image tag the chart points
+  # at already exists. The chart version and appVersion are both stamped from
+  # the v* tag, so `--version X.Y.Z` always pairs with image `:X.Y.Z`.
+  helm-chart:
+    needs: [docker-app]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      # GHCR OCI paths must be lowercase. Charts publish under the owner's
+      # `charts` namespace, e.g. ghcr.io/<owner>/charts/spacefleet.
+      - name: Resolve OCI destination and version
+        run: |
+          owner="${GITHUB_REPOSITORY%%/*}"
+          echo "CHART_DEST=oci://ghcr.io/${owner,,}/charts" >> "$GITHUB_ENV"
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Package chart
+        working-directory: deploy/charts/spacefleet
+        run: |
+          helm package . \
+            --version "$VERSION" \
+            --app-version "$VERSION" \
+            --destination "$RUNNER_TEMP"
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push chart
+        run: helm push "$RUNNER_TEMP/spacefleet-${VERSION}.tgz" "$CHART_DEST"

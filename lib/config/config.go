@@ -1,0 +1,80 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"strconv"
+)
+
+type Config struct {
+	Addr        string
+	Env         string
+	DatabaseURL string
+	RedisURL    string
+
+	// OIDC (Dex) auth seam. These are read but not yet consumed — wire them
+	// into a TokenVerifier (lib/auth) when Dex integration lands. Issuer is
+	// the Dex issuer URL; ClientID is this app's OIDC client. Both are also
+	// surfaced to the browser via /config.js so the SPA can run its own
+	// OIDC flow. They are non-secret by design.
+	OIDCIssuer   string
+	OIDCClientID string
+
+	// SecretKey is the symmetric key used to envelope-encrypt credentials at
+	// rest (e.g. registered cluster tokens/kubeconfigs). It is a base64-encoded
+	// 32-byte key, read from SPACEFLEET_SECRET_KEY. When empty, secret sealing
+	// is disabled: features that store no secrets (e.g. in-cluster cluster
+	// registration) keep working, but registering anything with credentials
+	// fails fast with a clear "set SPACEFLEET_SECRET_KEY" error. This is a
+	// secret — never surface it to the browser via /config.js.
+	SecretKey string
+
+	// WorkerConcurrency caps the number of background jobs the worker
+	// process runs in parallel. Default 4.
+	WorkerConcurrency int
+}
+
+func Load() (*Config, error) {
+	cfg := &Config{
+		Addr:         getenv("ADDR", ":8080"),
+		Env:          getenv("ENV", "development"),
+		DatabaseURL:  os.Getenv("DATABASE_URL"),
+		RedisURL:     os.Getenv("REDIS_URL"),
+		OIDCIssuer:   os.Getenv("OIDC_ISSUER"),
+		OIDCClientID: os.Getenv("OIDC_CLIENT_ID"),
+		SecretKey:    os.Getenv("SPACEFLEET_SECRET_KEY"),
+	}
+
+	concurrency, err := parsePositiveInt("WORKER_CONCURRENCY", 4)
+	if err != nil {
+		return nil, err
+	}
+	cfg.WorkerConcurrency = concurrency
+
+	return cfg, nil
+}
+
+func getenv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// parsePositiveInt reads an integer env var, falling back to fallback when
+// unset. Zero or negative values are rejected so a typo doesn't silently
+// disable the worker.
+func parsePositiveInt(key string, fallback int) (int, error) {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback, nil
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", key, err)
+	}
+	if v <= 0 {
+		return 0, fmt.Errorf("%s: must be > 0, got %d", key, v)
+	}
+	return v, nil
+}

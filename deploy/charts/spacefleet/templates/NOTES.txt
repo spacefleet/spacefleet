@@ -1,0 +1,44 @@
+Spacefleet {{ .Chart.AppVersion }} has been deployed as release "{{ .Release.Name }}".
+
+Components:
+  • web     ({{ if .Values.web.autoscaling.enabled }}autoscaled {{ .Values.web.autoscaling.minReplicas }}–{{ .Values.web.autoscaling.maxReplicas }}{{ else }}{{ .Values.replicaCount }} replica(s){{ end }}) — serves the API + SPA
+{{- if .Values.worker.enabled }}
+  • worker  ({{ .Values.worker.replicaCount }} replica(s)) — River background jobs
+{{- end }}
+{{- if .Values.migrations.enabled }}
+  • migrate — ran "spacefleet migrate up" as a release hook
+{{- end }}
+
+Data services:
+  • Postgres: {{ if .Values.postgresql.enabled }}bundled (release-managed){{ else }}external{{ end }}
+  • Redis:    {{ if .Values.redis.enabled }}bundled (release-managed){{ else }}external{{ end }}
+
+{{- if not .Values.config.oidc.issuer }}
+
+⚠  config.oidc.issuer is EMPTY. The backend is running its dev passthrough,
+   which authenticates EVERY request as "dev-user". Set config.oidc.issuer to
+   your OIDC provider before exposing this deployment.
+{{- end }}
+{{- if and .Values.postgresql.enabled (eq .Values.postgresql.auth.password "spacefleet") }}
+
+⚠  The bundled Postgres is using the default password. Override
+   postgresql.auth.password (or use an external database) for production.
+{{- end }}
+{{- if and .Values.redis.enabled .Values.redis.auth.enabled (eq .Values.redis.auth.password "spacefleet") }}
+
+⚠  The bundled Redis is using the default password. Override
+   redis.auth.password (or use an external Redis) for production.
+{{- end }}
+
+Reach the app:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "spacefleet.fullname" . }} 8080:{{ .Values.service.port }}
+  # then open http://localhost:8080
+{{- end }}
+
+Verify the deployment:
+  helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }}

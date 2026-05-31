@@ -1,0 +1,110 @@
+.PHONY: run build test test-integration e2e fmt vet tidy dev worker clean gen \
+	ui-install ui-dev ui-build services-up services-down services-logs \
+	services-reset migrate-up migrate-status secret-key helm-lint helm-template
+
+BINARY := bin/spacefleet
+PKG    := ./cmd/spacefleet
+CHART  := deploy/charts/spacefleet
+
+run:
+	go run $(PKG) serve
+
+# Full production build: UI bundle + Go binary (with UI embedded).
+build: ui-build
+	go build -o $(BINARY) $(PKG)
+
+test:
+	go test ./...
+
+# Integration tests (tagged `integration`) — exercise real handlers against a
+# real Postgres. Needs `make services-up`; individual tests skip if the DB is
+# unreachable. Override the base DB with TEST_DATABASE_URL.
+test-integration:
+	go test -tags=integration ./...
+
+# Browser end-to-end tests (Playwright). Needs the full stack up
+# (`make services-up && make migrate-up`); the Playwright config starts/reuses
+# the Go API and Vite dev server.
+e2e:
+	cd ui && npx playwright test
+
+fmt:
+	go fmt ./...
+
+vet:
+	go vet ./...
+
+tidy:
+	go mod tidy
+
+# Regenerate the ent client, Go server stubs, and TS client types from the
+# OpenAPI spec.
+gen:
+	go generate ./ent/...
+	go generate ./lib/api/...
+	cd ui && npm run gen:api
+
+# Apply pending migrations from db/migrations/ against $DATABASE_URL.
+migrate-up:
+	go run $(PKG) migrate up
+
+# Show applied vs pending migrations.
+migrate-status:
+	go run $(PKG) migrate status
+
+# Generate a base64-encoded 32-byte key for SPACEFLEET_SECRET_KEY (used to
+# envelope-encrypt stored credentials, e.g. cluster tokens/kubeconfigs). Copy
+# the output into your .env.
+secret-key:
+	@openssl rand -base64 32
+
+# Dev backend only (port 8080, live reload). Run `make ui-dev` in a second
+# terminal for the React dev server.
+dev:
+	air
+
+# Long-lived worker process for River-backed background jobs. Run alongside
+# `make dev` in a second terminal when you have jobs to process.
+worker:
+	go run $(PKG) worker
+
+ui-install:
+	cd ui && npm install
+
+# Vite dev server on :5173, proxies /api/* to the Go backend on :8080.
+ui-dev:
+	cd ui && npm run dev
+
+ui-build:
+	cd ui && npm run build
+	@touch ui/dist/.gitkeep
+
+clean:
+	rm -rf bin tmp ui/dist ui/node_modules
+
+# Start Postgres + Redis in the background.
+services-up:
+	docker compose up -d
+
+services-down:
+	docker compose down
+
+services-logs:
+	docker compose logs -f
+
+# Wipe Postgres + Redis data volumes. Destructive.
+services-reset:
+	docker compose down -v
+
+# --- Helm chart -------------------------------------------------------------
+# The chart has no external dependencies (bundled Postgres/Redis are
+# first-party StatefulSets on official images), so no `helm dependency` step.
+
+# Lint the chart against both CI value sets (bundled + external datastores).
+helm-lint:
+	cd $(CHART) && helm lint . -f ci/default-values.yaml
+	cd $(CHART) && helm lint . -f ci/external-values.yaml
+
+# Render the chart locally for inspection (bundled-datastore defaults).
+helm-template:
+	helm template spacefleet $(CHART) -f $(CHART)/ci/default-values.yaml

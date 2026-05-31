@@ -1,0 +1,27 @@
+apiVersion: v2
+name: spacefleet
+description: Spacefleet — a Go + React single-binary app (API + embedded SPA) with Postgres, Redis, and OIDC auth.
+type: application
+
+# version (chart) and appVersion (image tag) are both stamped from the v* git
+# tag at release time by CI (see .github/workflows/ci.yml). The committed
+# values below are placeholders for local development and `helm lint`.
+version: 0.0.0
+appVersion: "0.0.0"
+
+home: https://github.com/spacefleet/app
+sources:
+  - https://github.com/spacefleet/app
+keywords:
+  - spacefleet
+  - go
+  - react
+  - openapi
+
+# Postgres and Redis are bundled as small first-party StatefulSets running the
+# official upstream images (postgres / redis on Docker Hub) — no third-party
+# chart dependencies. Enabled by default so `helm install` yields a working app
+# out of the box; disable either (postgresql.enabled=false / redis.enabled=false)
+# and point at a managed service via externalDatabase / externalRedis for
+# production. The bundled datastores are single-replica and intended for trials
+# and small deployments, not HA.

@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-spacefleet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spacefleet}
+      POSTGRES_DB: ${POSTGRES_DB:-spacefleet}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-spacefleet} -d ${POSTGRES_DB:-spacefleet}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Dex OIDC provider for local development. Bootstrapped from
+  # dev/dex/config.yaml with an in-memory store and a static dev login
+  # (admin@example.com / "password"). The Go backend (run on the host via
+  # `make dev`) and the browser both reach it at http://localhost:5556/dex.
+  dex:
+    image: ghcr.io/dexidp/dex:v2.41.1
+    restart: unless-stopped
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    ports:
+      - "127.0.0.1:5556:5556"
+    volumes:
+      - ./dev/dex/config.yaml:/etc/dex/config.yaml:ro
+
+volumes:
+  postgres_data:
+  redis_data:

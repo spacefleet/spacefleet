@@ -1,0 +1,475 @@
+openapi: 3.0.3
+info:
+  title: Spacefleet API
+  version: 0.1.0
+  description: |
+    HTTP API for the Spacefleet app. This is the source of truth: it
+    generates the Go server stubs (lib/api/gen.go) and the TypeScript
+    client types (ui/src/api/schema.d.ts). Run `make gen` after editing.
+
+    Account management is organization-centric: organizations are the
+    top-level tenant and a user must belong to (and have selected) one to use
+    the app. /api/me bootstraps the SPA with the current user and their
+    organization memberships.
+servers:
+  - url: /
+paths:
+  /api/health:
+    get:
+      summary: Liveness probe
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+
+  /api/me:
+    get:
+      summary: The current user and their organization memberships
+      description: |
+        Returns the authenticated user, provisioning a local record on first
+        sight, along with the organizations they belong to. The SPA uses this
+        to bootstrap: an empty organizations list means the user must create
+        one before using the app.
+      operationId: getMe
+      responses:
+        "200":
+          description: Current user and memberships
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/organizations:
+    post:
+      summary: Create an organization (the caller becomes its owner)
+      operationId: createOrganization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizationCreateRequest"
+      responses:
+        "201":
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/organizations/{id}:
+    patch:
+      summary: Rename an organization (owners only)
+      operationId: renameOrganization
+      parameters:
+        - $ref: "#/components/parameters/OrganizationID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizationCreateRequest"
+      responses:
+        "200":
+          description: Organization updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/clusters:
+    get:
+      summary: List the clusters registered to the current organization
+      description: |
+        Org-scoped: the organization is taken from the X-Organization-ID header.
+        Secret credentials are never included in the response.
+      operationId: listClusters
+      responses:
+        "200":
+          description: Clusters in the current organization
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Cluster"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Register a Kubernetes cluster in the current organization
+      description: |
+        Stores the connection details (credentials are envelope-encrypted at
+        rest) and immediately probes the cluster, returning it with the
+        resulting connection status.
+      operationId: createCluster
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClusterCreateRequest"
+      responses:
+        "201":
+          description: Cluster registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cluster"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/clusters/{id}:
+    get:
+      summary: Get a cluster
+      operationId: getCluster
+      parameters:
+        - $ref: "#/components/parameters/ClusterID"
+      responses:
+        "200":
+          description: The cluster
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cluster"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      summary: Update a cluster (name and/or credentials)
+      description: |
+        Updates the cluster's name and/or re-supplies credentials. The
+        connection method is fixed at registration. Supplying any credential
+        field re-encrypts and re-probes.
+      operationId: updateCluster
+      parameters:
+        - $ref: "#/components/parameters/ClusterID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClusterUpdateRequest"
+      responses:
+        "200":
+          description: Cluster updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cluster"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete a cluster
+      operationId: deleteCluster
+      parameters:
+        - $ref: "#/components/parameters/ClusterID"
+      responses:
+        "204":
+          description: Cluster deleted
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/clusters/{id}/test:
+    post:
+      summary: Re-probe a cluster's connectivity
+      description: Rebuilds the client from stored credentials and refreshes the connection status.
+      operationId: testCluster
+      parameters:
+        - $ref: "#/components/parameters/ClusterID"
+      responses:
+        "200":
+          description: The cluster with refreshed status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cluster"
+        default:
+          $ref: "#/components/responses/Error"
+
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+    User:
+      type: object
+      required: [id, email]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+
+    Role:
+      type: string
+      enum: [owner, member]
+
+    Organization:
+      type: object
+      required: [id, name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    OrgMembership:
+      type: object
+      required: [organization, role]
+      properties:
+        organization:
+          $ref: "#/components/schemas/Organization"
+        role:
+          $ref: "#/components/schemas/Role"
+
+    Me:
+      type: object
+      required: [user, organizations]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        organizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgMembership"
+
+    OrganizationCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    ConnectionMethod:
+      type: string
+      description: |
+        How Spacefleet connects to the cluster.
+          - in_cluster: Spacefleet runs in this cluster; use its service account.
+          - kubeconfig: a supplied kubeconfig with embedded static credentials.
+          - token: explicit API URL + CA + ServiceAccount bearer token.
+          - eks/gke/aks: cloud-native auth (credentials minted at connect time).
+      enum: [in_cluster, kubeconfig, token, eks, gke, aks]
+
+    ClusterStatus:
+      type: string
+      description: Result of the most recent connectivity probe.
+      enum: [pending, connected, error]
+
+    Cluster:
+      type: object
+      required:
+        [id, name, connection_method, status, config, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        connection_method:
+          $ref: "#/components/schemas/ConnectionMethod"
+        endpoint:
+          type: string
+          description: API server URL (display); may be empty or discovered.
+        status:
+          $ref: "#/components/schemas/ClusterStatus"
+        status_message:
+          type: string
+          description: Human-readable detail when status is error.
+        k8s_version:
+          type: string
+          description: Server version reported by the last successful probe.
+        last_checked_at:
+          type: string
+          format: date-time
+          nullable: true
+        config:
+          type: object
+          description: Non-secret per-method parameters (region, project, …).
+          additionalProperties:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ClusterCreateRequest:
+      type: object
+      required: [name, connection_method]
+      description: |
+        A flat object: only the fields relevant to the chosen connection_method
+        need be set; the server validates per method. Secret fields (kubeconfig,
+        token, cloud credentials) are encrypted at rest and never returned.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        connection_method:
+          $ref: "#/components/schemas/ConnectionMethod"
+        # token method
+        endpoint:
+          type: string
+          description: API server URL (token method).
+        ca:
+          type: string
+          description: PEM-encoded CA certificate bundle (token method).
+        insecure_skip_tls:
+          type: boolean
+          description: Disable TLS verification (token method; use sparingly).
+        token:
+          type: string
+          description: ServiceAccount bearer token (token method).
+        # kubeconfig method
+        kubeconfig:
+          type: string
+          description: Full kubeconfig YAML with embedded static credentials.
+        # eks method
+        aws_region:
+          type: string
+        eks_cluster_name:
+          type: string
+        aws_access_key_id:
+          type: string
+        aws_secret_access_key:
+          type: string
+        aws_session_token:
+          type: string
+        aws_role_arn:
+          type: string
+          description: Optional role to assume after authenticating.
+        # gke method
+        gcp_project:
+          type: string
+        gcp_location:
+          type: string
+        gke_cluster_name:
+          type: string
+        gcp_service_account_key:
+          type: string
+          description: GCP service-account JSON key.
+        # aks method
+        azure_subscription_id:
+          type: string
+        azure_resource_group:
+          type: string
+        aks_cluster_name:
+          type: string
+        azure_tenant_id:
+          type: string
+        azure_client_id:
+          type: string
+        azure_client_secret:
+          type: string
+
+    ClusterUpdateRequest:
+      type: object
+      description: |
+        All fields optional. Set name to rename; supply any credential field to
+        re-encrypt and re-probe. The connection method is fixed at registration.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        endpoint:
+          type: string
+        ca:
+          type: string
+        insecure_skip_tls:
+          type: boolean
+        token:
+          type: string
+        kubeconfig:
+          type: string
+        aws_region:
+          type: string
+        eks_cluster_name:
+          type: string
+        aws_access_key_id:
+          type: string
+        aws_secret_access_key:
+          type: string
+        aws_session_token:
+          type: string
+        aws_role_arn:
+          type: string
+        gcp_project:
+          type: string
+        gcp_location:
+          type: string
+        gke_cluster_name:
+          type: string
+        gcp_service_account_key:
+          type: string
+        azure_subscription_id:
+          type: string
+        azure_resource_group:
+          type: string
+        aks_cluster_name:
+          type: string
+        azure_tenant_id:
+          type: string
+        azure_client_id:
+          type: string
+        azure_client_secret:
+          type: string
+
+  parameters:
+    OrganizationID:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    ClusterID:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

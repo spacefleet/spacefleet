@@ -1,0 +1,12 @@
+# Patterns to ignore when building packages.
+.DS_Store
+.git/
+.gitignore
+*.tmp
+*.bak
+*.orig
+*~
+.vscode/
+.idea/
+# CI renders these for value-combination coverage; not part of the package.
+ci/

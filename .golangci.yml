@@ -1,0 +1,25 @@
+# golangci-lint configuration. Conservative, "common sense" baseline: the
+# standard linter set (errcheck, govet, ineffassign, staticcheck, unused) plus
+# a few high-signal extras. The goal is to catch real bugs, not to bikeshed
+# style — gofmt already handles formatting.
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose # HTTP response bodies must be closed
+    - misspell # catch typos in comments/strings
+  settings:
+    errcheck:
+      # Unchecked errors on these are idiomatic and not worth the noise:
+      # deferred Close() on cleanup, and writes to usage/CLI output writers.
+      exclude-functions:
+        - (io.Closer).Close
+        - (*database/sql.DB).Close
+        - (*database/sql.Rows).Close
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+
+exclusions:
+  generated: lax # don't lint generated code (ent/*.go, lib/api/gen.go)

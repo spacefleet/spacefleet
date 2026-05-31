@@ -1,0 +1,6 @@
+# Render coverage: out-of-the-box defaults (bundled Postgres + Redis).
+# Just exercises the chart with an OIDC issuer set so NOTES/config render the
+# secure path.
+config:
+  oidc:
+    issuer: https://dex.example.com

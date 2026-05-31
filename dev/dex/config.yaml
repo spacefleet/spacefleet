@@ -1,0 +1,46 @@
+# Dex configuration for LOCAL DEVELOPMENT ONLY.
+#
+# This bootstraps a self-contained OIDC provider so the app is runnable and
+# loginnable out of the box (see docker-compose.yml). It uses in-memory
+# storage and a hard-coded static user — never use this config in production.
+#
+# Issuer is http://localhost:5556/dex so the same URL resolves for both the
+# browser (redirects/discovery) and the host-run Go backend (JWKS/discovery).
+issuer: http://localhost:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+  # The SPA is a browser client doing PKCE, so it calls Dex's discovery, keys,
+  # and token endpoints cross-origin (from the Vite dev server / the app
+  # origin). Allow those origins so CORS preflight succeeds.
+  allowedOrigins:
+    - http://localhost:2424
+    - http://localhost:8080
+
+# Skip the consent screen — there's a single trusted dev client.
+oauth2:
+  skipApprovalScreen: true
+
+# The SPA is a public client doing Authorization Code + PKCE (no client
+# secret). redirectURIs cover both the Vite dev server (:2424) and the
+# embedded single-binary (:8080).
+staticClients:
+  - id: spacefleet
+    name: Spacefleet
+    public: true
+    redirectURIs:
+      - http://localhost:2424/auth/callback
+      - http://localhost:8080/auth/callback
+
+# A single static dev login. Credentials: admin@example.com / "password".
+# The hash is bcrypt("password"); regenerate with:
+#   htpasswd -bnBC 10 "" <newpassword> | tr -d ':\n'
+enablePasswordDB: true
+staticPasswords:
+  - email: admin@example.com
+    hash: "$2y$10$BFlbl0.lcQSwywdpBVArUuBjeOAgb37/kb7Lyy8I.rB08PxAKFV0m"
+    username: admin
+    userID: "08a8684b-db88-4b73-90a9-3cd1661f5466"
