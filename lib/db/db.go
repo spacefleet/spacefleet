@@ -11,7 +11,7 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/spacefleet/app/ent"
+	"github.com/spacefleet/spacefleet/ent"
 )
 
 // Open returns a sql.DB connected via pgx's database/sql shim and an

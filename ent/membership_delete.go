@@ -8,8 +8,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/spacefleet/app/ent/membership"
-	"github.com/spacefleet/app/ent/predicate"
+	"github.com/spacefleet/spacefleet/ent/membership"
+	"github.com/spacefleet/spacefleet/ent/predicate"
 )
 
 // MembershipDelete is the builder for deleting a Membership entity.

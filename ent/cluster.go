@@ -11,8 +11,8 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
-	"github.com/spacefleet/app/ent/cluster"
-	"github.com/spacefleet/app/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/organization"
 )
 
 // Cluster is the model entity for the Cluster schema.

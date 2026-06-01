@@ -12,10 +12,10 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
-	"github.com/spacefleet/app/ent/membership"
-	"github.com/spacefleet/app/ent/organization"
-	"github.com/spacefleet/app/ent/predicate"
-	"github.com/spacefleet/app/ent/user"
+	"github.com/spacefleet/spacefleet/ent/membership"
+	"github.com/spacefleet/spacefleet/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/predicate"
+	"github.com/spacefleet/spacefleet/ent/user"
 )
 
 // MembershipQuery is the builder for querying Membership entities.

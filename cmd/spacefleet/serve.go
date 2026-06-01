@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/spacefleet/app/lib/config"
-	"github.com/spacefleet/app/lib/server"
+	"github.com/spacefleet/spacefleet/lib/config"
+	"github.com/spacefleet/spacefleet/lib/server"
 )
 
 // runServe is `spacefleet serve`. Mirrors the previous default behaviour

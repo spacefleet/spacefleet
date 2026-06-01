@@ -5,12 +5,12 @@ package enttest
 import (
 	"context"
 
-	"github.com/spacefleet/app/ent"
+	"github.com/spacefleet/spacefleet/ent"
 	// required by schema hooks.
-	_ "github.com/spacefleet/app/ent/runtime"
+	_ "github.com/spacefleet/spacefleet/ent/runtime"
 
 	"entgo.io/ent/dialect/sql/schema"
-	"github.com/spacefleet/app/ent/migrate"
+	"github.com/spacefleet/spacefleet/ent/migrate"
 )
 
 type (

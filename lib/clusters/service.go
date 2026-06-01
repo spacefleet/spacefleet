@@ -14,10 +14,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/spacefleet/app/ent"
-	"github.com/spacefleet/app/ent/cluster"
-	"github.com/spacefleet/app/lib/k8s"
-	"github.com/spacefleet/app/lib/secrets"
+	"github.com/spacefleet/spacefleet/ent"
+	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/lib/k8s"
+	"github.com/spacefleet/spacefleet/lib/secrets"
 )
 
 // Service is a thin wrapper over the ent client plus the credential sealer.

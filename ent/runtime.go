@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/spacefleet/app/ent/cluster"
-	"github.com/spacefleet/app/ent/membership"
-	"github.com/spacefleet/app/ent/organization"
-	"github.com/spacefleet/app/ent/schema"
-	"github.com/spacefleet/app/ent/user"
+	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/membership"
+	"github.com/spacefleet/spacefleet/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/schema"
+	"github.com/spacefleet/spacefleet/ent/user"
 )
 
 // The init function reads all schema descriptors with runtime code

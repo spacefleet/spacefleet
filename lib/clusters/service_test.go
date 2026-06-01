@@ -9,10 +9,10 @@ import (
 	"encoding/base64"
 	"testing"
 
-	"github.com/spacefleet/app/ent"
-	"github.com/spacefleet/app/lib/k8s"
-	"github.com/spacefleet/app/lib/secrets"
-	"github.com/spacefleet/app/lib/testsupport"
+	"github.com/spacefleet/spacefleet/ent"
+	"github.com/spacefleet/spacefleet/lib/k8s"
+	"github.com/spacefleet/spacefleet/lib/secrets"
+	"github.com/spacefleet/spacefleet/lib/testsupport"
 )
 
 func newSealer(t *testing.T) *secrets.Sealer {

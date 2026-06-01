@@ -10,16 +10,16 @@ import (
 	"reflect"
 
 	"github.com/google/uuid"
-	"github.com/spacefleet/app/ent/migrate"
+	"github.com/spacefleet/spacefleet/ent/migrate"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
-	"github.com/spacefleet/app/ent/cluster"
-	"github.com/spacefleet/app/ent/membership"
-	"github.com/spacefleet/app/ent/organization"
-	"github.com/spacefleet/app/ent/user"
+	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/membership"
+	"github.com/spacefleet/spacefleet/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/user"
 )
 
 // Client is the client that holds all ent builders.

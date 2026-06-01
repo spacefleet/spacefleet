@@ -40,7 +40,7 @@ oci://ghcr.io/spacefleet/charts/spacefleet
 
 The chart `version` always matches the app image tag, so `--version X.Y.Z`
 always pairs with image `:X.Y.Z`. Replace `X.Y.Z` below with the
-[release](https://github.com/spacefleet/app/releases) you want.
+[release](https://github.com/spacefleet/spacefleet/releases) you want.
 
 ## Quick start (trial)
 
@@ -255,7 +255,7 @@ reach for most:
 | `dex.staticPasswords` | seeded admin | built-in accounts — **change before exposing** |
 | `config.workerConcurrency` | `4` | max parallel background jobs |
 | `config.extraEnv` | `[]` | extra env vars for web + worker pods |
-| `image.repository` / `image.tag` | `ghcr.io/spacefleet/app` / chart appVersion | app image |
+| `image.repository` / `image.tag` | `ghcr.io/spacefleet/spacefleet` / chart appVersion | app image |
 | `replicaCount` | `2` | web replicas (when autoscaling off) |
 | `worker.enabled` | `true` | deploy the background worker |
 | `migrations.enabled` | `true` | run `migrate up` on install/upgrade |

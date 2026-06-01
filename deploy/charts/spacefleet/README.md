@@ -1,6 +1,6 @@
 # Spacefleet Helm chart
 
-Deploys [Spacefleet](https://github.com/spacefleet/app) — the Go + React
+Deploys [Spacefleet](https://github.com/spacefleet/spacefleet) — the Go + React
 single-binary app — to Kubernetes: the `serve` web/API process, the `worker`
 background-job process, a `migrate up` release hook, and the always-bundled Dex
 (OIDC) identity provider, plus optional bundled Postgres and Redis.
@@ -164,7 +164,7 @@ commonly set:
 
 | Key | Default | Purpose |
 | --- | --- | --- |
-| `image.repository` / `image.tag` | `ghcr.io/spacefleet/app` / chart appVersion | app image |
+| `image.repository` / `image.tag` | `ghcr.io/spacefleet/spacefleet` / chart appVersion | app image |
 | `replicaCount` | `2` | web replicas (when HPA off) |
 | `config.oidc.clientID` | `spacefleet` | app's OIDC client id (keep in sync with `dex.clientID`) |
 | `dex.storage` | `crd` | Dex storage: `crd` / `postgres` / `memory` / `sqlite3` |

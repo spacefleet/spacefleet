@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/spacefleet/app/lib/auth"
+	"github.com/spacefleet/spacefleet/lib/auth"
 )
 
 // FakeVerifier returns a TokenVerifier for tests, standing in for the real Dex

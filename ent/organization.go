@@ -10,7 +10,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
-	"github.com/spacefleet/app/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/organization"
 )
 
 // Organization is the model entity for the Organization schema.

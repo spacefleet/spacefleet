@@ -8,13 +8,13 @@ import (
 	"net/http/httputil"
 	"net/url"
 
-	"github.com/spacefleet/app/lib/api"
-	"github.com/spacefleet/app/lib/auth"
-	"github.com/spacefleet/app/lib/clusters"
-	"github.com/spacefleet/app/lib/config"
-	"github.com/spacefleet/app/lib/organizations"
-	"github.com/spacefleet/app/lib/users"
-	"github.com/spacefleet/app/ui"
+	"github.com/spacefleet/spacefleet/lib/api"
+	"github.com/spacefleet/spacefleet/lib/auth"
+	"github.com/spacefleet/spacefleet/lib/clusters"
+	"github.com/spacefleet/spacefleet/lib/config"
+	"github.com/spacefleet/spacefleet/lib/organizations"
+	"github.com/spacefleet/spacefleet/lib/users"
+	"github.com/spacefleet/spacefleet/ui"
 )
 
 // publicAPIPaths are the /api/* paths that skip authentication entirely.

@@ -10,12 +10,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/spacefleet/app/lib/clusters"
-	"github.com/spacefleet/app/lib/config"
-	"github.com/spacefleet/app/lib/organizations"
-	"github.com/spacefleet/app/lib/secrets"
-	"github.com/spacefleet/app/lib/testsupport"
-	"github.com/spacefleet/app/lib/users"
+	"github.com/spacefleet/spacefleet/lib/clusters"
+	"github.com/spacefleet/spacefleet/lib/config"
+	"github.com/spacefleet/spacefleet/lib/organizations"
+	"github.com/spacefleet/spacefleet/lib/secrets"
+	"github.com/spacefleet/spacefleet/lib/testsupport"
+	"github.com/spacefleet/spacefleet/lib/users"
 )
 
 // TestOrganizationsIntegration drives the real account handlers over HTTP

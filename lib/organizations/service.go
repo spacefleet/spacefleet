@@ -10,8 +10,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/spacefleet/app/ent"
-	"github.com/spacefleet/app/ent/membership"
+	"github.com/spacefleet/spacefleet/ent"
+	"github.com/spacefleet/spacefleet/ent/membership"
 )
 
 // ErrForbidden is returned when a caller lacks the role required for an action

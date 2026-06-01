@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/spacefleet/app/lib/clusters"
-	"github.com/spacefleet/app/lib/k8s"
+	"github.com/spacefleet/spacefleet/lib/clusters"
+	"github.com/spacefleet/spacefleet/lib/k8s"
 )
 
 // connFields is the union of per-method connection inputs, flattened from

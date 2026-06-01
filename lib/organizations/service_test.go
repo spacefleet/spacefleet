@@ -7,9 +7,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/spacefleet/app/ent/membership"
-	"github.com/spacefleet/app/lib/testsupport"
-	"github.com/spacefleet/app/lib/users"
+	"github.com/spacefleet/spacefleet/ent/membership"
+	"github.com/spacefleet/spacefleet/lib/testsupport"
+	"github.com/spacefleet/spacefleet/lib/users"
 )
 
 // TestCreateAndListForUser exercises the core organization use cases against a

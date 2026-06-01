@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/spacefleet/app/lib/config"
-	"github.com/spacefleet/app/lib/queue"
+	"github.com/spacefleet/spacefleet/lib/config"
+	"github.com/spacefleet/spacefleet/lib/queue"
 )
 
 // runWorker is `spacefleet worker` — the long-lived consumer of River

@@ -120,7 +120,7 @@ See [TESTING.md](TESTING.md) for the strategy and how each layer works.
 On every `v*` git tag, CI publishes two artifacts to GHCR, gated behind the
 full lint/test matrix:
 
-- the multi-arch container image — `ghcr.io/spacefleet/app:X.Y.Z`
+- the multi-arch container image — `ghcr.io/spacefleet/spacefleet:X.Y.Z`
 - the Helm chart (OCI) — `oci://ghcr.io/spacefleet/charts/spacefleet`, version `X.Y.Z`
 
 The Helm chart is the recommended way to deploy to Kubernetes. It runs the

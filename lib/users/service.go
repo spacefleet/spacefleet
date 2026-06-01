@@ -8,8 +8,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/spacefleet/app/ent"
-	"github.com/spacefleet/app/ent/user"
+	"github.com/spacefleet/spacefleet/ent"
+	"github.com/spacefleet/spacefleet/ent/user"
 )
 
 // Service is a thin wrapper over the ent client, mirroring the shape of the

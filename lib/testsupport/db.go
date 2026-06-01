@@ -14,10 +14,10 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/spacefleet/app/db/migrations"
-	"github.com/spacefleet/app/ent"
-	"github.com/spacefleet/app/lib/db"
-	"github.com/spacefleet/app/lib/migrate"
+	"github.com/spacefleet/spacefleet/db/migrations"
+	"github.com/spacefleet/spacefleet/ent"
+	"github.com/spacefleet/spacefleet/lib/db"
+	"github.com/spacefleet/spacefleet/lib/migrate"
 )
 
 // defaultBaseDSN matches the docker-compose Postgres (see docker-compose.yml).

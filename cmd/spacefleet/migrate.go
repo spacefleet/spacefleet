@@ -6,10 +6,10 @@ import (
 	"log"
 	"os"
 
-	"github.com/spacefleet/app/db/migrations"
-	"github.com/spacefleet/app/lib/config"
-	"github.com/spacefleet/app/lib/db"
-	"github.com/spacefleet/app/lib/migrate"
+	"github.com/spacefleet/spacefleet/db/migrations"
+	"github.com/spacefleet/spacefleet/lib/config"
+	"github.com/spacefleet/spacefleet/lib/db"
+	"github.com/spacefleet/spacefleet/lib/migrate"
 )
 
 // runMigrate is the entrypoint for `spacefleet migrate <subcommand>`.

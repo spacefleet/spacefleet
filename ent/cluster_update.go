@@ -11,8 +11,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/spacefleet/app/ent/cluster"
-	"github.com/spacefleet/app/ent/predicate"
+	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/predicate"
 )
 
 // ClusterUpdate is the builder for updating Cluster entities.

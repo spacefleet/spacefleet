@@ -6,14 +6,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/spacefleet/app/lib/auth"
-	"github.com/spacefleet/app/lib/cache"
-	"github.com/spacefleet/app/lib/clusters"
-	"github.com/spacefleet/app/lib/config"
-	"github.com/spacefleet/app/lib/db"
-	"github.com/spacefleet/app/lib/organizations"
-	"github.com/spacefleet/app/lib/secrets"
-	"github.com/spacefleet/app/lib/users"
+	"github.com/spacefleet/spacefleet/lib/auth"
+	"github.com/spacefleet/spacefleet/lib/cache"
+	"github.com/spacefleet/spacefleet/lib/clusters"
+	"github.com/spacefleet/spacefleet/lib/config"
+	"github.com/spacefleet/spacefleet/lib/db"
+	"github.com/spacefleet/spacefleet/lib/organizations"
+	"github.com/spacefleet/spacefleet/lib/secrets"
+	"github.com/spacefleet/spacefleet/lib/users"
 )
 
 // New wires runtime dependencies (Postgres via ent, Redis) and returns a

@@ -13,8 +13,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
-	"github.com/spacefleet/app/ent/cluster"
-	"github.com/spacefleet/app/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/organization"
 )
 
 // ClusterCreate is the builder for creating a Cluster entity.

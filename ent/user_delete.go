@@ -8,8 +8,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/spacefleet/app/ent/predicate"
-	"github.com/spacefleet/app/ent/user"
+	"github.com/spacefleet/spacefleet/ent/predicate"
+	"github.com/spacefleet/spacefleet/ent/user"
 )
 
 // UserDelete is the builder for deleting a User entity.

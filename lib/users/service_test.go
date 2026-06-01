@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/spacefleet/app/lib/testsupport"
+	"github.com/spacefleet/spacefleet/lib/testsupport"
 )
 
 // TestEnsureUserIsIdempotent confirms the upsert keys on the OIDC subject:

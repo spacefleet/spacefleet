@@ -8,10 +8,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/spacefleet/app/ent"
-	"github.com/spacefleet/app/lib/clusters"
-	"github.com/spacefleet/app/lib/k8s"
-	"github.com/spacefleet/app/lib/secrets"
+	"github.com/spacefleet/spacefleet/ent"
+	"github.com/spacefleet/spacefleet/lib/clusters"
+	"github.com/spacefleet/spacefleet/lib/k8s"
+	"github.com/spacefleet/spacefleet/lib/secrets"
 )
 
 // apiError is a resolved client-facing error (status + body fields) that a

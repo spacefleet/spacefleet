@@ -66,7 +66,7 @@ read the same `.env`.
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) publishes two
 artifacts on every `v*` tag, behind the full lint/test gate: the multi-arch
-image (`ghcr.io/spacefleet/app:X.Y.Z`) and the Helm chart as an OCI artifact
+image (`ghcr.io/spacefleet/spacefleet:X.Y.Z`) and the Helm chart as an OCI artifact
 (`oci://ghcr.io/spacefleet/charts/spacefleet`, version `X.Y.Z`). The chart's
 `version`/`appVersion` are stamped from the tag at package time — the committed
 `Chart.yaml` carries `0.0.0` placeholders.
@@ -154,6 +154,40 @@ embedded binary in prod).
 
 See [TESTING.md](TESTING.md) for the testing strategy (layers, when to use
 which, and how the harnesses work).
+
+## Definition of done: CI must pass
+
+**No change is "done" until the CI jobs that gate it pass.** Don't rely on "it
+builds" or "the test I ran is green" — reproduce the *actual* CI checks locally
+and make them pass before you call work complete or hand it back. CI is defined
+in [.github/workflows/ci.yml](.github/workflows/ci.yml); run the jobs that cover
+what you touched:
+
+| CI job | What it runs (reproduce locally) |
+| --- | --- |
+| `lint-go` | `gofmt -l .` (must be empty); `go mod tidy` then **no** `git diff` in `go.mod`/`go.sum`; `golangci-lint run ./...` (pinned **v2.11.3**, config `.golangci.yml`) |
+| `test-go` | `make vet` (`go vet ./...`) and `make test` (`go test ./...`) |
+| `test-integration` | `make test-integration` (`go test -tags=integration ./...`, needs `make services-up`) |
+| `lint-ui` | `cd ui && npm run lint` |
+| `test-ui` | `cd ui && npm run typecheck && npm test && npm run build` |
+| `lint-helm` | `make helm-lint` (renders the default, external, and dex value sets) |
+| `e2e` | `make e2e` (Playwright; brings up services + migrations) |
+
+Notes that bite:
+
+- **`go mod tidy` must be a no-op.** Adding a dependency — including one only a
+  `_test.go` imports — changes `go.mod`; if you don't commit the tidy result,
+  `lint-go` fails on the `git diff --exit-code` even when code compiles. Run
+  `go mod tidy` and commit `go.mod`/`go.sum` as part of the change.
+- **golangci-lint version skew.** The pinned linter refuses to run if the
+  `golangci-lint` binary was built with an older Go than this module's `go`
+  directive ("language version … is lower than the targeted version"). Match it
+  with `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.3`.
+- **Seed `ui/dist` first.** Go lint/build need a file under `ui/dist` for
+  `//go:embed all:dist` — run `make ui-build` (or the `.gitkeep`/`index.html`
+  seed CI uses) if you wiped it. See the gotcha below.
+- `docker-app` / `helm-chart` publish only on `v*` tags and aren't part of the
+  per-PR gate; the lint/test jobs above are.
 
 ## End-user docs (`docs/`)
 

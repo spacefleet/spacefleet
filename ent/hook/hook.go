@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/spacefleet/app/ent"
+	"github.com/spacefleet/spacefleet/ent"
 )
 
 // The ClusterFunc type is an adapter to allow the use of ordinary

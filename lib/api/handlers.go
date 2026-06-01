@@ -8,11 +8,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/spacefleet/app/ent"
-	"github.com/spacefleet/app/lib/auth"
-	"github.com/spacefleet/app/lib/clusters"
-	"github.com/spacefleet/app/lib/organizations"
-	"github.com/spacefleet/app/lib/users"
+	"github.com/spacefleet/spacefleet/ent"
+	"github.com/spacefleet/spacefleet/lib/auth"
+	"github.com/spacefleet/spacefleet/lib/clusters"
+	"github.com/spacefleet/spacefleet/lib/organizations"
+	"github.com/spacefleet/spacefleet/lib/users"
 )
 
 type Server struct {

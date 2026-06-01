@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/spacefleet/app/lib/config"
-	"github.com/spacefleet/app/lib/testsupport"
+	"github.com/spacefleet/spacefleet/lib/config"
+	"github.com/spacefleet/spacefleet/lib/testsupport"
 )
 
 // handler builds the HTTP tree without a real Postgres/Redis. The account
