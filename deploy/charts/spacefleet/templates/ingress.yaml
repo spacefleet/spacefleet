@@ -1,9 +1,6 @@
 {{- if .Values.ingress.enabled }}
 {{- $fullName := include "spacefleet.fullname" . -}}
 {{- $svcPort := .Values.service.port -}}
-{{- $dexName := include "spacefleet.dex.fullname" . -}}
-{{- $dexPath := "" -}}
-{{- if .Values.dex.enabled -}}{{- $dexPath = (urlParse (include "spacefleet.oidc.issuer" .)).path -}}{{- end -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -27,18 +24,9 @@ spec:
     - host: {{ .host | quote }}
       http:
         paths:
-          {{- if and $.Values.dex.enabled $dexPath }}
-          # Route the issuer path (e.g. /dex) to the bundled Dex Service so the
-          # provider is same-origin with the app — listed first to win the
-          # longest-prefix match over the app's "/".
-          - path: {{ $dexPath }}
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ $dexName }}
-                port:
-                  name: http
-          {{- end }}
+          {{- /* The app is the single backend: it reverse-proxies /dex to the
+                 bundled Dex Service in-process, so the ingress never routes to
+                 Dex directly (its Service stays internal/ClusterIP). */}}
           {{- range .paths }}
           - path: {{ .path }}
             pathType: {{ .pathType }}

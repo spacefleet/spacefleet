@@ -4,9 +4,11 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-// In dev, Vite runs on :2424 and proxies /api/* to the Go server on :8080.
-// In prod, `vite build` writes to ./dist, which is embedded into the Go binary
-// (see ./embed.go) and served from the same origin — no proxy needed.
+// In dev, Vite runs on :2424 and proxies /api/*, /config.js, and /dex/* to the
+// Go server on :8080 (the Go server in turn reverse-proxies /dex to the Dex
+// container on :5556). This keeps the whole login flow same-origin in dev, just
+// like prod. In prod, `vite build` writes to ./dist, which is embedded into the
+// Go binary (see ./embed.go) and served from the same origin — no proxy needed.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -28,6 +30,13 @@ export default defineConfig({
       // `/config.js` is served by the Go backend and exposes `window.appConfig`
       // (see lib/server/routes.go). Proxy it so the dev server gets real values.
       "/config.js": {
+        target: "http://localhost:8080",
+        changeOrigin: false,
+      },
+      // `/dex/*` is the bundled identity provider, reverse-proxied by the Go
+      // backend (DEX_UPSTREAM_URL). Proxying it here keeps Dex same-origin with
+      // the SPA so the OIDC flow needs no CORS.
+      "/dex": {
         target: "http://localhost:8080",
         changeOrigin: false,
       },

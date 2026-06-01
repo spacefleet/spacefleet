@@ -16,6 +16,10 @@ deploys everything you need to run the app:
 - **migrate** — a one-shot Job that runs database migrations on install/upgrade.
 - **Postgres** and **Redis** — bundled by default so a single command yields a
   working app, or point at your own managed services for production.
+- **Dex (OIDC)** — the bundled identity provider, always deployed as part of the
+  platform so you get real logins without running one separately. The app serves
+  it same-origin under `/dex`; you configure who can sign in. See
+  [Authentication](authentication.md).
 
 This guide takes you from a quick trial to a production-ready deployment.
 
@@ -40,8 +44,8 @@ always pairs with image `:X.Y.Z`. Replace `X.Y.Z` below with the
 
 ## Quick start (trial)
 
-The fastest way to see Spacefleet running. This uses the **bundled** Postgres
-and Redis and leaves authentication in dev mode:
+The fastest way to see Spacefleet running. This uses the **bundled** Postgres,
+Redis, and Dex, with no Ingress:
 
 ```sh
 helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
@@ -55,63 +59,52 @@ kubectl port-forward svc/spacefleet 8080:80
 # open http://localhost:8080
 ```
 
-Confirm the deployment is healthy:
+Sign in with the seeded admin login **`admin@example.com` / `password`**, then
+confirm the deployment is healthy:
 
 ```sh
 helm test spacefleet
 ```
 
-> ⚠️ **Not for production.** With no OIDC issuer set, the backend runs a **dev
-> passthrough that authenticates every request as `dev-user`** — anyone who can
-> reach the app is effectively an admin. The bundled datastores also use a
-> default password. The [Production deployment](#production-deployment) section
-> below fixes both. The chart prints warnings after install whenever either of
-> these is still in its insecure default.
+> ⚠️ **Not for production.** Without an Ingress host, the bundled login provider
+> falls back to a `localhost` address that only works through this
+> port-forward — fine for a trial, not for exposing the app. The seeded admin
+> (`admin@example.com` / `password`) is a publicly known credential, and the
+> bundled datastores use a default password. The
+> [Production deployment](#production-deployment) section below fixes all three;
+> the chart prints warnings after install whenever any insecure default remains.
 
 ## Production deployment
 
 A real deployment changes three things from the trial:
 
-1. **Authentication** — set your OIDC issuer so requests are actually verified.
+1. **Authentication** — give the bundled login provider a real hostname and
+   replace the seeded admin login.
 2. **Datastores** — use a managed/HA Postgres and Redis instead of the bundled
    single-replica ones.
 3. **Networking** — expose the app through an Ingress with TLS.
 
 ### 1. Configure authentication (OIDC)
 
-You have two options — see [Authentication](authentication.md) for the full
-walkthrough.
-
-**Option A — bundle Dex** (no separate identity system to run):
+Spacefleet's identity provider (Dex) is always bundled — you don't point the app
+at an external one. For production you give it a real hostname (so its address
+becomes `https://…` instead of the localhost trial fallback) and decide who can
+sign in. The hostname comes from your Ingress:
 
 ```sh
---set dex.enabled=true \
 --set ingress.enabled=true \
 --set ingress.hosts[0].host=spacefleet.example.com
 ```
 
-This deploys a self-contained OIDC provider served same-origin at
+The login provider is then served same-origin at
 `https://spacefleet.example.com/dex`, seeded with an `admin@example.com` login
-you must change. To add "Log in with GitHub/Google/…", change the seeded admin,
-or choose where Dex stores its data, see
-[Authenticate with the bundled Dex](authentication-with-dex.md).
+**you must change before exposing the app**. To add "Log in with
+GitHub/Google/Okta/Entra/LDAP/…", change or remove the seeded admin, or choose
+where login state is stored, see [Authentication](authentication.md).
 
-**Option B — connect your own provider** (Keycloak, Auth0, Okta, your own Dex, …):
-
-```sh
---set config.oidc.issuer=https://auth.example.com \
---set config.oidc.clientID=spacefleet
-```
-
-These two values are **not secrets** — they are also surfaced to the browser via
-`/config.js` so the SPA can drive the login flow. Register a **public client**
-(Authorization Code + PKCE) with your provider, and add the app's redirect URI
-(`https://spacefleet.example.com/auth/callback`) to that client's allowed
-redirect URIs. `config.oidc.issuer` takes precedence over bundled Dex.
-
-Until one of these is configured, the backend stays in the insecure dev
-passthrough — so this is the single most important thing to set before exposing
-the deployment.
+Setting a real hostname (so logins don't fall back to localhost) and replacing
+the seeded admin are the single most important things to do before exposing the
+deployment.
 
 ### 2. Use external datastores
 
@@ -169,10 +162,9 @@ Long `--set` chains get unwieldy. For production, prefer a values file:
 
 ```yaml
 # values.prod.yaml
-config:
-  oidc:
-    issuer: https://auth.example.com
-    clientID: spacefleet
+# The bundled Dex derives its issuer from the ingress host below. To replace the
+# seeded admin or add GitHub/Google/etc. logins, set dex.* — see
+# "Authenticate with the bundled Dex".
 
 postgresql:
   enabled: false
@@ -236,6 +228,7 @@ helm upgrade --install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
 | `Secret/spacefleet-env` | unless both URLs come from existing Secrets | holds `DATABASE_URL` / `REDIS_URL` |
 | `StatefulSet/spacefleet-postgresql` | `postgresql.enabled` | bundled Postgres |
 | `StatefulSet/spacefleet-redis` | `redis.enabled` | bundled Redis |
+| `Deployment/spacefleet-dex` (+ Service, RBAC, config Secret) | always | bundled Dex OIDC provider; internal ClusterIP, reached via the app's `/dex` proxy |
 
 **Migrations** run as a Helm hook. On a fresh install the Job runs
 `post-install` (not `pre-install`) so it can reach the bundled Postgres, which is
@@ -252,11 +245,10 @@ reach for most:
 
 | Key | Default | Purpose |
 | --- | --- | --- |
-| `config.oidc.issuer` | `""` | external OIDC issuer URL (overrides bundled Dex) |
-| `config.oidc.clientID` | `spacefleet` | OIDC client ID the app uses |
-| `dex.enabled` | `false` | bundle Dex as the OIDC provider (needs a hostname) |
+| `config.oidc.clientID` | `spacefleet` | OIDC client ID the app uses (keep in sync with `dex.clientID`) |
 | `dex.storage` | `crd` | Dex storage backend — `crd` keeps state in-cluster |
-| `dex.connectors` | `[]` | upstream logins (GitHub, Google, …) for bundled Dex |
+| `dex.connectors` | `[]` | upstream logins (GitHub, Google, Okta, LDAP, …) |
+| `dex.staticPasswords` | seeded admin | built-in accounts — **change before exposing** |
 | `config.workerConcurrency` | `4` | max parallel background jobs |
 | `config.extraEnv` | `[]` | extra env vars for web + worker pods |
 | `image.repository` / `image.tag` | `ghcr.io/spacefleet/app` / chart appVersion | app image |
@@ -303,9 +295,12 @@ helm uninstall spacefleet
 
 ## Troubleshooting
 
-**A warning about the dev passthrough after install.** `config.oidc.issuer` is
-still empty. Set it (see [Configure authentication](#1-configure-authentication-oidc))
-before exposing the app.
+**A warning about the seeded admin / localhost issuer after install.** You're
+still on insecure defaults: the bundled login provider has no Ingress host (so
+it fell back to a localhost trial address) and/or the seeded `admin@example.com`
+password is unchanged. Set an Ingress host and replace the seeded admin — see
+[Configure authentication](#1-configure-authentication-oidc) — before exposing
+the app.
 
 **A warning about default datastore passwords.** You're using the bundled
 Postgres/Redis with their default `spacefleet` password. Override
@@ -335,9 +330,7 @@ the package is private you'll need to `helm registry login ghcr.io` first.
 
 ## See also
 
-- [Authentication](authentication.md) — how sign-in works and the ways to
-  provide a login, so the deployment isn't left in the insecure dev mode.
-- [Authenticate with the bundled Dex](authentication-with-dex.md) — enable the
-  bundled provider, add GitHub/Google logins, and harden it.
+- [Authentication](authentication.md) — how sign-in works with the bundled
+  identity provider, plus adding GitHub/Google logins, storage, and hardening.
 - `helm show values oci://ghcr.io/spacefleet/charts/spacefleet --version X.Y.Z`
   — the complete, annotated list of every value the chart accepts.

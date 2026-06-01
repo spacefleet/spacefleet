@@ -29,15 +29,11 @@ config:
   # -- Address the HTTP server binds. Keep in sync with service.targetPort.
   addr: ":8080"
   oidc:
-    # -- OIDC issuer URL (e.g. your Dex/Keycloak/Auth0). Set this to use an
-    # EXTERNAL provider; it takes precedence over the bundled Dex (see the `dex`
-    # block). When this is empty AND bundled Dex is enabled, the issuer is
-    # derived automatically as https://<first ingress host>/dex. When it is
-    # empty and bundled Dex is off, the backend falls back to a dev passthrough
-    # that authenticates EVERY request as "dev-user" — never run that exposed.
-    issuer: ""
-    # -- OIDC client ID this app authenticates as. With bundled Dex, keep this
-    # in sync with dex.clientID (the static client the chart registers in Dex).
+    # -- OIDC client ID the app authenticates as. Spacefleet always uses its
+    # bundled Dex (see the `dex` block) — there is no external-provider or
+    # passthrough mode. The issuer is derived automatically (the app's own
+    # origin + /dex), so there is no issuer knob here. Keep this in sync with
+    # dex.clientID (the static client the chart registers in Dex).
     clientID: spacefleet
   # -- Max background jobs the worker process runs in parallel.
   workerConcurrency: 4
@@ -217,32 +213,25 @@ externalRedis:
   existingSecretKey: REDIS_URL
 
 # ---------------------------------------------------------------------------
-# Bundled Dex — an optional in-cluster OIDC provider, via the official
-# dexidp/dex subchart. OFF by default: bundled Dex needs a public hostname to
-# be useful, and ingress is off by default, so a bare `helm install` stays on
-# the dev passthrough. Turn it on once you have a host:
+# Bundled Dex — Spacefleet's identity provider, via the official dexidp/dex
+# subchart. ALWAYS bundled: it's an internal part of the platform, not an
+# optional add-on, so there is no enable/disable toggle. You don't point the app
+# at an external IdP; instead you configure Dex's connectors (below) to federate
+# to GitHub/Google/Okta/Entra/LDAP/SAML/etc. The app always trusts Dex.
 #
-#   helm install spacefleet … \
-#     --set dex.enabled=true \
-#     --set ingress.enabled=true \
-#     --set ingress.hosts[0].host=spacefleet.example.com
+# The app reverse-proxies Dex same-origin under /dex, so the issuer is derived
+# as the app's own origin + /dex (https://<first ingress host>/dex with ingress,
+# or http://localhost:8080/dex for a port-forward trial) — no issuer knob, no
+# CORS, no separate Dex host to expose.
 #
-# This chart RENDERS Dex's config (issuer, the app's PKCE client + redirect
-# URIs, storage, connectors) from the values below and hands it to the subchart
-# as an existing Secret; the subchart owns the Deployment/Service/RBAC. Keys
-# under `dex` that aren't listed here are passed straight through to the
-# dexidp/dex subchart (resources, nodeSelector, image, autoscaling, …).
+# This chart RENDERS Dex's config (the app's PKCE client + redirect URIs,
+# storage, connectors) from the values below and hands it to the subchart as an
+# existing Secret; the subchart owns the Deployment/Service/RBAC. Keys under
+# `dex` that aren't listed here are passed straight through to the dexidp/dex
+# subchart (resources, nodeSelector, image, autoscaling, …).
 dex:
-  # -- Bundle Dex as the OIDC provider. Requires a derivable issuer (ingress
-  # enabled, or dex.issuer set) — the chart fails the render otherwise.
-  enabled: false
-
   # ---- Dex config rendered by this chart -------------------------------------
 
-  # -- Public issuer URL the browser uses. Leave empty to derive
-  # https://<first ingress host>/dex (same-origin: no CORS). Set it for a
-  # dedicated Dex host (then also set dex.web.allowedOrigins to the app origin).
-  issuer: ""
   # -- The app's OIDC client id registered in Dex. Keep in sync with
   # config.oidc.clientID. Registered as a public (PKCE) client, no secret.
   clientID: spacefleet
@@ -290,8 +279,9 @@ dex:
   oauth2:
     skipApprovalScreen: true
   web:
-    # -- CORS origins for the browser→Dex calls. Only needed for a dedicated Dex
-    # host; empty/unneeded for the default same-origin /dex path.
+    # -- CORS origins for browser→Dex calls. Not needed in normal operation:
+    # the browser reaches Dex same-origin through the app's /dex proxy, so there
+    # are no cross-origin calls. Left as a passthrough for unusual setups.
     allowedOrigins: []
   # -- Token/key lifetimes (Dex `expiry:` passthrough), e.g. {idTokens: 24h}.
   expiry: {}

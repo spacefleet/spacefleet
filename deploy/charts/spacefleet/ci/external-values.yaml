@@ -1,10 +1,10 @@
 # Render coverage: production-style external Postgres + Redis, ingress + HPA on,
-# secrets sourced from a user-managed Secret.
+# secrets sourced from a user-managed Secret. Dex is still bundled (the issuer
+# derives from the ingress host) — only the datastores are external here.
 replicaCount: 3
 
 config:
   oidc:
-    issuer: https://dex.example.com
     clientID: spacefleet
 
 web:

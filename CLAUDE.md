@@ -30,7 +30,7 @@ and then continue with the rest of this document.
   1. Generated `/api/*` handlers behind the `RequireAuth` middleware.
   2. `/config.js` — emits `window.appConfig` with non-secret OIDC values.
   3. `/` → [ui/embed.go](ui/embed.go), the embedded SPA, with `index.html` fallback for client-side routing.
-- **Auth**: **Dex (OIDC)**, behind a seam in [lib/auth](lib/auth). `RequireAuth` takes a `TokenVerifier`; when `OIDC_ISSUER` is set, [server.go](lib/server/server.go) builds an OIDC verifier ([lib/auth/oidc.go](lib/auth/oidc.go)) that validates Dex-issued **ID tokens** (signature via JWKS, `iss`/`exp`/`aud`) and passes it in [routes.go](lib/server/routes.go). When `OIDC_ISSUER` is empty, it falls back to a **dev passthrough** that accepts every request as `dev-user` (NEVER use in production). `publicAPIPaths` lists the bypass paths (`/api/health`). Dex itself runs in Docker Compose, bootstrapped from [dev/dex/config.yaml](dev/dex/config.yaml). Operator-facing setup instructions (not code internals) live in [docs/operator/authentication.md](docs/operator/authentication.md) — see [End-user docs](#end-user-docs-docs).
+- **Auth**: **Dex (OIDC), always bundled** — Spacefleet has no external-provider or passthrough mode; Dex is treated as an internal part of the platform, and SSO is done by configuring Dex's *connectors* (GitHub/Google/Okta/Entra/LDAP/SAML), not by pointing the app elsewhere. It sits behind a seam in [lib/auth](lib/auth): `RequireAuth` takes a `TokenVerifier`, and [server.go](lib/server/server.go) builds the OIDC verifier ([lib/auth/oidc.go](lib/auth/oidc.go)) that validates Dex-issued **ID tokens** (signature via JWKS, `iss`/`exp`/`aud`). It **fails closed** — `buildVerifier` errors (boot fails) when `OIDC_ISSUER` is unset, and `RequireAuth` rejects every protected request if handed a nil verifier; there is no allow-everyone fallback. Tests inject a fake verifier ([lib/testsupport](lib/testsupport)). `publicAPIPaths` lists the bypass paths (`/api/health`). The app **reverse-proxies Dex same-origin under `/dex`** (`DEX_UPSTREAM_URL`, see [routes.go](lib/server/routes.go)), so the browser only ever talks to the app — Dex is never exposed directly. In dev, Dex runs in Docker Compose, bootstrapped from [dev/dex/config.yaml](dev/dex/config.yaml). Operator-facing setup instructions (not code internals) live in [docs/operator/authentication.md](docs/operator/authentication.md) — see [End-user docs](#end-user-docs-docs).
 - **Tenancy**: a second middleware, `OrgContext` ([lib/auth/org.go](lib/auth/org.go)), lifts the SPA's `X-Organization-ID` header onto the request context. It does **no** authorization — org-scoped handlers resolve the org and check the caller's membership themselves (`Server.currentOrg`). Auth runs outermost, then org resolution.
 - **Frontend**: Vite + React 18 + TS, React Router v7, Tailwind v4. The typed API client is in [ui/src/api/client.ts](ui/src/api/client.ts). Login uses `react-oidc-context` (Authorization Code + PKCE, public client): `AuthProvider` is configured in [main.tsx](ui/src/main.tsx) from `window.appConfig`, `AuthGate` redirects unauthenticated users to Dex, and `ApiAuthBinder` feeds the ID token to the API client as the bearer token.
 
@@ -79,18 +79,22 @@ The chart ([deploy/charts/spacefleet](deploy/charts/spacefleet)) deploys `serve`
 `postgres:18-alpine`/`redis:7-alpine` as docker-compose). On by default for
 one-command trials; disable + use `externalDatabase`/`externalRedis` for prod.
 
-**Auth has three modes.** `config.oidc.issuer` set → external provider. Else
-`dex.enabled=true` → the chart **bundles Dex** via the official `dexidp/dex`
-**subchart**: it renders Dex's config itself (so the issuer, the app's PKCE
-client + derived redirect URIs, storage, and connectors are a single source of
-truth) and hands it to the subchart as an existing Secret
+**Auth is always bundled Dex — one mode, no toggle.** The chart **always
+bundles Dex** via the official `dexidp/dex` **subchart** (there is no
+`dex.enabled` and no external-provider option): it renders Dex's config itself
+(so the app's PKCE client + derived redirect URIs, storage, and connectors are a
+single source of truth) and hands it to the subchart as an existing Secret
 (`dex.configSecret.create=false`, name `dex.configSecret.name`, key
-`config.yaml`). The issuer defaults to same-origin `https://<ingress host>/dex`
-(an ingress path routes to the Dex Service); storage defaults to `crd`
-(Kubernetes CRDs, no DB). The backend verifies tokens against the in-cluster Dex
-Service via `OIDC_JWKS_URL` (see [lib/auth/oidc.go](lib/auth/oidc.go)) so it
-never depends on the public issuer being reachable in-cluster. Else (neither) →
-dev passthrough. Bundled Dex is **off by default** (it needs a public host).
+`config.yaml`). The app **reverse-proxies Dex same-origin under `/dex`**
+(`DEX_UPSTREAM_URL` → the in-cluster Dex Service), so the ingress backs only the
+app and Dex's Service stays internal — the browser never talks to Dex directly.
+The issuer is therefore always the app's own origin + `/dex`: derived
+`https://<ingress host>/dex`, or `http://localhost:8080/dex` for a port-forward
+trial when ingress is off. Storage defaults to `crd` (Kubernetes CRDs, no DB).
+The backend verifies tokens against the in-cluster Dex Service via
+`OIDC_JWKS_URL` (see [lib/auth/oidc.go](lib/auth/oidc.go)) so it never depends on
+the public issuer being reachable in-cluster. Enterprise SSO is configured via
+`dex.connectors`, not by repointing the app.
 
 The dex subchart is this chart's one third-party dependency — pinned in
 `Chart.lock`, vendored under `charts/`. When changing chart templates, run
@@ -112,20 +116,26 @@ rectangular components; the Tailwind radius scale is overridden to zero in
 ## Dev workflow
 
 ```sh
-make services-up   # Postgres + Redis + Dex (OIDC) on :5556
+make services-up   # Postgres + Redis + Dex (OIDC) — Dex container on :5556
 make migrate-up    # apply migrations
 make dev           # Go backend on :8080 (Air live-reload)
-make ui-dev        # Vite on :2424, proxies /api/* and /config.js to :8080
+make ui-dev        # Vite on :2424, proxies /api/*, /config.js, /dex/* to :8080
 ```
 
 Open <http://localhost:2424>. You'll be redirected to Dex to log in — the dev
 login is **`admin@example.com` / `password`** (seeded in
-[dev/dex/config.yaml](dev/dex/config.yaml)). To skip auth entirely, clear
-`OIDC_ISSUER` in `.env` and the backend reverts to the dev passthrough.
+[dev/dex/config.yaml](dev/dex/config.yaml)). There is **no way to skip auth** —
+Dex is mandatory, and the backend refuses to boot without `OIDC_ISSUER`. So
+`make dev` needs the Dex container up (`make services-up`).
 
-The app↔API is same-origin in dev (Vite proxy) and prod (embedded binary) — no
-CORS there. The SPA↔Dex calls (discovery, JWKS, token) *are* cross-origin, so
-Dex's `web.allowedOrigins` must list the app origins (`:2424`, `:8080`).
+Everything is **same-origin in dev** (`:2424`), matching prod. Dex is reached
+under the app's `/dex` path: the browser hits `:2424/dex` → Vite proxies to the
+Go backend (`:8080`) → the backend reverse-proxies to the Dex container
+(`:5556`). So the dev issuer is `http://localhost:2424/dex`, there are **no
+cross-origin calls and no `allowedOrigins` to maintain**, and the backend
+fetches signing keys directly from Dex via `OIDC_JWKS_URL` (mirroring the
+in-cluster Helm setup). The app↔API is same-origin too (Vite proxy in dev,
+embedded binary in prod).
 
 ## Common commands
 
@@ -161,7 +171,7 @@ reader who will *never* open the source and does not care how it's built — onl
 how to accomplish their task. Concretely:
 
 - **No code internals.** Don't name Go/TS symbols (`RequireAuth`,
-  `NewDevVerifier`, …), packages, function/middleware names, or describe request
+  `NewOIDCVerifier`, …), packages, function/middleware names, or describe request
   pipelines and code structure. Describe observable behavior and the actions the
   reader takes (settings, commands, UI steps).
 - **No source links.** Never link into `lib/…`, `ui/src/…`, or other repo paths
@@ -188,7 +198,7 @@ and inline in the code, not in `docs/`.
 - **New `/api/*` routes need `make gen` first.** If a request returns HTML, the route isn't mounted — you forgot to regenerate or didn't register the handler.
 - **Air's `exclude_dir` skips `ui/`.** Changing TS/TSX won't restart the Go server — Vite HMR handles the UI side.
 - **Dex reads its config only at startup.** After editing [dev/dex/config.yaml](dev/dex/config.yaml), `make services-up` won't pick it up (the service definition is unchanged) — run `docker compose restart dex`. (That file is **dev only**; the Helm chart's bundled Dex config is rendered from `dex.*` values into a Secret by [templates/dex-config.yaml](deploy/charts/spacefleet/templates/dex-config.yaml) — change the values and `helm upgrade`, never hand-edit the rendered Secret.)
-- **The UI dev port (`2424`) is pinned in three places.** [vite.config.ts](ui/vite.config.ts) (`strictPort`), and Dex's `redirectURIs` + `allowedOrigins`. Changing it means updating all of them, then restarting Dex.
+- **The UI dev port (`2424`) is the dev origin, pinned in three places.** [vite.config.ts](ui/vite.config.ts) (`strictPort`), Dex's `issuer` + `redirectURIs` in [dev/dex/config.yaml](dev/dex/config.yaml), and `OIDC_ISSUER` in `.env` (`http://localhost:2424/dex`). Changing the port means updating all three, then restarting Dex. (Login is same-origin now, so hitting the backend directly on `:8080` is **not** a supported login origin in dev — open `:2424`.)
 - **Don't clean up the OIDC callback URL with raw `history.replaceState`.** It desyncs React Router (URL changes, router doesn't), landing you on NotFound. The `/auth/callback` route ([ui/src/routes/AuthCallback.tsx](ui/src/routes/AuthCallback.tsx)) navigates home *through the router* instead.
 - **Integration tests are tag-gated.** `make test` runs unit tests only; real-Postgres tests need `make test-integration` (build tag `integration`).
 
@@ -249,7 +259,7 @@ spacefleet-app/
 ├── ent/                     # ent ORM: schema/ (hand-written) + generated client
 ├── lib/
 │   ├── api/                 # gen.go (generated) + handlers.go + per-resource handler files (clusters.go, …)
-│   ├── auth/                # RequireAuth + OIDC verifier (oidc.go) + dev passthrough + OrgContext (org.go)
+│   ├── auth/                # RequireAuth (fails closed) + OIDC verifier (oidc.go) + OrgContext (org.go)
 │   ├── cache/               # Redis client
 │   ├── clusters/            # cluster-registration domain service (worked-example resource)
 │   ├── config/              # env loading
@@ -270,7 +280,7 @@ spacefleet-app/
 │   ├── src/components/      # auth/org gates (ApiAuthBinder, AuthGate, OrgGate), Layout, Sidebar (+ *.test.tsx)
 │   ├── src/routes/          # page-level components (Home, AuthCallback, CreateOrganization, per-resource pages)
 │   ├── src/test/            # Vitest setup
-│   └── vite.config.ts       # dev server (:2424) /api + /config.js proxy; Vitest config
+│   └── vite.config.ts       # dev server (:2424) /api + /config.js + /dex proxy; Vitest config
 ├── Makefile
 ├── docker-compose.yml       # Postgres + Redis + Dex for local dev
 ├── Dockerfile               # multi-stage → distroless single binary

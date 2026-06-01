@@ -9,10 +9,12 @@ and weight effort toward the seams where bugs actually live.
 - **The OpenAPI contract + Go's type system.** A handler that doesn't match
   `api/openapi.yaml` won't compile (`StrictServerInterface`), and the TS client
   is generated from the same spec. That's contract enforcement we don't write.
-- **The dev auth passthrough.** With `OIDC_ISSUER` empty, `RequireAuth` accepts
-  every request as `dev-user` (`lib/auth/middleware.go`). This lets us test
-  *features* without standing up Dex, and reserve real-Dex tests for testing
-  *auth itself*. Keep those two concerns separate.
+- **A test verifier.** Production has no passthrough — `RequireAuth` fails
+  closed and the server won't boot without bundled-Dex OIDC config. Tests inject
+  `testsupport.FakeVerifier`, which maps the bearer token to the user's subject,
+  so we can test *features* (and per-user isolation) without standing up Dex, and
+  reserve real-Dex tests for testing *auth itself*. Keep those two concerns
+  separate.
 
 ## The layers
 

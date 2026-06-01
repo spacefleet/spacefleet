@@ -19,7 +19,7 @@ import (
 )
 
 // TestOrganizationsIntegration drives the real account handlers over HTTP
-// against an isolated Postgres database. It uses the nil-verifier passthrough,
+// against an isolated Postgres database. It uses testsupport.FakeVerifier,
 // where the bearer token becomes the user's OIDC subject — so a distinct
 // Authorization header is a distinct user. This lets one test cover creation,
 // the owner role, and cross-user isolation through the full stack.
@@ -30,7 +30,7 @@ func TestOrganizationsIntegration(t *testing.T) {
 		users.NewService(client),
 		organizations.NewService(client),
 		nil,
-		nil,
+		testsupport.FakeVerifier(),
 	)
 
 	// Alice starts with no organizations.
@@ -121,7 +121,7 @@ func TestClustersIntegration(t *testing.T) {
 		users.NewService(client),
 		organizations.NewService(client),
 		clusters.NewService(client, sealer),
-		nil,
+		testsupport.FakeVerifier(),
 	)
 
 	// Alice creates an org and learns its id.
@@ -191,7 +191,7 @@ func do(t *testing.T, h http.Handler, method, path, asUser string, body []byte) 
 	} else {
 		r = httptest.NewRequest(method, path, nil)
 	}
-	// The dev passthrough verifier uses the bearer token as the user identity.
+	// The fake verifier uses the bearer token as the user identity.
 	if asUser != "" {
 		r.Header.Set("Authorization", "Bearer "+asUser)
 	}

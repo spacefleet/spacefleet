@@ -35,10 +35,13 @@ services:
       timeout: 5s
       retries: 10
 
-  # Dex OIDC provider for local development. Bootstrapped from
-  # dev/dex/config.yaml with an in-memory store and a static dev login
-  # (admin@example.com / "password"). The Go backend (run on the host via
-  # `make dev`) and the browser both reach it at http://localhost:5556/dex.
+  # Dex OIDC provider for local development — the dev incarnation of the
+  # platform's bundled identity provider. Bootstrapped from dev/dex/config.yaml
+  # with an in-memory store and a static dev login (admin@example.com /
+  # "password"). The browser never hits :5556 directly: it reaches Dex
+  # same-origin under the app's /dex path (Vite :2424 -> Go :8080 reverse-proxy
+  # -> here). The host-run Go backend fetches signing keys directly at
+  # http://localhost:5556/dex/keys (OIDC_JWKS_URL).
   dex:
     image: ghcr.io/dexidp/dex:v2.41.1
     restart: unless-stopped

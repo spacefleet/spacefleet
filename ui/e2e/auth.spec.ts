@@ -7,9 +7,11 @@ import { test, expect } from "@playwright/test";
 test("log in via Dex, set up an organization, land on Home, sign out", async ({
   page,
 }) => {
-  // Unauthenticated visit is auto-redirected to the Dex login form.
+  // Unauthenticated visit is auto-redirected to the Dex login form. Dex is
+  // same-origin: the browser stays on the app origin (:2424) under /dex, which
+  // the app reverse-proxies to Dex — it never sees Dex's own port.
   await page.goto("/");
-  await page.waitForURL(/localhost:5556\/dex\/auth/);
+  await page.waitForURL(/localhost:2424\/dex\/auth/);
 
   // Seeded dev credentials (dev/dex/config.yaml).
   await page.locator("#login").fill("admin@example.com");

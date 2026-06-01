@@ -2,8 +2,8 @@
 
 Deploys [Spacefleet](https://github.com/spacefleet/app) — the Go + React
 single-binary app — to Kubernetes: the `serve` web/API process, the `worker`
-background-job process, and a `migrate up` release hook, plus optional bundled
-Postgres, Redis, and Dex (OIDC).
+background-job process, a `migrate up` release hook, and the always-bundled Dex
+(OIDC) identity provider, plus optional bundled Postgres and Redis.
 
 The chart is published as an **OCI artifact to GHCR** by the same CI pipeline
 that builds the image, and its `version`/`appVersion` track the app's `v*` git
@@ -11,31 +11,31 @@ tags — so `--version X.Y.Z` always pairs with image `:X.Y.Z`.
 
 ## Install
 
-Out-of-the-box trial (bundled Postgres + Redis, dev passthrough auth):
+Out-of-the-box trial (bundled Postgres + Redis + Dex, no ingress). Reach it with
+`kubectl port-forward svc/spacefleet 8080:80`; the login issuer falls back to
+`http://localhost:8080/dex`, and the seeded login is `admin@example.com` /
+`password`:
 
 ```sh
 helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet --version X.Y.Z
 ```
 
-Bundled Dex (real OIDC out of the box, seeded admin login):
+Give Dex a real hostname via ingress — its issuer becomes
+`https://spacefleet.example.com/dex` (served same-origin through the app, no
+CORS) — then **change the seeded admin** (see [Authentication](#authentication)):
 
 ```sh
 helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
   --version X.Y.Z \
-  --set dex.enabled=true \
   --set ingress.enabled=true \
   --set ingress.hosts[0].host=spacefleet.example.com
 ```
 
-This serves Dex same-origin at `https://spacefleet.example.com/dex` and seeds
-`admin@example.com` / `password` — **change it** (see [Authentication](#authentication)).
-
-Production-style (external datastores + your OIDC provider):
+Production-style (external datastores; Dex still bundled):
 
 ```sh
 helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
   --version X.Y.Z \
-  --set config.oidc.issuer=https://dex.example.com \
   --set postgresql.enabled=false \
   --set externalDatabase.existingSecret=spacefleet-db \
   --set redis.enabled=false \
@@ -59,8 +59,8 @@ helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
 | `Secret/<rel>-env` | unless both URLs come from existing Secrets | holds `DATABASE_URL` / `REDIS_URL` |
 | `StatefulSet/<rel>-postgresql` (+ Service, Secret) | `postgresql.enabled` | bundled Postgres, official `postgres` image |
 | `StatefulSet/<rel>-redis` (+ Service, Secret) | `redis.enabled` | bundled Redis, official `redis` image |
-| `Deployment/<rel>-dex` (+ Service, RBAC, SA) | `dex.enabled` | bundled Dex via the `dexidp/dex` subchart |
-| `Secret/<rel-configured>-dex-config` | `dex.enabled` | Dex config this chart renders for the subchart |
+| `Deployment/<rel>-dex` (+ Service, RBAC, SA) | always | bundled Dex via the `dexidp/dex` subchart; internal ClusterIP, reached via the app's `/dex` proxy |
+| `Secret/<rel-configured>-dex-config` | always | Dex config this chart renders for the subchart |
 
 The migrate Job runs `post-install` (not `pre-install`) so it can reach the
 bundled Postgres, which is a normal release resource and therefore created
@@ -74,10 +74,10 @@ upstream images** (the same `postgres:18-alpine` / `redis:7-alpine` as the dev
 for production use a managed/HA datastore via `externalDatabase` /
 `externalRedis`.
 
-The chart has one chart dependency: the official `dexidp/dex` subchart, used
-only when `dex.enabled=true` (see [Authentication](#authentication)). It is
-pinned in `Chart.lock` and vendored under `charts/`, so `helm dependency build`
-runs before lint/package (CI and `make helm-deps` handle this).
+The chart has one chart dependency: the official `dexidp/dex` subchart, always
+deployed (see [Authentication](#authentication)). It is pinned in `Chart.lock`
+and vendored under `charts/`, so `helm dependency build` runs before lint/package
+(CI and `make helm-deps` handle this).
 
 ## Datastore configuration
 
@@ -99,58 +99,53 @@ fast with an explanatory error.
 
 ## Authentication
 
-The app authenticates users against an OIDC provider. There are three modes:
+The app always authenticates against its **bundled Dex** — there is no external
+or passthrough mode, and no `dex.enabled` toggle. The chart deploys the official
+`dexidp/dex` subchart and renders its config for you, and the app
+**reverse-proxies Dex same-origin under `/dex`** (`DEX_UPSTREAM_URL` → the
+in-cluster Dex Service). So the ingress backs only the app, Dex's Service stays
+internal, and the browser never talks to Dex directly. The backend also verifies
+tokens against the in-cluster Dex Service (`OIDC_JWKS_URL`), so verification
+never depends on the public issuer being reachable from inside the cluster.
 
-1. **Bundled Dex** (`dex.enabled=true`). The chart deploys the official
-   `dexidp/dex` subchart and renders its config for you. By default Dex is served
-   **same-origin** at `https://<your ingress host>/dex` (no CORS), so it needs
-   ingress enabled or `dex.issuer` set — the render fails fast otherwise. The
-   backend verifies tokens against the in-cluster Dex Service (`OIDC_JWKS_URL`),
-   so it never has to reach the public issuer URL from inside the cluster.
-   - **Storage** defaults to `dex.storage=crd` (Dex stores signing keys/sessions
-     as Kubernetes CRDs — durable across restarts and HA-safe, no database).
-     `postgres`, `sqlite3`, and `memory` are also available; `memory` is
-     single-replica/trial only.
-   - **A seeded admin** (`admin@example.com` / `password`) makes a fresh install
-     loginnable. **This is a publicly known credential** — before exposing the
-     deployment, replace `dex.staticPasswords` (regenerate a hash with
-     `htpasswd -bnBC 10 "" <pw> | tr -d ':\n'`) or configure a connector and
-     clear it.
-   - **Connectors** (GitHub, Google, OIDC, LDAP, …) go in `dex.connectors`,
-     passed through verbatim. Keep client secrets out of values — reference them
-     as `$VAR` (Dex expands env at load) and inject the env via `dex.envFrom`:
+The **issuer is always the app's own origin + `/dex`**, derived automatically:
+`https://<your ingress host>/dex` with ingress, or `http://localhost:8080/dex`
+for a port-forward trial when ingress is off — there is no issuer value to set.
+Enterprise SSO is wired through Dex's connectors, not by repointing the app.
 
-     ```sh
-     kubectl create secret generic spacefleet-dex-connectors \
-       --from-literal=GITHUB_CLIENT_SECRET=...
-     ```
-     ```yaml
-     dex:
-       enabled: true
-       connectors:
-         - type: github
-           id: github
-           name: GitHub
-           config:
-             clientID: <oauth app id>
-             clientSecret: $GITHUB_CLIENT_SECRET
-             orgs: [{name: your-org}]
-       envFrom:
-         - secretRef: {name: spacefleet-dex-connectors}
-     ```
+- **Storage** defaults to `dex.storage=crd` (Dex stores signing keys/sessions as
+  Kubernetes CRDs — durable across restarts and HA-safe, no database).
+  `postgres`, `sqlite3`, and `memory` are also available; `memory` is
+  single-replica/trial only.
+- **A seeded admin** (`admin@example.com` / `password`) makes a fresh install
+  loginnable. **This is a publicly known credential** — before exposing the
+  deployment, replace `dex.staticPasswords` (regenerate a hash with
+  `htpasswd -bnBC 10 "" <pw> | tr -d ':\n'`) or configure a connector and clear
+  it.
+- **Connectors** (GitHub, Google, OIDC, LDAP, SAML, …) go in `dex.connectors`,
+  passed through verbatim. Keep client secrets out of values — reference them as
+  `$VAR` (Dex expands env at load) and inject the env via `dex.envFrom`:
 
-2. **External provider** (`config.oidc.issuer=https://…`). Point at your own
-   Dex/Keycloak/Auth0/Okta. This takes precedence over bundled Dex. Register the
-   app as a public (PKCE) client with redirect URI
-   `https://<your host>/auth/callback`.
+  ```sh
+  kubectl create secret generic spacefleet-dex-connectors \
+    --from-literal=GITHUB_CLIENT_SECRET=...
+  ```
+  ```yaml
+  dex:
+    connectors:
+      - type: github
+        id: github
+        name: GitHub
+        config:
+          clientID: <oauth app id>
+          clientSecret: $GITHUB_CLIENT_SECRET
+          orgs: [{name: your-org}]
+    envFrom:
+      - secretRef: {name: spacefleet-dex-connectors}
+  ```
 
-3. **Dev passthrough** (neither of the above). The backend authenticates every
-   request as `dev-user` — fine for a local port-forward trial, **never expose
-   it**. This is the default when `dex.enabled=false` and `config.oidc.issuer` is
-   empty.
-
-`config.oidc.issuer` / `config.oidc.clientID` are non-secret and are surfaced to
-the browser via `/config.js`.
+`config.oidc.clientID` (the app's OIDC client id, kept in sync with
+`dex.clientID`) is non-secret and is surfaced to the browser via `/config.js`.
 
 ## PodSecurity note
 
@@ -171,10 +166,10 @@ commonly set:
 | --- | --- | --- |
 | `image.repository` / `image.tag` | `ghcr.io/spacefleet/app` / chart appVersion | app image |
 | `replicaCount` | `2` | web replicas (when HPA off) |
-| `config.oidc.issuer` | `""` | external OIDC issuer (overrides bundled Dex) |
-| `dex.enabled` | `false` | bundle Dex as the OIDC provider |
+| `config.oidc.clientID` | `spacefleet` | app's OIDC client id (keep in sync with `dex.clientID`) |
 | `dex.storage` | `crd` | Dex storage: `crd` / `postgres` / `memory` / `sqlite3` |
-| `dex.connectors` | `[]` | upstream connectors (GitHub, Google, …) |
+| `dex.connectors` | `[]` | upstream connectors (GitHub, Google, Okta, LDAP, …) |
+| `dex.staticPasswords` | seeded admin | built-in accounts — **change before exposing** |
 | `config.workerConcurrency` | `4` | worker parallelism |
 | `worker.enabled` | `true` | deploy the background worker |
 | `migrations.enabled` | `true` | run `migrate up` on install/upgrade |

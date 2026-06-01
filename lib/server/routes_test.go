@@ -7,15 +7,16 @@ import (
 	"testing"
 
 	"github.com/spacefleet/app/lib/config"
+	"github.com/spacefleet/app/lib/testsupport"
 )
 
 // handler builds the HTTP tree without a real Postgres/Redis. The account
 // services are nil, so their handlers return 503 — enough to prove the API is
 // mounted under the auth middleware and the SPA fallback works.
 func handler() http.Handler {
-	// nil verifier -> RequireAuth uses the dev passthrough, so requests reach
-	// the handlers (proving routing, not auth).
-	return buildHandler(&config.Config{Addr: ":0", Env: "test"}, nil, nil, nil, nil)
+	// A fake verifier stands in for Dex so requests reach the handlers (this
+	// proves routing, not auth — the server has no passthrough mode).
+	return buildHandler(&config.Config{Addr: ":0", Env: "test"}, nil, nil, nil, testsupport.FakeVerifier())
 }
 
 func TestHealthEndpointIsPublic(t *testing.T) {
@@ -39,8 +40,8 @@ func TestHealthEndpointIsPublic(t *testing.T) {
 }
 
 // TestMeRouteMounted confirms /api/me is wired through the generated handler.
-// With a nil account service it returns 503 — which also proves the dev
-// passthrough auth let the request reach the handler (rather than 401).
+// With a nil account service it returns 503 — which also proves the fake
+// verifier let the request reach the handler (rather than 401).
 func TestMeRouteMounted(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
 	rec := httptest.NewRecorder()

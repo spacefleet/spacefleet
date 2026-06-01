@@ -25,13 +25,14 @@ keywords:
 # via externalDatabase / externalRedis for production. The bundled datastores are
 # single-replica and intended for trials and small deployments, not HA.
 #
-# Dex (the OIDC provider) can optionally be bundled too, via the official
-# dexidp/dex subchart below (dex.enabled, off by default). That dependency means
+# Dex is Spacefleet's identity provider and is ALWAYS bundled — it's an internal
+# part of the platform, not an optional add-on, via the official dexidp/dex
+# subchart below (no enable/disable toggle). That dependency means
 # `helm dependency build` must run before lint/package (CI and the Makefile do
-# this), and a Chart.lock is committed.
+# this), and a Chart.lock is committed. The app reverse-proxies Dex same-origin
+# under /dex, so Dex's Service stays internal and is never ingressed directly.
 
 dependencies:
   - name: dex
     version: 0.24.1
     repository: https://charts.dexidp.io
-    condition: dex.enabled

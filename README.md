@@ -73,14 +73,16 @@ The `worker` process is optional until you register background jobs:
 make worker
 ```
 
-> **Auth.** The SPA logs in against Dex (Authorization Code + PKCE) and sends
-> the ID token to the API, which the backend verifies (`lib/auth/oidc.go`).
-> The dev Dex is configured in [`dev/dex/config.yaml`](dev/dex/config.yaml) —
-> in-memory, single static user, **dev only**. Point `OIDC_ISSUER` /
-> `OIDC_CLIENT_ID` at your own Dex (or any OIDC IdP) for real deployments. With
-> `OIDC_ISSUER` empty, the backend reverts to a dev passthrough that accepts
-> every request as `dev-user` (never use in production) — handy for hitting the
-> API directly, though the browser SPA still expects an OIDC issuer to log in.
+> **Auth.** Dex is always Spacefleet's identity provider — there's no external
+> or passthrough mode. The SPA logs in against Dex (Authorization Code + PKCE)
+> and sends the ID token to the API, which verifies it (`lib/auth/oidc.go`) and
+> **fails closed** — the server won't boot without `OIDC_ISSUER`, and tests
+> inject a fake verifier (`lib/testsupport`). The app reverse-proxies Dex
+> same-origin under `/dex` (`DEX_UPSTREAM_URL`), so the browser only ever talks
+> to the app. The dev Dex is configured in
+> [`dev/dex/config.yaml`](dev/dex/config.yaml) — in-memory, single static user,
+> **dev only**; its issuer is the app origin (`http://localhost:2424/dex`).
+> Enterprise SSO is wired through Dex's connectors, not by repointing the app.
 
 ## Editing the API
 
@@ -122,18 +124,26 @@ full lint/test matrix:
 - the Helm chart (OCI) — `oci://ghcr.io/spacefleet/charts/spacefleet`, version `X.Y.Z`
 
 The Helm chart is the recommended way to deploy to Kubernetes. It runs the
-`serve` and `worker` processes, applies migrations as a release hook, and can
-bundle Postgres + Redis for a one-command trial (toggle off for managed
-datastores):
+`serve` and `worker` processes, applies migrations as a release hook, and always
+bundles Dex (the identity provider); it also bundles Postgres + Redis by default
+for a one-command trial (toggle those off for managed/external services):
 
 ```sh
+# One-command trial (bundled Postgres + Redis + Dex; reach it via port-forward):
+helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet --version X.Y.Z
+
+# Production: give Dex a real hostname via ingress (its issuer becomes
+# https://<host>/dex), then change the seeded admin / add connectors:
 helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet --version X.Y.Z \
-  --set config.oidc.issuer=https://your-oidc-issuer
+  --set ingress.enabled=true \
+  --set ingress.hosts[0].host=spacefleet.example.com
 ```
 
 See [`deploy/charts/spacefleet/README.md`](deploy/charts/spacefleet/README.md)
-for production configuration (external datastores, ingress, autoscaling). Lint
-and render the chart locally with `make helm-lint` / `make helm-template`.
+for production configuration (external datastores, ingress, autoscaling, Dex
+connectors). Lint and render the chart locally with `make helm-lint` /
+`make helm-template`. The chart now has one subchart dependency (`dexidp/dex`),
+so `make helm-*` run `helm dependency build` for you.
 
 ## The example `notes` resource
 

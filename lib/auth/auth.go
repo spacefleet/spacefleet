@@ -1,12 +1,11 @@
-// Package auth holds request authentication. It is intentionally
-// provider-agnostic: the HTTP layer calls RequireAuth with a TokenVerifier,
-// and a verifier turns a bearer token into a *Session.
+// Package auth holds request authentication. The HTTP layer calls RequireAuth
+// with a TokenVerifier, and a verifier turns a bearer token into a *Session.
 //
-// We plan to authenticate with Dex (OIDC). Wiring that up means
-// implementing a TokenVerifier that validates Dex-issued ID/access tokens
-// (typically via OIDC discovery + JWKS) and returning the subject as
-// Session.UserID. Until that lands, NewDevVerifier provides a passthrough
-// for local development — see middleware.go.
+// Spacefleet authenticates with its bundled Dex (OIDC): the verifier validates
+// Dex-issued ID tokens (signature via JWKS, iss/exp/aud) and returns the token
+// subject as Session.UserID — see oidc.go. There is no passthrough or
+// allow-everyone mode; RequireAuth fails closed when no verifier is configured,
+// and the server refuses to boot without an OIDC issuer.
 package auth
 
 import (

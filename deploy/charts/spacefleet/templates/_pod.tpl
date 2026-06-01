@@ -9,18 +9,15 @@ the ConfigMap, the DATABASE_URL / REDIS_URL secret refs, and any extraEnv.
   value: {{ .Values.config.env | quote }}
 - name: WORKER_CONCURRENCY
   value: {{ .Values.config.workerConcurrency | quote }}
-{{- $issuer := include "spacefleet.oidc.issuer" . }}
-{{- if $issuer }}
+{{- /* Spacefleet always authenticates against its bundled Dex; these are always set. */}}
 - name: OIDC_ISSUER
-  value: {{ $issuer | quote }}
-{{- end }}
+  value: {{ include "spacefleet.oidc.issuer" . | quote }}
 - name: OIDC_CLIENT_ID
   value: {{ .Values.config.oidc.clientID | quote }}
-{{- $jwks := include "spacefleet.oidc.jwksURL" . }}
-{{- if $jwks }}
 - name: OIDC_JWKS_URL
-  value: {{ $jwks | quote }}
-{{- end }}
+  value: {{ include "spacefleet.oidc.jwksURL" . | quote }}
+- name: DEX_UPSTREAM_URL
+  value: {{ include "spacefleet.dex.upstreamURL" . | quote }}
 {{- include "spacefleet.databaseEnv" . | nindent 0 }}
 {{- include "spacefleet.redisEnv" . | nindent 0 }}
 {{- with .Values.config.extraEnv }}

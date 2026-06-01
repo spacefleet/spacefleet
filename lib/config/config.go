@@ -29,6 +29,17 @@ type Config struct {
 	// non-secret. Only the browser uses OIDCIssuer for its OIDC flow.
 	OIDCJWKSURL string
 
+	// DexUpstreamURL, when set, is the base URL of the bundled Dex the server
+	// reverse-proxies the public /dex/* routes to (browser-facing discovery,
+	// auth, token, and keys endpoints). This makes Dex same-origin with the app
+	// — the app is the single front door, and Dex is never exposed directly.
+	// In dev it points at the docker-compose Dex (http://localhost:5556); in the
+	// Helm chart it points at the in-cluster Dex Service. Empty = the proxy is
+	// not mounted (e.g. route tests, which don't exercise the login flow). This
+	// is non-secret. Dex serves its routes under the issuer path (/dex), so the
+	// proxy forwards /dex/* straight through without rewriting.
+	DexUpstreamURL string
+
 	// SecretKey is the symmetric key used to envelope-encrypt credentials at
 	// rest (e.g. registered cluster tokens/kubeconfigs). It is a base64-encoded
 	// 32-byte key, read from SPACEFLEET_SECRET_KEY. When empty, secret sealing
@@ -45,14 +56,15 @@ type Config struct {
 
 func Load() (*Config, error) {
 	cfg := &Config{
-		Addr:         getenv("ADDR", ":8080"),
-		Env:          getenv("ENV", "development"),
-		DatabaseURL:  os.Getenv("DATABASE_URL"),
-		RedisURL:     os.Getenv("REDIS_URL"),
-		OIDCIssuer:   os.Getenv("OIDC_ISSUER"),
-		OIDCClientID: os.Getenv("OIDC_CLIENT_ID"),
-		OIDCJWKSURL:  os.Getenv("OIDC_JWKS_URL"),
-		SecretKey:    os.Getenv("SPACEFLEET_SECRET_KEY"),
+		Addr:           getenv("ADDR", ":8080"),
+		Env:            getenv("ENV", "development"),
+		DatabaseURL:    os.Getenv("DATABASE_URL"),
+		RedisURL:       os.Getenv("REDIS_URL"),
+		OIDCIssuer:     os.Getenv("OIDC_ISSUER"),
+		OIDCClientID:   os.Getenv("OIDC_CLIENT_ID"),
+		OIDCJWKSURL:    os.Getenv("OIDC_JWKS_URL"),
+		DexUpstreamURL: os.Getenv("DEX_UPSTREAM_URL"),
+		SecretKey:      os.Getenv("SPACEFLEET_SECRET_KEY"),
 	}
 
 	concurrency, err := parsePositiveInt("WORKER_CONCURRENCY", 4)

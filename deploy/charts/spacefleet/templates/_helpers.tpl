@@ -99,21 +99,31 @@ render lands where the subchart mounts it.
 {{- end -}}
 
 {{/*
-OIDC issuer resolution (browser-facing). Precedence:
-  1. config.oidc.issuer (explicit / external provider)
-  2. dex.issuer (bundled Dex on a dedicated host)
-  3. https://<first ingress host>/dex (bundled Dex, same-origin default)
-Empty string means "not resolvable" — validate fails on that when Dex is on.
+OIDC issuer resolution (browser-facing). Spacefleet always bundles Dex and the
+app reverse-proxies it same-origin under /dex, so the issuer is always the app's
+own origin + /dex:
+  1. https://<first ingress host>/dex   (ingress enabled — the normal path)
+  2. http://localhost:8080/dex          (no ingress — port-forward trial; the
+     app proxy makes /dex reachable on whatever origin you reach the app at)
+Always non-empty.
 */}}
 {{- define "spacefleet.oidc.issuer" -}}
-{{- if .Values.config.oidc.issuer -}}
-{{- .Values.config.oidc.issuer -}}
-{{- else if .Values.dex.enabled -}}
-{{- if .Values.dex.issuer -}}
-{{- .Values.dex.issuer -}}
-{{- else if and .Values.ingress.enabled (gt (len .Values.ingress.hosts) 0) -}}
+{{- if and .Values.ingress.enabled (gt (len .Values.ingress.hosts) 0) -}}
 {{- printf "https://%s/dex" (index .Values.ingress.hosts 0).host -}}
+{{- else -}}
+{{- "http://localhost:8080/dex" -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+The app's public origin + /auth/callback, the OIDC redirect URI. Mirrors the
+issuer's origin so it works behind the ingress or a port-forward trial.
+*/}}
+{{- define "spacefleet.oidc.redirectURI" -}}
+{{- if and .Values.ingress.enabled (gt (len .Values.ingress.hosts) 0) -}}
+{{- printf "https://%s/auth/callback" (index .Values.ingress.hosts 0).host -}}
+{{- else -}}
+{{- "http://localhost:8080/auth/callback" -}}
 {{- end -}}
 {{- end -}}
 
@@ -121,16 +131,30 @@ Empty string means "not resolvable" — validate fails on that when Dex is on.
 JWKS URL the backend uses to verify tokens, pointing at the in-cluster Dex
 Service so verification never depends on the public issuer being reachable from
 inside the cluster (no ingress hairpin). Path mirrors the issuer's path, since
-Dex serves its routes under the issuer path prefix. Empty unless bundled Dex.
+Dex serves its routes under the issuer path prefix.
 */}}
 {{- define "spacefleet.oidc.jwksURL" -}}
 {{- $issuer := include "spacefleet.oidc.issuer" . -}}
-{{- if and .Values.dex.enabled $issuer -}}
 {{- $path := (urlParse $issuer).path -}}
+{{- printf "http://%s:%v%s/keys" (include "spacefleet.dex.fullname" .) (include "spacefleet.dex.port" .) $path -}}
+{{- end -}}
+
+{{/*
+Base URL of the in-cluster Dex Service the app reverse-proxies /dex/* to
+(DEX_UPSTREAM_URL). No path: Dex serves under the issuer path (/dex), which the
+app forwards through unchanged.
+*/}}
+{{- define "spacefleet.dex.upstreamURL" -}}
+{{- printf "http://%s:%v" (include "spacefleet.dex.fullname" .) (include "spacefleet.dex.port" .) -}}
+{{- end -}}
+
+{{/*
+Dex Service HTTP port (subchart default 5556, overridable via dex.service.ports).
+*/}}
+{{- define "spacefleet.dex.port" -}}
 {{- $port := 5556 -}}
 {{- with .Values.dex.service }}{{ with .ports }}{{ with .http }}{{ with .port }}{{ $port = . }}{{ end }}{{ end }}{{ end }}{{ end -}}
-{{- printf "http://%s:%v%s/keys" (include "spacefleet.dex.fullname" .) $port $path -}}
-{{- end -}}
+{{- $port -}}
 {{- end -}}
 
 {{/*
@@ -213,12 +237,7 @@ Fail fast on incoherent value combinations.
 {{- if and (not .Values.redis.enabled) (not .Values.externalRedis.url) (not .Values.externalRedis.existingSecret) -}}
 {{- fail "Redis not configured: enable the bundled redis, or set externalRedis.url / externalRedis.existingSecret." -}}
 {{- end -}}
-{{- if .Values.dex.enabled -}}
-{{- if not (include "spacefleet.oidc.issuer" .) -}}
-{{- fail "Bundled Dex (dex.enabled=true) needs a public issuer URL. Enable ingress (the issuer derives to https://<host>/dex), or set dex.issuer for a dedicated host, or set dex.enabled=false to use an external provider via config.oidc.issuer / the dev passthrough." -}}
-{{- end -}}
-{{- if and (not .Values.ingress.enabled) (not .Values.dex.extraRedirectURIs) -}}
-{{- fail "Bundled Dex: no redirect URIs for the app's login callback. Enable ingress (so the app's public origin is known) or set dex.extraRedirectURIs." -}}
-{{- end -}}
+{{- if and .Values.ingress.enabled (not (gt (len .Values.ingress.hosts) 0)) -}}
+{{- fail "ingress.enabled=true but ingress.hosts is empty: set at least one host so the OIDC issuer (https://<host>/dex) can be derived." -}}
 {{- end -}}
 {{- end -}}

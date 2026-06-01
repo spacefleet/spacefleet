@@ -51,9 +51,10 @@ func New(cfg *config.Config) (*http.Server, error) {
 	orgsSvc := organizations.NewService(entClient)
 	clustersSvc := clusters.NewService(entClient, sealer)
 
-	// Build the request authenticator. When OIDC_ISSUER is configured we
-	// validate Dex-issued ID tokens; otherwise verifier stays nil and
-	// RequireAuth falls back to the dev passthrough (see lib/auth).
+	// Build the request authenticator. Spacefleet always authenticates against
+	// its bundled Dex, so a configured OIDC issuer is mandatory — buildVerifier
+	// errors (and boot fails) when it's missing, rather than degrading to an
+	// allow-everyone mode (see lib/auth).
 	verifier, err := buildVerifier(cfg)
 	if err != nil {
 		_ = entClient.Close()
@@ -81,21 +82,22 @@ func New(cfg *config.Config) (*http.Server, error) {
 // buildHandler composes the full HTTP handler tree given pre-built deps.
 // The services may be nil — the API surface returns a clear "not configured"
 // error rather than panicking, which keeps route-level tests usable
-// without a real database. verifier may be nil, in which case RequireAuth
-// uses the dev passthrough.
+// without a real database. verifier must be non-nil in production (built from
+// the bundled-Dex OIDC config); a nil verifier makes RequireAuth fail closed.
 func buildHandler(cfg *config.Config, usersSvc *users.Service, orgsSvc *organizations.Service, clustersSvc *clusters.Service, verifier auth.TokenVerifier) http.Handler {
 	mux := http.NewServeMux()
 	registerRoutes(mux, cfg, usersSvc, orgsSvc, clustersSvc, verifier)
 	return logRequests(mux)
 }
 
-// buildVerifier returns the OIDC TokenVerifier when OIDC_ISSUER is set, or nil
-// to let RequireAuth fall back to the dev passthrough. When OIDC_JWKS_URL is
-// unset construction does OIDC discovery (network), so it's bounded by a
-// timeout; when set, keys are fetched lazily and no startup network call runs.
+// buildVerifier returns the OIDC TokenVerifier for the bundled Dex. OIDC_ISSUER
+// is mandatory — an empty issuer is a fatal misconfiguration, not a fallback to
+// an unauthenticated mode. When OIDC_JWKS_URL is unset construction does OIDC
+// discovery (network), so it's bounded by a timeout; when set, keys are fetched
+// lazily and no startup network call runs.
 func buildVerifier(cfg *config.Config) (auth.TokenVerifier, error) {
 	if cfg.OIDCIssuer == "" {
-		return nil, nil
+		return nil, fmt.Errorf("OIDC_ISSUER is required: Spacefleet authenticates against its bundled Dex and has no unauthenticated mode")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

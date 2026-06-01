@@ -67,13 +67,15 @@ func TestRequireAuthAttachesSession(t *testing.T) {
 	}
 }
 
-func TestDevVerifierDefaultsUser(t *testing.T) {
-	v := NewDevVerifier()
-	sess, err := v(context.Background(), "")
-	if err != nil {
-		t.Fatalf("dev verifier: %v", err)
-	}
-	if sess.UserID != "dev-user" {
-		t.Fatalf("dev user = %q, want dev-user", sess.UserID)
+func TestRequireAuthNilVerifierFailsClosed(t *testing.T) {
+	h := RequireAuth(nil, nil)(okHandler())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	req.Header.Set("Authorization", "Bearer anything")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("nil verifier must fail closed, got %d", rec.Code)
 	}
 }

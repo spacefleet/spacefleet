@@ -1,8 +1,9 @@
 # Render coverage: bundled Dex (the official dexidp/dex subchart) with the
 # same-origin /dex issuer derived from the ingress host, CRD storage, the seeded
-# admin, and a GitHub connector referencing a client secret via envFrom.
+# admin, and a GitHub connector referencing a client secret via envFrom. Dex is
+# always bundled, so there is no dex.enabled here — this set just adds an ingress
+# host and a federation connector on top of the defaults.
 dex:
-  enabled: true
   storage: crd
   connectors:
     - type: github

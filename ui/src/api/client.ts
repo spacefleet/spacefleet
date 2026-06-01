@@ -5,9 +5,9 @@ import type { paths } from "./schema";
 // the Go binary serves both the SPA and /api/* from the same origin.
 export const api = createClient<paths>({ baseUrl: "/" });
 
-// ApiAuthBinder (see components/ApiAuthBinder.tsx) wires this up. Until Dex
-// auth lands it returns null, so requests go out without a bearer token —
-// the backend's dev passthrough accepts them. /api/health is always public.
+// ApiAuthBinder (see components/ApiAuthBinder.tsx) wires this up. Before the
+// user signs in it returns null, so requests go out without a bearer token and
+// the backend rejects protected routes with 401. /api/health is always public.
 let tokenProvider: (() => Promise<string | null>) | null = null;
 
 export function setAuthTokenProvider(
