@@ -171,6 +171,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/clusters/{id}/pods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the Kubernetes pods of a cluster
+         * @description Org-scoped: builds a client from the cluster's stored credentials and
+         *     lists its pods across all namespaces live from the Kubernetes API. The
+         *     cluster must be reachable; an unreachable cluster yields a 502.
+         */
+        get: operations["listClusterPods"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -305,6 +327,60 @@ export interface components {
             };
             taints: components["schemas"]["NodeTaint"][];
             conditions: components["schemas"]["NodeCondition"][];
+            /** Format: date-time */
+            created_at: string;
+        };
+        PodCondition: {
+            /** @description e.g. Ready, Initialized, ContainersReady, PodScheduled. */
+            type: string;
+            /** @description True, False, or Unknown. */
+            status: string;
+            reason?: string;
+            message?: string;
+            /** Format: date-time */
+            last_transition_time?: string | null;
+        };
+        /** @description The live state of a single container in a pod. */
+        ContainerStatus: {
+            name: string;
+            image?: string;
+            ready: boolean;
+            started?: boolean;
+            restart_count: number;
+            /** @description Running, Waiting, or Terminated. */
+            state?: string;
+            /** @description For waiting/terminated containers (e.g. CrashLoopBackOff). */
+            state_reason?: string;
+            state_message?: string;
+        };
+        /** @description A single Kubernetes pod, as seen live on the cluster. */
+        Pod: {
+            name: string;
+            namespace: string;
+            /** @description Pending, Running, Succeeded, Failed, or Unknown. */
+            phase: string;
+            /**
+             * @description The display status kubectl shows, which folds container state into
+             *     the phase (e.g. Running, CrashLoopBackOff, Completed, Terminating).
+             */
+            status: string;
+            /** @description Ready/total container count (e.g. "2/3"). */
+            ready: string;
+            ready_containers: number;
+            total_containers: number;
+            /** @description Total container restarts across the pod. */
+            restarts: number;
+            node_name?: string;
+            pod_ip?: string;
+            host_ip?: string;
+            /** @description Guaranteed, Burstable, or BestEffort. */
+            qos_class?: string;
+            service_account?: string;
+            labels: {
+                [key: string]: string;
+            };
+            conditions: components["schemas"]["PodCondition"][];
+            containers: components["schemas"]["ContainerStatus"][];
             /** Format: date-time */
             created_at: string;
         };
@@ -646,6 +722,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Node"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listClusterPods: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ClusterID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cluster's pods */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Pod"][];
                 };
             };
             default: components["responses"]["Error"];

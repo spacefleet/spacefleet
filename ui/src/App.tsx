@@ -11,6 +11,8 @@ import { CreateOrganization } from "./routes/CreateOrganization";
 import { Home } from "./routes/Home";
 import { NodeDetail } from "./routes/NodeDetail";
 import { Nodes } from "./routes/Nodes";
+import { PodDetail } from "./routes/PodDetail";
+import { Pods } from "./routes/Pods";
 import { NotFound } from "./routes/NotFound";
 import { Placeholder } from "./routes/Placeholder";
 import { navLeaves } from "./nav";
@@ -20,6 +22,7 @@ import { navLeaves } from "./nav";
 const pageComponents: Record<string, ReactNode> = {
   "/providers/clusters": <Clusters />,
   "/infrastructure/nodes": <Nodes />,
+  "/infrastructure/pods": <Pods />,
 };
 
 export function App() {
@@ -60,6 +63,13 @@ export function App() {
                 <Route
                   path="/infrastructure/nodes/:clusterId/:nodeName"
                   element={<NodeDetail />}
+                />
+                {/* Pod drill-down: a detail route under the Pods leaf (not a
+                    nav entry of its own). The namespace segment disambiguates
+                    pods of the same name across namespaces. */}
+                <Route
+                  path="/infrastructure/pods/:clusterId/:namespace/:podName"
+                  element={<PodDetail />}
                 />
                 <Route path="*" element={<NotFound />} />
               </Route>

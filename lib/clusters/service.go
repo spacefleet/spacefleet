@@ -10,6 +10,7 @@ package clusters
 
 import (
 	"context"
+	"io"
 	"time"
 
 	"github.com/google/uuid"
@@ -180,6 +181,67 @@ func (s *Service) WatchNodes(ctx context.Context, orgID, id uuid.UUID) (*k8s.Nod
 		Config:      c.Config,
 		Credentials: creds,
 	})
+}
+
+// Pods lists the live Kubernetes pods of a cluster scoped to the organization,
+// across all namespaces. Like Nodes, a connectivity failure is returned to the
+// caller rather than recorded on the cluster row.
+func (s *Service) Pods(ctx context.Context, orgID, id uuid.UUID) ([]k8s.Pod, error) {
+	c, err := s.Get(ctx, orgID, id)
+	if err != nil {
+		return nil, err
+	}
+	creds, err := s.openCreds(c)
+	if err != nil {
+		return nil, err
+	}
+	return k8s.ListPods(ctx, k8s.Connection{
+		Method:      k8s.Method(c.ConnectionMethod),
+		Endpoint:    c.Endpoint,
+		Config:      c.Config,
+		Credentials: creds,
+	})
+}
+
+// WatchPods opens a live watch on a cluster's pods (across all namespaces)
+// scoped to the organization. Like WatchNodes, a connectivity failure is
+// returned to the caller rather than recorded on the cluster row.
+func (s *Service) WatchPods(ctx context.Context, orgID, id uuid.UUID) (*k8s.PodStream, error) {
+	c, err := s.Get(ctx, orgID, id)
+	if err != nil {
+		return nil, err
+	}
+	creds, err := s.openCreds(c)
+	if err != nil {
+		return nil, err
+	}
+	return k8s.WatchPods(ctx, k8s.Connection{
+		Method:      k8s.Method(c.ConnectionMethod),
+		Endpoint:    c.Endpoint,
+		Config:      c.Config,
+		Credentials: creds,
+	})
+}
+
+// PodLogs opens a log stream for one pod of a cluster scoped to the
+// organization, returning the raw line-delimited body for the handler to frame.
+// Like Pods, a connectivity failure is returned to the caller rather than
+// recorded on the cluster row.
+func (s *Service) PodLogs(ctx context.Context, orgID, id uuid.UUID, namespace, name string, opts k8s.LogOptions) (io.ReadCloser, error) {
+	c, err := s.Get(ctx, orgID, id)
+	if err != nil {
+		return nil, err
+	}
+	creds, err := s.openCreds(c)
+	if err != nil {
+		return nil, err
+	}
+	return k8s.StreamPodLogs(ctx, k8s.Connection{
+		Method:      k8s.Method(c.ConnectionMethod),
+		Endpoint:    c.Endpoint,
+		Config:      c.Config,
+		Credentials: creds,
+	}, namespace, name, opts)
 }
 
 // probe opens the stored credentials, checks reachability, and records the

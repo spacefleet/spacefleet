@@ -217,6 +217,28 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/clusters/{id}/pods:
+    get:
+      summary: List the Kubernetes pods of a cluster
+      description: |
+        Org-scoped: builds a client from the cluster's stored credentials and
+        lists its pods across all namespaces live from the Kubernetes API. The
+        cluster must be reachable; an unreachable cluster yields a 502.
+      operationId: listClusterPods
+      parameters:
+        - $ref: "#/components/parameters/ClusterID"
+      responses:
+        "200":
+          description: The cluster's pods
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pod"
+        default:
+          $ref: "#/components/responses/Error"
+
 components:
   schemas:
     Health:
@@ -461,6 +483,117 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/NodeCondition"
+        created_at:
+          type: string
+          format: date-time
+
+    PodCondition:
+      type: object
+      required: [type, status]
+      properties:
+        type:
+          type: string
+          description: e.g. Ready, Initialized, ContainersReady, PodScheduled.
+        status:
+          type: string
+          description: "True, False, or Unknown."
+        reason:
+          type: string
+        message:
+          type: string
+        last_transition_time:
+          type: string
+          format: date-time
+          nullable: true
+
+    ContainerStatus:
+      type: object
+      description: The live state of a single container in a pod.
+      required: [name, ready, restart_count]
+      properties:
+        name:
+          type: string
+        image:
+          type: string
+        ready:
+          type: boolean
+        started:
+          type: boolean
+        restart_count:
+          type: integer
+        state:
+          type: string
+          description: Running, Waiting, or Terminated.
+        state_reason:
+          type: string
+          description: For waiting/terminated containers (e.g. CrashLoopBackOff).
+        state_message:
+          type: string
+
+    Pod:
+      type: object
+      description: A single Kubernetes pod, as seen live on the cluster.
+      required:
+        [
+          name,
+          namespace,
+          phase,
+          status,
+          ready,
+          ready_containers,
+          total_containers,
+          restarts,
+          labels,
+          conditions,
+          containers,
+          created_at,
+        ]
+      properties:
+        name:
+          type: string
+        namespace:
+          type: string
+        phase:
+          type: string
+          description: Pending, Running, Succeeded, Failed, or Unknown.
+        status:
+          type: string
+          description: |
+            The display status kubectl shows, which folds container state into
+            the phase (e.g. Running, CrashLoopBackOff, Completed, Terminating).
+        ready:
+          type: string
+          description: Ready/total container count (e.g. "2/3").
+        ready_containers:
+          type: integer
+        total_containers:
+          type: integer
+        restarts:
+          type: integer
+          description: Total container restarts across the pod.
+        node_name:
+          type: string
+        pod_ip:
+          type: string
+        host_ip:
+          type: string
+        qos_class:
+          type: string
+          description: Guaranteed, Burstable, or BestEffort.
+        service_account:
+          type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        conditions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PodCondition"
+        containers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContainerStatus"
         created_at:
           type: string
           format: date-time

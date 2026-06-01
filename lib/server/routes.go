@@ -47,6 +47,10 @@ func registerRoutes(mux *http.ServeMux, cfg *config.Config, usersSvc *users.Serv
 	// routes' security model. See lib/api/stream.go.
 	mux.Handle("GET /api/clusters/{id}/nodes/stream",
 		auth.RequireAuth(publicAPIPaths, verifier)(auth.OrgContext(http.HandlerFunc(srv.StreamClusterNodes))))
+	mux.Handle("GET /api/clusters/{id}/pods/stream",
+		auth.RequireAuth(publicAPIPaths, verifier)(auth.OrgContext(http.HandlerFunc(srv.StreamClusterPods))))
+	mux.Handle("GET /api/clusters/{id}/pods/{namespace}/{name}/logs/stream",
+		auth.RequireAuth(publicAPIPaths, verifier)(auth.OrgContext(http.HandlerFunc(srv.StreamPodLogs))))
 
 	// Public config exposed to the browser as `window.appConfig`. Only
 	// pre-approved, non-secret values go here — it ships to every client.

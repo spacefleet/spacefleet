@@ -161,3 +161,115 @@ func listNodesRV(ctx context.Context, cs kubernetes.Interface) ([]Node, string, 
 	}
 	return out, list.ResourceVersion, nil
 }
+
+// PodStream is an open watch on a cluster's pods (across all namespaces): the
+// initial Snapshot plus a channel of subsequent changes. It is the pod
+// counterpart of NodeStream — same lifecycle rules (drain from one goroutine;
+// cancel the context to stop).
+type PodStream struct {
+	Snapshot []Pod
+	Events   <-chan Event[Pod]
+}
+
+// WatchPods is the pod counterpart of WatchNodes: it lists the cluster's pods
+// across all namespaces (the snapshot), then streams changes until ctx is
+// cancelled, with the same RetryWatcher resilience and re-list resync.
+func WatchPods(ctx context.Context, conn Connection) (*PodStream, error) {
+	cfg, err := RESTConfig(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
+	cs, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("k8s: client: %w", err)
+	}
+
+	initial, rv, err := listPodsRV(ctx, cs)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make(chan Event[Pod])
+	go func() {
+		defer close(events)
+		currentRV := rv
+		lw := &cache.ListWatch{
+			WatchFuncWithContext: func(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
+				return cs.CoreV1().Pods(metav1.NamespaceAll).Watch(ctx, opts)
+			},
+		}
+		for {
+			rw, err := toolswatch.NewRetryWatcherWithContext(ctx, currentRV, lw)
+			if err != nil {
+				return
+			}
+			ctxDone := drainPodWatch(ctx, rw.ResultChan(), events)
+			rw.Stop()
+			if ctxDone {
+				return
+			}
+			snap, newRV, err := listPodsRV(ctx, cs)
+			if err != nil {
+				return
+			}
+			currentRV = newRV
+			select {
+			case events <- Event[Pod]{Type: EventSnapshot, Snapshot: snap}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return &PodStream{Snapshot: initial, Events: events}, nil
+}
+
+// drainPodWatch is the pod counterpart of drainWatch: it forwards delta events
+// until the channel closes (returns false — resync and restart) or the context
+// is cancelled (returns true — stop).
+func drainPodWatch(ctx context.Context, in <-chan watch.Event, out chan<- Event[Pod]) bool {
+	for {
+		select {
+		case <-ctx.Done():
+			return true
+		case ev, ok := <-in:
+			if !ok {
+				return false
+			}
+			var t EventType
+			switch ev.Type {
+			case watch.Added:
+				t = EventAdded
+			case watch.Modified:
+				t = EventModified
+			case watch.Deleted:
+				t = EventDeleted
+			default:
+				continue
+			}
+			p, ok := ev.Object.(*corev1.Pod)
+			if !ok {
+				continue
+			}
+			select {
+			case out <- Event[Pod]{Type: t, Object: convertPod(p)}:
+			case <-ctx.Done():
+				return true
+			}
+		}
+	}
+}
+
+// listPodsRV lists pods across all namespaces and returns them alongside the
+// list's resourceVersion — the point a watch should start from.
+func listPodsRV(ctx context.Context, cs kubernetes.Interface) ([]Pod, string, error) {
+	list, err := cs.CoreV1().Pods(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, "", fmt.Errorf("k8s: list pods: %w", err)
+	}
+	out := make([]Pod, len(list.Items))
+	for i := range list.Items {
+		out[i] = convertPod(&list.Items[i])
+	}
+	return out, list.ResourceVersion, nil
+}
