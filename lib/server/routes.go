@@ -23,7 +23,7 @@ var publicAPIPaths = []string{
 }
 
 func registerRoutes(mux *http.ServeMux, cfg *config.Config, usersSvc *users.Service, orgsSvc *organizations.Service, clustersSvc *clusters.Service, verifier auth.TokenVerifier) {
-	srv := api.NewServer(usersSvc, orgsSvc, clustersSvc)
+	srv := api.NewServer(usersSvc, orgsSvc, clustersSvc, cfg.AllowOrgCreation)
 
 	// API routes are generated from api/openapi.yaml and mounted under
 	// /api/*. oapi-codegen applies middlewares in reverse, so the last
@@ -96,11 +96,14 @@ func dexProxyHandler(upstream string) (http.Handler, error) {
 }
 
 func appConfigHandler(cfg *config.Config) http.HandlerFunc {
-	payload, err := json.Marshal(map[string]string{
+	payload, err := json.Marshal(map[string]any{
 		// OIDC values the SPA will need for its Dex login flow. Empty until
 		// configured; both are non-secret.
 		"oidcIssuer":   cfg.OIDCIssuer,
 		"oidcClientId": cfg.OIDCClientID,
+		// Whether the SPA should offer organization creation. Non-secret; the
+		// create endpoint is enforced server-side regardless (see Server).
+		"allowOrgCreation": cfg.AllowOrgCreation,
 	})
 	if err != nil {
 		panic(err)

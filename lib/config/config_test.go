@@ -19,6 +19,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.WorkerConcurrency != 4 {
 		t.Errorf("WorkerConcurrency = %d, want 4", cfg.WorkerConcurrency)
 	}
+	if !cfg.AllowOrgCreation {
+		t.Errorf("AllowOrgCreation = %v, want true (on by default)", cfg.AllowOrgCreation)
+	}
 }
 
 func TestLoadOverrides(t *testing.T) {
@@ -28,6 +31,7 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("OIDC_ISSUER", "https://dex.example.com")
 	t.Setenv("OIDC_CLIENT_ID", "spacefleet")
 	t.Setenv("WORKER_CONCURRENCY", "8")
+	t.Setenv("ALLOW_ORG_CREATION", "false")
 
 	cfg, err := Load()
 	if err != nil {
@@ -48,6 +52,9 @@ func TestLoadOverrides(t *testing.T) {
 	if cfg.WorkerConcurrency != 8 {
 		t.Errorf("WorkerConcurrency = %d, want 8", cfg.WorkerConcurrency)
 	}
+	if cfg.AllowOrgCreation {
+		t.Errorf("AllowOrgCreation = %v, want false", cfg.AllowOrgCreation)
+	}
 }
 
 func TestLoadRejectsBadConcurrency(t *testing.T) {
@@ -62,6 +69,14 @@ func TestLoadRejectsBadConcurrency(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsBadAllowOrgCreation(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("ALLOW_ORG_CREATION", "maybe")
+	if _, err := Load(); err == nil {
+		t.Error("expected error for ALLOW_ORG_CREATION=maybe")
+	}
+}
+
 // clearEnv unsets every key Load reads so tests start from a known
 // baseline.
 func clearEnv(t *testing.T) {
@@ -73,6 +88,7 @@ func clearEnv(t *testing.T) {
 		"OIDC_ISSUER",
 		"OIDC_CLIENT_ID",
 		"WORKER_CONCURRENCY",
+		"ALLOW_ORG_CREATION",
 	}
 	for _, k := range keys {
 		t.Setenv(k, "")

@@ -19,14 +19,19 @@ type Server struct {
 	users    *users.Service
 	orgs     *organizations.Service
 	clusters *clusters.Service
+
+	// allowOrgCreation gates the create-organization endpoint. When false,
+	// the server refuses to mint new organizations (see config.AllowOrgCreation)
+	// so only invited users can onboard.
+	allowOrgCreation bool
 }
 
 // NewServer accepts the runtime services this API depends on. They may be
 // nil — a handler whose service is missing returns a clear "not configured"
 // error instead of panicking, which keeps route-level tests usable without
 // a database.
-func NewServer(usersSvc *users.Service, orgsSvc *organizations.Service, clustersSvc *clusters.Service) *Server {
-	return &Server{users: usersSvc, orgs: orgsSvc, clusters: clustersSvc}
+func NewServer(usersSvc *users.Service, orgsSvc *organizations.Service, clustersSvc *clusters.Service, allowOrgCreation bool) *Server {
+	return &Server{users: usersSvc, orgs: orgsSvc, clusters: clustersSvc, allowOrgCreation: allowOrgCreation}
 }
 
 var _ StrictServerInterface = (*Server)(nil)
@@ -80,6 +85,9 @@ func (s *Server) GetMe(ctx context.Context, _ GetMeRequestObject) (GetMeResponse
 func (s *Server) CreateOrganization(ctx context.Context, req CreateOrganizationRequestObject) (CreateOrganizationResponseObject, error) {
 	if s.users == nil || s.orgs == nil {
 		return errResp[CreateOrganizationdefaultJSONResponse](http.StatusServiceUnavailable, "unavailable", "account service not configured"), nil
+	}
+	if !s.allowOrgCreation {
+		return errResp[CreateOrganizationdefaultJSONResponse](http.StatusForbidden, "org_creation_disabled", "creating organizations is disabled on this server"), nil
 	}
 	u, err := s.currentUser(ctx)
 	if err != nil {

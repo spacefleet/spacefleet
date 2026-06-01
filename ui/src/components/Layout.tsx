@@ -4,6 +4,7 @@ import { useAuth } from "react-oidc-context";
 import { Check, ChevronDown, Plus } from "lucide-react";
 import icon from "@/assets/spacefleet-icon.svg";
 import { useOrg } from "../contexts/OrgContext";
+import { orgCreationEnabled } from "../lib/appConfig";
 import { Sidebar } from "./Sidebar";
 
 export function Layout() {
@@ -115,16 +116,20 @@ function OrgSwitcher() {
               </button>
             );
           })}
-          <div className="my-1 border-t border-gray-100" />
-          <Link
-            to="/organizations/new"
-            role="menuitem"
-            onClick={() => setOpen(false)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100"
-          >
-            <Plus className="h-4 w-4 shrink-0 text-gray-500" aria-hidden />
-            Create organization
-          </Link>
+          {orgCreationEnabled() && (
+            <>
+              <div className="my-1 border-t border-gray-100" />
+              <Link
+                to="/organizations/new"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100"
+              >
+                <Plus className="h-4 w-4 shrink-0 text-gray-500" aria-hidden />
+                Create organization
+              </Link>
+            </>
+          )}
         </div>
       )}
     </div>

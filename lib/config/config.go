@@ -51,6 +51,15 @@ type Config struct {
 	// WorkerConcurrency caps the number of background jobs the worker
 	// process runs in parallel. Default 4.
 	WorkerConcurrency int
+
+	// AllowOrgCreation controls whether users may create new organizations.
+	// On by default; set ALLOW_ORG_CREATION=false to lock it down so that
+	// only invited users (added to an existing org) can use the app — a
+	// user with no memberships is then told to request an invite rather than
+	// shown a create-organization screen. Non-secret; surfaced to the browser
+	// via /config.js so the SPA can render the right onboarding state, and
+	// enforced server-side on the create endpoint regardless.
+	AllowOrgCreation bool
 }
 
 func Load() (*Config, error) {
@@ -70,6 +79,12 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	cfg.WorkerConcurrency = concurrency
+
+	allowOrgCreation, err := parseBool("ALLOW_ORG_CREATION", true)
+	if err != nil {
+		return nil, err
+	}
+	cfg.AllowOrgCreation = allowOrgCreation
 
 	return cfg, nil
 }
@@ -95,6 +110,22 @@ func parsePositiveInt(key string, fallback int) (int, error) {
 	}
 	if v <= 0 {
 		return 0, fmt.Errorf("%s: must be > 0, got %d", key, v)
+	}
+	return v, nil
+}
+
+// parseBool reads a boolean env var (strconv.ParseBool syntax: 1/0, t/f,
+// true/false), falling back to fallback when unset. A malformed value is
+// rejected rather than silently treated as false, so a typo can't quietly flip
+// a security setting.
+func parseBool(key string, fallback bool) (bool, error) {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback, nil
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", key, err)
 	}
 	return v, nil
 }

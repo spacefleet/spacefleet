@@ -9,6 +9,8 @@ the ConfigMap, the DATABASE_URL secret ref, and any extraEnv.
   value: {{ .Values.config.env | quote }}
 - name: WORKER_CONCURRENCY
   value: {{ .Values.config.workerConcurrency | quote }}
+- name: ALLOW_ORG_CREATION
+  value: {{ .Values.config.allowOrgCreation | quote }}
 {{- /* Spacefleet always authenticates against its bundled Dex; these are always set. */}}
 - name: OIDC_ISSUER
   value: {{ include "spacefleet.oidc.issuer" . | quote }}

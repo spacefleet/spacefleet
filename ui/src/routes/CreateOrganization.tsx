@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, Navigate, useNavigate } from "react-router";
 import { useAuth } from "react-oidc-context";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
+import { orgCreationEnabled } from "../lib/appConfig";
+import { NoOrganizations } from "../components/NoOrganizations";
 
 // CreateOrganization is the destination for users with no organization (the
 // OrgGate sends them here) and is also reachable from the navbar to spin up
@@ -20,6 +22,13 @@ export function CreateOrganization() {
 
   // First-run users (no orgs yet) can't cancel — there's nowhere to go back to.
   const hasOrgs = memberships.length > 0;
+
+  // Org creation can be disabled server-side. Guard the route directly so a
+  // typed URL or stale link can't reach the form: members already in an org go
+  // home, while org-less users get the request-an-invite message.
+  if (!orgCreationEnabled()) {
+    return hasOrgs ? <Navigate to="/" replace /> : <NoOrganizations />;
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

@@ -1,9 +1,13 @@
 import { Navigate, Outlet } from "react-router";
 import { useOrg } from "../contexts/OrgContext";
+import { orgCreationEnabled } from "../lib/appConfig";
+import { NoOrganizations } from "./NoOrganizations";
 
 // OrgGate enforces the rule that you must belong to (and have selected) an
 // organization to use the app. While memberships are loading it shows a
-// spinner; a user with no organizations is sent to the create-org screen.
+// spinner. A user with no organizations is sent to the create-org screen —
+// unless this server has organization creation disabled, in which case there's
+// nothing for them to create, so they're told to request an invite instead.
 // Otherwise it renders the app via <Outlet />.
 export function OrgGate() {
   const { loading, memberships } = useOrg();
@@ -17,7 +21,11 @@ export function OrgGate() {
   }
 
   if (memberships.length === 0) {
-    return <Navigate to="/organizations/new" replace />;
+    return orgCreationEnabled() ? (
+      <Navigate to="/organizations/new" replace />
+    ) : (
+      <NoOrganizations />
+    );
   }
 
   return <Outlet />;

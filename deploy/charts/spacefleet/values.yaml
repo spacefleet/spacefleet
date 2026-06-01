@@ -37,6 +37,11 @@ config:
     clientID: spacefleet
   # -- Max background jobs the worker process runs in parallel.
   workerConcurrency: 4
+  # -- Whether users may create new organizations. On by default. Set to false
+  # to lock the deployment down so only invited users (added to an existing
+  # org) can use the app — a signed-in user with no organization is shown a
+  # "request an invite" message instead of a create-organization screen.
+  allowOrgCreation: true
   # -- Extra environment variables for both web and worker pods. Standard
   # core/v1 EnvVar entries, e.g. [{name: FOO, value: bar}]. Plaintext — for
   # non-secret config only. Secrets go under `secrets` below.

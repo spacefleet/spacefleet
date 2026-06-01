@@ -6,6 +6,10 @@
 interface AppConfig {
   oidcIssuer: string;
   oidcClientId: string;
+  // Whether this server lets users create organizations. A server-level
+  // security setting (on by default); when false, users with no organization
+  // are told to request an invite instead of being shown a create screen.
+  allowOrgCreation: boolean;
 }
 
 declare global {
