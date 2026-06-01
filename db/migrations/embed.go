@@ -12,7 +12,7 @@ package migrations
 import "embed"
 
 // FS holds the migration files, named at the root of the FS (e.g.
-// "20260530120000_init_notes.sql").
+// "20260530130000_accounts.sql").
 //
 //go:embed *.sql
 var FS embed.FS

@@ -5,9 +5,11 @@ A Go backend + React SPA that ship as a single binary. The Go program serves
 spec drives both the server stubs and the typed TypeScript client.
 
 This is a clean starting point: Go + Postgres (via [ent](https://entgo.io/)) +
-a React/Vite/Tailwind SPA, with an OpenAPI-driven contract and an
-example `notes` resource wired end-to-end. Authentication runs on
-[Dex](https://dexidp.io/) (OIDC), bootstrapped for local dev in Docker Compose.
+a React/Vite/Tailwind SPA, with an OpenAPI-driven contract. The domain is
+multi-tenant — users belong to **organizations**, and **Kubernetes cluster
+registration** is the worked example of a resource wired end-to-end (ent schema
+→ migration → API → UI). Authentication runs on [Dex](https://dexidp.io/)
+(OIDC), bootstrapped for local dev in Docker Compose.
 
 ## Stack
 
@@ -93,7 +95,7 @@ make worker
 
    ```ts
    import { api } from "./api/client";
-   const { data, error } = await api.GET("/api/notes");
+   const { data, error } = await api.GET("/api/clusters");
    ```
 
 ## Editing the database schema
@@ -145,11 +147,13 @@ connectors). Lint and render the chart locally with `make helm-lint` /
 `make helm-template`. The chart now has one subchart dependency (`dexidp/dex`),
 so `make helm-*` run `helm dependency build` for you.
 
-## The example `notes` resource
+## How a resource is built
 
-`Note` (ent schema, migration, `/api/notes` endpoints, and the `Home` page)
-exists only to demonstrate the full data path. Delete it once you have real
-resources.
+Kubernetes **cluster registration** is the worked example of an org-scoped
+resource wired through every layer — ent schema, SQL migration, OpenAPI
+contract, domain service, handler, and UI page. Copy its shape when adding a
+new resource; see the "How a resource is built" section of
+[CLAUDE.md](CLAUDE.md) for the step-by-step.
 
 ## License
 

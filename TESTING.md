@@ -60,7 +60,13 @@ Pattern (see [lib/server/integration_test.go](lib/server/integration_test.go)):
 //go:build integration
 
 client := testsupport.NewEntClient(t)            // isolated DB, migrated
-h := buildHandler(cfg, notes.NewService(client), nil) // nil verifier = passthrough
+h := buildHandler(                               // FakeVerifier() stands in for OIDC
+	cfg,
+	users.NewService(client),
+	organizations.NewService(client),
+	clusters.NewService(client, sealer),
+	testsupport.FakeVerifier(),
+)
 // ...exercise /api/* over httptest and assert against the real DB
 ```
 

@@ -2,7 +2,8 @@
 -- records provisioned from OIDC, and the membership join that records which
 -- users belong to which organizations (and their role).
 --
--- This replaces the example `notes` resource, which is dropped below.
+-- Drops the original example `notes` table if a dev database still has it
+-- (a no-op on fresh databases).
 
 DROP TABLE IF EXISTS notes;
 
