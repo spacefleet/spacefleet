@@ -14,7 +14,7 @@ export function Layout() {
     <div className="flex h-screen flex-col bg-gray-50">
       <header className="flex h-14 shrink-0 items-center gap-3 bg-black px-4 text-white">
         <Link to="/" className="flex items-center gap-2" aria-label="Home">
-          <img src={icon} alt="Spacefleet" className="h-7 w-7" />
+          <img src={icon} alt="Spacefleet" className="h-7 w-7 invert" />
           <span className="text-sm font-semibold tracking-tight">Spacefleet</span>
         </Link>
 
