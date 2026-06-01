@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/spacefleet/app/db/migrations"
 	"github.com/spacefleet/app/lib/config"
 	"github.com/spacefleet/app/lib/db"
 	"github.com/spacefleet/app/lib/migrate"
@@ -29,7 +30,7 @@ func runMigrate(args []string) {
 	}
 	defer sqlDB.Close()
 
-	m := migrate.New(sqlDB, "")
+	m := migrate.New(sqlDB, migrations.FS)
 	ctx := context.Background()
 
 	switch args[0] {

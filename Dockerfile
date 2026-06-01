@@ -37,6 +37,8 @@ COPY cmd/ cmd/
 COPY lib/ lib/
 COPY api/ api/
 COPY ent/ ent/
+# SQL migrations the binary embeds via //go:embed (db/migrations/embed.go).
+COPY db/ db/
 COPY ui/embed.go ui/
 
 # The SPA bundle the Go binary embeds via //go:embed all:dist.

@@ -8,14 +8,13 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path/filepath"
-	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/spacefleet/app/db/migrations"
 	"github.com/spacefleet/app/ent"
 	"github.com/spacefleet/app/lib/db"
 	"github.com/spacefleet/app/lib/migrate"
@@ -76,7 +75,7 @@ func NewEntClient(t *testing.T) *ent.Client {
 		t.Fatalf("integration: open test db: %v", err)
 	}
 
-	if _, err := migrate.New(sqlDB, migrationsDir(t)).Up(ctx); err != nil {
+	if _, err := migrate.New(sqlDB, migrations.FS).Up(ctx); err != nil {
 		_ = client.Close()
 		_ = sqlDB.Close()
 		_ = admin.Close()
@@ -96,19 +95,6 @@ func NewEntClient(t *testing.T) *ent.Client {
 	})
 
 	return client
-}
-
-// migrationsDir resolves db/migrations as an absolute path from this source
-// file's location, so tests work regardless of the package's working dir.
-func migrationsDir(t *testing.T) string {
-	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("integration: cannot resolve caller for migrations dir")
-	}
-	// thisFile = <root>/lib/testsupport/db.go
-	root := filepath.Join(filepath.Dir(thisFile), "..", "..")
-	return filepath.Join(root, "db", "migrations")
 }
 
 // withDBName returns dsn with its database (path) replaced by name.

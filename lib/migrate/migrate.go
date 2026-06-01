@@ -12,7 +12,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
+	"io/fs"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -20,20 +20,17 @@ import (
 	atlas "ariga.io/atlas/sql/migrate"
 )
 
-// DefaultDir is where migration files live, relative to the repo root and
-// to the working directory of the binary when run in production.
-const DefaultDir = "db/migrations"
-
 type Migrator struct {
-	db  *sql.DB
-	dir string
+	db   *sql.DB
+	fsys fs.FS
 }
 
-func New(db *sql.DB, dir string) *Migrator {
-	if dir == "" {
-		dir = DefaultDir
-	}
-	return &Migrator{db: db, dir: dir}
+// New returns a Migrator that reads *.sql migration files from fsys. Callers
+// pass the embedded migrations FS (db/migrations) in production, so the binary
+// is self-contained and does not depend on the working directory; tests may
+// pass any fs.FS holding the same files.
+func New(db *sql.DB, fsys fs.FS) *Migrator {
+	return &Migrator{db: db, fsys: fsys}
 }
 
 // Up applies every pending migration in lexical order, in a transaction per
@@ -117,15 +114,19 @@ func (m *Migrator) appliedSet(ctx context.Context) (map[string]struct{}, error) 
 }
 
 func (m *Migrator) orderedFiles() ([]atlas.File, error) {
-	dir, err := atlas.NewLocalDir(m.dir)
+	names, err := fs.Glob(m.fsys, "*.sql")
 	if err != nil {
-		return nil, fmt.Errorf("open migrations dir %q: %w", m.dir, err)
+		return nil, fmt.Errorf("list migrations: %w", err)
 	}
-	files, err := dir.Files()
-	if err != nil {
-		return nil, err
+	sort.Strings(names)
+	files := make([]atlas.File, 0, len(names))
+	for _, n := range names {
+		b, err := fs.ReadFile(m.fsys, n)
+		if err != nil {
+			return nil, fmt.Errorf("read migration %q: %w", n, err)
+		}
+		files = append(files, atlas.NewLocalFile(n, b))
 	}
-	sort.Slice(files, func(i, j int) bool { return files[i].Name() < files[j].Name() })
 	return files, nil
 }
 
@@ -150,11 +151,4 @@ func (m *Migrator) applyOne(ctx context.Context, version string, f atlas.File) e
 // `20260424120000_init_cli_auth`.
 func versionOf(name string) string {
 	return strings.TrimSuffix(filepath.Base(name), ".sql")
-}
-
-// DirExists is a small helper so the subcommand can fail fast with a
-// friendly message when run outside the repo root.
-func DirExists(dir string) bool {
-	info, err := os.Stat(dir)
-	return err == nil && info.IsDir()
 }
