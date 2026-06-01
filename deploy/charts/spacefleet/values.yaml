@@ -7,7 +7,7 @@ replicaCount: 2
 
 image:
   # -- Image repository. CI publishes to ghcr.io/spacefleet/app.
-  repository: ghcr.io/spacefleet/app
+  repository: ghcr.io/spacefleet/spacefleet
   # -- Image tag. Defaults to the chart's appVersion when empty.
   tag: ""
   pullPolicy: IfNotPresent
