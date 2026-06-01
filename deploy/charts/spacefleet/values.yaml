@@ -38,8 +38,36 @@ config:
   # -- Max background jobs the worker process runs in parallel.
   workerConcurrency: 4
   # -- Extra environment variables for both web and worker pods. Standard
-  # core/v1 EnvVar entries, e.g. [{name: FOO, value: bar}].
+  # core/v1 EnvVar entries, e.g. [{name: FOO, value: bar}]. Plaintext — for
+  # non-secret config only. Secrets go under `secrets` below.
   extraEnv: []
+
+  # Secret application config. Unlike `extraEnv` (plaintext, for non-secrets),
+  # these reach the web and worker pods from a Kubernetes Secret — never as
+  # plain env in the rendered manifest. Two combinable ways to supply them:
+  secrets:
+    # -- Credential-encryption key: a base64-encoded 32-byte key. Generate one
+    # with `openssl rand -base64 32`. Spacefleet uses it to envelope-encrypt
+    # credentials it stores at rest (e.g. a registered cluster's token or
+    # kubeconfig). WITHOUT it, registering any resource that carries a
+    # credential fails fast with a clear error; features that store no secrets
+    # keep working. When set here, the chart stores it in its managed Secret
+    # and injects it as SPACEFLEET_SECRET_KEY. For GitOps, prefer leaving this
+    # empty and supplying the key through `envFrom` from a Secret you manage.
+    #
+    # NOT ROTATABLE IN PLACE: changing this key makes every value already
+    # encrypted with the old one unreadable. Set it once, back it up, and keep
+    # it stable for the life of the data.
+    secretKey: ""
+    # -- Load secret env from Secrets you manage out of band (HashiCorp Vault,
+    # External Secrets Operator, Sealed Secrets, or a hand-created Secret).
+    # This is the scalable path for ALL secret config: put SPACEFLEET_SECRET_KEY
+    # and any future secret env into your own Secret(s) and reference them here
+    # — no chart change needed to add a new one. Standard core/v1 EnvFromSource
+    # entries, applied to the web and worker pods. Example:
+    #   - secretRef:
+    #       name: spacefleet-app-secrets
+    envFrom: []
   # -- Extra volumes mounted on the web, worker, AND migrate pods. Standard
   # core/v1 Volume entries. Pair with extraVolumeMounts to land custom TLS
   # assets — e.g. an RDS CA bundle for `sslmode=verify-full&sslrootcert=...`.
@@ -238,9 +266,9 @@ dex:
       userID: "5a9f6c2e-9b1a-4f3d-8c7b-2e4d6a8f0c11"
 
   # -- Upstream identity connectors (GitHub, Google, OIDC, LDAP, …), passed
-  # through verbatim to Dex's `connectors:`. Dex expands $VAR references at load,
-  # so keep client secrets out of values: reference them as env (see dex.envFrom
-  # below) instead of inlining. Example (GitHub):
+  # through to Dex's `connectors:`. Dex expands $VAR references at load, so keep
+  # client secrets out of values: reference them as env (see dex.envFrom below)
+  # instead of inlining. Example (GitHub):
   #   connectors:
   #     - type: github
   #       id: github
@@ -249,6 +277,15 @@ dex:
   #         clientID: <oauth app id>
   #         clientSecret: $GITHUB_CLIENT_SECRET
   #         orgs: [{name: your-org}]
+  #
+  # The connector's OAuth callback (config.redirectURI) is auto-filled from the
+  # issuer as https://<ingress host>/dex/callback for callback-based connector
+  # types (github, gitlab, google, oidc, oauth, microsoft, bitbucketcloud, gitea,
+  # linkedin, atlassian-crowd, openshift, saml) when you don't set one — register
+  # that SAME URL as the callback in the upstream provider (e.g. a GitHub OAuth
+  # App's "Authorization callback URL"). Set config.redirectURI explicitly only to
+  # override (e.g. if you front Dex at a different URL); other types (ldap, …) are
+  # left untouched.
   connectors: []
 
   # -- Additional OIDC clients beyond the app's own (verbatim Dex staticClients).

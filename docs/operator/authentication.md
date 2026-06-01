@@ -170,6 +170,11 @@ organization.
            name: spacefleet-dex-connectors
    ```
 
+   You don't set the connector's own callback (`config.redirectURI`) — it's
+   derived for you as `https://spacefleet.example.com/dex/callback` (your address
+   + `/dex/callback`), the same URL you registered with GitHub in step 1. The two
+   must match; that's why this is the address you give GitHub.
+
 4. **Apply and sign in:** `helm upgrade …`. The login page now offers "Log in
    with GitHub." First sign-in provisions the user automatically.
 
@@ -201,7 +206,8 @@ organization.
            issuer: https://accounts.google.com
            clientID: <your Google client id>
            clientSecret: $GOOGLE_CLIENT_SECRET
-           redirectURI: https://spacefleet.example.com/dex/callback
+           # redirectURI is derived as https://spacefleet.example.com/dex/callback
+           # — set it here only to override (e.g. if you front Dex differently).
      envFrom:
        - secretRef:
            name: spacefleet-dex-connectors
@@ -217,9 +223,11 @@ Many more upstream providers are supported — LDAP, SAML, Microsoft, GitLab,
 generic OIDC, and more. They all follow the same shape: register an app with the
 upstream provider using `https://spacefleet.example.com/dex/callback` as the
 callback, store any secret in a Kubernetes Secret, and add the provider's block
-to `dex.connectors` (referencing the secret as `$VAR` via `dex.envFrom`). Your
-connector configuration is passed through unchanged. See the full list and
-per-connector options in the
+to `dex.connectors` (referencing the secret as `$VAR` via `dex.envFrom`). For
+callback-based providers the connector's `config.redirectURI` is derived to that
+same `…/dex/callback` URL automatically; directory connectors like LDAP that have
+no callback are left as-is. Set `config.redirectURI` yourself only to override.
+See the full list and per-connector options in the
 [Dex connector documentation](https://dexidp.io/docs/connectors/).
 
 ## Choose where login state is stored

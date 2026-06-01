@@ -176,6 +176,19 @@ or an inline external url). False when referencing a user-supplied Secret.
 {{- end -}}
 
 {{/*
+True when the chart renders its managed env Secret (<fullname>-env) at all. That
+Secret carries DATABASE_URL (when the chart owns it) and/or an inline
+config.secrets.secretKey. When neither applies (external DB via existingSecret
+*and* the secret key supplied via config.secrets.envFrom), the chart writes no
+Secret of its own.
+*/}}
+{{- define "spacefleet.manageEnvSecret" -}}
+{{- $manageDB := eq (include "spacefleet.manageDatabaseSecret" .) "true" -}}
+{{- $secretKey := (.Values.config.secrets | default dict).secretKey -}}
+{{- if or $manageDB $secretKey -}}true{{- else -}}false{{- end -}}
+{{- end -}}
+
+{{/*
 Secret name/key to source DATABASE_URL from, as an env entry.
 */}}
 {{- define "spacefleet.databaseEnv" -}}

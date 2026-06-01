@@ -91,6 +91,49 @@ The chart builds `DATABASE_URL` for you:
 If the database is neither bundled nor externally configured, templating fails
 fast with an explanatory error.
 
+## Application secrets
+
+Secret config — anything that must not appear as plaintext env — is delivered to
+the web and worker pods from a Kubernetes Secret, never from the rendered
+manifest. (Use `config.extraEnv` only for non-secrets.) Two combinable ways to
+supply it:
+
+- **Inline** (`config.secrets.secretKey`, and convenient for trials): the chart
+  writes the value into `Secret/<rel>-env` and injects it as
+  `SPACEFLEET_SECRET_KEY`.
+- **From a Secret you manage** (`config.secrets.envFrom`, preferred for
+  production/GitOps): reference existing Secrets (Vault, External Secrets
+  Operator, Sealed Secrets, or hand-created) whose keys are loaded as env on the
+  web and worker pods. This is the scalable path for **all** secret config — add
+  keys to your Secret without touching the chart. If both are set for the same
+  variable, the inline entry wins.
+
+The one secret the app needs today is the **credential-encryption key**,
+`SPACEFLEET_SECRET_KEY` — a base64-encoded 32-byte key used to envelope-encrypt
+credentials stored at rest (e.g. a registered cluster's token or kubeconfig).
+Generate one with `openssl rand -base64 32`. Without it, registering a resource
+that carries a credential fails fast with a clear error; features that store no
+secrets keep working.
+
+```sh
+# GitOps path: bring your own Secret, reference it via config.secrets.envFrom
+kubectl create secret generic spacefleet-app-secrets \
+  --from-literal=SPACEFLEET_SECRET_KEY="$(openssl rand -base64 32)"
+```
+```yaml
+config:
+  secrets:
+    envFrom:
+      - secretRef: {name: spacefleet-app-secrets}
+```
+
+> **The key is not rotatable in place.** Changing it makes every value already
+> encrypted with the old key unreadable. Set it once, back it up, and keep it
+> stable for the life of the data.
+
+See [docs/operator/secrets.md](../../../docs/operator/secrets.md) for the full
+operator guide.
+
 ## Authentication
 
 The app always authenticates against its **bundled Dex** — there is no external
@@ -138,6 +181,14 @@ Enterprise SSO is wired through Dex's connectors, not by repointing the app.
       - secretRef: {name: spacefleet-dex-connectors}
   ```
 
+  The connector's own OAuth callback (`config.redirectURI`) is **derived for you**
+  from the issuer — `https://<your ingress host>/dex/callback` — for callback-based
+  connector types (GitHub, GitLab, Google, OIDC, …), so you don't set it. You
+  **must register that same URL** as the callback in the upstream provider — e.g.
+  a GitHub OAuth App's *Authorization callback URL* is
+  `https://<your ingress host>/dex/callback`. Set `config.redirectURI` explicitly
+  only if you front Dex at a different URL.
+
 `config.oidc.clientID` (the app's OIDC client id, kept in sync with
 `dex.clientID`) is non-secret and is surfaced to the browser via `/config.js`.
 
@@ -165,7 +216,9 @@ commonly set:
 | `dex.connectors` | `[]` | upstream connectors (GitHub, Google, Okta, LDAP, …) |
 | `dex.staticPasswords` | seeded admin | built-in accounts — **change before exposing** |
 | `config.workerConcurrency` | `4` | worker parallelism |
-| `config.extraEnv` | `[]` | extra env for web + worker pods |
+| `config.extraEnv` | `[]` | extra **non-secret** env for web + worker pods |
+| `config.secrets.secretKey` | `""` | credential-encryption key (base64 32 bytes) — inline; `openssl rand -base64 32` |
+| `config.secrets.envFrom` | `[]` | load secret env from Secrets you manage (GitOps path; see [docs](../../../docs/operator/secrets.md)) |
 | `config.extraVolumes` / `config.extraVolumeMounts` | `[]` | mount custom files on web/worker/migrate pods — e.g. a managed DB's CA bundle for TLS (see [docs](../../../docs/operator/database.md)) |
 | `worker.enabled` | `true` | deploy the background worker |
 | `migrations.enabled` | `true` | run `migrate up` on install/upgrade |

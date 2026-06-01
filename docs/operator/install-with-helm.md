@@ -141,7 +141,29 @@ RDS) — see [Database configuration](database.md).
 > If you keep the bundled database for a small deployment, **always override
 > the default password**: `--set postgresql.auth.password=…`.
 
-### 3. Expose the app via Ingress
+### 3. Set the credential-encryption key
+
+Spacefleet encrypts credentials it stores (such as a registered cluster's token
+or kubeconfig) with a key you provide as `SPACEFLEET_SECRET_KEY` — a
+base64-encoded 32-byte key. Without it, registering anything that carries a
+credential fails with a clear error; other features keep working. As with the
+database, the recommended approach keeps the key out of your values by putting
+it in a Secret you control:
+
+```sh
+kubectl create secret generic spacefleet-app-secrets \
+  --from-literal=SPACEFLEET_SECRET_KEY="$(openssl rand -base64 32)"
+```
+
+```sh
+--set config.secrets.envFrom[0].secretRef.name=spacefleet-app-secrets
+```
+
+> ⚠️ **This key cannot be rotated in place** — changing it makes already-encrypted
+> data unreadable. Generate it once and back it up. For the inline (trial)
+> alternative and details, see [Secret configuration](secrets.md).
+
+### 4. Expose the app via Ingress
 
 ```sh
 --set ingress.enabled=true \
@@ -168,6 +190,14 @@ postgresql:
   enabled: false
 externalDatabase:
   existingSecret: spacefleet-db
+
+config:
+  # Secret app config (the credential-encryption key, and anything added later)
+  # comes from a Secret you manage — see "Set the credential-encryption key".
+  secrets:
+    envFrom:
+      - secretRef:
+          name: spacefleet-app-secrets
 
 ingress:
   enabled: true
@@ -218,7 +248,7 @@ helm upgrade --install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
 | `Service/spacefleet` | always | ClusterIP → web |
 | `Ingress/spacefleet` | `ingress.enabled` | external access |
 | `HorizontalPodAutoscaler` | `web.autoscaling.enabled` | scales the web tier |
-| `Secret/spacefleet-env` | unless the URL comes from an existing Secret | holds `DATABASE_URL` |
+| `Secret/spacefleet-env` | when the chart owns `DATABASE_URL` and/or an inline `config.secrets.secretKey` | holds those values; absent when both come from Secrets you manage |
 | `StatefulSet/spacefleet-postgresql` | `postgresql.enabled` | bundled Postgres |
 | `Deployment/spacefleet-dex` (+ Service, RBAC, config Secret) | always | bundled Dex OIDC provider; internal ClusterIP, reached via the app's `/dex` proxy |
 
@@ -238,6 +268,7 @@ reach for most:
 | Key | Default | Purpose |
 | --- | --- | --- |
 | `config.oidc.clientID` | `spacefleet` | OIDC client ID the app uses (keep in sync with `dex.clientID`) |
+| `config.secrets.envFrom` | `[]` | load secret env (e.g. `SPACEFLEET_SECRET_KEY`) from Secrets you manage — see [Secret configuration](secrets.md) |
 | `dex.storage` | `crd` | Dex storage backend — `crd` keeps state in-cluster |
 | `dex.connectors` | `[]` | upstream logins (GitHub, Google, Okta, LDAP, …) |
 | `dex.staticPasswords` | seeded admin | built-in accounts — **change before exposing** |
@@ -323,5 +354,9 @@ the package is private you'll need to `helm registry login ghcr.io` first.
 
 - [Authentication](authentication.md) — how sign-in works with the bundled
   identity provider, plus adding GitHub/Google logins, storage, and hardening.
+- [Secret configuration](secrets.md) — the credential-encryption key and other
+  secret settings (inline for a trial, or from a Secret you manage).
+- [Database configuration](database.md) — connection string, TLS modes, and
+  managed-provider CA bundles.
 - `helm show values oci://ghcr.io/spacefleet/charts/spacefleet --version X.Y.Z`
   — the complete, annotated list of every value the chart accepts.

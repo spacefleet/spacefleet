@@ -39,6 +39,10 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           env:
             {{- include "spacefleet.commonEnv" . | nindent 12 }}
+          {{- with (.Values.config.secrets | default dict).envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
           {{- with .Values.config.extraVolumeMounts }}

@@ -1,4 +1,9 @@
 # Render coverage: out-of-the-box defaults (bundled Postgres + Dex, no
 # ingress). Exercises the no-ingress port-forward path — the issuer derives to
 # http://localhost:8080/dex and the app proxies /dex to the bundled Dex Service.
-{}
+# Also exercises the inline-secretKey path: the key lands in the chart-managed
+# env Secret and is injected as SPACEFLEET_SECRET_KEY (a render-only throwaway
+# value, not a real key).
+config:
+  secrets:
+    secretKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="

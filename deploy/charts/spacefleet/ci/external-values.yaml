@@ -6,6 +6,13 @@ replicaCount: 3
 config:
   oidc:
     clientID: spacefleet
+  # The GitOps path: SPACEFLEET_SECRET_KEY (and any other secret env) comes from
+  # a Secret the operator manages out of band — no inline secretKey, so the
+  # chart renders no env Secret of its own here (DB is external too).
+  secrets:
+    envFrom:
+      - secretRef:
+          name: spacefleet-app-secrets
 
 web:
   autoscaling:

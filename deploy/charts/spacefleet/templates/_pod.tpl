@@ -19,6 +19,15 @@ the ConfigMap, the DATABASE_URL secret ref, and any extraEnv.
 - name: DEX_UPSTREAM_URL
   value: {{ include "spacefleet.dex.upstreamURL" . | quote }}
 {{- include "spacefleet.databaseEnv" . | nindent 0 }}
+{{- /* Credential-encryption key, only when supplied inline; the envFrom path
+       delivers it (and any other secret env) through the container's envFrom. */}}
+{{- with (.Values.config.secrets | default dict).secretKey }}
+- name: SPACEFLEET_SECRET_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "spacefleet.envSecretName" $ }}
+      key: SPACEFLEET_SECRET_KEY
+{{- end }}
 {{- with .Values.config.extraEnv }}
 {{- toYaml . | nindent 0 }}
 {{- end }}
