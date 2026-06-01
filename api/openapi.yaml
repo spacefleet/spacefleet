@@ -217,6 +217,28 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/clusters/{id}/namespaces:
+    get:
+      summary: List the Kubernetes namespaces of a cluster
+      description: |
+        Org-scoped: builds a client from the cluster's stored credentials and
+        lists its namespaces live from the Kubernetes API. The cluster must be
+        reachable; an unreachable cluster yields a 502.
+      operationId: listClusterNamespaces
+      parameters:
+        - $ref: "#/components/parameters/ClusterID"
+      responses:
+        "200":
+          description: The cluster's namespaces
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Namespace"
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/clusters/{id}/pods:
     get:
       summary: List the Kubernetes pods of a cluster
@@ -483,6 +505,24 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/NodeCondition"
+        created_at:
+          type: string
+          format: date-time
+
+    Namespace:
+      type: object
+      description: A single Kubernetes namespace, as seen live on the cluster.
+      required: [name, status, labels, created_at]
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          description: The namespace phase (Active, or Terminating while deleting).
+        labels:
+          type: object
+          additionalProperties:
+            type: string
         created_at:
           type: string
           format: date-time

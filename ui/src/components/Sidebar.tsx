@@ -70,24 +70,44 @@ export function Sidebar() {
 
             {isOpen && (
               <ul className="pb-1">
-                {section.items.map((item) => (
-                  <li key={item.path}>
-                    <NavLink
-                      to={item.path}
-                      end
-                      className={({ isActive }) =>
-                        cn(
-                          "flex items-center border-l-2 py-1.5 pl-10 pr-3 text-sm hover:bg-gray-50",
-                          isActive
-                            ? "border-black bg-gray-50 font-medium text-black"
-                            : "border-transparent text-gray-600",
-                        )
-                      }
-                    >
-                      <span className="truncate">{item.label}</span>
-                    </NavLink>
-                  </li>
-                ))}
+                {section.items.map((item, i) => {
+                  // Render a non-interactive sub-heading above the first leaf of
+                  // each group (groups are contiguous in the nav config).
+                  const showGroup =
+                    item.group !== undefined &&
+                    item.group !== section.items[i - 1]?.group;
+                  return (
+                    <li key={item.path}>
+                      {showGroup && (
+                        <p
+                          className={cn(
+                            "px-3 pb-0.5 pl-10 text-[10px] font-semibold uppercase tracking-wider text-gray-400",
+                            // Extra top space separates a group from the leaves
+                            // above it; the first group sits right under the
+                            // section button so it needs less.
+                            i === 0 ? "pt-1" : "pt-4",
+                          )}
+                        >
+                          {item.group}
+                        </p>
+                      )}
+                      <NavLink
+                        to={item.path}
+                        end
+                        className={({ isActive }) =>
+                          cn(
+                            "flex items-center border-l-2 py-1.5 pl-10 pr-3 text-sm hover:bg-gray-50",
+                            isActive
+                              ? "border-black bg-gray-50 font-medium text-black"
+                              : "border-transparent text-gray-600",
+                          )
+                        }
+                      >
+                        <span className="truncate">{item.label}</span>
+                      </NavLink>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

@@ -9,6 +9,8 @@ import { AuthCallback } from "./routes/AuthCallback";
 import { Clusters } from "./routes/Clusters";
 import { CreateOrganization } from "./routes/CreateOrganization";
 import { Home } from "./routes/Home";
+import { NamespaceDetail } from "./routes/NamespaceDetail";
+import { Namespaces } from "./routes/Namespaces";
 import { NodeDetail } from "./routes/NodeDetail";
 import { Nodes } from "./routes/Nodes";
 import { PodDetail } from "./routes/PodDetail";
@@ -22,6 +24,7 @@ import { navLeaves } from "./nav";
 const pageComponents: Record<string, ReactNode> = {
   "/providers/clusters": <Clusters />,
   "/infrastructure/nodes": <Nodes />,
+  "/infrastructure/namespaces": <Namespaces />,
   "/infrastructure/pods": <Pods />,
 };
 
@@ -63,6 +66,13 @@ export function App() {
                 <Route
                   path="/infrastructure/nodes/:clusterId/:nodeName"
                   element={<NodeDetail />}
+                />
+                {/* Namespace drill-down: a detail route under the Namespaces
+                    leaf, not a nav entry of its own (so it's added here, not in
+                    nav.ts). */}
+                <Route
+                  path="/infrastructure/namespaces/:clusterId/:namespaceName"
+                  element={<NamespaceDetail />}
                 />
                 {/* Pod drill-down: a detail route under the Pods leaf (not a
                     nav entry of its own). The namespace segment disambiguates

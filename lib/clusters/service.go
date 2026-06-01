@@ -183,6 +183,46 @@ func (s *Service) WatchNodes(ctx context.Context, orgID, id uuid.UUID) (*k8s.Nod
 	})
 }
 
+// Namespaces lists the live Kubernetes namespaces of a cluster scoped to the
+// organization. Like Nodes, a connectivity failure is returned to the caller
+// rather than recorded on the cluster row.
+func (s *Service) Namespaces(ctx context.Context, orgID, id uuid.UUID) ([]k8s.Namespace, error) {
+	c, err := s.Get(ctx, orgID, id)
+	if err != nil {
+		return nil, err
+	}
+	creds, err := s.openCreds(c)
+	if err != nil {
+		return nil, err
+	}
+	return k8s.ListNamespaces(ctx, k8s.Connection{
+		Method:      k8s.Method(c.ConnectionMethod),
+		Endpoint:    c.Endpoint,
+		Config:      c.Config,
+		Credentials: creds,
+	})
+}
+
+// WatchNamespaces opens a live watch on a cluster's namespaces scoped to the
+// organization. Like WatchNodes, a connectivity failure is returned to the
+// caller rather than recorded on the cluster row.
+func (s *Service) WatchNamespaces(ctx context.Context, orgID, id uuid.UUID) (*k8s.NamespaceStream, error) {
+	c, err := s.Get(ctx, orgID, id)
+	if err != nil {
+		return nil, err
+	}
+	creds, err := s.openCreds(c)
+	if err != nil {
+		return nil, err
+	}
+	return k8s.WatchNamespaces(ctx, k8s.Connection{
+		Method:      k8s.Method(c.ConnectionMethod),
+		Endpoint:    c.Endpoint,
+		Config:      c.Config,
+		Credentials: creds,
+	})
+}
+
 // Pods lists the live Kubernetes pods of a cluster scoped to the organization,
 // across all namespaces. Like Nodes, a connectivity failure is returned to the
 // caller rather than recorded on the cluster row.

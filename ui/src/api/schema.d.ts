@@ -171,6 +171,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/clusters/{id}/namespaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the Kubernetes namespaces of a cluster
+         * @description Org-scoped: builds a client from the cluster's stored credentials and
+         *     lists its namespaces live from the Kubernetes API. The cluster must be
+         *     reachable; an unreachable cluster yields a 502.
+         */
+        get: operations["listClusterNamespaces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/clusters/{id}/pods": {
         parameters: {
             query?: never;
@@ -327,6 +349,17 @@ export interface components {
             };
             taints: components["schemas"]["NodeTaint"][];
             conditions: components["schemas"]["NodeCondition"][];
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description A single Kubernetes namespace, as seen live on the cluster. */
+        Namespace: {
+            name: string;
+            /** @description The namespace phase (Active, or Terminating while deleting). */
+            status: string;
+            labels: {
+                [key: string]: string;
+            };
             /** Format: date-time */
             created_at: string;
         };
@@ -722,6 +755,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Node"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listClusterNamespaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ClusterID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cluster's namespaces */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Namespace"][];
                 };
             };
             default: components["responses"]["Error"];

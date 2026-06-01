@@ -273,3 +273,116 @@ func listPodsRV(ctx context.Context, cs kubernetes.Interface) ([]Pod, string, er
 	}
 	return out, list.ResourceVersion, nil
 }
+
+// NamespaceStream is an open watch on a cluster's namespaces: the initial
+// Snapshot plus a channel of subsequent changes. It is the namespace
+// counterpart of NodeStream — same lifecycle rules (drain from one goroutine;
+// cancel the context to stop). Namespaces are cluster-level, so the watch is
+// not scoped to a namespace.
+type NamespaceStream struct {
+	Snapshot []Namespace
+	Events   <-chan Event[Namespace]
+}
+
+// WatchNamespaces is the namespace counterpart of WatchNodes: it lists the
+// cluster's namespaces (the snapshot), then streams changes until ctx is
+// cancelled, with the same RetryWatcher resilience and re-list resync.
+func WatchNamespaces(ctx context.Context, conn Connection) (*NamespaceStream, error) {
+	cfg, err := RESTConfig(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
+	cs, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("k8s: client: %w", err)
+	}
+
+	initial, rv, err := listNamespacesRV(ctx, cs)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make(chan Event[Namespace])
+	go func() {
+		defer close(events)
+		currentRV := rv
+		lw := &cache.ListWatch{
+			WatchFuncWithContext: func(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
+				return cs.CoreV1().Namespaces().Watch(ctx, opts)
+			},
+		}
+		for {
+			rw, err := toolswatch.NewRetryWatcherWithContext(ctx, currentRV, lw)
+			if err != nil {
+				return
+			}
+			ctxDone := drainNamespaceWatch(ctx, rw.ResultChan(), events)
+			rw.Stop()
+			if ctxDone {
+				return
+			}
+			snap, newRV, err := listNamespacesRV(ctx, cs)
+			if err != nil {
+				return
+			}
+			currentRV = newRV
+			select {
+			case events <- Event[Namespace]{Type: EventSnapshot, Snapshot: snap}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return &NamespaceStream{Snapshot: initial, Events: events}, nil
+}
+
+// drainNamespaceWatch is the namespace counterpart of drainWatch: it forwards
+// delta events until the channel closes (returns false — resync and restart) or
+// the context is cancelled (returns true — stop).
+func drainNamespaceWatch(ctx context.Context, in <-chan watch.Event, out chan<- Event[Namespace]) bool {
+	for {
+		select {
+		case <-ctx.Done():
+			return true
+		case ev, ok := <-in:
+			if !ok {
+				return false
+			}
+			var t EventType
+			switch ev.Type {
+			case watch.Added:
+				t = EventAdded
+			case watch.Modified:
+				t = EventModified
+			case watch.Deleted:
+				t = EventDeleted
+			default:
+				continue
+			}
+			n, ok := ev.Object.(*corev1.Namespace)
+			if !ok {
+				continue
+			}
+			select {
+			case out <- Event[Namespace]{Type: t, Object: convertNamespace(n)}:
+			case <-ctx.Done():
+				return true
+			}
+		}
+	}
+}
+
+// listNamespacesRV lists namespaces and returns them alongside the list's
+// resourceVersion — the point a watch should start from.
+func listNamespacesRV(ctx context.Context, cs kubernetes.Interface) ([]Namespace, string, error) {
+	list, err := cs.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, "", fmt.Errorf("k8s: list namespaces: %w", err)
+	}
+	out := make([]Namespace, len(list.Items))
+	for i := range list.Items {
+		out[i] = convertNamespace(&list.Items[i])
+	}
+	return out, list.ResourceVersion, nil
+}

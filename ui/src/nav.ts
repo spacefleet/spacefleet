@@ -16,6 +16,12 @@ import {
 export interface NavLeaf {
   label: string;
   path: string;
+  // Optional sub-heading this leaf belongs to within its section. Purely
+  // informational: the sidebar renders a non-interactive label above the first
+  // leaf of each group (e.g. grouping Infrastructure into "Cluster" vs.
+  // "Namespaced" resources). Leaves without a group render directly under the
+  // section, as before.
+  group?: string;
 }
 
 export interface NavSection {
@@ -49,12 +55,15 @@ export const navSections: NavSection[] = [
     label: "Infrastructure",
     icon: Server,
     items: [
-      { label: "Nodes", path: "/infrastructure/nodes" },
-      { label: "Pods", path: "/infrastructure/pods" },
-      { label: "Workloads", path: "/infrastructure/workloads" },
-      { label: "Namespaces", path: "/infrastructure/namespaces" },
-      { label: "Networking", path: "/infrastructure/networking" },
-      { label: "Storage", path: "/infrastructure/storage" },
+      // Cluster-level resources (not scoped to a namespace).
+      { label: "Nodes", path: "/infrastructure/nodes", group: "Cluster" },
+      {
+        label: "Namespaces",
+        path: "/infrastructure/namespaces",
+        group: "Cluster",
+      },
+      // Namespace-level resources.
+      { label: "Pods", path: "/infrastructure/pods", group: "Namespaced" },
     ],
   },
   {
