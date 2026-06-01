@@ -139,6 +139,10 @@ There are three ways to supply each datastore's connection string:
 If a datastore is neither bundled nor externally configured, the chart fails
 templating with an explanatory error rather than deploying something broken.
 
+For the full Postgres connection-string reference — TLS modes, enforcing full
+certificate validation, and mounting a managed provider's CA bundle (e.g. Amazon
+RDS) — see [Database configuration](database.md).
+
 > If you keep the bundled datastores for a small deployment, **always override
 > the default passwords**: `--set postgresql.auth.password=… --set
 > redis.auth.password=…`.

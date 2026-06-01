@@ -40,6 +40,14 @@ config:
   # -- Extra environment variables for both web and worker pods. Standard
   # core/v1 EnvVar entries, e.g. [{name: FOO, value: bar}].
   extraEnv: []
+  # -- Extra volumes mounted on the web, worker, AND migrate pods. Standard
+  # core/v1 Volume entries. Pair with extraVolumeMounts to land custom TLS
+  # assets — e.g. an RDS CA bundle for `sslmode=verify-full&sslrootcert=...`.
+  # See docs/operator/database.md.
+  extraVolumes: []
+  # -- Extra volumeMounts for the app containers (web, worker, migrate).
+  # Standard core/v1 VolumeMount entries referencing extraVolumes by name.
+  extraVolumeMounts: []
 
 # Web (the `serve` subcommand): stateless HTTP API + embedded SPA.
 web:

@@ -171,6 +171,8 @@ commonly set:
 | `dex.connectors` | `[]` | upstream connectors (GitHub, Google, Okta, LDAP, …) |
 | `dex.staticPasswords` | seeded admin | built-in accounts — **change before exposing** |
 | `config.workerConcurrency` | `4` | worker parallelism |
+| `config.extraEnv` | `[]` | extra env for web + worker pods |
+| `config.extraVolumes` / `config.extraVolumeMounts` | `[]` | mount custom files on web/worker/migrate pods — e.g. a managed DB's CA bundle for TLS (see [docs](../../../docs/operator/database.md)) |
 | `worker.enabled` | `true` | deploy the background worker |
 | `migrations.enabled` | `true` | run `migrate up` on install/upgrade |
 | `ingress.enabled` | `false` | expose via Ingress |
