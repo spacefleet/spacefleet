@@ -26,7 +26,7 @@ import (
 func TestOrganizationsIntegration(t *testing.T) {
 	client := testsupport.NewEntClient(t)
 	h := buildHandler(
-		&config.Config{Addr: ":0", Env: "test"},
+		&config.Config{Addr: ":0", Env: "test", AllowOrgCreation: true},
 		users.NewService(client),
 		organizations.NewService(client),
 		nil,
@@ -117,7 +117,7 @@ func TestClustersIntegration(t *testing.T) {
 		t.Fatalf("sealer: %v", err)
 	}
 	h := buildHandler(
-		&config.Config{Addr: ":0", Env: "test"},
+		&config.Config{Addr: ":0", Env: "test", AllowOrgCreation: true},
 		users.NewService(client),
 		organizations.NewService(client),
 		clusters.NewService(client, sealer),
