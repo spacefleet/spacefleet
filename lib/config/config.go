@@ -10,7 +10,6 @@ type Config struct {
 	Addr        string
 	Env         string
 	DatabaseURL string
-	RedisURL    string
 
 	// OIDC (Dex) auth seam. Issuer is the OIDC issuer URL; ClientID is this
 	// app's OIDC client. Both are also surfaced to the browser via /config.js
@@ -59,7 +58,6 @@ func Load() (*Config, error) {
 		Addr:           getenv("ADDR", ":8080"),
 		Env:            getenv("ENV", "development"),
 		DatabaseURL:    os.Getenv("DATABASE_URL"),
-		RedisURL:       os.Getenv("REDIS_URL"),
 		OIDCIssuer:     os.Getenv("OIDC_ISSUER"),
 		OIDCClientID:   os.Getenv("OIDC_CLIENT_ID"),
 		OIDCJWKSURL:    os.Getenv("OIDC_JWKS_URL"),

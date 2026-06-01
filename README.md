@@ -5,13 +5,13 @@ A Go backend + React SPA that ship as a single binary. The Go program serves
 spec drives both the server stubs and the typed TypeScript client.
 
 This is a clean starting point: Go + Postgres (via [ent](https://entgo.io/)) +
-Redis + a React/Vite/Tailwind SPA, with an OpenAPI-driven contract and an
+a React/Vite/Tailwind SPA, with an OpenAPI-driven contract and an
 example `notes` resource wired end-to-end. Authentication runs on
 [Dex](https://dexidp.io/) (OIDC), bootstrapped for local dev in Docker Compose.
 
 ## Stack
 
-- **Backend**: Go, `net/http`, ent ORM over Postgres, [River](https://riverqueue.com/) for background jobs, Redis cache.
+- **Backend**: Go, `net/http`, ent ORM over Postgres, [River](https://riverqueue.com/) for background jobs.
 - **Contract**: [`api/openapi.yaml`](api/openapi.yaml) → Go stubs (`oapi-codegen`) + TS types (`openapi-typescript`).
 - **Frontend**: Vite + React 18 + TypeScript, React Router v7, Tailwind v4, `openapi-fetch`.
 - **Processes**: `serve` (stateless HTTP API) and `worker` (River jobs). Default subcommand is `serve`.
@@ -20,7 +20,7 @@ example `notes` resource wired end-to-end. Authentication runs on
 
 - Go 1.25+ (uses the `tool` directive)
 - Node 20+ and npm
-- Docker (for local Postgres + Redis)
+- Docker (for local Postgres + Dex)
 - [Air](https://github.com/air-verse/air) for `make dev` hot reload — `go install github.com/air-verse/air@latest`
 
 ## Running locally
@@ -43,7 +43,7 @@ still work.
 (Plus the prerequisites above — notably `go install github.com/air-verse/air@latest`
 for `make dev` hot reload.)
 
-**2. Start the dependencies** (Postgres + Redis + Dex, in Docker)
+**2. Start the dependencies** (Postgres + Dex, in Docker)
 
 ```sh
 make services-up
@@ -125,11 +125,11 @@ full lint/test matrix:
 
 The Helm chart is the recommended way to deploy to Kubernetes. It runs the
 `serve` and `worker` processes, applies migrations as a release hook, and always
-bundles Dex (the identity provider); it also bundles Postgres + Redis by default
-for a one-command trial (toggle those off for managed/external services):
+bundles Dex (the identity provider); it also bundles Postgres by default
+for a one-command trial (toggle that off for a managed/external database):
 
 ```sh
-# One-command trial (bundled Postgres + Redis + Dex; reach it via port-forward):
+# One-command trial (bundled Postgres + Dex; reach it via port-forward):
 helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet --version X.Y.Z
 
 # Production: give Dex a real hostname via ingress (its issuer becomes
@@ -140,7 +140,7 @@ helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet --version X.Y
 ```
 
 See [`deploy/charts/spacefleet/README.md`](deploy/charts/spacefleet/README.md)
-for production configuration (external datastores, ingress, autoscaling, Dex
+for production configuration (external database, ingress, autoscaling, Dex
 connectors). Lint and render the chart locally with `make helm-lint` /
 `make helm-template`. The chart now has one subchart dependency (`dexidp/dex`),
 so `make helm-*` run `helm dependency build` for you.

@@ -181,7 +181,7 @@ jobs:
       - run: npm run build
 
   # Browser end-to-end (Playwright) against the full dev stack: Postgres +
-  # Redis + Dex (OIDC). The Playwright config starts the Go API and Vite dev
+  # Dex (OIDC). The Playwright config starts the Go API and Vite dev
   # server itself; this job brings up the backing services and applies
   # migrations first.
   e2e:
@@ -209,7 +209,7 @@ jobs:
           touch ui/dist/.gitkeep
           printf '<!doctype html><title>test</title>' > ui/dist/index.html
 
-      - name: Start services (Postgres + Redis + Dex)
+      - name: Start services (Postgres + Dex)
         run: docker compose up -d --wait
 
       # config.Load() (and the Playwright-started `serve`) read .env from the

@@ -4,7 +4,7 @@ import { defineConfig, devices } from "@playwright/test";
 // serving the SPA and the Go API (:8080) it proxies to. Both are started here
 // if not already running (reuseExistingServer), so locally you can just have
 // `make dev` + `make ui-dev` going. The webServers do NOT start Postgres /
-// Redis / Dex — those must be up first (`make services-up && make migrate-up`).
+// Dex — those must be up first (`make services-up && make migrate-up`).
 export default defineConfig({
   testDir: "./e2e",
   // Auth flows have real redirects; give them room but fail fast in CI.

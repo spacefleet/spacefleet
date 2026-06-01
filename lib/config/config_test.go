@@ -70,7 +70,6 @@ func clearEnv(t *testing.T) {
 		"ADDR",
 		"ENV",
 		"DATABASE_URL",
-		"REDIS_URL",
 		"OIDC_ISSUER",
 		"OIDC_CLIENT_ID",
 		"WORKER_CONCURRENCY",

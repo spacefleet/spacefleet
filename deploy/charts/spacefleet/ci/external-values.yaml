@@ -1,6 +1,6 @@
-# Render coverage: production-style external Postgres + Redis, ingress + HPA on,
+# Render coverage: production-style external Postgres, ingress + HPA on,
 # secrets sourced from a user-managed Secret. Dex is still bundled (the issuer
-# derives from the ingress host) — only the datastores are external here.
+# derives from the ingress host) — only the database is external here.
 replicaCount: 3
 
 config:
@@ -31,8 +31,3 @@ postgresql:
 externalDatabase:
   existingSecret: spacefleet-db
   existingSecretKey: DATABASE_URL
-
-redis:
-  enabled: false
-externalRedis:
-  url: redis://:s3cret@redis.example.com:6379/0

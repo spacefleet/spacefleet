@@ -1,6 +1,6 @@
 apiVersion: v2
 name: spacefleet
-description: Spacefleet — a Go + React single-binary app (API + embedded SPA) with Postgres, Redis, and OIDC auth.
+description: Spacefleet — a Go + React single-binary app (API + embedded SPA) with Postgres and OIDC auth.
 type: application
 
 # version (chart) and appVersion (image tag) are both stamped from the v* git
@@ -18,12 +18,12 @@ keywords:
   - react
   - openapi
 
-# Postgres and Redis are bundled as small first-party StatefulSets running the
-# official upstream images (postgres / redis on Docker Hub). Enabled by default
-# so `helm install` yields a working app out of the box; disable either
-# (postgresql.enabled=false / redis.enabled=false) and point at a managed service
-# via externalDatabase / externalRedis for production. The bundled datastores are
-# single-replica and intended for trials and small deployments, not HA.
+# Postgres is bundled as a small first-party StatefulSet running the official
+# upstream image (postgres on Docker Hub). Enabled by default so `helm install`
+# yields a working app out of the box; disable it (postgresql.enabled=false) and
+# point at a managed service via externalDatabase for production. The bundled
+# datastore is single-replica and intended for trials and small deployments, not
+# HA.
 #
 # Dex is Spacefleet's identity provider and is ALWAYS bundled — it's an internal
 # part of the platform, not an optional add-on, via the official dexidp/dex

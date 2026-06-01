@@ -3,7 +3,7 @@
 Deploys [Spacefleet](https://github.com/spacefleet/spacefleet) — the Go + React
 single-binary app — to Kubernetes: the `serve` web/API process, the `worker`
 background-job process, a `migrate up` release hook, and the always-bundled Dex
-(OIDC) identity provider, plus optional bundled Postgres and Redis.
+(OIDC) identity provider, plus optional bundled Postgres.
 
 The chart is published as an **OCI artifact to GHCR** by the same CI pipeline
 that builds the image, and its `version`/`appVersion` track the app's `v*` git
@@ -11,7 +11,7 @@ tags — so `--version X.Y.Z` always pairs with image `:X.Y.Z`.
 
 ## Install
 
-Out-of-the-box trial (bundled Postgres + Redis + Dex, no ingress). Reach it with
+Out-of-the-box trial (bundled Postgres + Dex, no ingress). Reach it with
 `kubectl port-forward svc/spacefleet 8080:80`; the login issuer falls back to
 `http://localhost:8080/dex`, and the seeded login is `admin@example.com` /
 `password`:
@@ -38,8 +38,6 @@ helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
   --version X.Y.Z \
   --set postgresql.enabled=false \
   --set externalDatabase.existingSecret=spacefleet-db \
-  --set redis.enabled=false \
-  --set externalRedis.existingSecret=spacefleet-redis \
   --set ingress.enabled=true \
   --set ingress.hosts[0].host=spacefleet.example.com
 ```
@@ -56,9 +54,8 @@ helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
 | `Service/<rel>` | always | ClusterIP → web |
 | `Ingress/<rel>` | `ingress.enabled` | |
 | `HorizontalPodAutoscaler` | `web.autoscaling.enabled` | targets the web Deployment |
-| `Secret/<rel>-env` | unless both URLs come from existing Secrets | holds `DATABASE_URL` / `REDIS_URL` |
+| `Secret/<rel>-env` | unless the URL comes from an existing Secret | holds `DATABASE_URL` |
 | `StatefulSet/<rel>-postgresql` (+ Service, Secret) | `postgresql.enabled` | bundled Postgres, official `postgres` image |
-| `StatefulSet/<rel>-redis` (+ Service, Secret) | `redis.enabled` | bundled Redis, official `redis` image |
 | `Deployment/<rel>-dex` (+ Service, RBAC, SA) | always | bundled Dex via the `dexidp/dex` subchart; internal ClusterIP, reached via the app's `/dex` proxy |
 | `Secret/<rel-configured>-dex-config` | always | Dex config this chart renders for the subchart |
 
@@ -68,11 +65,10 @@ after pre-install hooks would run. On upgrades it runs `pre-upgrade`, before
 the new web/worker code rolls out. `migrations.backoffLimit` covers the window
 while Postgres becomes reachable.
 
-The bundled datastores are **single-replica StatefulSets running the official
-upstream images** (the same `postgres:18-alpine` / `redis:7-alpine` as the dev
-`docker-compose.yml`). They're meant for trials and small deployments, not HA;
-for production use a managed/HA datastore via `externalDatabase` /
-`externalRedis`.
+The bundled Postgres is a **single-replica StatefulSet running the official
+upstream image** (the same `postgres:18-alpine` as the dev
+`docker-compose.yml`). It's meant for trials and small deployments, not HA;
+for production use a managed/HA database via `externalDatabase`.
 
 The chart has one chart dependency: the official `dexidp/dex` subchart, always
 deployed (see [Authentication](#authentication)). It is pinned in `Chart.lock`
@@ -81,20 +77,18 @@ and vendored under `charts/`, so `helm dependency build` runs before lint/packag
 
 ## Datastore configuration
 
-The chart builds `DATABASE_URL` / `REDIS_URL` for you:
+The chart builds `DATABASE_URL` for you:
 
-- **Bundled** (`postgresql.enabled` / `redis.enabled`, the default): the URL is
-  built from the chart's auth values and written into `Secret/<rel>-env`.
-  **Override `postgresql.auth.password` and `redis.auth.password` for any real
-  deployment.**
-- **External, inline URL** (`externalDatabase.url` / `externalRedis.url`): the
-  URL you provide is written into `Secret/<rel>-env`.
-- **External, existing Secret** (`externalDatabase.existingSecret` /
-  `externalRedis.existingSecret`): the pods reference your Secret directly; the
-  chart writes nothing. Preferred for production — keeps credentials out of
-  Helm values/release history.
+- **Bundled** (`postgresql.enabled`, the default): the URL is built from the
+  chart's auth values and written into `Secret/<rel>-env`. **Override
+  `postgresql.auth.password` for any real deployment.**
+- **External, inline URL** (`externalDatabase.url`): the URL you provide is
+  written into `Secret/<rel>-env`.
+- **External, existing Secret** (`externalDatabase.existingSecret`): the pods
+  reference your Secret directly; the chart writes nothing. Preferred for
+  production — keeps credentials out of Helm values/release history.
 
-If a datastore is neither bundled nor externally configured, templating fails
+If the database is neither bundled nor externally configured, templating fails
 fast with an explanatory error.
 
 ## Authentication
@@ -149,13 +143,13 @@ Enterprise SSO is wired through Dex's connectors, not by repointing the app.
 
 ## PodSecurity note
 
-The bundled Postgres/Redis pods run the official images, whose entrypoints start
-as root and drop to their service user — fine under **baseline** PodSecurity. In
-a **restricted** namespace, either set `postgresql.podSecurityContext` /
-`redis.podSecurityContext` to run as the image's non-root uid (with a matching
-`fsGroup` so the data volume is writable), or — recommended — disable the bundled
-datastores and use managed ones via `externalDatabase` / `externalRedis`. The app,
-worker, and migrate pods are already locked down (nonroot, read-only rootfs).
+The bundled Postgres pod runs the official image, whose entrypoint starts
+as root and drops to the service user — fine under **baseline** PodSecurity. In
+a **restricted** namespace, either set `postgresql.podSecurityContext` to run as
+the image's non-root uid (with a matching `fsGroup` so the data volume is
+writable), or — recommended — disable the bundled database and use a managed one
+via `externalDatabase`. The app, worker, and migrate pods are already locked
+down (nonroot, read-only rootfs).
 
 ## Values
 
@@ -177,9 +171,9 @@ commonly set:
 | `migrations.enabled` | `true` | run `migrate up` on install/upgrade |
 | `ingress.enabled` | `false` | expose via Ingress |
 | `web.autoscaling.enabled` | `false` | HPA for the web tier |
-| `postgresql.enabled` / `redis.enabled` | `true` | bundle first-party datastores |
-| `postgresql.persistence.size` / `redis.persistence.size` | `8Gi` | bundled-datastore PVC size |
-| `externalDatabase.*` / `externalRedis.*` | — | point at managed datastores |
+| `postgresql.enabled` | `true` | bundle the first-party database |
+| `postgresql.persistence.size` | `8Gi` | bundled-database PVC size |
+| `externalDatabase.*` | — | point at a managed database |
 
 ## Publishing
 

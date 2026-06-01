@@ -5,7 +5,7 @@ program serves `/api/*` and the embedded Vite build from the same origin in
 production. A shared OpenAPI spec drives both the server stubs and the
 TypeScript client.
 
-The stack: Go + Postgres (ent) + Redis + a React/Vite/Tailwind SPA, with an
+The stack: Go + Postgres (ent) + a React/Vite/Tailwind SPA, with an
 OpenAPI-driven contract and Dex (OIDC) authentication. The domain is
 multi-tenant — users belong to **organizations** (via memberships) and most
 resources are scoped to an org; **Kubernetes cluster registration** is the
@@ -25,7 +25,7 @@ and then continue with the rest of this document.
 ## Architecture essentials
 
 - **Entrypoint**: [cmd/spacefleet/main.go](cmd/spacefleet/main.go) dispatches by subcommand — `serve` (HTTP API, the default), `worker` (River background jobs), `migrate` (SQL migrations).
-- **HTTP server**: built in [lib/server/server.go](lib/server/server.go) (wires Postgres+ent, Redis, the credential sealer ([lib/secrets](lib/secrets)), and the domain services), routed in [lib/server/routes.go](lib/server/routes.go).
+- **HTTP server**: built in [lib/server/server.go](lib/server/server.go) (wires Postgres+ent, the credential sealer ([lib/secrets](lib/secrets)), and the domain services), routed in [lib/server/routes.go](lib/server/routes.go).
 - **Routing** mounts three things on one `*http.ServeMux`:
   1. Generated `/api/*` handlers behind the `RequireAuth` middleware.
   2. `/config.js` — emits `window.appConfig` with non-secret OIDC values.
@@ -74,10 +74,10 @@ image (`ghcr.io/spacefleet/spacefleet:X.Y.Z`) and the Helm chart as an OCI artif
 The chart ([deploy/charts/spacefleet](deploy/charts/spacefleet)) deploys `serve`
 (web) + `worker`, runs `migrate up` as a `post-install,pre-upgrade` hook Job
 (post-install, not pre-, so it can reach the bundled Postgres), and builds
-`DATABASE_URL`/`REDIS_URL` into a Secret. Postgres + Redis are bundled as small
-**first-party StatefulSets running the official upstream images** (the same
-`postgres:18-alpine`/`redis:7-alpine` as docker-compose). On by default for
-one-command trials; disable + use `externalDatabase`/`externalRedis` for prod.
+`DATABASE_URL` into a Secret. Postgres is bundled as a small
+**first-party StatefulSet running the official upstream image** (the same
+`postgres:18-alpine` as docker-compose). On by default for
+one-command trials; disable + use `externalDatabase` for prod.
 
 **Auth is always bundled Dex — one mode, no toggle.** The chart **always
 bundles Dex** via the official `dexidp/dex` **subchart** (there is no
@@ -116,7 +116,7 @@ rectangular components; the Tailwind radius scale is overridden to zero in
 ## Dev workflow
 
 ```sh
-make services-up   # Postgres + Redis + Dex (OIDC) — Dex container on :5556
+make services-up   # Postgres + Dex (OIDC) — Dex container on :5556
 make migrate-up    # apply migrations
 make dev           # Go backend on :8080 (Air live-reload)
 make ui-dev        # Vite on :2424, proxies /api/*, /config.js, /dex/* to :8080
@@ -288,13 +288,12 @@ spacefleet-app/
 ├── api/openapi.yaml         # shared contract (drives Go + TS)
 ├── cmd/spacefleet/          # main.go (subcommand dispatch) + serve.go + worker.go + migrate.go
 ├── db/migrations/           # hand-written SQL migrations
-├── deploy/charts/spacefleet # Helm chart (serve+worker+migrate, optional bundled PG/Redis) — published to GHCR as OCI on v* tags
+├── deploy/charts/spacefleet # Helm chart (serve+worker+migrate, optional bundled PG) — published to GHCR as OCI on v* tags
 ├── dev/dex/config.yaml      # Dex (OIDC) bootstrap for local dev — static client + dev login
 ├── ent/                     # ent ORM: schema/ (hand-written) + generated client
 ├── lib/
 │   ├── api/                 # gen.go (generated) + handlers.go + per-resource handler files (clusters.go, …)
 │   ├── auth/                # RequireAuth (fails closed) + OIDC verifier (oidc.go) + OrgContext (org.go)
-│   ├── cache/               # Redis client
 │   ├── clusters/            # cluster-registration domain service (worked-example resource)
 │   ├── config/              # env loading
 │   ├── db/                  # Postgres + ent wiring
@@ -316,7 +315,7 @@ spacefleet-app/
 │   ├── src/test/            # Vitest setup
 │   └── vite.config.ts       # dev server (:2424) /api + /config.js + /dex proxy; Vitest config
 ├── Makefile
-├── docker-compose.yml       # Postgres + Redis + Dex for local dev
+├── docker-compose.yml       # Postgres + Dex for local dev
 ├── Dockerfile               # multi-stage → distroless single binary
 ├── TESTING.md               # testing strategy + how each layer works
 └── .air.toml

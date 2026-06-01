@@ -62,7 +62,7 @@ Resolved image reference. Tag falls back to the chart appVersion.
 {{- end -}}
 
 {{/*
-Name of the chart-managed env Secret (DATABASE_URL / REDIS_URL).
+Name of the chart-managed env Secret (DATABASE_URL).
 */}}
 {{- define "spacefleet.envSecretName" -}}
 {{- printf "%s-env" (include "spacefleet.fullname" .) -}}
@@ -73,10 +73,6 @@ Names of the bundled datastore StatefulSets/Services.
 */}}
 {{- define "spacefleet.postgresql.fullname" -}}
 {{- printf "%s-postgresql" (include "spacefleet.fullname" .) -}}
-{{- end -}}
-
-{{- define "spacefleet.redis.fullname" -}}
-{{- printf "%s-redis" (include "spacefleet.fullname" .) -}}
 {{- end -}}
 
 {{/*
@@ -196,46 +192,11 @@ Secret name/key to source DATABASE_URL from, as an env entry.
 {{- end -}}
 
 {{/*
-REDIS_URL resolution (mirrors DATABASE_URL).
-*/}}
-{{- define "spacefleet.redisURL" -}}
-{{- if .Values.redis.enabled -}}
-{{- if .Values.redis.auth.enabled -}}
-{{- printf "redis://:%s@%s:6379/0" .Values.redis.auth.password (include "spacefleet.redis.fullname" .) -}}
-{{- else -}}
-{{- printf "redis://%s:6379/0" (include "spacefleet.redis.fullname" .) -}}
-{{- end -}}
-{{- else -}}
-{{- .Values.externalRedis.url -}}
-{{- end -}}
-{{- end -}}
-
-{{- define "spacefleet.manageRedisSecret" -}}
-{{- if and (not .Values.redis.enabled) .Values.externalRedis.existingSecret -}}false{{- else -}}true{{- end -}}
-{{- end -}}
-
-{{- define "spacefleet.redisEnv" -}}
-- name: REDIS_URL
-  valueFrom:
-    secretKeyRef:
-{{- if eq (include "spacefleet.manageRedisSecret" .) "true" }}
-      name: {{ include "spacefleet.envSecretName" . }}
-      key: REDIS_URL
-{{- else }}
-      name: {{ .Values.externalRedis.existingSecret }}
-      key: {{ .Values.externalRedis.existingSecretKey }}
-{{- end }}
-{{- end -}}
-
-{{/*
 Fail fast on incoherent value combinations.
 */}}
 {{- define "spacefleet.validate" -}}
 {{- if and (not .Values.postgresql.enabled) (not .Values.externalDatabase.url) (not .Values.externalDatabase.existingSecret) -}}
 {{- fail "Database not configured: enable the bundled postgresql, or set externalDatabase.url / externalDatabase.existingSecret." -}}
-{{- end -}}
-{{- if and (not .Values.redis.enabled) (not .Values.externalRedis.url) (not .Values.externalRedis.existingSecret) -}}
-{{- fail "Redis not configured: enable the bundled redis, or set externalRedis.url / externalRedis.existingSecret." -}}
 {{- end -}}
 {{- if and .Values.ingress.enabled (not (gt (len .Values.ingress.hosts) 0)) -}}
 {{- fail "ingress.enabled=true but ingress.hosts is empty: set at least one host so the OIDC issuer (https://<host>/dex) can be derived." -}}

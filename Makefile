@@ -82,7 +82,7 @@ ui-build:
 clean:
 	rm -rf bin tmp ui/dist ui/node_modules
 
-# Start Postgres + Redis in the background.
+# Start Postgres + Dex in the background.
 services-up:
 	docker compose up -d
 
@@ -92,7 +92,7 @@ services-down:
 services-logs:
 	docker compose logs -f
 
-# Wipe Postgres + Redis data volumes. Destructive.
+# Wipe Postgres data volumes. Destructive.
 services-reset:
 	docker compose down -v
 

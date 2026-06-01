@@ -10,7 +10,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/testsupport"
 )
 
-// handler builds the HTTP tree without a real Postgres/Redis. The account
+// handler builds the HTTP tree without a real Postgres. The account
 // services are nil, so their handlers return 503 — enough to prove the API is
 // mounted under the auth middleware and the SPA fallback works.
 func handler() http.Handler {

@@ -12,7 +12,7 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 
-# -- Secrets for pulling the app image (and bundled Postgres/Redis images) from
+# -- Secrets for pulling the app image (and bundled Postgres image) from
 # a private registry. List of {name: <secret>}.
 imagePullSecrets: []
 
@@ -21,7 +21,7 @@ fullnameOverride: ""
 
 # Application configuration. Non-secret values are injected as plain env on
 # the web/worker pods (the OIDC ones are also surfaced to the browser via
-# /config.js). Secrets (DATABASE_URL, REDIS_URL) are handled separately — see
+# /config.js). Secrets (DATABASE_URL) are handled separately — see
 # postgresql / externalDatabase below.
 config:
   # -- ENV the binary runs under (production|development).
@@ -193,39 +193,6 @@ externalDatabase:
   existingSecret: ""
   # -- Key within existingSecret holding the DSN.
   existingSecretKey: DATABASE_URL
-
-# ---------------------------------------------------------------------------
-# Bundled Redis — a single-replica StatefulSet running the official redis image.
-# ---------------------------------------------------------------------------
-redis:
-  enabled: true
-  # -- Official Redis image. Matches docker-compose for dev/prod parity.
-  image: redis:7-alpine
-  imagePullPolicy: IfNotPresent
-  auth:
-    enabled: true
-    # -- Bundled-Redis password. CHANGE THIS for any real deployment.
-    password: spacefleet
-  persistence:
-    enabled: true
-    size: 8Gi
-    # -- StorageClass for the data PVC. Empty uses the cluster default.
-    storageClass: ""
-  resources: {}
-  # -- Pod securityContext for the Redis pod. See postgresql.podSecurityContext.
-  podSecurityContext: {}
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-
-# Used only when redis.enabled=false.
-externalRedis:
-  # -- Full Redis URL, e.g. redis://:pass@host:6379/0
-  url: ""
-  # -- Name of an existing Secret containing the URL (takes precedence over url).
-  existingSecret: ""
-  # -- Key within existingSecret holding the URL.
-  existingSecretKey: REDIS_URL
 
 # ---------------------------------------------------------------------------
 # Bundled Dex — Spacefleet's identity provider, via the official dexidp/dex

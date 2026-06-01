@@ -1,6 +1,6 @@
 {{/*
 Environment shared by the web and worker containers: non-secret config from
-the ConfigMap, the DATABASE_URL / REDIS_URL secret refs, and any extraEnv.
+the ConfigMap, the DATABASE_URL secret ref, and any extraEnv.
 */}}
 {{- define "spacefleet.commonEnv" -}}
 - name: ADDR
@@ -19,7 +19,6 @@ the ConfigMap, the DATABASE_URL / REDIS_URL secret refs, and any extraEnv.
 - name: DEX_UPSTREAM_URL
   value: {{ include "spacefleet.dex.upstreamURL" . | quote }}
 {{- include "spacefleet.databaseEnv" . | nindent 0 }}
-{{- include "spacefleet.redisEnv" . | nindent 0 }}
 {{- with .Values.config.extraEnv }}
 {{- toYaml . | nindent 0 }}
 {{- end }}

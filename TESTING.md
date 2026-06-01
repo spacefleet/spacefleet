@@ -85,7 +85,7 @@ Home (not NotFound) → an authenticated API call renders → sign out. This is 
 regression guard for cross-cutting bugs that unit/integration tests can't see
 (e.g. the post-login callback routing bug).
 
-Requires the full stack: Postgres + Redis + **Dex** up, migrations applied.
+Requires the full stack: Postgres + **Dex** up, migrations applied.
 The Playwright config starts the Go API and Vite dev server (reusing them if
 already running), so locally you can just have `make dev` + `make ui-dev`
 going.

@@ -1,8 +1,8 @@
 ---
 title: Install & Configure with Helm
-description: Deploy Spacefleet to Kubernetes with the official Helm chart — from a one-command trial to a production setup with external datastores, OIDC, and Ingress.
+description: Deploy Spacefleet to Kubernetes with the official Helm chart — from a one-command trial to a production setup with an external database, OIDC, and Ingress.
 category: Operator
-tags: [helm, kubernetes, install, configuration, oidc, postgres, redis]
+tags: [helm, kubernetes, install, configuration, oidc, postgres]
 ---
 
 # Install & Configure with Helm
@@ -14,8 +14,8 @@ deploys everything you need to run the app:
 - **web** — the `serve` process: the HTTP API plus the embedded React SPA.
 - **worker** — the `worker` process: River background jobs.
 - **migrate** — a one-shot Job that runs database migrations on install/upgrade.
-- **Postgres** and **Redis** — bundled by default so a single command yields a
-  working app, or point at your own managed services for production.
+- **Postgres** — bundled by default so a single command yields a working app, or
+  point at your own managed database for production.
 - **Dex (OIDC)** — the bundled identity provider, always deployed as part of the
   platform so you get real logins without running one separately. The app serves
   it same-origin under `/dex`; you configure who can sign in. See
@@ -29,7 +29,7 @@ This guide takes you from a quick trial to a production-ready deployment.
 - [Helm 3.8+](https://helm.sh/docs/intro/install/) (OCI support is required and
   is on by default in 3.8+).
 - A storage class that can provision PersistentVolumes if you use the bundled
-  Postgres/Redis (most managed clusters have a default).
+  Postgres (most managed clusters have a default).
 
 The chart is published as an OCI artifact, so there is **no `helm repo add`
 step**. You reference it directly by its registry URL:
@@ -44,8 +44,8 @@ always pairs with image `:X.Y.Z`. Replace `X.Y.Z` below with the
 
 ## Quick start (trial)
 
-The fastest way to see Spacefleet running. This uses the **bundled** Postgres,
-Redis, and Dex, with no Ingress:
+The fastest way to see Spacefleet running. This uses the **bundled** Postgres
+and Dex, with no Ingress:
 
 ```sh
 helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
@@ -80,8 +80,8 @@ A real deployment changes three things from the trial:
 
 1. **Authentication** — give the bundled login provider a real hostname and
    replace the seeded admin login.
-2. **Datastores** — use a managed/HA Postgres and Redis instead of the bundled
-   single-replica ones.
+2. **Database** — use a managed/HA Postgres instead of the bundled
+   single-replica one.
 3. **Networking** — expose the app through an Ingress with TLS.
 
 ### 1. Configure authentication (OIDC)
@@ -106,46 +106,40 @@ Setting a real hostname (so logins don't fall back to localhost) and replacing
 the seeded admin are the single most important things to do before exposing the
 deployment.
 
-### 2. Use external datastores
+### 2. Use an external database
 
-For production, disable the bundled StatefulSets and point at managed services.
+For production, disable the bundled StatefulSet and point at a managed service.
 The recommended approach keeps credentials out of your Helm values and release
-history by referencing **existing Secrets** you create yourself:
+history by referencing an **existing Secret** you create yourself:
 
 ```sh
-# Create Secrets holding the connection strings.
+# Create a Secret holding the connection string.
 kubectl create secret generic spacefleet-db \
   --from-literal=DATABASE_URL='postgres://user:pass@db.example.com:5432/spacefleet?sslmode=require'
-
-kubectl create secret generic spacefleet-redis \
-  --from-literal=REDIS_URL='redis://:pass@redis.example.com:6379/0'
 ```
 
 ```sh
 --set postgresql.enabled=false \
---set externalDatabase.existingSecret=spacefleet-db \
---set redis.enabled=false \
---set externalRedis.existingSecret=spacefleet-redis
+--set externalDatabase.existingSecret=spacefleet-db
 ```
 
-There are three ways to supply each datastore's connection string:
+There are three ways to supply the database connection string:
 
 | Mode | How | When to use |
 | --- | --- | --- |
-| **Bundled** (default) | `postgresql.enabled=true` / `redis.enabled=true` | Trials and small deployments. Single-replica, not HA. |
-| **External, inline URL** | `externalDatabase.url=…` / `externalRedis.url=…` | Quick external setup; URL ends up in the release's Secret. |
-| **External, existing Secret** | `externalDatabase.existingSecret=…` / `externalRedis.existingSecret=…` | **Recommended for production** — credentials stay in a Secret you control. |
+| **Bundled** (default) | `postgresql.enabled=true` | Trials and small deployments. Single-replica, not HA. |
+| **External, inline URL** | `externalDatabase.url=…` | Quick external setup; URL ends up in the release's Secret. |
+| **External, existing Secret** | `externalDatabase.existingSecret=…` | **Recommended for production** — credentials stay in a Secret you control. |
 
-If a datastore is neither bundled nor externally configured, the chart fails
+If the database is neither bundled nor externally configured, the chart fails
 templating with an explanatory error rather than deploying something broken.
 
 For the full Postgres connection-string reference — TLS modes, enforcing full
 certificate validation, and mounting a managed provider's CA bundle (e.g. Amazon
 RDS) — see [Database configuration](database.md).
 
-> If you keep the bundled datastores for a small deployment, **always override
-> the default passwords**: `--set postgresql.auth.password=… --set
-> redis.auth.password=…`.
+> If you keep the bundled database for a small deployment, **always override
+> the default password**: `--set postgresql.auth.password=…`.
 
 ### 3. Expose the app via Ingress
 
@@ -174,11 +168,6 @@ postgresql:
   enabled: false
 externalDatabase:
   existingSecret: spacefleet-db
-
-redis:
-  enabled: false
-externalRedis:
-  existingSecret: spacefleet-redis
 
 ingress:
   enabled: true
@@ -229,9 +218,8 @@ helm upgrade --install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
 | `Service/spacefleet` | always | ClusterIP → web |
 | `Ingress/spacefleet` | `ingress.enabled` | external access |
 | `HorizontalPodAutoscaler` | `web.autoscaling.enabled` | scales the web tier |
-| `Secret/spacefleet-env` | unless both URLs come from existing Secrets | holds `DATABASE_URL` / `REDIS_URL` |
+| `Secret/spacefleet-env` | unless the URL comes from an existing Secret | holds `DATABASE_URL` |
 | `StatefulSet/spacefleet-postgresql` | `postgresql.enabled` | bundled Postgres |
-| `StatefulSet/spacefleet-redis` | `redis.enabled` | bundled Redis |
 | `Deployment/spacefleet-dex` (+ Service, RBAC, config Secret) | always | bundled Dex OIDC provider; internal ClusterIP, reached via the app's `/dex` proxy |
 
 **Migrations** run as a Helm hook. On a fresh install the Job runs
@@ -261,10 +249,10 @@ reach for most:
 | `migrations.enabled` | `true` | run `migrate up` on install/upgrade |
 | `web.autoscaling.enabled` | `false` | HPA for the web tier |
 | `ingress.enabled` | `false` | expose via Ingress |
-| `postgresql.enabled` / `redis.enabled` | `true` | bundle first-party datastores |
-| `postgresql.auth.password` / `redis.auth.password` | `spacefleet` | **change for bundled prod** |
-| `postgresql.persistence.size` / `redis.persistence.size` | `8Gi` | bundled-datastore PVC size |
-| `externalDatabase.*` / `externalRedis.*` | — | point at managed datastores |
+| `postgresql.enabled` | `true` | bundle the first-party database |
+| `postgresql.auth.password` | `spacefleet` | **change for bundled prod** |
+| `postgresql.persistence.size` | `8Gi` | bundled-database PVC size |
+| `externalDatabase.*` | — | point at a managed database |
 
 Inspect everything the chart accepts with:
 
@@ -306,10 +294,9 @@ password is unchanged. Set an Ingress host and replace the seeded admin — see
 [Configure authentication](#1-configure-authentication-oidc) — before exposing
 the app.
 
-**A warning about default datastore passwords.** You're using the bundled
-Postgres/Redis with their default `spacefleet` password. Override
-`postgresql.auth.password` / `redis.auth.password`, or move to external
-datastores.
+**A warning about the default database password.** You're using the bundled
+Postgres with its default `spacefleet` password. Override
+`postgresql.auth.password`, or move to an external database.
 
 **The migrate Job keeps retrying / pods are stuck `Pending`.** Usually the
 database isn't reachable yet, or no storage class can satisfy a PVC. Check:
@@ -320,13 +307,13 @@ kubectl logs job/spacefleet-migrate
 kubectl get pvc
 ```
 
-**Restricted PodSecurity rejects the bundled datastores.** The official
-Postgres/Redis images start as root and drop privileges, which is fine under
+**Restricted PodSecurity rejects the bundled database.** The official
+Postgres image starts as root and drops privileges, which is fine under
 **baseline** PodSecurity but rejected under **restricted**. Either set
-`postgresql.podSecurityContext` / `redis.podSecurityContext` to run as the
-image's non-root user (with a matching `fsGroup` so the data volume is
-writable), or — recommended — use external managed datastores. The app, worker,
-and migrate pods are already locked down (nonroot, read-only root filesystem).
+`postgresql.podSecurityContext` to run as the image's non-root user (with a
+matching `fsGroup` so the data volume is writable), or — recommended — use an
+external managed database. The app, worker, and migrate pods are already locked
+down (nonroot, read-only root filesystem).
 
 **`helm install` can't pull the chart.** Make sure you're on Helm 3.8+ and using
 the full `oci://ghcr.io/spacefleet/charts/spacefleet` URL with `--version`. If

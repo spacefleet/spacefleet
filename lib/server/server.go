@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/spacefleet/spacefleet/lib/auth"
-	"github.com/spacefleet/spacefleet/lib/cache"
 	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/config"
 	"github.com/spacefleet/spacefleet/lib/db"
@@ -16,24 +15,13 @@ import (
 	"github.com/spacefleet/spacefleet/lib/users"
 )
 
-// New wires runtime dependencies (Postgres via ent, Redis) and returns a
+// New wires runtime dependencies (Postgres via ent) and returns a
 // ready-to-serve *http.Server. Closing those dependencies is registered
 // with Server.RegisterOnShutdown so callers only drive the HTTP lifecycle.
 func New(cfg *config.Config) (*http.Server, error) {
 	sqlDB, entClient, err := db.Open(cfg.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
-	}
-
-	// Bounded connect timeout — if Redis is down at boot we want a clear
-	// error, not a hanging process.
-	pingCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	redisClient, err := cache.Open(pingCtx, cfg.RedisURL)
-	if err != nil {
-		_ = entClient.Close()
-		_ = sqlDB.Close()
-		return nil, fmt.Errorf("open redis: %w", err)
 	}
 
 	// Sealer for credentials stored at rest (e.g. cluster tokens/kubeconfigs).
@@ -43,7 +31,6 @@ func New(cfg *config.Config) (*http.Server, error) {
 	if err != nil {
 		_ = entClient.Close()
 		_ = sqlDB.Close()
-		_ = redisClient.Close()
 		return nil, fmt.Errorf("build secret sealer: %w", err)
 	}
 
@@ -59,7 +46,6 @@ func New(cfg *config.Config) (*http.Server, error) {
 	if err != nil {
 		_ = entClient.Close()
 		_ = sqlDB.Close()
-		_ = redisClient.Close()
 		return nil, fmt.Errorf("build auth verifier: %w", err)
 	}
 
@@ -74,7 +60,6 @@ func New(cfg *config.Config) (*http.Server, error) {
 	srv.RegisterOnShutdown(func() {
 		_ = entClient.Close()
 		_ = sqlDB.Close()
-		_ = redisClient.Close()
 	})
 	return srv, nil
 }

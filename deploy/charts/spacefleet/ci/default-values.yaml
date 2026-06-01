@@ -1,4 +1,4 @@
-# Render coverage: out-of-the-box defaults (bundled Postgres + Redis + Dex, no
+# Render coverage: out-of-the-box defaults (bundled Postgres + Dex, no
 # ingress). Exercises the no-ingress port-forward path — the issuer derives to
 # http://localhost:8080/dex and the app proxies /dex to the bundled Dex Service.
 {}
