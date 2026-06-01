@@ -87,6 +87,13 @@ migrations:
   backoffLimit: 6
   resources: {}
   annotations: {}
+  # -- Scheduling for the migrate hook Job. This is a blocking install/upgrade
+  # hook, so if your nodes are tainted or web/worker target a specific pool,
+  # set these to match — otherwise an unschedulable migrate pod stalls the
+  # whole release.
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 service:
   type: ClusterIP
