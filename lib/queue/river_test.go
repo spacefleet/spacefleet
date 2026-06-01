@@ -73,6 +73,21 @@ func TestNewWorkers(t *testing.T) {
 	}
 }
 
+// TestWorkersEmpty pins the contract the worker process relies on to
+// decide whether to Start River or idle: a fresh bundle is empty, and
+// registering through AddWorker flips it. River rejects Start on an
+// empty bundle, so a regression here would resurrect the crashloop.
+func TestWorkersEmpty(t *testing.T) {
+	w := NewWorkers()
+	if !w.Empty() {
+		t.Fatal("a fresh registry should be empty")
+	}
+	AddWorker(w, &probeWorker{})
+	if w.Empty() {
+		t.Fatal("registry should not be empty after AddWorker")
+	}
+}
+
 // ---- Integration tests (need real Postgres) ---------------------------------
 
 // integrationDSN reads TEST_DATABASE_URL and skips the test when unset.

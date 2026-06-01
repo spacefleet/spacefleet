@@ -48,12 +48,30 @@ const MaxConcurrency = 64
 // Register* helpers (RegisterBuildWorker, RegisterDestroyAppWorker)
 // rather than river.AddWorker so the panic surface stays in one file.
 type Workers struct {
-	r *river.Workers
+	r     *river.Workers
+	count int
 }
 
 // NewWorkers builds a fresh registry. Each `worker` process makes one.
 func NewWorkers() *Workers {
 	return &Workers{r: river.NewWorkers()}
+}
+
+// AddWorker registers a job worker on the bundle. Prefer this over
+// river.AddWorker so the package can track whether anything has been
+// registered (the worker process idles rather than ask River to Start an
+// empty bundle, which River rejects) and so the generic-panic surface of
+// river.AddWorker stays contained to this file.
+func AddWorker[T river.JobArgs](w *Workers, worker river.Worker[T]) {
+	river.AddWorker(w.r, worker)
+	w.count++
+}
+
+// Empty reports whether any workers have been registered through
+// AddWorker. River refuses to Start a client whose bundle is empty, so
+// the worker process checks this and idles instead.
+func (w *Workers) Empty() bool {
+	return w.count == 0
 }
 
 // Inner returns the underlying *river.Workers. Reach for this only when

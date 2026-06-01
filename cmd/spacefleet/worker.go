@@ -50,9 +50,25 @@ func runWorker(_ []string) {
 		}
 	}
 
-	// Empty registry for now. Register job workers here, e.g.:
-	//   queue.RegisterMyJob(workers, myWorker)
+	// Empty registry for now. Register job workers here as they're built,
+	// e.g.:
+	//   queue.AddWorker(workers, &mypkg.MyWorker{})
 	workers := queue.NewWorkers()
+
+	// River refuses to Start a client with an empty worker bundle ("at
+	// least one Worker must be added"). Until a real job type is
+	// registered above there is nothing to work, so idle instead of
+	// crashlooping: the migrations above have run, and the process stays
+	// up (heartbeating) so the Deployment is healthy and ready for the
+	// first registered job. Drop into the worker path as soon as one is.
+	if workers.Empty() {
+		log.Print("worker: no job workers registered; idling (migrations applied, nothing to work)")
+		go heartbeat(ctx, 30*time.Second)
+		waitForSignal()
+		log.Println("worker: shutting down")
+		cancel() // stop heartbeat
+		return
+	}
 
 	client, err := queue.NewClient(rpool, queue.Config{
 		WorkerMode:  true,
@@ -74,9 +90,7 @@ func runWorker(_ []string) {
 	// signal in the log stream.
 	go heartbeat(ctx, 30*time.Second)
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-	<-stop
+	waitForSignal()
 	log.Println("worker: shutting down")
 
 	cancel() // stop heartbeat
@@ -87,6 +101,14 @@ func runWorker(_ []string) {
 		log.Printf("worker: stop: %v", err)
 	}
 	log.Println("worker: stopped")
+}
+
+// waitForSignal blocks until the process receives SIGINT or SIGTERM —
+// the cue to begin a graceful shutdown.
+func waitForSignal() {
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	<-stop
 }
 
 // heartbeat emits a log line every interval until ctx fires. Cheap, but
