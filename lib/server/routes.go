@@ -23,11 +23,13 @@ var publicAPIPaths = []string{
 }
 
 func registerRoutes(mux *http.ServeMux, cfg *config.Config, usersSvc *users.Service, orgsSvc *organizations.Service, clustersSvc *clusters.Service, verifier auth.TokenVerifier) {
+	srv := api.NewServer(usersSvc, orgsSvc, clustersSvc)
+
 	// API routes are generated from api/openapi.yaml and mounted under
 	// /api/*. oapi-codegen applies middlewares in reverse, so the last
 	// entry wraps outermost. verifier is the bundled-Dex (OIDC) ID-token
 	// verifier; if it is nil, RequireAuth fails closed (see lib/auth).
-	api.HandlerWithOptions(api.NewStrictHandler(api.NewServer(usersSvc, orgsSvc, clustersSvc), nil), api.StdHTTPServerOptions{
+	api.HandlerWithOptions(api.NewStrictHandler(srv, nil), api.StdHTTPServerOptions{
 		BaseRouter: mux,
 		Middlewares: []api.MiddlewareFunc{
 			// OrgContext lifts X-Organization-ID onto the request context for
@@ -38,6 +40,13 @@ func registerRoutes(mux *http.ServeMux, cfg *config.Config, usersSvc *users.Serv
 			api.MiddlewareFunc(auth.RequireAuth(publicAPIPaths, verifier)),
 		},
 	})
+
+	// Streaming endpoints (Server-Sent Events) can't go through the generated
+	// strict handler, so they're mounted here by hand — behind the same auth
+	// chain (RequireAuth outermost, then OrgContext) so they share the generated
+	// routes' security model. See lib/api/stream.go.
+	mux.Handle("GET /api/clusters/{id}/nodes/stream",
+		auth.RequireAuth(publicAPIPaths, verifier)(auth.OrgContext(http.HandlerFunc(srv.StreamClusterNodes))))
 
 	// Public config exposed to the browser as `window.appConfig`. Only
 	// pre-approved, non-secret values go here — it ships to every client.

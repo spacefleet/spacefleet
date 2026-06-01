@@ -71,7 +71,7 @@ func NewOIDCVerifier(ctx context.Context, issuer, clientID, jwksURL string) (Tok
 			Email string `json:"email"`
 		}
 		_ = idToken.Claims(&claims)
-		return &Session{UserID: idToken.Subject, Email: claims.Email}, nil
+		return &Session{UserID: idToken.Subject, Email: claims.Email, ExpiresAt: idToken.Expiry}, nil
 	}, nil
 }
 

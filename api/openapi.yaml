@@ -195,6 +195,28 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/clusters/{id}/nodes:
+    get:
+      summary: List the Kubernetes nodes of a cluster
+      description: |
+        Org-scoped: builds a client from the cluster's stored credentials and
+        lists its nodes live from the Kubernetes API. The cluster must be
+        reachable; an unreachable cluster yields a 502.
+      operationId: listClusterNodes
+      parameters:
+        - $ref: "#/components/parameters/ClusterID"
+      responses:
+        "200":
+          description: The cluster's nodes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Node"
+        default:
+          $ref: "#/components/responses/Error"
+
 components:
   schemas:
     Health:
@@ -324,6 +346,122 @@ components:
           type: string
           format: date-time
         updated_at:
+          type: string
+          format: date-time
+
+    NodeResources:
+      type: object
+      description: A node's compute resources, as reported by Kubernetes.
+      required: [cpu, memory, pods]
+      properties:
+        cpu:
+          type: string
+          description: CPU quantity (e.g. "4" or "3920m").
+        memory:
+          type: string
+          description: Memory quantity (e.g. "16331752Ki").
+        pods:
+          type: string
+          description: Maximum number of pods.
+
+    NodeTaint:
+      type: object
+      required: [key, effect]
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+        effect:
+          type: string
+          description: NoSchedule, PreferNoSchedule, or NoExecute.
+
+    NodeCondition:
+      type: object
+      required: [type, status]
+      properties:
+        type:
+          type: string
+          description: e.g. Ready, MemoryPressure, DiskPressure.
+        status:
+          type: string
+          description: "True, False, or Unknown."
+        reason:
+          type: string
+        message:
+          type: string
+        last_transition_time:
+          type: string
+          format: date-time
+          nullable: true
+
+    Node:
+      type: object
+      description: A single Kubernetes node, as seen live on the cluster.
+      required:
+        [name, ready, unschedulable, roles, labels, taints, conditions, created_at]
+      properties:
+        name:
+          type: string
+        ready:
+          type: boolean
+          description: Whether the node's Ready condition is True.
+        unschedulable:
+          type: boolean
+          description: Whether the node is cordoned (spec.unschedulable).
+        roles:
+          type: array
+          description: Roles derived from node-role.kubernetes.io/* labels.
+          items:
+            type: string
+        kubelet_version:
+          type: string
+        os_image:
+          type: string
+        kernel_version:
+          type: string
+        container_runtime:
+          type: string
+        architecture:
+          type: string
+        operating_system:
+          type: string
+        internal_ip:
+          type: string
+        external_ip:
+          type: string
+        hostname:
+          type: string
+        pod_cidr:
+          type: string
+        provider_id:
+          type: string
+        instance_type:
+          type: string
+          description: From the node.kubernetes.io/instance-type label.
+        zone:
+          type: string
+          description: From the topology.kubernetes.io/zone label.
+        region:
+          type: string
+          description: From the topology.kubernetes.io/region label.
+        capacity:
+          $ref: "#/components/schemas/NodeResources"
+        allocatable:
+          $ref: "#/components/schemas/NodeResources"
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        taints:
+          type: array
+          items:
+            $ref: "#/components/schemas/NodeTaint"
+        conditions:
+          type: array
+          items:
+            $ref: "#/components/schemas/NodeCondition"
+        created_at:
           type: string
           format: date-time
 

@@ -244,6 +244,82 @@ type Me struct {
 	User          User            `json:"user"`
 }
 
+// Node A single Kubernetes node, as seen live on the cluster.
+type Node struct {
+	// Allocatable A node's compute resources, as reported by Kubernetes.
+	Allocatable  *NodeResources `json:"allocatable,omitempty"`
+	Architecture *string        `json:"architecture,omitempty"`
+
+	// Capacity A node's compute resources, as reported by Kubernetes.
+	Capacity         *NodeResources  `json:"capacity,omitempty"`
+	Conditions       []NodeCondition `json:"conditions"`
+	ContainerRuntime *string         `json:"container_runtime,omitempty"`
+	CreatedAt        time.Time       `json:"created_at"`
+	ExternalIp       *string         `json:"external_ip,omitempty"`
+	Hostname         *string         `json:"hostname,omitempty"`
+
+	// InstanceType From the node.kubernetes.io/instance-type label.
+	InstanceType    *string           `json:"instance_type,omitempty"`
+	InternalIp      *string           `json:"internal_ip,omitempty"`
+	KernelVersion   *string           `json:"kernel_version,omitempty"`
+	KubeletVersion  *string           `json:"kubelet_version,omitempty"`
+	Labels          map[string]string `json:"labels"`
+	Name            string            `json:"name"`
+	OperatingSystem *string           `json:"operating_system,omitempty"`
+	OsImage         *string           `json:"os_image,omitempty"`
+	PodCidr         *string           `json:"pod_cidr,omitempty"`
+	ProviderId      *string           `json:"provider_id,omitempty"`
+
+	// Ready Whether the node's Ready condition is True.
+	Ready bool `json:"ready"`
+
+	// Region From the topology.kubernetes.io/region label.
+	Region *string `json:"region,omitempty"`
+
+	// Roles Roles derived from node-role.kubernetes.io/* labels.
+	Roles  []string    `json:"roles"`
+	Taints []NodeTaint `json:"taints"`
+
+	// Unschedulable Whether the node is cordoned (spec.unschedulable).
+	Unschedulable bool `json:"unschedulable"`
+
+	// Zone From the topology.kubernetes.io/zone label.
+	Zone *string `json:"zone,omitempty"`
+}
+
+// NodeCondition defines model for NodeCondition.
+type NodeCondition struct {
+	LastTransitionTime *time.Time `json:"last_transition_time,omitempty"`
+	Message            *string    `json:"message,omitempty"`
+	Reason             *string    `json:"reason,omitempty"`
+
+	// Status True, False, or Unknown.
+	Status string `json:"status"`
+
+	// Type e.g. Ready, MemoryPressure, DiskPressure.
+	Type string `json:"type"`
+}
+
+// NodeResources A node's compute resources, as reported by Kubernetes.
+type NodeResources struct {
+	// Cpu CPU quantity (e.g. "4" or "3920m").
+	Cpu string `json:"cpu"`
+
+	// Memory Memory quantity (e.g. "16331752Ki").
+	Memory string `json:"memory"`
+
+	// Pods Maximum number of pods.
+	Pods string `json:"pods"`
+}
+
+// NodeTaint defines model for NodeTaint.
+type NodeTaint struct {
+	// Effect NoSchedule, PreferNoSchedule, or NoExecute.
+	Effect string  `json:"effect"`
+	Key    string  `json:"key"`
+	Value  *string `json:"value,omitempty"`
+}
+
 // OrgMembership defines model for OrgMembership.
 type OrgMembership struct {
 	Organization Organization `json:"organization"`
@@ -307,6 +383,9 @@ type ServerInterface interface {
 	// Update a cluster (name and/or credentials)
 	// (PATCH /api/clusters/{id})
 	UpdateCluster(w http.ResponseWriter, r *http.Request, id ClusterID)
+	// List the Kubernetes nodes of a cluster
+	// (GET /api/clusters/{id}/nodes)
+	ListClusterNodes(w http.ResponseWriter, r *http.Request, id ClusterID)
 	// Re-probe a cluster's connectivity
 	// (POST /api/clusters/{id}/test)
 	TestCluster(w http.ResponseWriter, r *http.Request, id ClusterID)
@@ -427,6 +506,31 @@ func (siw *ServerInterfaceWrapper) UpdateCluster(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateCluster(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListClusterNodes operation middleware
+func (siw *ServerInterfaceWrapper) ListClusterNodes(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id ClusterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListClusterNodes(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -653,6 +757,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("DELETE "+options.BaseURL+"/api/clusters/{id}", wrapper.DeleteCluster)
 	m.HandleFunc("GET "+options.BaseURL+"/api/clusters/{id}", wrapper.GetCluster)
 	m.HandleFunc("PATCH "+options.BaseURL+"/api/clusters/{id}", wrapper.UpdateCluster)
+	m.HandleFunc("GET "+options.BaseURL+"/api/clusters/{id}/nodes", wrapper.ListClusterNodes)
 	m.HandleFunc("POST "+options.BaseURL+"/api/clusters/{id}/test", wrapper.TestCluster)
 	m.HandleFunc("GET "+options.BaseURL+"/api/health", wrapper.GetHealth)
 	m.HandleFunc("GET "+options.BaseURL+"/api/me", wrapper.GetMe)
@@ -808,6 +913,35 @@ func (response UpdateClusterdefaultJSONResponse) VisitUpdateClusterResponse(w ht
 	return json.NewEncoder(w).Encode(response.Body)
 }
 
+type ListClusterNodesRequestObject struct {
+	Id ClusterID `json:"id"`
+}
+
+type ListClusterNodesResponseObject interface {
+	VisitListClusterNodesResponse(w http.ResponseWriter) error
+}
+
+type ListClusterNodes200JSONResponse []Node
+
+func (response ListClusterNodes200JSONResponse) VisitListClusterNodesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListClusterNodesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListClusterNodesdefaultJSONResponse) VisitListClusterNodesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
 type TestClusterRequestObject struct {
 	Id ClusterID `json:"id"`
 }
@@ -957,6 +1091,9 @@ type StrictServerInterface interface {
 	// Update a cluster (name and/or credentials)
 	// (PATCH /api/clusters/{id})
 	UpdateCluster(ctx context.Context, request UpdateClusterRequestObject) (UpdateClusterResponseObject, error)
+	// List the Kubernetes nodes of a cluster
+	// (GET /api/clusters/{id}/nodes)
+	ListClusterNodes(ctx context.Context, request ListClusterNodesRequestObject) (ListClusterNodesResponseObject, error)
 	// Re-probe a cluster's connectivity
 	// (POST /api/clusters/{id}/test)
 	TestCluster(ctx context.Context, request TestClusterRequestObject) (TestClusterResponseObject, error)
@@ -1143,6 +1280,32 @@ func (sh *strictHandler) UpdateCluster(w http.ResponseWriter, r *http.Request, i
 	}
 }
 
+// ListClusterNodes operation middleware
+func (sh *strictHandler) ListClusterNodes(w http.ResponseWriter, r *http.Request, id ClusterID) {
+	var request ListClusterNodesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListClusterNodes(ctx, request.(ListClusterNodesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListClusterNodes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListClusterNodesResponseObject); ok {
+		if err := validResponse.VisitListClusterNodesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // TestCluster operation middleware
 func (sh *strictHandler) TestCluster(w http.ResponseWriter, r *http.Request, id ClusterID) {
 	var request TestClusterRequestObject
@@ -1284,49 +1447,61 @@ func (sh *strictHandler) RenameOrganization(w http.ResponseWriter, r *http.Reque
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

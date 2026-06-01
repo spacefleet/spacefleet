@@ -141,6 +141,47 @@ func (s *Service) Test(ctx context.Context, orgID, id uuid.UUID) (*ent.Cluster, 
 	return s.probe(ctx, c)
 }
 
+// Nodes lists the live Kubernetes nodes of a cluster scoped to the
+// organization. Unlike probe, a connectivity failure is returned to the caller
+// (the cluster row's status is not touched) so the handler can surface it.
+func (s *Service) Nodes(ctx context.Context, orgID, id uuid.UUID) ([]k8s.Node, error) {
+	c, err := s.Get(ctx, orgID, id)
+	if err != nil {
+		return nil, err
+	}
+	creds, err := s.openCreds(c)
+	if err != nil {
+		return nil, err
+	}
+	return k8s.ListNodes(ctx, k8s.Connection{
+		Method:      k8s.Method(c.ConnectionMethod),
+		Endpoint:    c.Endpoint,
+		Config:      c.Config,
+		Credentials: creds,
+	})
+}
+
+// WatchNodes opens a live watch on a cluster's nodes scoped to the
+// organization: an initial snapshot plus a channel of subsequent changes. The
+// watch runs until ctx is cancelled. Like Nodes, a connectivity failure is
+// returned to the caller rather than recorded on the cluster row.
+func (s *Service) WatchNodes(ctx context.Context, orgID, id uuid.UUID) (*k8s.NodeStream, error) {
+	c, err := s.Get(ctx, orgID, id)
+	if err != nil {
+		return nil, err
+	}
+	creds, err := s.openCreds(c)
+	if err != nil {
+		return nil, err
+	}
+	return k8s.WatchNodes(ctx, k8s.Connection{
+		Method:      k8s.Method(c.ConnectionMethod),
+		Endpoint:    c.Endpoint,
+		Config:      c.Config,
+		Credentials: creds,
+	})
+}
+
 // probe opens the stored credentials, checks reachability, and records the
 // status/version/timestamp. A failure to build or reach the cluster is captured
 // as an error status on the row rather than returned as a service error — the

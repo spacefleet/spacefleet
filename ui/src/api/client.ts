@@ -45,3 +45,15 @@ const orgMiddleware: Middleware = {
 };
 
 api.use(orgMiddleware);
+
+// Streaming endpoints (Server-Sent Events) are consumed over fetch rather than
+// the openapi-fetch client, so they can't go through the middleware above.
+// These accessors expose the same token/org sources so a stream can send the
+// identical Authorization + X-Organization-ID headers (see lib/useResourceStream).
+export async function authToken(): Promise<string | null> {
+  return tokenProvider ? tokenProvider() : null;
+}
+
+export function currentOrgId(): string | null {
+  return orgProvider ? orgProvider() : null;
+}

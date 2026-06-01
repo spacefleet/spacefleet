@@ -9,6 +9,8 @@ import { AuthCallback } from "./routes/AuthCallback";
 import { Clusters } from "./routes/Clusters";
 import { CreateOrganization } from "./routes/CreateOrganization";
 import { Home } from "./routes/Home";
+import { NodeDetail } from "./routes/NodeDetail";
+import { Nodes } from "./routes/Nodes";
 import { NotFound } from "./routes/NotFound";
 import { Placeholder } from "./routes/Placeholder";
 import { navLeaves } from "./nav";
@@ -17,6 +19,7 @@ import { navLeaves } from "./nav";
 // scaffolded Placeholder — swap entries in as pages are built.
 const pageComponents: Record<string, ReactNode> = {
   "/providers/clusters": <Clusters />,
+  "/infrastructure/nodes": <Nodes />,
 };
 
 export function App() {
@@ -52,6 +55,12 @@ export function App() {
                       element={pageComponents[leaf.path] ?? <Placeholder />}
                     />
                   ))}
+                {/* Node drill-down: a detail route under the Nodes leaf, not a
+                    nav entry of its own (so it's added here, not in nav.ts). */}
+                <Route
+                  path="/infrastructure/nodes/:clusterId/:nodeName"
+                  element={<NodeDetail />}
+                />
                 <Route path="*" element={<NotFound />} />
               </Route>
             </Route>

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/lib/clusters"
@@ -202,6 +203,96 @@ func (s *Server) TestCluster(ctx context.Context, req TestClusterRequestObject) 
 		return nil, err
 	}
 	return TestCluster200JSONResponse(toAPICluster(c)), nil
+}
+
+func (s *Server) ListClusterNodes(ctx context.Context, req ListClusterNodesRequestObject) (ListClusterNodesResponseObject, error) {
+	orgID, aerr, err := s.resolveOrg(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[ListClusterNodesdefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	nodes, err := s.clusters.Nodes(ctx, orgID, req.Id)
+	if err != nil {
+		status, code, msg := nodesFetchError(err)
+		return errResp[ListClusterNodesdefaultJSONResponse](status, code, msg), nil
+	}
+	return ListClusterNodes200JSONResponse(toAPINodes(nodes)), nil
+}
+
+// nodesFetchError classifies a node list/watch failure into a client-facing
+// status. The distinction matters for the live stream: the client retries
+// transient failures (an unreachable cluster may come back) but stops on
+// terminal ones. A Kubernetes authorization denial (e.g. the cluster's stored
+// credentials lack RBAC to list nodes) won't fix itself on retry, so it's
+// reported as a terminal 403 rather than a retriable 502.
+func nodesFetchError(err error) (status int, code, msg string) {
+	switch {
+	case ent.IsNotFound(err):
+		return http.StatusNotFound, "not_found", "cluster not found"
+	case errors.Is(err, secrets.ErrDisabled):
+		return http.StatusBadRequest, "encryption_unavailable", "this cluster has credentials but no encryption key is configured — set SPACEFLEET_SECRET_KEY"
+	case apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err):
+		return http.StatusForbidden, "cluster_forbidden", "the cluster's credentials are not authorized to list nodes: " + err.Error()
+	default:
+		// Building the client or reaching the API server failed: the request is
+		// well-formed, but the upstream cluster is (currently) unreachable.
+		return http.StatusBadGateway, "cluster_unreachable", err.Error()
+	}
+}
+
+func toAPINode(n k8s.Node) Node {
+	out := Node{
+		Name:             n.Name,
+		Ready:            n.Ready,
+		Unschedulable:    n.Unschedulable,
+		Roles:            n.Roles,
+		Labels:           n.Labels,
+		Architecture:     optStr(n.Architecture),
+		ContainerRuntime: optStr(n.ContainerRuntime),
+		ExternalIp:       optStr(n.ExternalIP),
+		Hostname:         optStr(n.Hostname),
+		InstanceType:     optStr(n.InstanceType),
+		InternalIp:       optStr(n.InternalIP),
+		KernelVersion:    optStr(n.KernelVersion),
+		KubeletVersion:   optStr(n.KubeletVersion),
+		OperatingSystem:  optStr(n.OperatingSystem),
+		OsImage:          optStr(n.OSImage),
+		PodCidr:          optStr(n.PodCIDR),
+		ProviderId:       optStr(n.ProviderID),
+		Region:           optStr(n.Region),
+		Zone:             optStr(n.Zone),
+		CreatedAt:        n.CreatedAt,
+		Capacity:         &NodeResources{Cpu: n.Capacity.CPU, Memory: n.Capacity.Memory, Pods: n.Capacity.Pods},
+		Allocatable:      &NodeResources{Cpu: n.Allocatable.CPU, Memory: n.Allocatable.Memory, Pods: n.Allocatable.Pods},
+		Taints:           make([]NodeTaint, len(n.Taints)),
+		Conditions:       make([]NodeCondition, len(n.Conditions)),
+	}
+	if out.Roles == nil {
+		out.Roles = []string{}
+	}
+	if out.Labels == nil {
+		out.Labels = map[string]string{}
+	}
+	for i, t := range n.Taints {
+		out.Taints[i] = NodeTaint{Key: t.Key, Value: optStr(t.Value), Effect: t.Effect}
+	}
+	for i, c := range n.Conditions {
+		nc := NodeCondition{Type: c.Type, Status: c.Status, Reason: optStr(c.Reason), Message: optStr(c.Message)}
+		nc.LastTransitionTime = c.LastTransitionTime
+		out.Conditions[i] = nc
+	}
+	return out
+}
+
+// optStr returns a pointer to s, or nil when s is empty — so omitempty fields
+// stay absent from the JSON rather than serializing as "".
+func optStr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // clusterWriteError maps service-layer write errors common to create/update to

@@ -149,6 +149,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/clusters/{id}/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the Kubernetes nodes of a cluster
+         * @description Org-scoped: builds a client from the cluster's stored credentials and
+         *     lists its nodes live from the Kubernetes API. The cluster must be
+         *     reachable; an unreachable cluster yields a 502.
+         */
+        get: operations["listClusterNodes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -224,6 +246,67 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        /** @description A node's compute resources, as reported by Kubernetes. */
+        NodeResources: {
+            /** @description CPU quantity (e.g. "4" or "3920m"). */
+            cpu: string;
+            /** @description Memory quantity (e.g. "16331752Ki"). */
+            memory: string;
+            /** @description Maximum number of pods. */
+            pods: string;
+        };
+        NodeTaint: {
+            key: string;
+            value?: string;
+            /** @description NoSchedule, PreferNoSchedule, or NoExecute. */
+            effect: string;
+        };
+        NodeCondition: {
+            /** @description e.g. Ready, MemoryPressure, DiskPressure. */
+            type: string;
+            /** @description True, False, or Unknown. */
+            status: string;
+            reason?: string;
+            message?: string;
+            /** Format: date-time */
+            last_transition_time?: string | null;
+        };
+        /** @description A single Kubernetes node, as seen live on the cluster. */
+        Node: {
+            name: string;
+            /** @description Whether the node's Ready condition is True. */
+            ready: boolean;
+            /** @description Whether the node is cordoned (spec.unschedulable). */
+            unschedulable: boolean;
+            /** @description Roles derived from node-role.kubernetes.io/* labels. */
+            roles: string[];
+            kubelet_version?: string;
+            os_image?: string;
+            kernel_version?: string;
+            container_runtime?: string;
+            architecture?: string;
+            operating_system?: string;
+            internal_ip?: string;
+            external_ip?: string;
+            hostname?: string;
+            pod_cidr?: string;
+            provider_id?: string;
+            /** @description From the node.kubernetes.io/instance-type label. */
+            instance_type?: string;
+            /** @description From the topology.kubernetes.io/zone label. */
+            zone?: string;
+            /** @description From the topology.kubernetes.io/region label. */
+            region?: string;
+            capacity?: components["schemas"]["NodeResources"];
+            allocatable?: components["schemas"]["NodeResources"];
+            labels: {
+                [key: string]: string;
+            };
+            taints: components["schemas"]["NodeTaint"][];
+            conditions: components["schemas"]["NodeCondition"][];
+            /** Format: date-time */
+            created_at: string;
         };
         /**
          * @description A flat object: only the fields relevant to the chosen connection_method
@@ -540,6 +623,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Cluster"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listClusterNodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ClusterID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cluster's nodes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Node"][];
                 };
             };
             default: components["responses"]["Error"];

@@ -13,7 +13,7 @@ export function Placeholder() {
   const title = match?.leaf.label ?? "Page";
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div>
       {sectionLabel && (
         <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
           {sectionLabel}

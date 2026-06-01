@@ -62,7 +62,7 @@ export function Clusters() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div>
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-gray-400">

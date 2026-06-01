@@ -11,15 +11,20 @@ package auth
 import (
 	"context"
 	"net/http"
+	"time"
 )
 
 // Session is the identity surfaced to handlers. UserID is the OIDC subject
 // (stable, unique per user); Email is the email claim, used when provisioning
-// the local user record. Add more fields (groups, etc.) as the Dex claims you
-// rely on solidify.
+// the local user record. ExpiresAt is the token's expiry (the `exp` claim),
+// used to bound long-lived connections such as SSE streams so they never
+// outlive the credential that authorized them; it is the zero time when the
+// verifier doesn't supply one (e.g. test fakes). Add more fields (groups, etc.)
+// as the Dex claims you rely on solidify.
 type Session struct {
-	UserID string
-	Email  string
+	UserID    string
+	Email     string
+	ExpiresAt time.Time
 }
 
 type contextKey int
