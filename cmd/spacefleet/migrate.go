@@ -20,11 +20,14 @@ func runMigrate(args []string) {
 		os.Exit(2)
 	}
 
-	cfg, err := config.Load()
+	// migrate only needs the database; it deliberately does not load the full
+	// serve-time config (EXTERNAL_URL, OIDC, …), matching the DB-only env the
+	// Helm chart gives the migrate Job.
+	dbURL, err := config.LoadDatabaseURL()
 	if err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
-	sqlDB, _, err := db.Open(cfg.DatabaseURL)
+	sqlDB, _, err := db.Open(dbURL)
 	if err != nil {
 		log.Fatalf("migrate: %v", err)
 	}

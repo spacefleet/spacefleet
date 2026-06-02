@@ -113,6 +113,20 @@ func (c *Config) EmailEnabled() bool {
 	return c.SMTPHost != "" && c.SMTPFrom != ""
 }
 
+// LoadDatabaseURL reads just the Postgres connection string, for commands that
+// touch only the database (the `migrate` subcommand) and must not require the
+// serve-time configuration the full Load() enforces — notably EXTERNAL_URL and
+// the OIDC settings, which a migration never uses. This mirrors the Helm
+// chart, whose migrate Job is given a DB-only environment. Fails closed when
+// DATABASE_URL is unset.
+func LoadDatabaseURL() (string, error) {
+	url := os.Getenv("DATABASE_URL")
+	if url == "" {
+		return "", fmt.Errorf("DATABASE_URL is required")
+	}
+	return url, nil
+}
+
 func Load() (*Config, error) {
 	cfg := &Config{
 		Addr:           getenv("ADDR", ":8080"),

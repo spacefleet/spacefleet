@@ -46,6 +46,30 @@ func TestLoadRequiresExternalURL(t *testing.T) {
 	}
 }
 
+// TestLoadDatabaseURL covers the DB-only loader used by `migrate`: it returns
+// DATABASE_URL without requiring EXTERNAL_URL (which migrations never use), and
+// fails closed when DATABASE_URL is unset.
+func TestLoadDatabaseURL(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DATABASE_URL", "postgres://localhost/app")
+	// Deliberately no EXTERNAL_URL — migrate must not require it.
+
+	url, err := LoadDatabaseURL()
+	if err != nil {
+		t.Fatalf("LoadDatabaseURL: %v", err)
+	}
+	if url != "postgres://localhost/app" {
+		t.Errorf("url = %q", url)
+	}
+}
+
+func TestLoadDatabaseURLRequiresDatabaseURL(t *testing.T) {
+	clearEnv(t)
+	if _, err := LoadDatabaseURL(); err == nil {
+		t.Fatal("expected LoadDatabaseURL to fail when DATABASE_URL is unset")
+	}
+}
+
 func TestLoadOverrides(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("ADDR", ":9090")
