@@ -69,8 +69,11 @@ describe("OrgGate + OrgSwitcher", () => {
     // App renders, defaulting to the first org.
     expect(await screen.findByText("protected content")).toBeInTheDocument();
 
-    // Opening the switcher reveals both organizations.
-    await userEvent.click(screen.getByRole("button", { name: /Acme/ }));
+    // Opening the switcher reveals both organizations. The current org is
+    // selected in an effect that runs a tick after Layout renders, so the
+    // trigger's label flips from its placeholder to "Acme" asynchronously —
+    // find it (retries) rather than get it (one shot) to avoid a CI race.
+    await userEvent.click(await screen.findByRole("button", { name: /Acme/ }));
     expect(screen.getByRole("menuitem", { name: /Globex/ })).toBeInTheDocument();
 
     // Switching persists the selection.
