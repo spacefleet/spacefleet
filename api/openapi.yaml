@@ -269,8 +269,9 @@ paths:
         resolves the identity they map to, and checks — live against the
         Kubernetes API — which product capabilities the credentials are allowed.
         Each capability is reported as allowed or denied; denied capabilities
-        carry the missing RBAC rules and identity-aware remediation. The cluster
-        must be reachable; an unreachable cluster yields a 502.
+        carry the missing RBAC rules that explain why. To grant a selection of
+        capabilities, generate a manifest via the capabilities/rbac endpoint. The
+        cluster must be reachable; an unreachable cluster yields a 502.
       operationId: listClusterCapabilities
       parameters:
         - $ref: "#/components/parameters/ClusterID"
@@ -281,6 +282,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ClusterCapabilities"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/clusters/{id}/capabilities/rbac:
+    post:
+      summary: Generate an RBAC manifest for selected capabilities
+      description: |
+        Org-scoped: builds a single ClusterRole + ClusterRoleBinding granting the
+        complete rule set the selected capabilities require, bound to the identity
+        the cluster's stored credentials resolve to. Unlike the capability report
+        (which only describes what is currently missing), this grants each
+        selected capability's full rule set so the manifest is self-contained
+        regardless of what is already allowed. For connection
+        methods with no addressable in-cluster subject (kubeconfig, eks, gke, aks)
+        it returns best-effort guidance rather than a directly applicable manifest.
+      operationId: generateClusterRbac
+      parameters:
+        - $ref: "#/components/parameters/ClusterID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClusterRbacRequest"
+      responses:
+        "200":
+          description: The generated RBAC manifest (or guidance)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterRbac"
         default:
           $ref: "#/components/responses/Error"
 
@@ -722,24 +754,14 @@ components:
           description: The RBAC rules/verbs that were denied (empty when allowed).
           items:
             $ref: "#/components/schemas/CapabilityRule"
-        remediation:
-          type: string
-          description: |
-            Present only on a denied capability with an addressable in-cluster
-            subject (in_cluster, token): a ready-to-apply ClusterRole +
-            ClusterRoleBinding granting just this capability's missing
-            permissions, so an operator can enable capabilities one at a time
-            (e.g. grant read + restart without granting full Helm deploy access).
-            The report-level remediation grants everything missing at once.
 
     ClusterCapabilities:
       type: object
       description: |
         A live report of which product capabilities the cluster's stored
-        credentials are allowed, the identity they resolve to, and — when any
-        capability is denied — copy-paste RBAC remediation tailored to that
-        identity (or best-effort guidance when the connection method has no
-        addressable subject).
+        credentials are allowed and the identity they resolve to. To grant a
+        selection of capabilities, generate a manifest via the capabilities/rbac
+        endpoint.
       required: [identity, capabilities]
       properties:
         identity:
@@ -748,15 +770,35 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Capability"
-        remediation:
+
+    ClusterRbacRequest:
+      type: object
+      description: The capabilities to grant in the generated manifest.
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          minItems: 1
+          description: |
+            Capability keys to include (e.g. ["view_pods", "restart_workloads"]).
+            Each must be a known capability; the manifest grants the union of the
+            selected capabilities' full rule sets.
+          items:
+            type: string
+
+    ClusterRbac:
+      type: object
+      description: A generated RBAC manifest (or best-effort guidance) for selected capabilities.
+      required: [manifest]
+      properties:
+        manifest:
           type: string
           description: |
-            Present only when at least one capability is denied. For connection
-            methods with an addressable in-cluster subject (in_cluster, token) it
-            is a ready-to-apply ClusterRole + ClusterRoleBinding manifest granting
-            the missing permissions to the resolved subject. For other methods
-            (kubeconfig, eks, gke, aks) it is best-effort guidance rather than a
-            directly applicable manifest.
+            For connection methods with an addressable in-cluster subject
+            (in_cluster, token), a ready-to-apply ClusterRole + ClusterRoleBinding
+            granting the selected capabilities' full rule set to the resolved
+            subject. For other methods (kubeconfig, eks, gke, aks), best-effort
+            guidance rather than a directly applicable manifest.
 
     ClusterCreateRequest:
       type: object

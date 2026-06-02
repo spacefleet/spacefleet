@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Check,
   CheckCircle2,
@@ -20,8 +20,10 @@ type CapabilityRule = components["schemas"]["CapabilityRule"];
 // registered cluster: it asks the API which product capabilities the cluster's
 // stored credentials are actually allowed (a one-shot GET that probes the
 // Kubernetes API), then shows each capability — grouped by area — as
-// allowed/denied. Denied capabilities get an expandable "How to enable" block
-// with the missing RBAC rules and copy-paste remediation YAML.
+// allowed/denied. A denied capability expands to list the RBAC rules it is
+// missing. To enable capabilities, check one or more and use "Generate RBAC" at
+// the bottom: the API returns a single ClusterRole + ClusterRoleBinding granting
+// the selection's full rule set, bound to the identity these credentials map to.
 //
 // The X-Organization-ID header is attached automatically by the API client, so
 // the report is always scoped to the active organization.
@@ -83,14 +85,34 @@ export function ClusterCapabilities({
       ) : !report ? (
         <p className="p-4 text-sm text-neutral-500">No capability report.</p>
       ) : (
-        <CapabilityReport report={report} />
+        <CapabilityReport clusterId={clusterId} report={report} />
       )}
     </div>
   );
 }
 
-function CapabilityReport({ report }: { report: ClusterCapabilities }) {
+function CapabilityReport({
+  clusterId,
+  report,
+}: {
+  clusterId: string;
+  report: ClusterCapabilities;
+}) {
   const groups = groupByArea(report.capabilities);
+  // The set of capability keys the operator has checked to include in the
+  // generated grant. Allowed and denied capabilities are both selectable: the
+  // grant is the full rule set of the selection, so it stands alone regardless
+  // of what is already allowed.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggle = useCallback((key: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   return (
     <div>
@@ -100,14 +122,18 @@ function CapabilityReport({ report }: { report: ClusterCapabilities }) {
           No capabilities reported.
         </p>
       ) : (
-        groups.map(([area, caps]) => (
-          <AreaGroup
-            key={area}
-            area={area}
-            capabilities={caps}
-            remediation={report.remediation}
-          />
-        ))
+        <>
+          {groups.map(([area, caps]) => (
+            <AreaGroup
+              key={area}
+              area={area}
+              capabilities={caps}
+              selected={selected}
+              onToggle={toggle}
+            />
+          ))}
+          <GenerateRbac clusterId={clusterId} selected={selected} />
+        </>
       )}
     </div>
   );
@@ -136,11 +162,13 @@ function IdentityLine({
 function AreaGroup({
   area,
   capabilities,
-  remediation,
+  selected,
+  onToggle,
 }: {
   area: string;
   capabilities: Capability[];
-  remediation?: string;
+  selected: Set<string>;
+  onToggle: (key: string) => void;
 }) {
   return (
     <div className="border-b border-neutral-100 last:border-0">
@@ -152,7 +180,8 @@ function AreaGroup({
           <CapabilityRow
             key={cap.key}
             capability={cap}
-            remediation={remediation}
+            checked={selected.has(cap.key)}
+            onToggle={() => onToggle(cap.key)}
           />
         ))}
       </ul>
@@ -162,22 +191,27 @@ function AreaGroup({
 
 function CapabilityRow({
   capability,
-  remediation,
+  checked,
+  onToggle,
 }: {
   capability: Capability;
-  remediation?: string;
+  checked: boolean;
+  onToggle: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const denied = capability.status === "denied";
-  // Prefer the manifest scoped to just this capability so the operator can grant
-  // it alone; fall back to the report-level guidance (methods without an
-  // addressable in-cluster subject only carry the report-level form).
-  const scopedRemediation = capability.remediation ?? remediation;
 
   return (
     <li>
       <div className="flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={onToggle}
+            aria-label={`Include ${capability.title}`}
+            className="h-4 w-4 shrink-0 accent-neutral-900"
+          />
           {denied ? (
             <button
               type="button"
@@ -201,24 +235,16 @@ function CapabilityRow({
         <CapabilityBadge status={capability.status} />
       </div>
 
-      {denied && expanded && (
-        <HowToEnable capability={capability} remediation={scopedRemediation} />
-      )}
+      {denied && expanded && <MissingRules capability={capability} />}
     </li>
   );
 }
 
-function HowToEnable({
-  capability,
-  remediation,
-}: {
-  capability: Capability;
-  remediation?: string;
-}) {
+function MissingRules({ capability }: { capability: Capability }) {
   return (
-    <div className="border-t border-neutral-100 bg-neutral-50 px-4 py-3">
-      <p className="text-xs font-medium text-neutral-700">How to enable</p>
-      {capability.missing_rules.length > 0 && (
+    <div className="border-t border-neutral-100 bg-neutral-50 px-4 py-3 pl-10">
+      <p className="text-xs font-medium text-neutral-700">Missing permissions</p>
+      {capability.missing_rules.length > 0 ? (
         <ul className="mt-2 space-y-1">
           {capability.missing_rules.map((rule, i) => (
             <li
@@ -232,19 +258,91 @@ function HowToEnable({
             </li>
           ))}
         </ul>
-      )}
-      {remediation ? (
-        <RemediationBlock yaml={remediation} />
       ) : (
         <p className="mt-2 text-xs text-neutral-500">
-          Grant the permissions above to the resolved identity, then re-check.
+          No specific rules reported.
         </p>
       )}
+      <p className="mt-2 text-xs text-neutral-500">
+        Check this capability and use “Generate RBAC” below to grant it.
+      </p>
     </div>
   );
 }
 
-function RemediationBlock({ yaml }: { yaml: string }) {
+// GenerateRbac is the footer action: check one or more capabilities above, then
+// generate a single manifest granting the selection's full rule set. The YAML is
+// built server-side (it is identity- and connection-method-aware), so this posts
+// the selected keys and renders whatever the API returns — a ready-to-apply
+// ClusterRole + ClusterRoleBinding, or best-effort guidance for connection
+// methods with no addressable in-cluster subject.
+function GenerateRbac({
+  clusterId,
+  selected,
+}: {
+  clusterId: string;
+  selected: Set<string>;
+}) {
+  const [manifest, setManifest] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // A stable signature of the selection so the generated manifest is cleared
+  // (it would be stale) whenever the checked set changes.
+  const signature = useMemo(
+    () => [...selected].sort().join(","),
+    [selected],
+  );
+  useEffect(() => {
+    setManifest(null);
+    setError(null);
+  }, [signature]);
+
+  const count = selected.size;
+
+  async function generate() {
+    setGenerating(true);
+    setError(null);
+    const { data, error } = await api.POST(
+      "/api/clusters/{id}/capabilities/rbac",
+      {
+        params: { path: { id: clusterId } },
+        body: { keys: [...selected] },
+      },
+    );
+    if (error) {
+      setError(error.message ?? "Could not generate RBAC");
+      setManifest(null);
+    } else {
+      setManifest(data?.manifest ?? "");
+    }
+    setGenerating(false);
+  }
+
+  return (
+    <div className="border-t border-neutral-200 bg-neutral-50 px-4 py-3">
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-xs text-neutral-500">
+          {count === 0
+            ? "Select capabilities to grant, then generate a single manifest."
+            : `${count} capabilit${count === 1 ? "y" : "ies"} selected.`}
+        </p>
+        <button
+          type="button"
+          onClick={() => void generate()}
+          disabled={count === 0 || generating}
+          className="shrink-0 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+        >
+          {generating ? "Generating…" : "Generate RBAC"}
+        </button>
+      </div>
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {manifest && <ManifestBlock yaml={manifest} />}
+    </div>
+  );
+}
+
+function ManifestBlock({ yaml }: { yaml: string }) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {

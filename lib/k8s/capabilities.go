@@ -194,6 +194,26 @@ func Inspect(ctx context.Context, conn Connection) (*CapabilityReport, error) {
 	return inspect(ctx, cs, catalog)
 }
 
+// ResolveIdentity builds a client from the connection and resolves only the
+// caller identity its credentials map to (one SelfSubjectReview, no access
+// reviews). It is the lightweight counterpart to Inspect for callers that need
+// just the subject — e.g. to fill the binding of a generated RBAC manifest.
+// Identity resolution itself soft-fails to a blank Identity against older API
+// servers (see resolveIdentity); only building the client is returned as an
+// error.
+func ResolveIdentity(ctx context.Context, conn Connection) (Identity, error) {
+	cfg, err := RESTConfig(ctx, conn)
+	if err != nil {
+		return Identity{}, err
+	}
+	cfg.Timeout = listTimeout
+	cs, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return Identity{}, fmt.Errorf("k8s: client: %w", err)
+	}
+	return resolveIdentity(ctx, cs), nil
+}
+
 // inspect runs the identity resolution and access reviews against an already
 // built clientset. It is split out from Inspect so tests can drive it with a
 // fake clientset.

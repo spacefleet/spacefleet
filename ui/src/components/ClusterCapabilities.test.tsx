@@ -7,14 +7,17 @@ import { api } from "../api/client";
 // The API client and org context are mocked so the component can be driven
 // without a backend.
 vi.mock("../api/client", () => ({
-  api: { GET: vi.fn() },
+  api: { GET: vi.fn(), POST: vi.fn() },
 }));
 
 vi.mock("../contexts/OrgContext", () => ({
   useOrg: () => ({ currentOrg: { id: "org-1", name: "Acme" } }),
 }));
 
-const mockApi = api as unknown as { GET: ReturnType<typeof vi.fn> };
+const mockApi = api as unknown as {
+  GET: ReturnType<typeof vi.fn>;
+  POST: ReturnType<typeof vi.fn>;
+};
 
 const report = {
   identity: {
@@ -53,17 +56,16 @@ const report = {
       missing_rules: [
         { api_group: "apps", resource: "deployments", verb: "patch" },
       ],
-      // A scoped manifest granting just this capability.
-      remediation:
-        "apiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\nmetadata:\n  name: spacefleet-restart-workloads",
     },
   ],
-  remediation:
-    "apiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\nmetadata:\n  name: spacefleet-access",
 };
+
+const manifest =
+  "apiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\nmetadata:\n  name: spacefleet-access";
 
 beforeEach(() => {
   mockApi.GET.mockReset();
+  mockApi.POST.mockReset();
 });
 
 describe("ClusterCapabilities", () => {
@@ -88,56 +90,117 @@ describe("ClusterCapabilities", () => {
     });
   });
 
-  it("expands a denied capability to show missing rules and remediation YAML", async () => {
+  it("expands a denied capability to show its missing rules (no per-row YAML)", async () => {
     mockApi.GET.mockResolvedValue({ data: report, error: undefined });
     render(<ClusterCapabilities clusterId="c1" />);
 
     const denied = await screen.findByRole("button", {
       name: /View pod logs/,
     });
-    // Collapsed: remediation not visible yet.
-    expect(screen.queryByText("How to enable")).not.toBeInTheDocument();
+    // Collapsed: nothing shown yet.
+    expect(screen.queryByText("Missing permissions")).not.toBeInTheDocument();
 
     await userEvent.click(denied);
 
-    expect(screen.getByText("How to enable")).toBeInTheDocument();
+    expect(screen.getByText("Missing permissions")).toBeInTheDocument();
     expect(screen.getByText(/get pods\/log/)).toBeInTheDocument();
-    expect(screen.getByText(/kind: ClusterRole/)).toBeInTheDocument();
+    // The per-row YAML is gone — a manifest only appears after Generate RBAC.
+    expect(screen.queryByText(/kind: ClusterRole/)).not.toBeInTheDocument();
   });
 
-  it("copies the remediation YAML to the clipboard", async () => {
+  it("disables Generate RBAC until a capability is checked", async () => {
+    mockApi.GET.mockResolvedValue({ data: report, error: undefined });
+    render(<ClusterCapabilities clusterId="c1" />);
+    await screen.findByText("View nodes");
+
+    const generate = screen.getByRole("button", { name: "Generate RBAC" });
+    expect(generate).toBeDisabled();
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Include View nodes" }),
+    );
+    expect(generate).toBeEnabled();
+    expect(screen.getByText("1 capability selected.")).toBeInTheDocument();
+  });
+
+  it("generates one manifest for the selected capabilities", async () => {
+    mockApi.GET.mockResolvedValue({ data: report, error: undefined });
+    mockApi.POST.mockResolvedValue({ data: { manifest }, error: undefined });
+    render(<ClusterCapabilities clusterId="c1" />);
+    await screen.findByText("View nodes");
+
+    // Select an allowed and a denied capability — both are grantable.
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Include View nodes" }),
+    );
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Include Restart workloads" }),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Generate RBAC" }));
+
+    expect(mockApi.POST).toHaveBeenCalledWith(
+      "/api/clusters/{id}/capabilities/rbac",
+      {
+        params: { path: { id: "c1" } },
+        body: { keys: ["view_nodes", "restart_workloads"] },
+      },
+    );
+    expect(await screen.findByText(/kind: ClusterRole/)).toBeInTheDocument();
+  });
+
+  it("copies the generated manifest to the clipboard", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     mockApi.GET.mockResolvedValue({ data: report, error: undefined });
+    mockApi.POST.mockResolvedValue({ data: { manifest }, error: undefined });
     render(<ClusterCapabilities clusterId="c1" />);
+    await screen.findByText("View nodes");
 
     await userEvent.click(
-      await screen.findByRole("button", { name: /View pod logs/ }),
+      screen.getByRole("checkbox", { name: "Include View pod logs" }),
     );
+    await userEvent.click(screen.getByRole("button", { name: "Generate RBAC" }));
+    await screen.findByText(/kind: ClusterRole/);
     await userEvent.click(screen.getByRole("button", { name: "Copy" }));
 
-    expect(writeText).toHaveBeenCalledWith(report.remediation);
+    expect(writeText).toHaveBeenCalledWith(manifest);
     expect(await screen.findByText("Copied")).toBeInTheDocument();
   });
 
-  it("prefers a capability's own scoped remediation over the report-level union", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
+  it("clears a generated manifest when the selection changes", async () => {
     mockApi.GET.mockResolvedValue({ data: report, error: undefined });
+    mockApi.POST.mockResolvedValue({ data: { manifest }, error: undefined });
     render(<ClusterCapabilities clusterId="c1" />);
+    await screen.findByText("View nodes");
 
     await userEvent.click(
-      await screen.findByRole("button", { name: /Restart workloads/ }),
+      screen.getByRole("checkbox", { name: "Include View nodes" }),
     );
-    // Shows the scoped role name, not the union role.
-    expect(
-      screen.getByText(/name: spacefleet-restart-workloads/),
-    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Generate RBAC" }));
+    expect(await screen.findByText(/kind: ClusterRole/)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Copy" }));
-    expect(writeText).toHaveBeenCalledWith(
-      report.capabilities[2].remediation,
+    // Changing the selection invalidates the (now stale) manifest.
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Include Restart workloads" }),
     );
+    expect(screen.queryByText(/kind: ClusterRole/)).not.toBeInTheDocument();
+  });
+
+  it("shows an error when generation fails", async () => {
+    mockApi.GET.mockResolvedValue({ data: report, error: undefined });
+    mockApi.POST.mockResolvedValue({
+      data: undefined,
+      error: { message: "cluster unreachable" },
+    });
+    render(<ClusterCapabilities clusterId="c1" />);
+    await screen.findByText("View nodes");
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Include View nodes" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Generate RBAC" }));
+    expect(await screen.findByText("cluster unreachable")).toBeInTheDocument();
   });
 
   it("re-checks when the Re-check action is clicked", async () => {

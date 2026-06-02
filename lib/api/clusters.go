@@ -231,21 +231,53 @@ func (s *Server) ListClusterCapabilities(ctx context.Context, req ListClusterCap
 	if aerr != nil {
 		return errResp[ListClusterCapabilitiesdefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
 	}
-	// Resolve the cluster first: its (immutable) connection method tailors the
-	// remediation guidance, and a not-found short-circuits before any live call.
-	c, err := s.clusters.Get(ctx, orgID, req.Id)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return errResp[ListClusterCapabilitiesdefaultJSONResponse](http.StatusNotFound, "not_found", "cluster not found"), nil
-		}
-		return nil, err
-	}
 	report, err := s.clusters.Capabilities(ctx, orgID, req.Id)
 	if err != nil {
 		status, code, msg := nodesFetchError(err)
 		return errResp[ListClusterCapabilitiesdefaultJSONResponse](status, code, msg), nil
 	}
-	return ListClusterCapabilities200JSONResponse(toAPICapabilities(report, k8s.Method(c.ConnectionMethod))), nil
+	return ListClusterCapabilities200JSONResponse(toAPICapabilities(report)), nil
+}
+
+// GenerateClusterRbac builds a single ClusterRole + ClusterRoleBinding granting
+// the complete rule set the selected capabilities require, bound to the identity
+// the cluster's stored credentials resolve to. Unlike the capability report
+// (which only describes what is missing), this grants each selected capability's
+// full rule set so the manifest is self-contained regardless of current access.
+// For methods whose effective subject lives outside the cluster's own RBAC
+// (kubeconfig, eks, gke, aks) it returns best-effort guidance instead.
+func (s *Server) GenerateClusterRbac(ctx context.Context, req GenerateClusterRbacRequestObject) (GenerateClusterRbacResponseObject, error) {
+	orgID, aerr, err := s.resolveOrg(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[GenerateClusterRbacdefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	if req.Body == nil || len(req.Body.Keys) == 0 {
+		return errResp[GenerateClusterRbacdefaultJSONResponse](http.StatusBadRequest, "bad_request", "at least one capability key is required"), nil
+	}
+	rules, unknown := rulesForCapabilities(req.Body.Keys)
+	if len(unknown) > 0 {
+		return errResp[GenerateClusterRbacdefaultJSONResponse](http.StatusBadRequest, "bad_request", "unknown capability key(s): "+strings.Join(unknown, ", ")), nil
+	}
+	// Resolve the cluster first: its (immutable) connection method tailors the
+	// manifest, and a not-found short-circuits before any live call.
+	c, err := s.clusters.Get(ctx, orgID, req.Id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return errResp[GenerateClusterRbacdefaultJSONResponse](http.StatusNotFound, "not_found", "cluster not found"), nil
+		}
+		return nil, err
+	}
+	id, err := s.clusters.Identity(ctx, orgID, req.Id)
+	if err != nil {
+		status, code, msg := nodesFetchError(err)
+		return errResp[GenerateClusterRbacdefaultJSONResponse](status, code, msg), nil
+	}
+	return GenerateClusterRbac200JSONResponse(ClusterRbac{
+		Manifest: rbacForRules(k8s.Method(c.ConnectionMethod), id, rules),
+	}), nil
 }
 
 // nodesFetchError classifies a node list/watch failure into a client-facing
@@ -334,9 +366,10 @@ func capabilityArea(key string) string {
 
 // toAPICapabilities maps the storage-agnostic k8s capability report to the API
 // type. It never exposes credentials — only the resolved identity and the
-// per-capability allow/deny verdict — and, when any capability is denied,
-// attaches identity-aware RBAC remediation tailored to the connection method.
-func toAPICapabilities(r *k8s.CapabilityReport, method k8s.Method) ClusterCapabilities {
+// per-capability allow/deny verdict (denied capabilities carry the missing
+// rules that explain why). Granting a selection of capabilities is a separate
+// step: see GenerateClusterRbac.
+func toAPICapabilities(r *k8s.CapabilityReport) ClusterCapabilities {
 	out := ClusterCapabilities{
 		Identity: ClusterIdentity{
 			Username: optStr(r.Identity.Username),
@@ -349,7 +382,6 @@ func toAPICapabilities(r *k8s.CapabilityReport, method k8s.Method) ClusterCapabi
 		out.Identity.Groups = []string{}
 	}
 
-	anyDenied := false
 	for i, cr := range r.Capabilities {
 		cap := Capability{
 			Key:          cr.Key,
@@ -360,15 +392,6 @@ func toAPICapabilities(r *k8s.CapabilityReport, method k8s.Method) ClusterCapabi
 		}
 		if !cr.Allowed {
 			cap.Status = Denied
-			anyDenied = true
-			// Per-capability remediation lets an operator enable one capability
-			// at a time (e.g. grant restart without granting full Helm deploy),
-			// scoped to just this capability's missing rules. Only emitted for
-			// methods with an addressable in-cluster subject; otherwise the
-			// report-level guidance covers the union.
-			if rem := capRemediation(cr, r.Identity, method); rem != "" {
-				cap.Remediation = &rem
-			}
 		}
 		for _, f := range cr.Failed {
 			cap.MissingRules = append(cap.MissingRules, CapabilityRule{
@@ -381,79 +404,76 @@ func toAPICapabilities(r *k8s.CapabilityReport, method k8s.Method) ClusterCapabi
 		}
 		out.Capabilities[i] = cap
 	}
-
-	if anyDenied {
-		if rem := remediation(r, method); rem != "" {
-			out.Remediation = &rem
-		}
-	}
 	return out
 }
 
-// remediation produces copy-paste guidance for granting the missing
-// permissions. For methods with an addressable in-cluster subject (in_cluster,
-// token) it emits a ready-to-apply ClusterRole + ClusterRoleBinding bound to the
-// resolved subject. For the other methods (kubeconfig, eks, gke, aks) the
-// effective subject lives outside the cluster's own RBAC subjects (an IAM/AAD
-// principal or an embedded kubeconfig user), so it returns best-effort guidance
-// rather than a manifest that would bind the wrong subject.
-func remediation(r *k8s.CapabilityReport, method k8s.Method) string {
-	var failed []k8s.RuleResult
-	for _, cr := range r.Capabilities {
-		failed = append(failed, cr.Failed...)
+// rulesForCapabilities returns the union of the full rule sets of the named
+// capabilities, in catalog order, together with any requested keys that do not
+// match a known capability. The handler rejects the request when unknown is
+// non-empty, so the generated manifest only ever reflects real capabilities.
+func rulesForCapabilities(keys []string) (rules []k8s.Rule, unknown []string) {
+	want := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		want[k] = true
 	}
-	rules := ruleLinesFromFailed(failed)
-	if rules == "" {
+	seen := map[string]bool{}
+	for _, cap := range k8s.Catalog() {
+		if want[cap.Key] {
+			rules = append(rules, cap.Rules...)
+			seen[cap.Key] = true
+		}
+	}
+	for _, k := range keys {
+		if !seen[k] {
+			unknown = append(unknown, k)
+			seen[k] = true // de-dupe a key repeated in the request
+		}
+	}
+	return rules, unknown
+}
+
+// rbacForRules turns a capability rule set into a copy-paste grant. For methods
+// with an addressable in-cluster subject (in_cluster, token) it emits a
+// ready-to-apply ClusterRole + ClusterRoleBinding bound to the resolved subject.
+// For the other methods (kubeconfig, eks, gke, aks) the effective subject lives
+// outside the cluster's own RBAC subjects (an IAM/AAD principal or an embedded
+// kubeconfig user), so it returns best-effort guidance rather than a manifest
+// that would bind the wrong subject.
+func rbacForRules(method k8s.Method, id k8s.Identity, rules []k8s.Rule) string {
+	lines := ruleLines(rules)
+	if lines == "" {
 		return ""
 	}
 	switch method {
 	case k8s.MethodInCluster, k8s.MethodToken:
-		return rbacManifest("spacefleet-access", r.Identity, rules)
+		return rbacManifest("spacefleet-access", id, lines)
 	default:
-		return rbacGuidance(method, r.Identity, rules)
+		return rbacGuidance(method, id, lines)
 	}
 }
 
-// capRemediation builds a ready-to-apply manifest granting just one denied
-// capability's missing rules, under a capability-specific role name so an
-// operator can apply several without collision. It is emitted only for methods
-// whose subject lives in the cluster's own RBAC (in_cluster, token); for the
-// rest the report-level guidance already shows the rules for the operator's
-// out-of-cluster subject, so a per-capability manifest would bind the wrong one.
-func capRemediation(cr k8s.CapabilityResult, id k8s.Identity, method k8s.Method) string {
-	switch method {
-	case k8s.MethodInCluster, k8s.MethodToken:
-	default:
-		return ""
-	}
-	rules := ruleLinesFromFailed(cr.Failed)
-	if rules == "" {
-		return ""
-	}
-	name := "spacefleet-" + strings.ReplaceAll(cr.Key, "_", "-")
-	return rbacManifest(name, id, rules)
-}
-
-// ruleLinesFromFailed renders denied rule/verbs as ClusterRole `rules:` entries
-// (one block per APIGroup+resource[/subresource], verbs unioned and sorted), or
-// "" when the slice is empty.
-func ruleLinesFromFailed(failed []k8s.RuleResult) string {
+// ruleLines renders RBAC rules as ClusterRole `rules:` entries (one block per
+// APIGroup+resource[/subresource], with verbs unioned across the rules and
+// sorted), or "" when there are no rules.
+func ruleLines(rules []k8s.Rule) string {
 	type ruleKey struct {
 		group, resource string
 	}
 	order := []ruleKey{}
 	verbs := map[ruleKey]map[string]bool{}
-	for _, f := range failed {
-		res := f.Rule.Resource
-		if f.Rule.Subresource != "" {
-			res = res + "/" + f.Rule.Subresource
+	for _, r := range rules {
+		res := r.Resource
+		if r.Subresource != "" {
+			res = res + "/" + r.Subresource
 		}
-		k := ruleKey{group: f.Rule.APIGroup, resource: res}
+		k := ruleKey{group: r.APIGroup, resource: res}
 		if _, ok := verbs[k]; !ok {
 			verbs[k] = map[string]bool{}
 			order = append(order, k)
 		}
-		verbs[k][f.Verb] = true
+		for _, v := range r.Verbs {
+			verbs[k][v] = true
+		}
 	}
 	if len(order) == 0 {
 		return ""

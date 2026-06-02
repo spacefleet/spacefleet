@@ -305,6 +305,29 @@ func (s *Service) Capabilities(ctx context.Context, orgID, id uuid.UUID) (*k8s.C
 	})
 }
 
+// Identity resolves the caller identity the cluster's stored credentials map
+// to, scoped to the organization. It is the lightweight counterpart to
+// Capabilities — it issues only the identity review, not the per-capability
+// access reviews — used to fill the binding subject of a generated RBAC
+// manifest. Like Nodes, a failure to build the client or reach the cluster is
+// returned to the caller; the cluster row's status is not touched.
+func (s *Service) Identity(ctx context.Context, orgID, id uuid.UUID) (k8s.Identity, error) {
+	c, err := s.Get(ctx, orgID, id)
+	if err != nil {
+		return k8s.Identity{}, err
+	}
+	creds, err := s.openCreds(c)
+	if err != nil {
+		return k8s.Identity{}, err
+	}
+	return k8s.ResolveIdentity(ctx, k8s.Connection{
+		Method:      k8s.Method(c.ConnectionMethod),
+		Endpoint:    c.Endpoint,
+		Config:      c.Config,
+		Credentials: creds,
+	})
+}
+
 // probe opens the stored credentials, checks reachability, and records the
 // status/version/timestamp. A failure to build or reach the cluster is captured
 // as an error status on the row rather than returned as a service error — the

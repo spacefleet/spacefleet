@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/spacefleet/spacefleet/lib/config"
@@ -58,6 +59,22 @@ func TestMeRouteMounted(t *testing.T) {
 // proves the fake verifier let the request reach the handler rather than 401.
 func TestClusterCapabilitiesRouteMounted(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/clusters/00000000-0000-0000-0000-000000000000/capabilities", nil)
+	rec := httptest.NewRecorder()
+	handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 from the nil clusters service, got %d", rec.Code)
+	}
+}
+
+// TestGenerateClusterRbacRouteMounted confirms POST
+// /api/clusters/{id}/capabilities/rbac is wired through the generated handler.
+// A valid body reaches resolveOrg, where the nil clusters service yields 503 —
+// which also proves the fake verifier let the request through rather than 401.
+func TestGenerateClusterRbacRouteMounted(t *testing.T) {
+	body := strings.NewReader(`{"keys":["view_pods"]}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/clusters/00000000-0000-0000-0000-000000000000/capabilities/rbac", body)
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	handler().ServeHTTP(rec, req)
 
