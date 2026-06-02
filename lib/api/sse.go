@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // sseWriter is the reusable Server-Sent Events transport for streaming
@@ -25,6 +26,14 @@ func newSSEWriter(w http.ResponseWriter) (*sseWriter, bool) {
 	if !ok {
 		return nil, false
 	}
+	// The server sets a finite WriteTimeout for normal request/response handlers
+	// (see lib/server). That deadline is set once when the request is read and is
+	// NOT reset per write, so on a long-lived stream the next flush past it fails
+	// and the connection drops — making the client reconnect every few seconds.
+	// Clear the write deadline for this connection only; the global timeout still
+	// protects every non-streaming handler. Best-effort: it only fails on a writer
+	// that can't carry a deadline (e.g. a test recorder), which has none to clear.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-cache")
