@@ -215,6 +215,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/clusters/{id}/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report the cluster credentials' access (capabilities)
+         * @description Org-scoped: builds a client from the cluster's stored credentials,
+         *     resolves the identity they map to, and checks — live against the
+         *     Kubernetes API — which product capabilities the credentials are allowed.
+         *     Each capability is reported as allowed or denied; denied capabilities
+         *     carry the missing RBAC rules and identity-aware remediation. The cluster
+         *     must be reachable; an unreachable cluster yields a 502.
+         */
+        get: operations["listClusterCapabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -416,6 +441,72 @@ export interface components {
             containers: components["schemas"]["ContainerStatus"][];
             /** Format: date-time */
             created_at: string;
+        };
+        /**
+         * @description The identity the cluster's stored credentials resolve to, as reported by
+         *     the Kubernetes API (a SelfSubjectReview). On older API servers this may be
+         *     unavailable, in which case the fields are empty.
+         */
+        ClusterIdentity: {
+            /** @description The authenticated user, e.g. "system:serviceaccount:spacefleet:reader". */
+            username?: string;
+            uid?: string;
+            groups: string[];
+        };
+        /** @description One RBAC permission the credentials were missing for a capability. */
+        CapabilityRule: {
+            /** @description The resource's API group; absent for the core group. */
+            api_group?: string;
+            resource: string;
+            subresource?: string;
+            verb: string;
+            /** @description The authorizer's explanation for the denial, if any. */
+            reason?: string;
+        };
+        /**
+         * @description One product capability and whether the cluster's credentials are allowed
+         *     it. Denied capabilities carry the missing rules that explain why.
+         */
+        Capability: {
+            /** @description Stable identifier, e.g. "view_nodes". */
+            key: string;
+            /** @description Grouping the capability belongs to, e.g. "Observe". */
+            area: string;
+            /** @description Human-readable label, e.g. "View nodes". */
+            title: string;
+            /** @enum {string} */
+            status: "allowed" | "denied";
+            /** @description The RBAC rules/verbs that were denied (empty when allowed). */
+            missing_rules: components["schemas"]["CapabilityRule"][];
+            /**
+             * @description Present only on a denied capability with an addressable in-cluster
+             *     subject (in_cluster, token): a ready-to-apply ClusterRole +
+             *     ClusterRoleBinding granting just this capability's missing
+             *     permissions, so an operator can enable capabilities one at a time
+             *     (e.g. grant read + restart without granting full Helm deploy access).
+             *     The report-level remediation grants everything missing at once.
+             */
+            remediation?: string;
+        };
+        /**
+         * @description A live report of which product capabilities the cluster's stored
+         *     credentials are allowed, the identity they resolve to, and — when any
+         *     capability is denied — copy-paste RBAC remediation tailored to that
+         *     identity (or best-effort guidance when the connection method has no
+         *     addressable subject).
+         */
+        ClusterCapabilities: {
+            identity: components["schemas"]["ClusterIdentity"];
+            capabilities: components["schemas"]["Capability"][];
+            /**
+             * @description Present only when at least one capability is denied. For connection
+             *     methods with an addressable in-cluster subject (in_cluster, token) it
+             *     is a ready-to-apply ClusterRole + ClusterRoleBinding manifest granting
+             *     the missing permissions to the resolved subject. For other methods
+             *     (kubeconfig, eks, gke, aks) it is best-effort guidance rather than a
+             *     directly applicable manifest.
+             */
+            remediation?: string;
         };
         /**
          * @description A flat object: only the fields relevant to the chosen connection_method
@@ -801,6 +892,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Pod"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listClusterCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ClusterID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cluster credentials' capability report */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterCapabilities"];
                 };
             };
             default: components["responses"]["Error"];

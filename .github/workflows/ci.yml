@@ -95,6 +95,7 @@ jobs:
           helm lint . -f ci/default-values.yaml
           helm lint . -f ci/external-values.yaml
           helm lint . -f ci/dex-values.yaml
+          helm lint . -f ci/cluster-reader-values.yaml
 
       - name: helm template (render all value sets)
         working-directory: deploy/charts/spacefleet
@@ -102,6 +103,7 @@ jobs:
           helm template rel . -f ci/default-values.yaml > /dev/null
           helm template rel . -f ci/external-values.yaml > /dev/null
           helm template rel . -f ci/dex-values.yaml > /dev/null
+          helm template rel . -f ci/cluster-reader-values.yaml > /dev/null
 
   test-go:
     runs-on: ubuntu-latest

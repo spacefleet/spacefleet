@@ -1,0 +1,10 @@
+# Render coverage: the OPT-IN cluster-reader RBAC render-ON path. Enables
+# clusterReader so lint/template exercise the ClusterRole + ClusterRoleBinding
+# (which are skipped by the other value sets, where the flag defaults off).
+# Keeps the bundled Postgres default and supplies an inline secretKey so
+# spacefleet.validate passes (render-only throwaway value, not a real key).
+clusterReader:
+  enabled: true
+config:
+  secrets:
+    secretKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="

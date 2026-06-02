@@ -165,6 +165,50 @@ func TestOrgScoping(t *testing.T) {
 	}
 }
 
+// TestCapabilitiesOrgScoped confirms Capabilities is scoped to the org (another
+// org sees NotFound) and that, like the other live readers, an unreachable
+// endpoint surfaces as a returned error without mutating the cluster row.
+func TestCapabilitiesOrgScoped(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, newSealer(t))
+	ctx := context.Background()
+	orgA := newOrg(t, client, "A")
+	orgB := newOrg(t, client, "B")
+
+	c, err := svc.Create(ctx, orgA.ID, CreateParams{
+		Name:   "prod",
+		Method: k8s.MethodToken,
+		ConnectionInput: ConnectionInput{
+			Endpoint:    "https://10.255.255.1:6443", // unroutable
+			Config:      map[string]string{"insecure_skip_tls": "true"},
+			Credentials: []byte("super-secret-sa-token"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Org B cannot inspect org A's cluster: the org-scoped query returns NotFound.
+	if _, err := svc.Capabilities(ctx, orgB.ID, c.ID); !ent.IsNotFound(err) {
+		t.Fatalf("org B capabilities: got %v, want NotFound", err)
+	}
+
+	// Org A owns it; the endpoint is unreachable, so Inspect's connectivity error
+	// is returned to the caller. The cluster row's status must NOT be touched
+	// (unlike probe): it stays whatever Create's probe recorded.
+	statusBefore := c.Status
+	if _, err := svc.Capabilities(ctx, orgA.ID, c.ID); err == nil {
+		t.Fatal("expected a connectivity error inspecting an unreachable cluster")
+	}
+	reloaded, err := svc.Get(ctx, orgA.ID, c.ID)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if reloaded.Status != statusBefore {
+		t.Errorf("status mutated by Capabilities: got %q, want %q", reloaded.Status, statusBefore)
+	}
+}
+
 // TestUniqueNamePerOrg confirms the (organization_id, name) unique index.
 func TestUniqueNamePerOrg(t *testing.T) {
 	client := testsupport.NewEntClient(t)

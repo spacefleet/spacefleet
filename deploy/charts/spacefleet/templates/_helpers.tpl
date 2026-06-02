@@ -214,4 +214,7 @@ Fail fast on incoherent value combinations.
 {{- if and .Values.ingress.enabled (not (gt (len .Values.ingress.hosts) 0)) -}}
 {{- fail "ingress.enabled=true but ingress.hosts is empty: set at least one host so the OIDC issuer (https://<host>/dex) can be derived." -}}
 {{- end -}}
+{{- if and .Values.clusterReader.enabled (not .Values.serviceAccount.create) (not .Values.serviceAccount.name) -}}
+{{- fail "clusterReader.enabled=true but no chart-owned ServiceAccount: set serviceAccount.create=true or serviceAccount.name, otherwise the cluster-reader binding would target the namespace \"default\" ServiceAccount." -}}
+{{- end -}}
 {{- end -}}

@@ -261,6 +261,29 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/clusters/{id}/capabilities:
+    get:
+      summary: Report the cluster credentials' access (capabilities)
+      description: |
+        Org-scoped: builds a client from the cluster's stored credentials,
+        resolves the identity they map to, and checks — live against the
+        Kubernetes API — which product capabilities the credentials are allowed.
+        Each capability is reported as allowed or denied; denied capabilities
+        carry the missing RBAC rules and identity-aware remediation. The cluster
+        must be reachable; an unreachable cluster yields a 502.
+      operationId: listClusterCapabilities
+      parameters:
+        - $ref: "#/components/parameters/ClusterID"
+      responses:
+        "200":
+          description: The cluster credentials' capability report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterCapabilities"
+        default:
+          $ref: "#/components/responses/Error"
+
 components:
   schemas:
     Health:
@@ -637,6 +660,103 @@ components:
         created_at:
           type: string
           format: date-time
+
+    ClusterIdentity:
+      type: object
+      description: |
+        The identity the cluster's stored credentials resolve to, as reported by
+        the Kubernetes API (a SelfSubjectReview). On older API servers this may be
+        unavailable, in which case the fields are empty.
+      required: [groups]
+      properties:
+        username:
+          type: string
+          description: |
+            The authenticated user, e.g. "system:serviceaccount:spacefleet:reader".
+        uid:
+          type: string
+        groups:
+          type: array
+          items:
+            type: string
+
+    CapabilityRule:
+      type: object
+      description: One RBAC permission the credentials were missing for a capability.
+      required: [resource, verb]
+      properties:
+        api_group:
+          type: string
+          description: The resource's API group; absent for the core group.
+        resource:
+          type: string
+        subresource:
+          type: string
+        verb:
+          type: string
+        reason:
+          type: string
+          description: The authorizer's explanation for the denial, if any.
+
+    Capability:
+      type: object
+      description: |
+        One product capability and whether the cluster's credentials are allowed
+        it. Denied capabilities carry the missing rules that explain why.
+      required: [key, area, title, status, missing_rules]
+      properties:
+        key:
+          type: string
+          description: Stable identifier, e.g. "view_nodes".
+        area:
+          type: string
+          description: Grouping the capability belongs to, e.g. "Observe".
+        title:
+          type: string
+          description: Human-readable label, e.g. "View nodes".
+        status:
+          type: string
+          enum: [allowed, denied]
+        missing_rules:
+          type: array
+          description: The RBAC rules/verbs that were denied (empty when allowed).
+          items:
+            $ref: "#/components/schemas/CapabilityRule"
+        remediation:
+          type: string
+          description: |
+            Present only on a denied capability with an addressable in-cluster
+            subject (in_cluster, token): a ready-to-apply ClusterRole +
+            ClusterRoleBinding granting just this capability's missing
+            permissions, so an operator can enable capabilities one at a time
+            (e.g. grant read + restart without granting full Helm deploy access).
+            The report-level remediation grants everything missing at once.
+
+    ClusterCapabilities:
+      type: object
+      description: |
+        A live report of which product capabilities the cluster's stored
+        credentials are allowed, the identity they resolve to, and — when any
+        capability is denied — copy-paste RBAC remediation tailored to that
+        identity (or best-effort guidance when the connection method has no
+        addressable subject).
+      required: [identity, capabilities]
+      properties:
+        identity:
+          $ref: "#/components/schemas/ClusterIdentity"
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/Capability"
+        remediation:
+          type: string
+          description: |
+            Present only when at least one capability is denied. For connection
+            methods with an addressable in-cluster subject (in_cluster, token) it
+            is a ready-to-apply ClusterRole + ClusterRoleBinding manifest granting
+            the missing permissions to the resolved subject. For other methods
+            (kubeconfig, eks, gke, aks) it is best-effort guidance rather than a
+            directly applicable manifest.
 
     ClusterCreateRequest:
       type: object

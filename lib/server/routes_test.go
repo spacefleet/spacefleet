@@ -52,6 +52,20 @@ func TestMeRouteMounted(t *testing.T) {
 	}
 }
 
+// TestClusterCapabilitiesRouteMounted confirms GET
+// /api/clusters/{id}/capabilities is wired through the generated handler. With a
+// nil clusters service it returns 503 (the resolveOrg preamble), which also
+// proves the fake verifier let the request reach the handler rather than 401.
+func TestClusterCapabilitiesRouteMounted(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/clusters/00000000-0000-0000-0000-000000000000/capabilities", nil)
+	rec := httptest.NewRecorder()
+	handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 from the nil clusters service, got %d", rec.Code)
+	}
+}
+
 func TestSPAFallback(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/some/spa/route", nil)
 	rec := httptest.NewRecorder()

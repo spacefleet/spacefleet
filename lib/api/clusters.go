@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -221,6 +223,31 @@ func (s *Server) ListClusterNodes(ctx context.Context, req ListClusterNodesReque
 	return ListClusterNodes200JSONResponse(toAPINodes(nodes)), nil
 }
 
+func (s *Server) ListClusterCapabilities(ctx context.Context, req ListClusterCapabilitiesRequestObject) (ListClusterCapabilitiesResponseObject, error) {
+	orgID, aerr, err := s.resolveOrg(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[ListClusterCapabilitiesdefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	// Resolve the cluster first: its (immutable) connection method tailors the
+	// remediation guidance, and a not-found short-circuits before any live call.
+	c, err := s.clusters.Get(ctx, orgID, req.Id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return errResp[ListClusterCapabilitiesdefaultJSONResponse](http.StatusNotFound, "not_found", "cluster not found"), nil
+		}
+		return nil, err
+	}
+	report, err := s.clusters.Capabilities(ctx, orgID, req.Id)
+	if err != nil {
+		status, code, msg := nodesFetchError(err)
+		return errResp[ListClusterCapabilitiesdefaultJSONResponse](status, code, msg), nil
+	}
+	return ListClusterCapabilities200JSONResponse(toAPICapabilities(report, k8s.Method(c.ConnectionMethod))), nil
+}
+
 // nodesFetchError classifies a node list/watch failure into a client-facing
 // status. The distinction matters for the live stream: the client retries
 // transient failures (an unreachable cluster may come back) but stops on
@@ -283,6 +310,273 @@ func toAPINode(n k8s.Node) Node {
 		nc.LastTransitionTime = c.LastTransitionTime
 		out.Conditions[i] = nc
 	}
+	return out
+}
+
+// capabilityAreas groups capabilities by product area for display. A capability
+// without an entry falls back to "Other".
+var capabilityAreas = map[string]string{
+	"view_nodes":           "Observe",
+	"view_namespaces":      "Observe",
+	"view_pods":            "Observe",
+	"view_pod_logs":        "Observe",
+	"restart_workloads":    "Operate",
+	"scale_workloads":      "Operate",
+	"manage_helm_releases": "Deploy",
+}
+
+func capabilityArea(key string) string {
+	if a, ok := capabilityAreas[key]; ok {
+		return a
+	}
+	return "Other"
+}
+
+// toAPICapabilities maps the storage-agnostic k8s capability report to the API
+// type. It never exposes credentials — only the resolved identity and the
+// per-capability allow/deny verdict — and, when any capability is denied,
+// attaches identity-aware RBAC remediation tailored to the connection method.
+func toAPICapabilities(r *k8s.CapabilityReport, method k8s.Method) ClusterCapabilities {
+	out := ClusterCapabilities{
+		Identity: ClusterIdentity{
+			Username: optStr(r.Identity.Username),
+			Uid:      optStr(r.Identity.UID),
+			Groups:   r.Identity.Groups,
+		},
+		Capabilities: make([]Capability, len(r.Capabilities)),
+	}
+	if out.Identity.Groups == nil {
+		out.Identity.Groups = []string{}
+	}
+
+	anyDenied := false
+	for i, cr := range r.Capabilities {
+		cap := Capability{
+			Key:          cr.Key,
+			Area:         capabilityArea(cr.Key),
+			Title:        cr.Name,
+			Status:       Allowed,
+			MissingRules: make([]CapabilityRule, 0, len(cr.Failed)),
+		}
+		if !cr.Allowed {
+			cap.Status = Denied
+			anyDenied = true
+			// Per-capability remediation lets an operator enable one capability
+			// at a time (e.g. grant restart without granting full Helm deploy),
+			// scoped to just this capability's missing rules. Only emitted for
+			// methods with an addressable in-cluster subject; otherwise the
+			// report-level guidance covers the union.
+			if rem := capRemediation(cr, r.Identity, method); rem != "" {
+				cap.Remediation = &rem
+			}
+		}
+		for _, f := range cr.Failed {
+			cap.MissingRules = append(cap.MissingRules, CapabilityRule{
+				ApiGroup:    optStr(f.Rule.APIGroup),
+				Resource:    f.Rule.Resource,
+				Subresource: optStr(f.Rule.Subresource),
+				Verb:        f.Verb,
+				Reason:      optStr(f.Reason),
+			})
+		}
+		out.Capabilities[i] = cap
+	}
+
+	if anyDenied {
+		if rem := remediation(r, method); rem != "" {
+			out.Remediation = &rem
+		}
+	}
+	return out
+}
+
+// remediation produces copy-paste guidance for granting the missing
+// permissions. For methods with an addressable in-cluster subject (in_cluster,
+// token) it emits a ready-to-apply ClusterRole + ClusterRoleBinding bound to the
+// resolved subject. For the other methods (kubeconfig, eks, gke, aks) the
+// effective subject lives outside the cluster's own RBAC subjects (an IAM/AAD
+// principal or an embedded kubeconfig user), so it returns best-effort guidance
+// rather than a manifest that would bind the wrong subject.
+func remediation(r *k8s.CapabilityReport, method k8s.Method) string {
+	var failed []k8s.RuleResult
+	for _, cr := range r.Capabilities {
+		failed = append(failed, cr.Failed...)
+	}
+	rules := ruleLinesFromFailed(failed)
+	if rules == "" {
+		return ""
+	}
+	switch method {
+	case k8s.MethodInCluster, k8s.MethodToken:
+		return rbacManifest("spacefleet-access", r.Identity, rules)
+	default:
+		return rbacGuidance(method, r.Identity, rules)
+	}
+}
+
+// capRemediation builds a ready-to-apply manifest granting just one denied
+// capability's missing rules, under a capability-specific role name so an
+// operator can apply several without collision. It is emitted only for methods
+// whose subject lives in the cluster's own RBAC (in_cluster, token); for the
+// rest the report-level guidance already shows the rules for the operator's
+// out-of-cluster subject, so a per-capability manifest would bind the wrong one.
+func capRemediation(cr k8s.CapabilityResult, id k8s.Identity, method k8s.Method) string {
+	switch method {
+	case k8s.MethodInCluster, k8s.MethodToken:
+	default:
+		return ""
+	}
+	rules := ruleLinesFromFailed(cr.Failed)
+	if rules == "" {
+		return ""
+	}
+	name := "spacefleet-" + strings.ReplaceAll(cr.Key, "_", "-")
+	return rbacManifest(name, id, rules)
+}
+
+// ruleLinesFromFailed renders denied rule/verbs as ClusterRole `rules:` entries
+// (one block per APIGroup+resource[/subresource], verbs unioned and sorted), or
+// "" when the slice is empty.
+func ruleLinesFromFailed(failed []k8s.RuleResult) string {
+	type ruleKey struct {
+		group, resource string
+	}
+	order := []ruleKey{}
+	verbs := map[ruleKey]map[string]bool{}
+	for _, f := range failed {
+		res := f.Rule.Resource
+		if f.Rule.Subresource != "" {
+			res = res + "/" + f.Rule.Subresource
+		}
+		k := ruleKey{group: f.Rule.APIGroup, resource: res}
+		if _, ok := verbs[k]; !ok {
+			verbs[k] = map[string]bool{}
+			order = append(order, k)
+		}
+		verbs[k][f.Verb] = true
+	}
+	if len(order) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, k := range order {
+		vs := sortedKeys(verbs[k])
+		fmt.Fprintf(&b, "  - apiGroups: [%s]\n", yamlQuote(k.group))
+		fmt.Fprintf(&b, "    resources: [%s]\n", yamlQuote(k.resource))
+		b.WriteString("    verbs: [")
+		for i, v := range vs {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(yamlQuote(v))
+		}
+		b.WriteString("]\n")
+	}
+	return b.String()
+}
+
+// rbacManifest builds a ClusterRole + ClusterRoleBinding (both named roleName)
+// granting rules to the resolved subject. The subject kind/name/namespace are
+// parsed from the identity's username; a ServiceAccount username has the
+// well-known form "system:serviceaccount:<namespace>:<name>".
+func rbacManifest(roleName string, id k8s.Identity, rules string) string {
+	var b strings.Builder
+	b.WriteString("apiVersion: rbac.authorization.k8s.io/v1\n")
+	b.WriteString("kind: ClusterRole\n")
+	b.WriteString("metadata:\n")
+	fmt.Fprintf(&b, "  name: %s\n", roleName)
+	b.WriteString("rules:\n")
+	b.WriteString(rules)
+	b.WriteString("---\n")
+	b.WriteString("apiVersion: rbac.authorization.k8s.io/v1\n")
+	b.WriteString("kind: ClusterRoleBinding\n")
+	b.WriteString("metadata:\n")
+	fmt.Fprintf(&b, "  name: %s\n", roleName)
+	b.WriteString("roleRef:\n")
+	b.WriteString("  apiGroup: rbac.authorization.k8s.io\n")
+	b.WriteString("  kind: ClusterRole\n")
+	fmt.Fprintf(&b, "  name: %s\n", roleName)
+	b.WriteString("subjects:\n")
+	if ns, name, ok := parseServiceAccount(id.Username); ok {
+		b.WriteString("  - kind: ServiceAccount\n")
+		fmt.Fprintf(&b, "    name: %s\n", name)
+		fmt.Fprintf(&b, "    namespace: %s\n", ns)
+	} else {
+		// A non-ServiceAccount subject (a user the API server authenticated): the
+		// binding targets the User by name. The name may be empty if the identity
+		// couldn't be resolved (older API servers) — flag it for the operator.
+		name := id.Username
+		if name == "" {
+			name = "<the identity used by this cluster's credentials>"
+		}
+		b.WriteString("  - kind: User\n")
+		b.WriteString("    apiGroup: rbac.authorization.k8s.io\n")
+		fmt.Fprintf(&b, "    name: %s\n", name)
+	}
+	return b.String()
+}
+
+// rbacGuidance returns best-effort text for methods whose effective subject is
+// not a plain in-cluster RBAC subject. It still shows the missing rules so the
+// operator can attach them to whatever subject their auth model uses.
+func rbacGuidance(method k8s.Method, id k8s.Identity, rules string) string {
+	subject := id.Username
+	if subject == "" {
+		subject = "the identity these credentials authenticate as"
+	}
+	var hint string
+	switch method {
+	case k8s.MethodKubeconfig:
+		hint = "These credentials come from a supplied kubeconfig. Grant the rules " +
+			"below to the user/group that kubeconfig authenticates as, via a " +
+			"ClusterRole + ClusterRoleBinding on the cluster."
+	case k8s.MethodEKS:
+		hint = "These credentials authenticate via AWS IAM. Map the IAM principal to " +
+			"a Kubernetes subject (aws-auth / EKS access entries), then bind the rules " +
+			"below to that subject with a ClusterRole + ClusterRoleBinding."
+	case k8s.MethodGKE:
+		hint = "These credentials authenticate via Google Cloud IAM. Bind the rules " +
+			"below to the corresponding Kubernetes user/group (the GCP identity) with a " +
+			"ClusterRole + ClusterRoleBinding."
+	case k8s.MethodAKS:
+		hint = "These credentials authenticate via Microsoft Entra ID. Bind the rules " +
+			"below to the corresponding Kubernetes user/group (the Entra object ID) with " +
+			"a ClusterRole + ClusterRoleBinding."
+	default:
+		hint = "Grant the rules below to the subject these credentials authenticate as " +
+			"via a ClusterRole + ClusterRoleBinding."
+	}
+	return fmt.Sprintf("# %s\n# Resolved identity: %s\n#\n# Required ClusterRole rules:\n%s", hint, subject, rules)
+}
+
+// parseServiceAccount extracts (namespace, name) from a ServiceAccount username
+// of the form "system:serviceaccount:<namespace>:<name>".
+func parseServiceAccount(username string) (namespace, name string, ok bool) {
+	const prefix = "system:serviceaccount:"
+	if !strings.HasPrefix(username, prefix) {
+		return "", "", false
+	}
+	rest := strings.TrimPrefix(username, prefix)
+	parts := strings.SplitN(rest, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
+}
+
+// yamlQuote double-quotes a YAML scalar so the empty string (the core API group)
+// and values like "*" render unambiguously inside a flow sequence.
+func yamlQuote(s string) string {
+	return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
+}
+
+// sortedKeys returns the keys of a set in lexical order for stable output.
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
 	return out
 }
 

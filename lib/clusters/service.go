@@ -284,6 +284,27 @@ func (s *Service) PodLogs(ctx context.Context, orgID, id uuid.UUID, namespace, n
 	}, namespace, name, opts)
 }
 
+// Capabilities resolves the caller identity and the per-capability access the
+// cluster's stored credentials grant, scoped to the organization. Like Nodes, a
+// connectivity failure is returned to the caller (the cluster row's status is
+// not touched) so the handler can surface it.
+func (s *Service) Capabilities(ctx context.Context, orgID, id uuid.UUID) (*k8s.CapabilityReport, error) {
+	c, err := s.Get(ctx, orgID, id)
+	if err != nil {
+		return nil, err
+	}
+	creds, err := s.openCreds(c)
+	if err != nil {
+		return nil, err
+	}
+	return k8s.Inspect(ctx, k8s.Connection{
+		Method:      k8s.Method(c.ConnectionMethod),
+		Endpoint:    c.Endpoint,
+		Config:      c.Config,
+		Credentials: creds,
+	})
+}
+
 // probe opens the stored credentials, checks reachability, and records the
 // status/version/timestamp. A failure to build or reach the cluster is captured
 // as an error status on the row rather than returned as a service error — the
