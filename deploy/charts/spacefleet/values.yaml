@@ -28,6 +28,14 @@ config:
   env: production
   # -- Address the HTTP server binds. Keep in sync with service.targetPort.
   addr: ":8080"
+  # -- REQUIRED. The canonical public base URL the browser reaches the app at,
+  # with no trailing slash, e.g. "https://spacefleet.example.com" (or
+  # "http://localhost:8080" for a port-forward trial). This is the single source
+  # of truth for every external URL: the OIDC issuer (<externalURL>/dex), the
+  # redirect URI (<externalURL>/auth/callback), and links the app builds such as
+  # invitations. It is explicit and not derived from the ingress host, so links
+  # never depend on ingress specifics. Rendering fails if this is empty.
+  externalURL: ""
   oidc:
     # -- OIDC client ID the app authenticates as. Spacefleet always uses its
     # bundled Dex (see the `dex` block) — there is no external-provider or
@@ -42,6 +50,28 @@ config:
   # org) can use the app — a signed-in user with no organization is shown a
   # "request an invite" message instead of a create-organization screen.
   allowOrgCreation: true
+
+  # SMTP for outbound email (today: organization invitation emails). Optional —
+  # leave host or from empty to disable email, in which case invitations still
+  # produce a copy-able link an admin shares manually. Whether email is enabled
+  # (host+from set) is surfaced to the browser via /config.js so the invite UI
+  # can word itself correctly. The password is a secret: set it inline here (it
+  # lands in the chart's managed env Secret as SMTP_PASSWORD) or, for GitOps,
+  # leave it empty and supply SMTP_PASSWORD via config.secrets.envFrom.
+  smtp:
+    # -- SMTP server hostname. Empty disables email.
+    host: ""
+    # -- SMTP server port (submission). 587 + STARTTLS is the usual setup.
+    port: 587
+    # -- SMTP auth username (optional; omit for unauthenticated relays).
+    username: ""
+    # -- Inline SMTP password. Prefer config.secrets.envFrom for GitOps.
+    password: ""
+    # -- Envelope From address, e.g. "Spacefleet <no-reply@example.com>".
+    # Empty disables email.
+    from: ""
+    # -- Upgrade the connection with STARTTLS after connecting.
+    startTLS: true
   # -- Extra environment variables for both web and worker pods. Standard
   # core/v1 EnvVar entries, e.g. [{name: FOO, value: bar}]. Plaintext — for
   # non-secret config only. Secrets go under `secrets` below.
@@ -308,6 +338,12 @@ dex:
   # App's "Authorization callback URL"). Set config.redirectURI explicitly only to
   # override (e.g. if you front Dex at a different URL); other types (ldap, …) are
   # left untouched.
+  #
+  # Each connector's id/name/type also drives the in-app login screen: the SPA
+  # renders one "Continue with <name>" button per connector (plus an "Email and
+  # password" button when enablePasswordDB is on) that deep-links to that
+  # connector — so set a human-friendly `name`. This list is the single source
+  # of truth for both Dex and the login buttons.
   connectors: []
 
   # -- Additional OIDC clients beyond the app's own (verbatim Dex staticClients).

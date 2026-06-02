@@ -10,10 +10,7 @@ import (
 
 	"github.com/spacefleet/spacefleet/lib/api"
 	"github.com/spacefleet/spacefleet/lib/auth"
-	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/config"
-	"github.com/spacefleet/spacefleet/lib/organizations"
-	"github.com/spacefleet/spacefleet/lib/users"
 	"github.com/spacefleet/spacefleet/ui"
 )
 
@@ -22,8 +19,8 @@ var publicAPIPaths = []string{
 	"/api/health",
 }
 
-func registerRoutes(mux *http.ServeMux, cfg *config.Config, usersSvc *users.Service, orgsSvc *organizations.Service, clustersSvc *clusters.Service, verifier auth.TokenVerifier) {
-	srv := api.NewServer(usersSvc, orgsSvc, clustersSvc, cfg.AllowOrgCreation)
+func registerRoutes(mux *http.ServeMux, cfg *config.Config, deps api.ServerDeps, verifier auth.TokenVerifier) {
+	srv := api.NewServer(deps)
 
 	// API routes are generated from api/openapi.yaml and mounted under
 	// /api/*. oapi-codegen applies middlewares in reverse, so the last
@@ -101,9 +98,17 @@ func appConfigHandler(cfg *config.Config) http.HandlerFunc {
 		// configured; both are non-secret.
 		"oidcIssuer":   cfg.OIDCIssuer,
 		"oidcClientId": cfg.OIDCClientID,
+		// Sign-in options the login screen renders (one button per method,
+		// deep-linking to its Dex connector). Mirrors the operator's Dex
+		// connectors; id/name/type only, non-secret. Empty → generic "Sign in".
+		"loginMethods": cfg.LoginMethods,
 		// Whether the SPA should offer organization creation. Non-secret; the
 		// create endpoint is enforced server-side regardless (see Server).
 		"allowOrgCreation": cfg.AllowOrgCreation,
+		// Whether outbound email is configured. Non-secret (no credentials):
+		// lets the invite UI tell admins whether an email will be sent or they
+		// need to copy the link manually. Sending is decided server-side.
+		"emailEnabled": cfg.EmailEnabled(),
 	})
 	if err != nil {
 		panic(err)

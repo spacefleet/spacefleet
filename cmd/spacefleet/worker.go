@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/spacefleet/spacefleet/lib/config"
+	"github.com/spacefleet/spacefleet/lib/email"
 	"github.com/spacefleet/spacefleet/lib/queue"
 )
 
@@ -50,10 +51,12 @@ func runWorker(_ []string) {
 		}
 	}
 
-	// Empty registry for now. Register job workers here as they're built,
-	// e.g.:
-	//   queue.AddWorker(workers, &mypkg.MyWorker{})
+	// Register job workers. The invite-email worker sends organization
+	// invitation emails enqueued by the API. Its Sender is SMTP when configured
+	// and a no-op otherwise — the API only enqueues when email is configured, so
+	// the no-op path is just a safety net.
 	workers := queue.NewWorkers()
+	queue.AddWorker(workers, &email.InviteEmailWorker{Sender: emailSender(cfg)})
 
 	// River refuses to Start a client with an empty worker bundle ("at
 	// least one Worker must be added"). Until a real job type is
@@ -101,6 +104,24 @@ func runWorker(_ []string) {
 		log.Printf("worker: stop: %v", err)
 	}
 	log.Println("worker: stopped")
+}
+
+// emailSender builds the outbound-email transport for job workers: SMTP when
+// configured, otherwise a no-op (the API won't enqueue email jobs in that
+// case). Keeping the construction here means the worker owns the credentials,
+// not the request path.
+func emailSender(cfg *config.Config) email.Sender {
+	if !cfg.EmailEnabled() {
+		return email.Noop{}
+	}
+	return email.NewSMTP(email.Config{
+		Host:     cfg.SMTPHost,
+		Port:     cfg.SMTPPort,
+		Username: cfg.SMTPUsername,
+		Password: cfg.SMTPPassword,
+		From:     cfg.SMTPFrom,
+		StartTLS: cfg.SMTPStartTLS,
+	})
 }
 
 // waitForSignal blocks until the process receives SIGINT or SIGTERM —

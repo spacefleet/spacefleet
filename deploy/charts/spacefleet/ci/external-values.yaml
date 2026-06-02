@@ -4,6 +4,8 @@
 replicaCount: 3
 
 config:
+  # Public base URL — matches the ingress host below (the canonical origin).
+  externalURL: "https://spacefleet.example.com"
   oidc:
     clientID: spacefleet
   # The GitOps path: SPACEFLEET_SECRET_KEY (and any other secret env) comes from

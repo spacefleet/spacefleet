@@ -9,6 +9,9 @@ import (
 // Cluster is the predicate function for cluster builders.
 type Cluster func(*sql.Selector)
 
+// Invitation is the predicate function for invitation builders.
+type Invitation func(*sql.Selector)
+
 // Membership is the predicate function for membership builders.
 type Membership func(*sql.Selector)
 

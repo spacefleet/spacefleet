@@ -9,3 +9,18 @@
 export function orgCreationEnabled(): boolean {
   return window.appConfig?.allowOrgCreation !== false;
 }
+
+// loginMethods returns the sign-in options the login screen should offer,
+// mirroring the operator's Dex connectors. Defaults to an empty list when
+// config is missing, so the login page falls back to a single generic
+// "Sign in" button rather than rendering nothing.
+export function loginMethods(): Window["appConfig"]["loginMethods"] {
+  return window.appConfig?.loginMethods ?? [];
+}
+
+// emailEnabled reports whether the server has SMTP configured. Defaults to
+// false when config is missing, so the invite UI errs toward "copy the link
+// yourself" rather than implying an email went out.
+export function emailEnabled(): boolean {
+  return window.appConfig?.emailEnabled === true;
+}

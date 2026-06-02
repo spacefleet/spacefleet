@@ -5,5 +5,7 @@
 # env Secret and is injected as SPACEFLEET_SECRET_KEY (a render-only throwaway
 # value, not a real key).
 config:
+  # No ingress here, so the public base URL is the port-forward origin.
+  externalURL: "http://localhost:8080"
   secrets:
     secretKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="

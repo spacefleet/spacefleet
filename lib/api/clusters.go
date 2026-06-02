@@ -12,6 +12,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/spacefleet/spacefleet/ent"
+	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/k8s"
 	"github.com/spacefleet/spacefleet/lib/secrets"
@@ -26,31 +27,35 @@ type apiError struct {
 }
 
 // resolveOrg runs the common preamble for every org-scoped cluster handler:
-// confirm the services exist, resolve the authenticated user, and resolve +
-// authorize the target organization. It returns (orgID, nil, nil) on success,
+// confirm the clusters service exists, then resolve + authorize the caller's
+// membership (see resolveMembership). It returns (orgID, nil, nil) on success,
 // (_, *apiError, nil) for a client error to render, or (_, nil, err) for an
-// internal error to bubble up.
+// internal error to bubble up. Read handlers use the orgID directly; mutating
+// handlers additionally gate on role via resolveClusterWrite.
 func (s *Server) resolveOrg(ctx context.Context) (uuid.UUID, *apiError, error) {
-	if s.clusters == nil || s.users == nil || s.orgs == nil {
+	if s.clusters == nil {
 		return uuid.Nil, &apiError{http.StatusServiceUnavailable, "unavailable", "clusters service not configured"}, nil
 	}
-	u, err := s.currentUser(ctx)
-	if err != nil {
-		if errors.Is(err, errNoSession) {
-			return uuid.Nil, &apiError{http.StatusUnauthorized, "unauthorized", "no session"}, nil
-		}
-		return uuid.Nil, nil, err
+	m, aerr, err := s.resolveMembership(ctx)
+	if err != nil || aerr != nil {
+		return uuid.Nil, aerr, err
 	}
-	m, err := s.currentOrg(ctx, u.ID)
-	if err != nil {
-		switch {
-		case errors.Is(err, errNoOrg):
-			return uuid.Nil, &apiError{http.StatusBadRequest, "bad_request", "no organization selected"}, nil
-		case ent.IsNotFound(err):
-			return uuid.Nil, &apiError{http.StatusForbidden, "forbidden", "not a member of this organization"}, nil
-		default:
-			return uuid.Nil, nil, err
-		}
+	return m.OrganizationID, nil, nil
+}
+
+// resolveClusterWrite is resolveOrg plus an editor-or-above role gate, for the
+// cluster handlers that change state (register, update, delete). Viewers can
+// read clusters but not mutate them.
+func (s *Server) resolveClusterWrite(ctx context.Context) (uuid.UUID, *apiError, error) {
+	if s.clusters == nil {
+		return uuid.Nil, &apiError{http.StatusServiceUnavailable, "unavailable", "clusters service not configured"}, nil
+	}
+	m, aerr, err := s.resolveMembership(ctx)
+	if err != nil || aerr != nil {
+		return uuid.Nil, aerr, err
+	}
+	if aerr := requireRole(m, membership.RoleEditor); aerr != nil {
+		return uuid.Nil, aerr, nil
 	}
 	return m.OrganizationID, nil, nil
 }
@@ -93,7 +98,7 @@ func (s *Server) GetCluster(ctx context.Context, req GetClusterRequestObject) (G
 }
 
 func (s *Server) CreateCluster(ctx context.Context, req CreateClusterRequestObject) (CreateClusterResponseObject, error) {
-	orgID, aerr, err := s.resolveOrg(ctx)
+	orgID, aerr, err := s.resolveClusterWrite(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +131,7 @@ func (s *Server) CreateCluster(ctx context.Context, req CreateClusterRequestObje
 }
 
 func (s *Server) UpdateCluster(ctx context.Context, req UpdateClusterRequestObject) (UpdateClusterResponseObject, error) {
-	orgID, aerr, err := s.resolveOrg(ctx)
+	orgID, aerr, err := s.resolveClusterWrite(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +178,7 @@ func (s *Server) UpdateCluster(ctx context.Context, req UpdateClusterRequestObje
 }
 
 func (s *Server) DeleteCluster(ctx context.Context, req DeleteClusterRequestObject) (DeleteClusterResponseObject, error) {
-	orgID, aerr, err := s.resolveOrg(ctx)
+	orgID, aerr, err := s.resolveClusterWrite(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -189,6 +194,10 @@ func (s *Server) DeleteCluster(ctx context.Context, req DeleteClusterRequestObje
 	return DeleteCluster204Response{}, nil
 }
 
+// TestCluster re-probes connectivity. It's open to any member (including
+// viewers): the UI fires it on every load to refresh the status badge, and
+// observing whether a cluster is reachable is part of viewing it. The status it
+// writes is internal bookkeeping, not a user-facing mutation.
 func (s *Server) TestCluster(ctx context.Context, req TestClusterRequestObject) (TestClusterResponseObject, error) {
 	orgID, aerr, err := s.resolveOrg(ctx)
 	if err != nil {

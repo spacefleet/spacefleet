@@ -1,16 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, useLocation } from "react-router";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useOrg } from "../contexts/OrgContext";
 import { navSections } from "../nav";
 
-// Sidebar is the app's primary navigation: an expandable rail listing the six
+// Sidebar is the app's primary navigation: an expandable rail listing the
 // top-level sections, each of which opens to reveal its sub-pages. The section
 // containing the current route stays expanded as you navigate; other sections
-// can be toggled open/closed independently.
+// can be toggled open/closed independently. Admin-only sections (e.g.
+// Organization) are hidden from non-admins.
 export function Sidebar() {
   const { pathname } = useLocation();
-  const activeSection = navSections.find((s) =>
+  const { currentRole } = useOrg();
+  const sections = useMemo(
+    () => navSections.filter((s) => !s.adminOnly || currentRole === "admin"),
+    [currentRole],
+  );
+  const activeSection = sections.find((s) =>
     s.items.some((i) => i.path === pathname),
   );
 
@@ -42,7 +49,7 @@ export function Sidebar() {
       aria-label="Primary"
       className="w-56 shrink-0 overflow-y-auto border-r border-gray-200 bg-white py-2"
     >
-      {navSections.map((section) => {
+      {sections.map((section) => {
         const isOpen = open.has(section.label);
         const isActiveSection = section === activeSection;
         const Icon = section.icon;

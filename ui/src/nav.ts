@@ -5,6 +5,7 @@ import {
   Plug,
   Server,
   ShieldCheck,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -28,6 +29,9 @@ export interface NavSection {
   label: string;
   icon: LucideIcon;
   items: NavLeaf[];
+  // When true, the section is only shown to organization admins (it holds
+  // org-management pages). The pages themselves also guard server-side.
+  adminOnly?: boolean;
 }
 
 export const navSections: NavSection[] = [
@@ -96,6 +100,12 @@ export const navSections: NavSection[] = [
       { label: "CI/CD", path: "/providers/cicd" },
       { label: "Monitoring", path: "/providers/monitoring" },
     ],
+  },
+  {
+    label: "Organization",
+    icon: Users,
+    adminOnly: true,
+    items: [{ label: "Members", path: "/organization/members" }],
   },
 ];
 

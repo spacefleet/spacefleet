@@ -11,9 +11,12 @@ import (
 )
 
 // Membership is the join entity binding a User to an Organization, carrying
-// the user's role within that organization. The creator of an organization
-// becomes its "owner"; everyone else is a "member". It is the only place
-// multi-org membership is recorded.
+// the user's role within that organization. Roles are hierarchical —
+// admin > editor > viewer: an admin manages the organization itself (members,
+// invites, renaming), an editor can take any action within the app, and a
+// viewer is read-only. The creator of an organization becomes its first admin;
+// everyone else's role comes from the invitation they accepted. It is the only
+// place multi-org membership is recorded.
 type Membership struct {
 	ent.Schema
 }
@@ -25,7 +28,9 @@ func (Membership) Fields() []ent.Field {
 		// match the hand-written migration.
 		field.UUID("user_id", uuid.UUID{}).Immutable(),
 		field.UUID("organization_id", uuid.UUID{}).Immutable(),
-		field.Enum("role").Values("owner", "member").Default("member"),
+		// Least privilege by default; the creator is promoted to admin and
+		// invited users get the role their invitation carried.
+		field.Enum("role").Values("admin", "editor", "viewer").Default("viewer"),
 		field.Time("created_at").Default(time.Now).Immutable(),
 	}
 }

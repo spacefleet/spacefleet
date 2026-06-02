@@ -14,6 +14,8 @@ type Tx struct {
 	config
 	// Cluster is the client for interacting with the Cluster builders.
 	Cluster *ClusterClient
+	// Invitation is the client for interacting with the Invitation builders.
+	Invitation *InvitationClient
 	// Membership is the client for interacting with the Membership builders.
 	Membership *MembershipClient
 	// Organization is the client for interacting with the Organization builders.
@@ -152,6 +154,7 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.Cluster = NewClusterClient(tx.config)
+	tx.Invitation = NewInvitationClient(tx.config)
 	tx.Membership = NewMembershipClient(tx.config)
 	tx.Organization = NewOrganizationClient(tx.config)
 	tx.User = NewUserClient(tx.config)

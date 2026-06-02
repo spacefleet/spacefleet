@@ -53,7 +53,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create an organization (the caller becomes its owner) */
+        /** Create an organization (the caller becomes its first admin) */
         post: operations["createOrganization"];
         delete?: never;
         options?: never;
@@ -74,8 +74,148 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Rename an organization (owners only) */
+        /** Rename an organization (admins only) */
         patch: operations["renameOrganization"];
+        trace?: never;
+    };
+    "/api/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the members of the current organization
+         * @description Org-scoped (X-Organization-ID). Any member may view the roster; only
+         *     admins can change roles or remove members.
+         */
+        get: operations["listMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/members/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a member from the organization (admins only)
+         * @description Org-scoped (X-Organization-ID). Admin-only. The organization must keep
+         *     at least one admin, so removing the last admin is rejected with 409.
+         */
+        delete: operations["removeMember"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a member's role (admins only)
+         * @description Org-scoped (X-Organization-ID). Admin-only. The organization must keep
+         *     at least one admin, so demoting the last admin is rejected with 409.
+         */
+        patch: operations["updateMemberRole"];
+        trace?: never;
+    };
+    "/api/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List pending invitations for the current organization (admins only)
+         * @description Org-scoped (X-Organization-ID). Admin-only.
+         */
+        get: operations["listInvitations"];
+        put?: never;
+        /**
+         * Invite a user to the current organization (admins only)
+         * @description Org-scoped (X-Organization-ID). Admin-only. Creates a pending invitation
+         *     and returns a copy-able accept link. When email is configured an
+         *     invitation email is also sent (email_sent reflects whether it was
+         *     enqueued); otherwise the admin shares the link manually.
+         */
+        post: operations["createInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invitations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a pending invitation (admins only)
+         * @description Org-scoped (X-Organization-ID). Admin-only. Invalidates the invite link.
+         */
+        delete: operations["revokeInvitation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invites/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview an invitation by its token
+         * @description Token-scoped (not org-scoped). Returns what the invite is for so the
+         *     accept screen can show the organization and role, and whether the link
+         *     is still usable. Requires a signed-in user.
+         */
+        get: operations["getInvitation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invites/{token}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept an invitation and join its organization
+         * @description Token-scoped (not org-scoped). The signed-in user joins the invitation's
+         *     organization with the invitation's role; the token is the sole authority
+         *     (the invited email is not checked against the caller). Idempotent for a
+         *     user who already belongs to the organization. Returns the joined
+         *     organization so the SPA can select it.
+         */
+        post: operations["acceptInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/clusters": {
@@ -285,8 +425,14 @@ export interface components {
             id: string;
             email: string;
         };
-        /** @enum {string} */
-        Role: "owner" | "member";
+        /**
+         * @description A member's role within an organization (hierarchical: admin > editor >
+         *     viewer). admin manages the organization itself (members, invitations,
+         *     renaming); editor can take any action within the app but not manage the
+         *     org; viewer is read-only.
+         * @enum {string}
+         */
+        Role: "admin" | "editor" | "viewer";
         Organization: {
             /** Format: uuid */
             id: string;
@@ -306,6 +452,54 @@ export interface components {
         };
         OrganizationCreateRequest: {
             name: string;
+        };
+        /** @description A user's membership in the current organization. */
+        Member: {
+            /** Format: uuid */
+            user_id: string;
+            email: string;
+            role: components["schemas"]["Role"];
+            /** Format: date-time */
+            created_at: string;
+        };
+        MemberRoleUpdateRequest: {
+            role: components["schemas"]["Role"];
+        };
+        /** @enum {string} */
+        InvitationStatus: "pending" | "accepted" | "revoked";
+        /** @description A pending (or resolved) invitation to join the organization. */
+        Invitation: {
+            /** Format: uuid */
+            id: string;
+            email: string;
+            role: components["schemas"]["Role"];
+            status: components["schemas"]["InvitationStatus"];
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @description The copy-able invite link an admin can share. */
+            accept_url: string;
+        };
+        InvitationCreateRequest: {
+            email: string;
+            role: components["schemas"]["Role"];
+        };
+        InvitationCreateResult: {
+            invitation: components["schemas"]["Invitation"];
+            /**
+             * @description Whether an invitation email was enqueued. False when email isn't
+             *     configured (or enqueueing failed) — share the accept_url manually.
+             */
+            email_sent: boolean;
+        };
+        /** @description What an invitation token is for, for the accept screen. */
+        InvitationPreview: {
+            organization_name: string;
+            role: components["schemas"]["Role"];
+            status: components["schemas"]["InvitationStatus"];
+            /** @description Whether the invitation is past its expiry (only meaningful when pending). */
+            expired: boolean;
         };
         /**
          * @description How Spacefleet connects to the cluster.
@@ -617,6 +811,9 @@ export interface components {
     parameters: {
         OrganizationID: string;
         ClusterID: string;
+        MemberUserID: string;
+        InvitationID: string;
+        InviteToken: string;
     };
     requestBodies: never;
     headers: never;
@@ -706,6 +903,188 @@ export interface operations {
         };
         responses: {
             /** @description Organization updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Members of the current organization */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Member"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["MemberUserID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Member removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateMemberRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["MemberUserID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemberRoleUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated member */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Member"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listInvitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending invitations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Invitation"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Invitation created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationCreateResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["InvitationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invitation revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: components["parameters"]["InviteToken"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invitation preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationPreview"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    acceptInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: components["parameters"]["InviteToken"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization the user joined */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -49,13 +49,9 @@ stringData:
         name: Spacefleet
         public: true
         redirectURIs:
-        {{- if and .Values.ingress.enabled (gt (len .Values.ingress.hosts) 0) }}
-          {{- range .Values.ingress.hosts }}
-          - {{ printf "https://%s/auth/callback" .host | quote }}
-          {{- end }}
-        {{- else }}
+        {{- /* The app's single public origin (config.externalURL) + /auth/callback.
+               Additional origins (e.g. extra hostnames) go in dex.extraRedirectURIs. */}}
           - {{ include "spacefleet.oidc.redirectURI" . | quote }}
-        {{- end }}
         {{- range .Values.dex.extraRedirectURIs }}
           - {{ . | quote }}
         {{- end }}

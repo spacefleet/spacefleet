@@ -5,15 +5,16 @@ import { AuthGate } from "./AuthGate";
 
 // Drive react-oidc-context's state by hand so we can assert AuthGate's
 // branching without a real OIDC provider.
-const signinRedirect = vi.fn();
 let mockAuth: Record<string, unknown>;
-let mockHasAuthParams = false;
 
 vi.mock("react-oidc-context", () => ({
   useAuth: () => mockAuth,
-  hasAuthParams: () => mockHasAuthParams,
+  hasAuthParams: () => false,
 }));
 
+// Render AuthGate over a protected index route, with a sibling /login route
+// standing in for the real login screen so we can assert the redirect lands
+// there (AuthGate no longer launches the Dex flow itself).
 function renderGate() {
   return render(
     <MemoryRouter initialEntries={["/"]}>
@@ -21,50 +22,46 @@ function renderGate() {
         <Route element={<AuthGate />}>
           <Route index element={<div>protected content</div>} />
         </Route>
+        <Route path="/login" element={<div>login screen</div>} />
       </Routes>
     </MemoryRouter>,
   );
 }
 
 beforeEach(() => {
-  signinRedirect.mockClear();
-  mockHasAuthParams = false;
   mockAuth = {
     isAuthenticated: false,
     isLoading: false,
     activeNavigator: undefined,
     error: undefined,
-    signinRedirect,
   };
 });
 
 describe("AuthGate", () => {
-  it("redirects to the IdP when unauthenticated and idle", () => {
+  it("redirects to /login when unauthenticated and idle", () => {
     renderGate();
-    expect(signinRedirect).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("Signing in…")).toBeInTheDocument();
+    expect(screen.getByText("login screen")).toBeInTheDocument();
     expect(screen.queryByText("protected content")).not.toBeInTheDocument();
   });
 
   it("renders the protected outlet when authenticated", () => {
     mockAuth.isAuthenticated = true;
     renderGate();
-    expect(signinRedirect).not.toHaveBeenCalled();
     expect(screen.getByText("protected content")).toBeInTheDocument();
+    expect(screen.queryByText("login screen")).not.toBeInTheDocument();
   });
 
-  it("does not redirect while the callback is still being processed", () => {
-    // Mid-callback: ?code/&state present and the lib is loading.
-    mockHasAuthParams = true;
+  it("shows a placeholder while the session is still loading", () => {
     mockAuth.isLoading = true;
     renderGate();
-    expect(signinRedirect).not.toHaveBeenCalled();
+    expect(screen.getByText("Signing in…")).toBeInTheDocument();
+    expect(screen.queryByText("login screen")).not.toBeInTheDocument();
+    expect(screen.queryByText("protected content")).not.toBeInTheDocument();
   });
 
-  it("surfaces an error with a retry action instead of redirecting", () => {
+  it("sends sign-in errors to the login screen", () => {
     mockAuth.error = new Error("boom");
     renderGate();
-    expect(signinRedirect).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+    expect(screen.getByText("login screen")).toBeInTheDocument();
   });
 });

@@ -26,7 +26,9 @@ export function Layout() {
           {email && <span className="text-gray-300">{email}</span>}
           {/* Local sign-out: clear the stored tokens. Dex doesn't advertise
               an end_session_endpoint, so we don't RP-initiate logout — after
-              removeUser, AuthGate redirects back to the Dex login form. */}
+              removeUser the session is gone and AuthGate routes to the /login
+              screen. (The identity provider's own session may still be live, so
+              this is a local sign-out; /login says as much.) */}
           <button
             type="button"
             onClick={() => void auth.removeUser()}

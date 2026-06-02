@@ -45,11 +45,13 @@ always pairs with image `:X.Y.Z`. Replace `X.Y.Z` below with the
 ## Quick start (trial)
 
 The fastest way to see Spacefleet running. This uses the **bundled** Postgres
-and Dex, with no Ingress:
+and Dex, with no Ingress. `config.externalURL` is **required** — for a
+port-forward trial, set it to the localhost address you'll open:
 
 ```sh
 helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
-  --version X.Y.Z
+  --version X.Y.Z \
+  --set config.externalURL=http://localhost:8080
 ```
 
 Then reach the app by port-forwarding the service:
@@ -87,11 +89,14 @@ A real deployment changes three things from the trial:
 ### 1. Configure authentication (OIDC)
 
 Spacefleet's identity provider (Dex) is always bundled — you don't point the app
-at an external one. For production you give it a real hostname (so its address
-becomes `https://…` instead of the localhost trial fallback) and decide who can
-sign in. The hostname comes from your Ingress:
+at an external one. For production you give it a real public address (so its
+address becomes `https://…` instead of the localhost trial fallback) and decide
+who can sign in. Set `config.externalURL` to that public URL — it's required and
+drives the login provider's address (and every other external link) — and route
+your Ingress host to the app:
 
 ```sh
+--set config.externalURL=https://spacefleet.example.com \
 --set ingress.enabled=true \
 --set ingress.hosts[0].host=spacefleet.example.com
 ```
@@ -99,12 +104,13 @@ sign in. The hostname comes from your Ingress:
 The login provider is then served same-origin at
 `https://spacefleet.example.com/dex`, seeded with an `admin@example.com` login
 **you must change before exposing the app**. To add "Log in with
-GitHub/Google/Okta/Entra/LDAP/…", change or remove the seeded admin, or choose
-where login state is stored, see [Authentication](authentication.md).
+GitHub/Google/Okta/Entra/LDAP/…", change or remove the seeded admin, decide
+**who can create organizations**, or choose where login state is stored, see
+[Authentication](authentication.md).
 
-Setting a real hostname (so logins don't fall back to localhost) and replacing
-the seeded admin are the single most important things to do before exposing the
-deployment.
+Setting `config.externalURL` (so logins don't fall back to localhost) and
+replacing the seeded admin are the single most important things to do before
+exposing the deployment.
 
 ### 2. Use an external database
 
@@ -182,8 +188,8 @@ Long `--set` chains get unwieldy. For production, prefer a values file:
 
 ```yaml
 # values.prod.yaml
-# The bundled Dex derives its issuer from the ingress host below. To replace the
-# seeded admin or add GitHub/Google/etc. logins, set dex.* — see
+# The bundled Dex derives its issuer from config.externalURL below. To replace
+# the seeded admin or add GitHub/Google/etc. logins, set dex.* — see
 # "Authenticate with the bundled Dex".
 
 postgresql:
@@ -192,8 +198,21 @@ externalDatabase:
   existingSecret: spacefleet-db
 
 config:
-  # Secret app config (the credential-encryption key, and anything added later)
-  # comes from a Secret you manage — see "Set the credential-encryption key".
+  # Required: the public URL users reach Spacefleet at. Drives the OIDC issuer,
+  # the login redirect, and external links such as invitations.
+  externalURL: https://spacefleet.example.com
+  # Lock onboarding to invite-only (optional; default true allows self-service
+  # org creation) — see Authentication.
+  allowOrgCreation: false
+  # Optional: deliver invitations by email. Omit to leave email off (invites
+  # still produce a copy-able link) — see Email.
+  smtp:
+    host: smtp.example.com
+    from: "Spacefleet <no-reply@example.com>"
+    username: spacefleet
+  # Secret app config (the credential-encryption key, the SMTP password, and
+  # anything added later) comes from a Secret you manage — see
+  # "Set the credential-encryption key".
   secrets:
     envFrom:
       - secretRef:
@@ -267,8 +286,11 @@ reach for most:
 
 | Key | Default | Purpose |
 | --- | --- | --- |
+| `config.externalURL` | _(required)_ | public base URL users reach the app at; drives the OIDC issuer, login redirect, and external links (e.g. invitations) — see [Authentication](authentication.md#sign-in-for-the-first-time) |
+| `config.allowOrgCreation` | `true` | whether signed-in users may create their own organization (`false` = invite-only) — see [Authentication](authentication.md#control-who-can-create-organizations) |
+| `config.smtp.host` / `config.smtp.from` | _(empty)_ | enable outbound email (invitations) — see [Email](email.md) |
 | `config.oidc.clientID` | `spacefleet` | OIDC client ID the app uses (keep in sync with `dex.clientID`) |
-| `config.secrets.envFrom` | `[]` | load secret env (e.g. `SPACEFLEET_SECRET_KEY`) from Secrets you manage — see [Secret configuration](secrets.md) |
+| `config.secrets.envFrom` | `[]` | load secret env (e.g. `SPACEFLEET_SECRET_KEY`, `SMTP_PASSWORD`) from Secrets you manage — see [Secret configuration](secrets.md) |
 | `dex.storage` | `crd` | Dex storage backend — `crd` keeps state in-cluster |
 | `dex.connectors` | `[]` | upstream logins (GitHub, Google, Okta, LDAP, …) |
 | `dex.staticPasswords` | seeded admin | built-in accounts — **change before exposing** |
@@ -353,7 +375,9 @@ the package is private you'll need to `helm registry login ghcr.io` first.
 ## See also
 
 - [Authentication](authentication.md) — how sign-in works with the bundled
-  identity provider, plus adding GitHub/Google logins, storage, and hardening.
+  identity provider, plus adding GitHub/Google logins, controlling who can create
+  organizations, storage, and hardening.
+- [Email](email.md) — configure SMTP so invitations are delivered by email.
 - [Secret configuration](secrets.md) — the credential-encryption key and other
   secret settings (inline for a trial, or from a Secret you manage).
 - [Database configuration](database.md) — connection string, TLS modes, and

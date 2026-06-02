@@ -3,6 +3,10 @@
 # admin, and a GitHub connector referencing a client secret via envFrom. Dex is
 # always bundled, so there is no dex.enabled here — this set just adds an ingress
 # host and a federation connector on top of the defaults.
+config:
+  # Public base URL — matches the ingress host below (the canonical origin).
+  externalURL: "https://spacefleet.example.com"
+
 dex:
   storage: crd
   connectors:

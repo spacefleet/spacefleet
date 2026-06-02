@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spacefleet/spacefleet/lib/api"
 	"github.com/spacefleet/spacefleet/lib/config"
 	"github.com/spacefleet/spacefleet/lib/testsupport"
 )
@@ -16,8 +17,9 @@ import (
 // mounted under the auth middleware and the SPA fallback works.
 func handler() http.Handler {
 	// A fake verifier stands in for Dex so requests reach the handlers (this
-	// proves routing, not auth — the server has no passthrough mode).
-	return buildHandler(&config.Config{Addr: ":0", Env: "test"}, nil, nil, nil, testsupport.FakeVerifier())
+	// proves routing, not auth — the server has no passthrough mode). All
+	// dependencies are zero/nil, so handlers report "not configured".
+	return buildHandler(&config.Config{Addr: ":0", Env: "test"}, api.ServerDeps{}, testsupport.FakeVerifier())
 }
 
 func TestHealthEndpointIsPublic(t *testing.T) {
@@ -80,6 +82,68 @@ func TestGenerateClusterRbacRouteMounted(t *testing.T) {
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503 from the nil clusters service, got %d", rec.Code)
+	}
+}
+
+// TestAppConfigHandler proves /config.js emits the non-secret values the SPA
+// needs as a window.appConfig assignment — including the login methods, which
+// drive the login screen's per-connector buttons.
+func TestAppConfigHandler(t *testing.T) {
+	cfg := &config.Config{
+		OIDCIssuer:       "https://app.example.com/dex",
+		OIDCClientID:     "spacefleet",
+		AllowOrgCreation: true,
+		LoginMethods: []config.LoginMethod{
+			{ID: "github", Name: "GitHub", Type: "github"},
+			{ID: "local", Name: "Email and password", Type: "password"},
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/config.js", nil)
+	rec := httptest.NewRecorder()
+	appConfigHandler(cfg).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/javascript") {
+		t.Fatalf("expected javascript content-type, got %q", ct)
+	}
+
+	// Strip the `window.appConfig=...;` wrapper to get back the JSON payload.
+	body := rec.Body.String()
+	jsonStr := strings.TrimSuffix(strings.TrimPrefix(body, "window.appConfig="), ";")
+
+	var got struct {
+		OIDCIssuer   string               `json:"oidcIssuer"`
+		OIDCClientID string               `json:"oidcClientId"`
+		LoginMethods []config.LoginMethod `json:"loginMethods"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &got); err != nil {
+		t.Fatalf("decode appConfig payload %q: %v", jsonStr, err)
+	}
+
+	if got.OIDCIssuer != cfg.OIDCIssuer || got.OIDCClientID != cfg.OIDCClientID {
+		t.Fatalf("oidc values: got issuer=%q clientId=%q", got.OIDCIssuer, got.OIDCClientID)
+	}
+	if len(got.LoginMethods) != 2 {
+		t.Fatalf("expected 2 login methods, got %d (%v)", len(got.LoginMethods), got.LoginMethods)
+	}
+	if got.LoginMethods[0].ID != "github" || got.LoginMethods[1].Type != "password" {
+		t.Fatalf("login methods did not round-trip: %v", got.LoginMethods)
+	}
+}
+
+// TestAppConfigHandlerEmptyLoginMethods proves an unset list serializes as an
+// empty JSON array (not null), so the SPA can safely fall back to its generic
+// "Sign in" button.
+func TestAppConfigHandlerEmptyLoginMethods(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/config.js", nil)
+	rec := httptest.NewRecorder()
+	appConfigHandler(&config.Config{LoginMethods: []config.LoginMethod{}}).ServeHTTP(rec, req)
+
+	if !strings.Contains(rec.Body.String(), `"loginMethods":[]`) {
+		t.Fatalf("expected loginMethods to serialize as [], got %q", rec.Body.String())
 	}
 }
 

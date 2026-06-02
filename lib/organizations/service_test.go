@@ -13,8 +13,8 @@ import (
 )
 
 // TestCreateAndListForUser exercises the core organization use cases against a
-// real database: creating an org makes the creator its owner, listing returns
-// only the caller's orgs, and renaming is owner-restricted.
+// real database: creating an org makes the creator its admin, listing returns
+// only the caller's orgs, and renaming is admin-restricted.
 func TestCreateAndListForUser(t *testing.T) {
 	client := testsupport.NewEntClient(t)
 	svc := NewService(client)
@@ -35,7 +35,7 @@ func TestCreateAndListForUser(t *testing.T) {
 		t.Fatalf("create org: %v", err)
 	}
 
-	// Alice belongs to the org as its owner.
+	// Alice belongs to the org as its admin.
 	mships, err := svc.ListForUser(ctx, alice.ID)
 	if err != nil {
 		t.Fatalf("list for alice: %v", err)
@@ -43,8 +43,8 @@ func TestCreateAndListForUser(t *testing.T) {
 	if len(mships) != 1 {
 		t.Fatalf("alice should have 1 membership, got %d", len(mships))
 	}
-	if mships[0].Role != membership.RoleOwner {
-		t.Fatalf("creator role = %q, want owner", mships[0].Role)
+	if mships[0].Role != membership.RoleAdmin {
+		t.Fatalf("creator role = %q, want admin", mships[0].Role)
 	}
 	if mships[0].Edges.Organization == nil || mships[0].Edges.Organization.ID != org.ID {
 		t.Fatalf("membership should eager-load the created org")
@@ -64,36 +64,36 @@ func TestCreateAndListForUser(t *testing.T) {
 		t.Fatalf("expected error renaming as non-member")
 	}
 
-	// Alice (owner) can rename it.
+	// Alice (admin) can rename it.
 	renamed, err := svc.Rename(ctx, alice.ID, org.ID, "Acme Corp")
 	if err != nil {
-		t.Fatalf("owner rename: %v", err)
+		t.Fatalf("admin rename: %v", err)
 	}
 	if renamed.Name != "Acme Corp" {
 		t.Fatalf("rename: got %q, want Acme Corp", renamed.Name)
 	}
 }
 
-// TestRenameForbiddenForNonOwner confirms a plain member can't rename the org.
-func TestRenameForbiddenForNonOwner(t *testing.T) {
+// TestRenameForbiddenForNonAdmin confirms a non-admin member can't rename the org.
+func TestRenameForbiddenForNonAdmin(t *testing.T) {
 	client := testsupport.NewEntClient(t)
 	svc := NewService(client)
 	userSvc := users.NewService(client)
 	ctx := context.Background()
 
-	owner, _ := userSvc.EnsureUser(ctx, "owner", "owner@example.com")
+	admin, _ := userSvc.EnsureUser(ctx, "admin", "admin@example.com")
 	member, _ := userSvc.EnsureUser(ctx, "member", "member@example.com")
 
-	org, err := svc.Create(ctx, owner.ID, "Acme")
+	org, err := svc.Create(ctx, admin.ID, "Acme")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
 
-	// Add the second user as a plain member directly.
+	// Add the second user as an editor directly.
 	if _, err := client.Membership.Create().
 		SetUserID(member.ID).
 		SetOrganizationID(org.ID).
-		SetRole(membership.RoleMember).
+		SetRole(membership.RoleEditor).
 		Save(ctx); err != nil {
 		t.Fatalf("add member: %v", err)
 	}
@@ -101,5 +101,65 @@ func TestRenameForbiddenForNonOwner(t *testing.T) {
 	_, err = svc.Rename(ctx, member.ID, org.ID, "Nope")
 	if !errors.Is(err, ErrForbidden) {
 		t.Fatalf("member rename: got %v, want ErrForbidden", err)
+	}
+}
+
+// TestMemberManagementGuardsLastAdmin covers listing members, changing roles,
+// removing members, and the invariant that an org always keeps one admin.
+func TestMemberManagementGuardsLastAdmin(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	userSvc := users.NewService(client)
+	ctx := context.Background()
+
+	admin, _ := userSvc.EnsureUser(ctx, "admin", "admin@example.com")
+	member, _ := userSvc.EnsureUser(ctx, "member", "member@example.com")
+
+	org, err := svc.Create(ctx, admin.ID, "Acme")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := client.Membership.Create().
+		SetUserID(member.ID).
+		SetOrganizationID(org.ID).
+		SetRole(membership.RoleViewer).
+		Save(ctx); err != nil {
+		t.Fatalf("add member: %v", err)
+	}
+
+	// ListMembers returns both, with users eager-loaded.
+	members, err := svc.ListMembers(ctx, org.ID)
+	if err != nil {
+		t.Fatalf("list members: %v", err)
+	}
+	if len(members) != 2 {
+		t.Fatalf("expected 2 members, got %d", len(members))
+	}
+	for _, m := range members {
+		if m.Edges.User == nil {
+			t.Fatalf("ListMembers should eager-load the user edge")
+		}
+	}
+
+	// The sole admin can't be demoted.
+	if _, err := svc.SetMemberRole(ctx, org.ID, admin.ID, membership.RoleEditor); !errors.Is(err, ErrLastAdmin) {
+		t.Fatalf("demote last admin: got %v, want ErrLastAdmin", err)
+	}
+	// ...nor removed.
+	if err := svc.RemoveMember(ctx, org.ID, admin.ID); !errors.Is(err, ErrLastAdmin) {
+		t.Fatalf("remove last admin: got %v, want ErrLastAdmin", err)
+	}
+
+	// Promote the viewer to admin; now the original admin can be demoted.
+	if _, err := svc.SetMemberRole(ctx, org.ID, member.ID, membership.RoleAdmin); err != nil {
+		t.Fatalf("promote member: %v", err)
+	}
+	if _, err := svc.SetMemberRole(ctx, org.ID, admin.ID, membership.RoleEditor); err != nil {
+		t.Fatalf("demote with another admin present: %v", err)
+	}
+
+	// Removing a non-admin is always fine.
+	if err := svc.RemoveMember(ctx, org.ID, admin.ID); err != nil {
+		t.Fatalf("remove non-admin: %v", err)
 	}
 }

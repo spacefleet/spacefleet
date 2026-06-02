@@ -6,5 +6,6 @@
 clusterReader:
   enabled: true
 config:
+  externalURL: "http://localhost:8080"
   secrets:
     secretKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="

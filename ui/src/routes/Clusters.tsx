@@ -23,7 +23,9 @@ type Cluster = components["schemas"]["Cluster"];
 // first org-scoped resource — the X-Organization-ID header is attached
 // automatically by the API client (see api/client.ts).
 export function Clusters() {
-  const { currentOrg } = useOrg();
+  const { currentOrg, currentRole } = useOrg();
+  // Viewers can see clusters and their live status but take no action.
+  const canEdit = currentRole !== "viewer";
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -95,14 +97,16 @@ export function Clusters() {
             Register the Kubernetes clusters Spacefleet manages.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setRegistering(true)}
-          className="inline-flex items-center gap-2 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
-        >
-          <Plus className="h-4 w-4" />
-          Add cluster
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => setRegistering(true)}
+            className="inline-flex items-center gap-2 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
+          >
+            <Plus className="h-4 w-4" />
+            Add cluster
+          </button>
+        )}
       </div>
 
       <div className="mt-6 border border-neutral-200 bg-white">
@@ -167,15 +171,17 @@ export function Clusters() {
                       <ShieldCheck className="h-3.5 w-3.5" />
                       Capabilities
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => void onDelete(c.id)}
-                      disabled={busyId === c.id}
-                      className="ml-4 inline-flex items-center gap-1.5 text-red-500 hover:text-red-700 disabled:opacity-50"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Delete
-                    </button>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => void onDelete(c.id)}
+                        disabled={busyId === c.id}
+                        className="ml-4 inline-flex items-center gap-1.5 text-red-500 hover:text-red-700 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

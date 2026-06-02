@@ -47,7 +47,7 @@ paths:
 
   /api/organizations:
     post:
-      summary: Create an organization (the caller becomes its owner)
+      summary: Create an organization (the caller becomes its first admin)
       operationId: createOrganization
       requestBody:
         required: true
@@ -67,7 +67,7 @@ paths:
 
   /api/organizations/{id}:
     patch:
-      summary: Rename an organization (owners only)
+      summary: Rename an organization (admins only)
       operationId: renameOrganization
       parameters:
         - $ref: "#/components/parameters/OrganizationID"
@@ -80,6 +80,158 @@ paths:
       responses:
         "200":
           description: Organization updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/members:
+    get:
+      summary: List the members of the current organization
+      description: |
+        Org-scoped (X-Organization-ID). Any member may view the roster; only
+        admins can change roles or remove members.
+      operationId: listMembers
+      responses:
+        "200":
+          description: Members of the current organization
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Member"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/members/{userId}:
+    patch:
+      summary: Change a member's role (admins only)
+      description: |
+        Org-scoped (X-Organization-ID). Admin-only. The organization must keep
+        at least one admin, so demoting the last admin is rejected with 409.
+      operationId: updateMemberRole
+      parameters:
+        - $ref: "#/components/parameters/MemberUserID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberRoleUpdateRequest"
+      responses:
+        "200":
+          description: The updated member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Remove a member from the organization (admins only)
+      description: |
+        Org-scoped (X-Organization-ID). Admin-only. The organization must keep
+        at least one admin, so removing the last admin is rejected with 409.
+      operationId: removeMember
+      parameters:
+        - $ref: "#/components/parameters/MemberUserID"
+      responses:
+        "204":
+          description: Member removed
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/invitations:
+    get:
+      summary: List pending invitations for the current organization (admins only)
+      description: Org-scoped (X-Organization-ID). Admin-only.
+      operationId: listInvitations
+      responses:
+        "200":
+          description: Pending invitations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Invitation"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Invite a user to the current organization (admins only)
+      description: |
+        Org-scoped (X-Organization-ID). Admin-only. Creates a pending invitation
+        and returns a copy-able accept link. When email is configured an
+        invitation email is also sent (email_sent reflects whether it was
+        enqueued); otherwise the admin shares the link manually.
+      operationId: createInvitation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationCreateRequest"
+      responses:
+        "201":
+          description: Invitation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationCreateResult"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/invitations/{id}:
+    delete:
+      summary: Revoke a pending invitation (admins only)
+      description: Org-scoped (X-Organization-ID). Admin-only. Invalidates the invite link.
+      operationId: revokeInvitation
+      parameters:
+        - $ref: "#/components/parameters/InvitationID"
+      responses:
+        "204":
+          description: Invitation revoked
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/invites/{token}:
+    get:
+      summary: Preview an invitation by its token
+      description: |
+        Token-scoped (not org-scoped). Returns what the invite is for so the
+        accept screen can show the organization and role, and whether the link
+        is still usable. Requires a signed-in user.
+      operationId: getInvitation
+      parameters:
+        - $ref: "#/components/parameters/InviteToken"
+      responses:
+        "200":
+          description: The invitation preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationPreview"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/invites/{token}/accept:
+    post:
+      summary: Accept an invitation and join its organization
+      description: |
+        Token-scoped (not org-scoped). The signed-in user joins the invitation's
+        organization with the invitation's role; the token is the sole authority
+        (the invited email is not checked against the caller). Idempotent for a
+        user who already belongs to the organization. Returns the joined
+        organization so the SPA can select it.
+      operationId: acceptInvitation
+      parameters:
+        - $ref: "#/components/parameters/InviteToken"
+      responses:
+        "200":
+          description: The organization the user joined
           content:
             application/json:
               schema:
@@ -347,7 +499,12 @@ components:
 
     Role:
       type: string
-      enum: [owner, member]
+      description: |
+        A member's role within an organization (hierarchical: admin > editor >
+        viewer). admin manages the organization itself (members, invitations,
+        renaming); editor can take any action within the app but not manage the
+        org; viewer is read-only.
+      enum: [admin, editor, viewer]
 
     Organization:
       type: object
@@ -393,6 +550,95 @@ components:
           type: string
           minLength: 1
           maxLength: 200
+
+    Member:
+      type: object
+      description: A user's membership in the current organization.
+      required: [user_id, email, role, created_at]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        created_at:
+          type: string
+          format: date-time
+
+    MemberRoleUpdateRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: "#/components/schemas/Role"
+
+    InvitationStatus:
+      type: string
+      enum: [pending, accepted, revoked]
+
+    Invitation:
+      type: object
+      description: A pending (or resolved) invitation to join the organization.
+      required: [id, email, role, status, expires_at, created_at, accept_url]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        status:
+          $ref: "#/components/schemas/InvitationStatus"
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        accept_url:
+          type: string
+          description: The copy-able invite link an admin can share.
+
+    InvitationCreateRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+          minLength: 1
+          maxLength: 320
+        role:
+          $ref: "#/components/schemas/Role"
+
+    InvitationCreateResult:
+      type: object
+      required: [invitation, email_sent]
+      properties:
+        invitation:
+          $ref: "#/components/schemas/Invitation"
+        email_sent:
+          type: boolean
+          description: |
+            Whether an invitation email was enqueued. False when email isn't
+            configured (or enqueueing failed) — share the accept_url manually.
+
+    InvitationPreview:
+      type: object
+      description: What an invitation token is for, for the accept screen.
+      required: [organization_name, role, status, expired]
+      properties:
+        organization_name:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        status:
+          $ref: "#/components/schemas/InvitationStatus"
+        expired:
+          type: boolean
+          description: Whether the invitation is past its expiry (only meaningful when pending).
 
     ConnectionMethod:
       type: string
@@ -938,6 +1184,29 @@ components:
       schema:
         type: string
         format: uuid
+
+    MemberUserID:
+      in: path
+      name: userId
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    InvitationID:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    InviteToken:
+      in: path
+      name: token
+      required: true
+      schema:
+        type: string
 
   responses:
     Error:

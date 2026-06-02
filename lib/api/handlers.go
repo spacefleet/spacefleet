@@ -11,7 +11,10 @@ import (
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/lib/auth"
 	"github.com/spacefleet/spacefleet/lib/clusters"
+	"github.com/spacefleet/spacefleet/lib/email"
+	"github.com/spacefleet/spacefleet/lib/invitations"
 	"github.com/spacefleet/spacefleet/lib/organizations"
+	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/users"
 )
 
@@ -19,19 +22,69 @@ type Server struct {
 	users    *users.Service
 	orgs     *organizations.Service
 	clusters *clusters.Service
+	invites  *invitations.Service
 
 	// allowOrgCreation gates the create-organization endpoint. When false,
 	// the server refuses to mint new organizations (see config.AllowOrgCreation)
 	// so only invited users can onboard.
 	allowOrgCreation bool
+
+	// externalURL is the canonical public base URL used to build invite links
+	// (config.ExternalURL). Required in production; empty only in route tests.
+	externalURL string
+
+	// emailEnabled reflects whether SMTP is configured (config.EmailEnabled).
+	// When true, CreateInvitation also enqueues an invitation email; either way
+	// the response carries a copy-able link. Surfaced to the browser via
+	// /config.js so the UI can tune its wording.
+	emailEnabled bool
+
+	// emailQueue enqueues invitation emails. Nil-able: when nil (or an enqueue
+	// fails) the invitation is still created and its link returned — email is
+	// best-effort on top.
+	emailQueue *queue.Client
 }
 
-// NewServer accepts the runtime services this API depends on. They may be
-// nil — a handler whose service is missing returns a clear "not configured"
-// error instead of panicking, which keeps route-level tests usable without
-// a database.
-func NewServer(usersSvc *users.Service, orgsSvc *organizations.Service, clustersSvc *clusters.Service, allowOrgCreation bool) *Server {
-	return &Server{users: usersSvc, orgs: orgsSvc, clusters: clustersSvc, allowOrgCreation: allowOrgCreation}
+// ServerDeps bundles the runtime dependencies of the API server. Every field is
+// optional: a handler whose dependency is missing returns a clear "not
+// configured" error instead of panicking, which keeps route-level tests usable
+// without a database or queue.
+type ServerDeps struct {
+	Users            *users.Service
+	Orgs             *organizations.Service
+	Clusters         *clusters.Service
+	Invites          *invitations.Service
+	AllowOrgCreation bool
+	ExternalURL      string
+	EmailEnabled     bool
+	EmailQueue       *queue.Client
+}
+
+// NewServer builds the API server from its dependencies.
+func NewServer(d ServerDeps) *Server {
+	return &Server{
+		users:            d.Users,
+		orgs:             d.Orgs,
+		clusters:         d.Clusters,
+		invites:          d.Invites,
+		allowOrgCreation: d.AllowOrgCreation,
+		externalURL:      d.ExternalURL,
+		emailEnabled:     d.EmailEnabled,
+		emailQueue:       d.EmailQueue,
+	}
+}
+
+// enqueueInviteEmail best-effort enqueues an invitation email. It reports
+// whether the email was accepted for delivery (enqueued); callers always return
+// the invite link regardless, so a false result just means "send it manually".
+func (s *Server) enqueueInviteEmail(ctx context.Context, args email.InviteEmailArgs) bool {
+	if !s.emailEnabled || s.emailQueue == nil {
+		return false
+	}
+	if _, err := s.emailQueue.Insert(ctx, args); err != nil {
+		return false
+	}
+	return true
 }
 
 var _ StrictServerInterface = (*Server)(nil)

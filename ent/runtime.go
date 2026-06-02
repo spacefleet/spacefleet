@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/schema"
@@ -37,6 +38,20 @@ func init() {
 	clusterDescID := clusterFields[0].Descriptor()
 	// cluster.DefaultID holds the default value on creation for the id field.
 	cluster.DefaultID = clusterDescID.Default.(func() uuid.UUID)
+	invitationFields := schema.Invitation{}.Fields()
+	_ = invitationFields
+	// invitationDescEmail is the schema descriptor for email field.
+	invitationDescEmail := invitationFields[2].Descriptor()
+	// invitation.EmailValidator is a validator for the "email" field. It is called by the builders before save.
+	invitation.EmailValidator = invitationDescEmail.Validators[0].(func(string) error)
+	// invitationDescCreatedAt is the schema descriptor for created_at field.
+	invitationDescCreatedAt := invitationFields[9].Descriptor()
+	// invitation.DefaultCreatedAt holds the default value on creation for the created_at field.
+	invitation.DefaultCreatedAt = invitationDescCreatedAt.Default.(func() time.Time)
+	// invitationDescID is the schema descriptor for id field.
+	invitationDescID := invitationFields[0].Descriptor()
+	// invitation.DefaultID holds the default value on creation for the id field.
+	invitation.DefaultID = invitationDescID.Default.(func() uuid.UUID)
 	membershipFields := schema.Membership{}.Fields()
 	_ = membershipFields
 	// membershipDescCreatedAt is the schema descriptor for created_at field.

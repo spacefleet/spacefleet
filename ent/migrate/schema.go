@@ -50,10 +50,44 @@ var (
 			},
 		},
 	}
+	// InvitationsColumns holds the columns for the "invitations" table.
+	InvitationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "email", Type: field.TypeString},
+		{Name: "role", Type: field.TypeEnum, Enums: []string{"admin", "editor", "viewer"}, Default: "viewer"},
+		{Name: "token", Type: field.TypeString, Unique: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "accepted", "revoked"}, Default: "pending"},
+		{Name: "expires_at", Type: field.TypeTime},
+		{Name: "accepted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "invited_by", Type: field.TypeUUID, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+	}
+	// InvitationsTable holds the schema information for the "invitations" table.
+	InvitationsTable = &schema.Table{
+		Name:       "invitations",
+		Columns:    InvitationsColumns,
+		PrimaryKey: []*schema.Column{InvitationsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "invitations_organizations_organization",
+				Columns:    []*schema.Column{InvitationsColumns[9]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "invitation_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{InvitationsColumns[9]},
+			},
+		},
+	}
 	// MembershipsColumns holds the columns for the "memberships" table.
 	MembershipsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
-		{Name: "role", Type: field.TypeEnum, Enums: []string{"owner", "member"}, Default: "member"},
+		{Name: "role", Type: field.TypeEnum, Enums: []string{"admin", "editor", "viewer"}, Default: "viewer"},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "user_id", Type: field.TypeUUID},
 		{Name: "organization_id", Type: field.TypeUUID},
@@ -115,6 +149,7 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		ClustersTable,
+		InvitationsTable,
 		MembershipsTable,
 		OrganizationsTable,
 		UsersTable,
@@ -123,6 +158,7 @@ var (
 
 func init() {
 	ClustersTable.ForeignKeys[0].RefTable = OrganizationsTable
+	InvitationsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	MembershipsTable.ForeignKeys[0].RefTable = UsersTable
 	MembershipsTable.ForeignKeys[1].RefTable = OrganizationsTable
 }

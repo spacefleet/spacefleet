@@ -34,7 +34,9 @@ beforeEach(() => {
   window.appConfig = {
     oidcIssuer: "",
     oidcClientId: "",
+    loginMethods: [],
     allowOrgCreation: true,
+    emailEnabled: false,
   };
 });
 

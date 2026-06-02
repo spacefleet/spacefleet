@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/spacefleet/spacefleet/lib/api"
 	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/config"
 	"github.com/spacefleet/spacefleet/lib/organizations"
@@ -22,14 +23,16 @@ import (
 // against an isolated Postgres database. It uses testsupport.FakeVerifier,
 // where the bearer token becomes the user's OIDC subject — so a distinct
 // Authorization header is a distinct user. This lets one test cover creation,
-// the owner role, and cross-user isolation through the full stack.
+// the admin role, and cross-user isolation through the full stack.
 func TestOrganizationsIntegration(t *testing.T) {
 	client := testsupport.NewEntClient(t)
 	h := buildHandler(
 		&config.Config{Addr: ":0", Env: "test", AllowOrgCreation: true},
-		users.NewService(client),
-		organizations.NewService(client),
-		nil,
+		api.ServerDeps{
+			Users:            users.NewService(client),
+			Orgs:             organizations.NewService(client),
+			AllowOrgCreation: true,
+		},
 		testsupport.FakeVerifier(),
 	)
 
@@ -56,7 +59,7 @@ func TestOrganizationsIntegration(t *testing.T) {
 		t.Fatalf("alice should start with no orgs, got %+v", me.Organizations)
 	}
 
-	// Alice creates an organization and becomes its owner.
+	// Alice creates an organization and becomes its admin.
 	createBody, _ := json.Marshal(map[string]string{"name": "Acme Inc."})
 	rec = do(t, h, http.MethodPost, "/api/organizations", "alice", createBody)
 	if rec.Code != http.StatusCreated {
@@ -71,14 +74,14 @@ func TestOrganizationsIntegration(t *testing.T) {
 		t.Fatalf("create: unexpected org %+v", created)
 	}
 
-	// /api/me now reflects the membership, with the owner role.
+	// /api/me now reflects the membership, with the admin role.
 	rec = do(t, h, http.MethodGet, "/api/me", "alice", nil)
 	mustDecode(t, rec, &me)
 	if len(me.Organizations) != 1 {
 		t.Fatalf("alice should have exactly one org, got %+v", me.Organizations)
 	}
-	if got := me.Organizations[0]; got.Organization.Id != created.Id || got.Role != "owner" {
-		t.Fatalf("membership: got %+v, want org %s as owner", got, created.Id)
+	if got := me.Organizations[0]; got.Organization.Id != created.Id || got.Role != "admin" {
+		t.Fatalf("membership: got %+v, want org %s as admin", got, created.Id)
 	}
 
 	// Bob is a different user and must not see Alice's organization.
@@ -98,7 +101,7 @@ func TestOrganizationsIntegration(t *testing.T) {
 		t.Fatalf("bob rename: got %d, want 404 (body: %s)", rec.Code, rec.Body)
 	}
 
-	// Alice (the owner) can rename it.
+	// Alice (the admin) can rename it.
 	rec = do(t, h, http.MethodPatch, "/api/organizations/"+created.Id, "alice", renameBody)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("alice rename: got %d, want 200 (body: %s)", rec.Code, rec.Body)
@@ -118,9 +121,12 @@ func TestClustersIntegration(t *testing.T) {
 	}
 	h := buildHandler(
 		&config.Config{Addr: ":0", Env: "test", AllowOrgCreation: true},
-		users.NewService(client),
-		organizations.NewService(client),
-		clusters.NewService(client, sealer),
+		api.ServerDeps{
+			Users:            users.NewService(client),
+			Orgs:             organizations.NewService(client),
+			Clusters:         clusters.NewService(client, sealer),
+			AllowOrgCreation: true,
+		},
 		testsupport.FakeVerifier(),
 	)
 

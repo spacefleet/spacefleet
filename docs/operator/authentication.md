@@ -1,8 +1,8 @@
 ---
 title: Authentication
-description: How Spacefleet authenticates users with OpenID Connect (OIDC) — the always-bundled identity provider, signing in for the first time, adding "Log in with GitHub/Google", choosing where login state is stored, and hardening it for production.
+description: How Spacefleet authenticates users with OpenID Connect (OIDC) — the always-bundled identity provider, signing in for the first time, controlling who can log in and who can create organizations, choosing where login state is stored, and hardening it for production.
 category: Operator
-tags: [authentication, oidc, sso, dex, identity-provider, github, google, connectors, configuration, security]
+tags: [authentication, oidc, sso, dex, identity-provider, github, google, connectors, organizations, configuration, security]
 ---
 
 # Authentication
@@ -59,12 +59,16 @@ has a few welcome consequences:
 
 ## Sign in for the first time
 
-A real deployment needs a **hostname**, because the login provider uses your
-Ingress host for its `https://` address. Give Spacefleet one and install:
+A real deployment needs a **public address**. Set `config.externalURL` to the
+URL your users reach Spacefleet at — it is required, and it's the single source
+of truth for the login provider's `https://` address (and every other external
+link Spacefleet builds, such as invitation links). Set it alongside your Ingress
+host and install:
 
 ```sh
 helm upgrade --install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
   --version X.Y.Z \
+  --set config.externalURL=https://spacefleet.example.com \
   --set ingress.enabled=true \
   --set ingress.hosts[0].host=spacefleet.example.com
 ```
@@ -73,9 +77,12 @@ Spacefleet comes up with real logins, served same-origin at
 `https://spacefleet.example.com/dex`, and a single seeded built-in account —
 **`admin@example.com` / `password`** — so you can sign in right away.
 
-Without an Ingress host, a fresh install still works but falls back to a
-`localhost` address that's only reachable through `kubectl port-forward` — fine
-for a quick trial, not for anything you expose.
+`config.externalURL` is mandatory: the chart will refuse to render (and the
+server will refuse to start) without it, so external links never depend on
+guesswork about your Ingress. For a quick local trial without an Ingress, set it
+to the port-forward address — `--set config.externalURL=http://localhost:8080` —
+and reach the app with `kubectl port-forward`; that's fine for a trial, not for
+anything you expose.
 
 > ⚠️ **Change the seeded admin before exposing Spacefleet.** `admin@example.com`
 > / `password` is a publicly known default — anyone could use it. Do this before
@@ -230,6 +237,42 @@ no callback are left as-is. Set `config.redirectURI` yourself only to override.
 See the full list and per-connector options in the
 [Dex connector documentation](https://dexidp.io/docs/connectors/).
 
+## Control who can create organizations
+
+Signing in and belonging to an organization are separate steps. Authenticating
+(above) only proves who someone is; everything in Spacefleet lives inside an
+**organization**, and a signed-in user needs to belong to one to use the app.
+
+By default, any user who signs in and has no organization yet is offered a screen
+to **create their own**. That's the right behavior for self-service or
+evaluation, but on a controlled deployment you usually want membership to be
+**invite-only** — people get in only when an existing organization admin invites
+them.
+
+Toggle this with `config.allowOrgCreation` (default `true`):
+
+```sh
+# Lock it down: only invited users can join an organization.
+helm upgrade --install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
+  --version X.Y.Z \
+  --set config.allowOrgCreation=false
+  # …plus your externalURL / ingress settings
+```
+
+When set to `false`:
+
+- A signed-in user with no organization sees a **"request an invite"** message
+  instead of a create-organization screen.
+- The create-organization action is rejected by the server, not just hidden — so
+  the restriction holds even for a crafted request.
+- Existing members are unaffected, and admins can still invite new users into
+  their organization.
+
+This is a server-wide setting. It does not change *who can log in* (that's the
+provider, above) — only whether a freshly authenticated user can spin up a brand
+new organization. Inviting users into an organization is configured separately;
+to deliver those invitations by email, see [Email](email.md).
+
 ## Choose where login state is stored
 
 The provider persists its signing keys and sessions. The backend is set with
@@ -304,11 +347,10 @@ Helm chart wires this up for you; if you run the binary directly, it needs the
 provider's address in its environment (the chart and the development setup both
 set this automatically).
 
-**Login only works from `localhost` / breaks once you expose the app.** You
-installed without an Ingress host, so the login provider fell back to its
-`localhost` trial address. Set `ingress.enabled=true` and an
-`ingress.hosts[0].host` so the address becomes `https://<host>`, then
-`helm upgrade`.
+**Login only works from `localhost` / breaks once you expose the app.** Your
+`config.externalURL` is still the `localhost` trial address. Set it to your
+public URL (e.g. `https://spacefleet.example.com`) alongside `ingress.enabled=true`
+and an `ingress.hosts[0].host`, then `helm upgrade`.
 
 **Every request fails with "unauthorized" right after a change.** The token
 audience doesn't match the client ID Spacefleet expects. If you've customized the
@@ -316,9 +358,8 @@ client ID, make sure `config.oidc.clientID` and `dex.clientID` match.
 
 **Login bounces in a loop, or the login page rejects the redirect.** The address
 users reach Spacefleet at doesn't match the one the provider was configured with.
-Use a single, consistent address everywhere (scheme, host, and the
-`/auth/callback` path), which for a real deployment means setting your Ingress
-host.
+Make `config.externalURL` exactly the URL users hit (scheme and host), and route
+your Ingress host to the app — a mismatch between the two is the usual cause.
 
 **After logging in, users land on a "Not found" page.** The app was reached over
 a different address than the one registered as the redirect target (for example
@@ -346,5 +387,7 @@ regenerates signing keys on restart. Switch `dex.storage` to `crd` (or
 
 - [Install & configure with Helm](install-with-helm.md#1-configure-authentication-oidc)
   — where authentication fits in a Kubernetes deployment.
+- [Email](email.md) — configure SMTP so invitations (and other notifications)
+  are delivered by email.
 - [Dex documentation](https://dexidp.io/docs/) — the full list of connectors,
   storage backends, and advanced configuration.

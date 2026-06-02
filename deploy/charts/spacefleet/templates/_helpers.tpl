@@ -95,32 +95,31 @@ render lands where the subchart mounts it.
 {{- end -}}
 
 {{/*
-OIDC issuer resolution (browser-facing). Spacefleet always bundles Dex and the
-app reverse-proxies it same-origin under /dex, so the issuer is always the app's
-own origin + /dex:
-  1. https://<first ingress host>/dex   (ingress enabled — the normal path)
-  2. http://localhost:8080/dex          (no ingress — port-forward trial; the
-     app proxy makes /dex reachable on whatever origin you reach the app at)
-Always non-empty.
+External base URL of this deployment (EXTERNAL_URL). The single source of truth
+for every user-visible external URL — the OIDC issuer, the redirect URI, and
+links the app builds (e.g. invitations). Required and explicit (no ingress-host
+guessing): set config.externalURL to the public origin the browser reaches the
+app at, e.g. https://spacefleet.example.com (or http://localhost:8080 for a
+port-forward trial). Any trailing slash is trimmed.
 */}}
-{{- define "spacefleet.oidc.issuer" -}}
-{{- if and .Values.ingress.enabled (gt (len .Values.ingress.hosts) 0) -}}
-{{- printf "https://%s/dex" (index .Values.ingress.hosts 0).host -}}
-{{- else -}}
-{{- "http://localhost:8080/dex" -}}
-{{- end -}}
+{{- define "spacefleet.externalURL" -}}
+{{- $u := .Values.config.externalURL | default "" | trimSuffix "/" -}}
+{{- required "config.externalURL is required: set it to this deployment's public base URL, e.g. https://spacefleet.example.com" $u -}}
 {{- end -}}
 
 {{/*
-The app's public origin + /auth/callback, the OIDC redirect URI. Mirrors the
-issuer's origin so it works behind the ingress or a port-forward trial.
+OIDC issuer (browser-facing). Spacefleet always bundles Dex and reverse-proxies
+it same-origin under /dex, so the issuer is the external base URL + /dex.
+*/}}
+{{- define "spacefleet.oidc.issuer" -}}
+{{- printf "%s/dex" (include "spacefleet.externalURL" .) -}}
+{{- end -}}
+
+{{/*
+The app's public origin + /auth/callback, the OIDC redirect URI.
 */}}
 {{- define "spacefleet.oidc.redirectURI" -}}
-{{- if and .Values.ingress.enabled (gt (len .Values.ingress.hosts) 0) -}}
-{{- printf "https://%s/auth/callback" (index .Values.ingress.hosts 0).host -}}
-{{- else -}}
-{{- "http://localhost:8080/auth/callback" -}}
-{{- end -}}
+{{- printf "%s/auth/callback" (include "spacefleet.externalURL" .) -}}
 {{- end -}}
 
 {{/*
@@ -142,6 +141,25 @@ app forwards through unchanged.
 */}}
 {{- define "spacefleet.dex.upstreamURL" -}}
 {{- printf "http://%s:%v" (include "spacefleet.dex.fullname" .) (include "spacefleet.dex.port" .) -}}
+{{- end -}}
+
+{{/*
+LOGIN_METHODS — the sign-in options the SPA renders on its login screen, as a
+JSON array of {id,name,type}. Derived from the SAME dex values the chart renders
+into Dex's config, so the two never drift: the configured connectors, plus the
+built-in password DB (connector id "local") when enabled. Each becomes a button
+that deep-links to that connector (?connector_id=<id>). Empty array → the SPA
+falls back to a single generic "Sign in" button.
+*/}}
+{{- define "spacefleet.loginMethods" -}}
+{{- $methods := list -}}
+{{- range .Values.dex.connectors -}}
+{{- $methods = append $methods (dict "id" .id "name" .name "type" .type) -}}
+{{- end -}}
+{{- if .Values.dex.enablePasswordDB -}}
+{{- $methods = append $methods (dict "id" "local" "name" "Email and password" "type" "password") -}}
+{{- end -}}
+{{- $methods | toJson -}}
 {{- end -}}
 
 {{/*
@@ -185,7 +203,8 @@ Secret of its own.
 {{- define "spacefleet.manageEnvSecret" -}}
 {{- $manageDB := eq (include "spacefleet.manageDatabaseSecret" .) "true" -}}
 {{- $secretKey := (.Values.config.secrets | default dict).secretKey -}}
-{{- if or $manageDB $secretKey -}}true{{- else -}}false{{- end -}}
+{{- $smtpPassword := (.Values.config.smtp | default dict).password -}}
+{{- if or $manageDB $secretKey $smtpPassword -}}true{{- else -}}false{{- end -}}
 {{- end -}}
 
 {{/*
@@ -211,8 +230,11 @@ Fail fast on incoherent value combinations.
 {{- if and (not .Values.postgresql.enabled) (not .Values.externalDatabase.url) (not .Values.externalDatabase.existingSecret) -}}
 {{- fail "Database not configured: enable the bundled postgresql, or set externalDatabase.url / externalDatabase.existingSecret." -}}
 {{- end -}}
+{{- if not .Values.config.externalURL -}}
+{{- fail "config.externalURL is required: set it to this deployment's public base URL, e.g. https://spacefleet.example.com (it drives the OIDC issuer, redirect URI, and external links)." -}}
+{{- end -}}
 {{- if and .Values.ingress.enabled (not (gt (len .Values.ingress.hosts) 0)) -}}
-{{- fail "ingress.enabled=true but ingress.hosts is empty: set at least one host so the OIDC issuer (https://<host>/dex) can be derived." -}}
+{{- fail "ingress.enabled=true but ingress.hosts is empty: set at least one host to route traffic to the app." -}}
 {{- end -}}
 {{- if and .Values.clusterReader.enabled (not .Values.serviceAccount.create) (not .Values.serviceAccount.name) -}}
 {{- fail "clusterReader.enabled=true but no chart-owned ServiceAccount: set serviceAccount.create=true or serviceAccount.name, otherwise the cluster-reader binding would target the namespace \"default\" ServiceAccount." -}}

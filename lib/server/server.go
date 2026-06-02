@@ -3,14 +3,19 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/spacefleet/spacefleet/lib/api"
 	"github.com/spacefleet/spacefleet/lib/auth"
 	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/config"
 	"github.com/spacefleet/spacefleet/lib/db"
+	"github.com/spacefleet/spacefleet/lib/invitations"
 	"github.com/spacefleet/spacefleet/lib/organizations"
+	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/secrets"
 	"github.com/spacefleet/spacefleet/lib/users"
 )
@@ -37,6 +42,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 	usersSvc := users.NewService(entClient)
 	orgsSvc := organizations.NewService(entClient)
 	clustersSvc := clusters.NewService(entClient, sealer)
+	invitesSvc := invitations.NewService(entClient)
 
 	// Build the request authenticator. Spacefleet always authenticates against
 	// its bundled Dex, so a configured OIDC issuer is mandatory — buildVerifier
@@ -49,9 +55,26 @@ func New(cfg *config.Config) (*http.Server, error) {
 		return nil, fmt.Errorf("build auth verifier: %w", err)
 	}
 
+	// Insert-only River client for enqueueing background jobs (today: invitation
+	// emails). Best-effort: if the pool can't open, the API still works — invites
+	// just return a copy-able link with no email sent. The worker process owns
+	// the actual job execution and its own migrations.
+	emailQueue, closeQueue := buildEmailQueue(cfg)
+
+	deps := api.ServerDeps{
+		Users:            usersSvc,
+		Orgs:             orgsSvc,
+		Clusters:         clustersSvc,
+		Invites:          invitesSvc,
+		AllowOrgCreation: cfg.AllowOrgCreation,
+		ExternalURL:      cfg.ExternalURL,
+		EmailEnabled:     cfg.EmailEnabled(),
+		EmailQueue:       emailQueue,
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           buildHandler(cfg, usersSvc, orgsSvc, clustersSvc, verifier),
+		Handler:           buildHandler(cfg, deps, verifier),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,
@@ -60,8 +83,28 @@ func New(cfg *config.Config) (*http.Server, error) {
 	srv.RegisterOnShutdown(func() {
 		_ = entClient.Close()
 		_ = sqlDB.Close()
+		closeQueue()
 	})
 	return srv, nil
+}
+
+// buildEmailQueue opens an insert-only River client for enqueueing background
+// jobs. It's best-effort: any failure logs and returns a nil client (plus a
+// no-op closer), so a missing/unmigrated queue never blocks boot — invitation
+// emails simply aren't enqueued (the link is still returned).
+func buildEmailQueue(cfg *config.Config) (*queue.Client, func()) {
+	pool, err := queue.Open(context.Background(), cfg.DatabaseURL, 2)
+	if err != nil {
+		log.Printf("serve: background-job queue unavailable (%v); invitation emails will not be sent", err)
+		return nil, func() {}
+	}
+	client, err := queue.NewClient(pool, queue.Config{WorkerMode: false, Logger: slog.Default()})
+	if err != nil {
+		log.Printf("serve: background-job queue client error (%v); invitation emails will not be sent", err)
+		pool.Close()
+		return nil, func() {}
+	}
+	return client, pool.Close
 }
 
 // buildHandler composes the full HTTP handler tree given pre-built deps.
@@ -69,9 +112,9 @@ func New(cfg *config.Config) (*http.Server, error) {
 // error rather than panicking, which keeps route-level tests usable
 // without a real database. verifier must be non-nil in production (built from
 // the bundled-Dex OIDC config); a nil verifier makes RequireAuth fail closed.
-func buildHandler(cfg *config.Config, usersSvc *users.Service, orgsSvc *organizations.Service, clustersSvc *clusters.Service, verifier auth.TokenVerifier) http.Handler {
+func buildHandler(cfg *config.Config, deps api.ServerDeps, verifier auth.TokenVerifier) http.Handler {
 	mux := http.NewServeMux()
-	registerRoutes(mux, cfg, usersSvc, orgsSvc, clustersSvc, verifier)
+	registerRoutes(mux, cfg, deps, verifier)
 	return logRequests(mux)
 }
 

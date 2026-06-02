@@ -7,10 +7,18 @@ import { test, expect } from "@playwright/test";
 test("log in via Dex, set up an organization, land on Home, sign out", async ({
   page,
 }) => {
-  // Unauthenticated visit is auto-redirected to the Dex login form. Dex is
-  // same-origin: the browser stays on the app origin (:2424) under /dex, which
-  // the app reverse-proxies to Dex — it never sees Dex's own port.
+  // Unauthenticated visit lands on the app's own /login screen — no auto-bounce
+  // into Dex. The dev LOGIN_METHODS (.env) declares the password-DB connector,
+  // so we click its button to start the flow.
   await page.goto("/");
+  await page.waitForURL(/localhost:2424\/login/);
+  await page
+    .getByRole("button", { name: "Continue with Email and password" })
+    .click();
+
+  // Now at the Dex login form. Dex is same-origin: the browser stays on the app
+  // origin (:2424) under /dex, which the app reverse-proxies to Dex — it never
+  // sees Dex's own port.
   await page.waitForURL(/localhost:2424\/dex\/auth/);
 
   // Seeded dev credentials (dev/dex/config.yaml).
@@ -47,7 +55,11 @@ test("log in via Dex, set up an organization, land on Home, sign out", async ({
   // We're in the app: the org switcher is visible in the top bar.
   await expect(orgSwitcher).toBeVisible();
 
-  // Sign out clears the session and returns us to the Dex login form.
+  // Sign out clears the local session and lands back on the app's /login
+  // screen — and stays there (no silent bounce back through Dex).
   await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page.locator("#login")).toBeVisible();
+  await page.waitForURL(/localhost:2424\/login/);
+  await expect(
+    page.getByRole("button", { name: "Continue with Email and password" }),
+  ).toBeVisible();
 });

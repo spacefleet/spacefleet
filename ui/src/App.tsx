@@ -5,10 +5,13 @@ import { AuthGate } from "./components/AuthGate";
 import { Layout } from "./components/Layout";
 import { OrgGate } from "./components/OrgGate";
 import { OrgProvider } from "./contexts/OrgContext";
+import { AcceptInvite } from "./routes/AcceptInvite";
 import { AuthCallback } from "./routes/AuthCallback";
 import { Clusters } from "./routes/Clusters";
 import { CreateOrganization } from "./routes/CreateOrganization";
 import { Home } from "./routes/Home";
+import { Login } from "./routes/Login";
+import { Members } from "./routes/Members";
 import { NamespaceDetail } from "./routes/NamespaceDetail";
 import { Namespaces } from "./routes/Namespaces";
 import { NodeDetail } from "./routes/NodeDetail";
@@ -26,6 +29,7 @@ const pageComponents: Record<string, ReactNode> = {
   "/infrastructure/nodes": <Nodes />,
   "/infrastructure/namespaces": <Namespaces />,
   "/infrastructure/pods": <Pods />,
+  "/organization/members": <Members />,
 };
 
 export function App() {
@@ -36,8 +40,13 @@ export function App() {
           the nested catch-all below. */}
       <Route path="/auth/callback" element={<AuthCallback />} />
 
+      {/* Explicit sign-in screen. Kept outside the AuthGate group so it's
+          reachable while unauthenticated — AuthGate redirects here (it no longer
+          auto-launches the Dex flow), and sign-out lands here too. */}
+      <Route path="/login" element={<Login />} />
+
       {/* ApiAuthBinder installs the bearer-token provider for the API client.
-          AuthGate then requires a Dex session — redirecting to login if absent.
+          AuthGate then requires a Dex session — redirecting to /login if absent.
           OrgProvider loads the user's organizations; OrgGate then requires one
           to be selected before the app renders, sending org-less users to the
           create-org screen (which lives above OrgGate so it stays reachable). */}
@@ -45,6 +54,9 @@ export function App() {
         <Route element={<AuthGate />}>
           <Route element={<OrgProvider />}>
             <Route path="/organizations/new" element={<CreateOrganization />} />
+            {/* Invite acceptance lives above the OrgGate so a brand-new user
+                with no organization yet can still reach it after signing in. */}
+            <Route path="/invite/:token" element={<AcceptInvite />} />
             <Route element={<OrgGate />}>
               <Route element={<Layout />}>
                 {/* Dashboard overview (the "/" leaf) is served by Home; every

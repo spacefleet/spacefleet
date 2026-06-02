@@ -11,22 +11,31 @@ tags — so `--version X.Y.Z` always pairs with image `:X.Y.Z`.
 
 ## Install
 
+`config.externalURL` is **required** — it is the public base URL the browser
+reaches the app at, and the single source of truth for the OIDC issuer, the
+redirect URI, and links the app builds (e.g. invitations). Set it on every
+install.
+
 Out-of-the-box trial (bundled Postgres + Dex, no ingress). Reach it with
-`kubectl port-forward svc/spacefleet 8080:80`; the login issuer falls back to
-`http://localhost:8080/dex`, and the seeded login is `admin@example.com` /
-`password`:
-
-```sh
-helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet --version X.Y.Z
-```
-
-Give Dex a real hostname via ingress — its issuer becomes
-`https://spacefleet.example.com/dex` (served same-origin through the app, no
-CORS) — then **change the seeded admin** (see [Authentication](#authentication)):
+`kubectl port-forward svc/spacefleet 8080:80`; set `config.externalURL` to the
+port-forward origin (the issuer becomes `http://localhost:8080/dex`), and the
+seeded login is `admin@example.com` / `password`:
 
 ```sh
 helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
   --version X.Y.Z \
+  --set config.externalURL=http://localhost:8080
+```
+
+Give Dex a real hostname via ingress — set `config.externalURL` to that origin,
+so the issuer becomes `https://spacefleet.example.com/dex` (served same-origin
+through the app, no CORS) — then **change the seeded admin** (see
+[Authentication](#authentication)):
+
+```sh
+helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
+  --version X.Y.Z \
+  --set config.externalURL=https://spacefleet.example.com \
   --set ingress.enabled=true \
   --set ingress.hosts[0].host=spacefleet.example.com
 ```
@@ -36,6 +45,7 @@ Production-style (external datastores; Dex still bundled):
 ```sh
 helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
   --version X.Y.Z \
+  --set config.externalURL=https://spacefleet.example.com \
   --set postgresql.enabled=false \
   --set externalDatabase.existingSecret=spacefleet-db \
   --set ingress.enabled=true \
@@ -145,10 +155,13 @@ internal, and the browser never talks to Dex directly. The backend also verifies
 tokens against the in-cluster Dex Service (`OIDC_JWKS_URL`), so verification
 never depends on the public issuer being reachable from inside the cluster.
 
-The **issuer is always the app's own origin + `/dex`**, derived automatically:
-`https://<your ingress host>/dex` with ingress, or `http://localhost:8080/dex`
-for a port-forward trial when ingress is off — there is no issuer value to set.
-Enterprise SSO is wired through Dex's connectors, not by repointing the app.
+The **issuer is always the app's own origin + `/dex`**, derived from the
+required `config.externalURL`: set it to `https://<your host>` with ingress, or
+`http://localhost:8080` for a port-forward trial, and the issuer becomes
+`<config.externalURL>/dex`. `config.externalURL` is explicit (not guessed from
+the ingress host) so every external link the app builds matches the origin you
+chose. Enterprise SSO is wired through Dex's connectors, not by repointing the
+app.
 
 - **Storage** defaults to `dex.storage=crd` (Dex stores signing keys/sessions as
   Kubernetes CRDs — durable across restarts and HA-safe, no database).
