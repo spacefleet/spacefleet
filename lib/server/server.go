@@ -55,11 +55,12 @@ func New(cfg *config.Config) (*http.Server, error) {
 		return nil, fmt.Errorf("build auth verifier: %w", err)
 	}
 
-	// Insert-only River client for enqueueing background jobs (today: invitation
-	// emails). Best-effort: if the pool can't open, the API still works — invites
-	// just return a copy-able link with no email sent. The worker process owns
-	// the actual job execution and its own migrations.
-	emailQueue, closeQueue := buildEmailQueue(cfg)
+	// Insert-only River client for enqueueing background jobs (invitation emails,
+	// Tekton installs). Best-effort: if the pool can't open, the API still works —
+	// invites just return a copy-able link with no email sent, and a Tekton enable
+	// that needs the worker returns 503. The worker process owns the actual job
+	// execution and its own migrations.
+	jobQueue, closeQueue := buildJobQueue(cfg)
 
 	deps := api.ServerDeps{
 		Users:            usersSvc,
@@ -69,7 +70,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 		AllowOrgCreation: cfg.AllowOrgCreation,
 		ExternalURL:      cfg.ExternalURL,
 		EmailEnabled:     cfg.EmailEnabled(),
-		EmailQueue:       emailQueue,
+		JobQueue:         jobQueue,
 	}
 
 	srv := &http.Server{
@@ -88,19 +89,20 @@ func New(cfg *config.Config) (*http.Server, error) {
 	return srv, nil
 }
 
-// buildEmailQueue opens an insert-only River client for enqueueing background
+// buildJobQueue opens an insert-only River client for enqueueing background
 // jobs. It's best-effort: any failure logs and returns a nil client (plus a
 // no-op closer), so a missing/unmigrated queue never blocks boot — invitation
-// emails simply aren't enqueued (the link is still returned).
-func buildEmailQueue(cfg *config.Config) (*queue.Client, func()) {
+// emails simply aren't enqueued (the link is still returned) and Tekton enable
+// reports the worker is unavailable.
+func buildJobQueue(cfg *config.Config) (*queue.Client, func()) {
 	pool, err := queue.Open(context.Background(), cfg.DatabaseURL, 2)
 	if err != nil {
-		log.Printf("serve: background-job queue unavailable (%v); invitation emails will not be sent", err)
+		log.Printf("serve: background-job queue unavailable (%v); background jobs will not be enqueued", err)
 		return nil, func() {}
 	}
 	client, err := queue.NewClient(pool, queue.Config{WorkerMode: false, Logger: slog.Default()})
 	if err != nil {
-		log.Printf("serve: background-job queue client error (%v); invitation emails will not be sent", err)
+		log.Printf("serve: background-job queue client error (%v); background jobs will not be enqueued", err)
 		pool.Close()
 		return nil, func() {}
 	}

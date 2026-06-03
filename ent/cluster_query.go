@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/predicate"
+	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 )
 
 // ClusterQuery is the builder for querying Cluster entities.
@@ -25,6 +27,7 @@ type ClusterQuery struct {
 	inters           []Interceptor
 	predicates       []predicate.Cluster
 	withOrganization *OrganizationQuery
+	withTekton       *TektonInstallationQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -76,6 +79,28 @@ func (_q *ClusterQuery) QueryOrganization() *OrganizationQuery {
 			sqlgraph.From(cluster.Table, cluster.FieldID, selector),
 			sqlgraph.To(organization.Table, organization.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, false, cluster.OrganizationTable, cluster.OrganizationColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryTekton chains the current query on the "tekton" edge.
+func (_q *ClusterQuery) QueryTekton() *TektonInstallationQuery {
+	query := (&TektonInstallationClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(cluster.Table, cluster.FieldID, selector),
+			sqlgraph.To(tektoninstallation.Table, tektoninstallation.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, cluster.TektonTable, cluster.TektonColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -276,6 +301,7 @@ func (_q *ClusterQuery) Clone() *ClusterQuery {
 		inters:           append([]Interceptor{}, _q.inters...),
 		predicates:       append([]predicate.Cluster{}, _q.predicates...),
 		withOrganization: _q.withOrganization.Clone(),
+		withTekton:       _q.withTekton.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -290,6 +316,17 @@ func (_q *ClusterQuery) WithOrganization(opts ...func(*OrganizationQuery)) *Clus
 		opt(query)
 	}
 	_q.withOrganization = query
+	return _q
+}
+
+// WithTekton tells the query-builder to eager-load the nodes that are connected to
+// the "tekton" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ClusterQuery) WithTekton(opts ...func(*TektonInstallationQuery)) *ClusterQuery {
+	query := (&TektonInstallationClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withTekton = query
 	return _q
 }
 
@@ -371,8 +408,9 @@ func (_q *ClusterQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Clus
 	var (
 		nodes       = []*Cluster{}
 		_spec       = _q.querySpec()
-		loadedTypes = [1]bool{
+		loadedTypes = [2]bool{
 			_q.withOrganization != nil,
+			_q.withTekton != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -396,6 +434,12 @@ func (_q *ClusterQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Clus
 	if query := _q.withOrganization; query != nil {
 		if err := _q.loadOrganization(ctx, query, nodes, nil,
 			func(n *Cluster, e *Organization) { n.Edges.Organization = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withTekton; query != nil {
+		if err := _q.loadTekton(ctx, query, nodes, nil,
+			func(n *Cluster, e *TektonInstallation) { n.Edges.Tekton = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -428,6 +472,33 @@ func (_q *ClusterQuery) loadOrganization(ctx context.Context, query *Organizatio
 		for i := range nodes {
 			assign(nodes[i], n)
 		}
+	}
+	return nil
+}
+func (_q *ClusterQuery) loadTekton(ctx context.Context, query *TektonInstallationQuery, nodes []*Cluster, init func(*Cluster), assign func(*Cluster, *TektonInstallation)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Cluster)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(tektoninstallation.FieldClusterID)
+	}
+	query.Where(predicate.TektonInstallation(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(cluster.TektonColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.ClusterID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "cluster_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
 	}
 	return nil
 }

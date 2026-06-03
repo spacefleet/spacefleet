@@ -20,6 +20,8 @@ type Tx struct {
 	Membership *MembershipClient
 	// Organization is the client for interacting with the Organization builders.
 	Organization *OrganizationClient
+	// TektonInstallation is the client for interacting with the TektonInstallation builders.
+	TektonInstallation *TektonInstallationClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 
@@ -157,6 +159,7 @@ func (tx *Tx) init() {
 	tx.Invitation = NewInvitationClient(tx.config)
 	tx.Membership = NewMembershipClient(tx.config)
 	tx.Organization = NewOrganizationClient(tx.config)
+	tx.TektonInstallation = NewTektonInstallationClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 }
 

@@ -1,0 +1,213 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - link "Home" [ref=e5] [cursor=pointer]:
+      - /url: /
+      - img "Spacefleet" [ref=e6]
+      - generic [ref=e7]: Spacefleet
+    - generic [ref=e8]: /
+    - button "E2E Org 1780366019921" [ref=e10]:
+      - generic [ref=e11]: E2E Org 1780366019921
+      - img [ref=e12]
+    - generic [ref=e14]:
+      - generic [ref=e15]: admin@example.com
+      - button "Sign out" [ref=e16]
+  - generic [ref=e17]:
+    - navigation "Primary" [ref=e18]:
+      - button "Dashboard" [ref=e20]:
+        - img [ref=e21]
+        - generic [ref=e26]: Dashboard
+        - img [ref=e27]
+      - button "Applications" [ref=e30]:
+        - img [ref=e31]
+        - generic [ref=e33]: Applications
+        - img [ref=e34]
+      - button "Infrastructure" [ref=e37]:
+        - img [ref=e38]
+        - generic [ref=e41]: Infrastructure
+        - img [ref=e42]
+      - button "Security" [ref=e45]:
+        - img [ref=e46]
+        - generic [ref=e49]: Security
+        - img [ref=e50]
+      - button "Cost" [ref=e53]:
+        - img [ref=e54]
+        - generic [ref=e57]: Cost
+        - img [ref=e58]
+      - generic [ref=e60]:
+        - button "Providers" [expanded] [ref=e61]:
+          - img [ref=e62]
+          - generic [ref=e64]: Providers
+          - img [ref=e65]
+        - list [ref=e67]:
+          - listitem [ref=e68]:
+            - link "Git" [ref=e69] [cursor=pointer]:
+              - /url: /providers/git
+              - generic [ref=e70]: Git
+          - listitem [ref=e71]:
+            - link "Clusters" [ref=e72] [cursor=pointer]:
+              - /url: /providers/clusters
+              - generic [ref=e73]: Clusters
+          - listitem [ref=e74]:
+            - link "CI/CD" [ref=e75] [cursor=pointer]:
+              - /url: /providers/cicd
+              - generic [ref=e76]: CI/CD
+          - listitem [ref=e77]:
+            - link "Monitoring" [ref=e78] [cursor=pointer]:
+              - /url: /providers/monitoring
+              - generic [ref=e79]: Monitoring
+      - button "Organization" [ref=e81]:
+        - img [ref=e82]
+        - generic [ref=e87]: Organization
+        - img [ref=e88]
+    - main [ref=e90]:
+      - generic [ref=e118]:
+        - button "Back to clusters" [ref=e119]:
+          - img [ref=e120]
+          - text: Back to clusters
+        - generic [ref=e122]:
+          - generic [ref=e123]:
+            - paragraph [ref=e124]: Providers / Clusters
+            - heading "kind" [level=1] [ref=e125]
+          - generic [ref=e126]:
+            - generic [ref=e127]:
+              - img [ref=e128]
+              - text: connected
+            - button "Re-test" [ref=e131]:
+              - img [ref=e132]
+              - text: Re-test
+            - button "Delete" [ref=e137]:
+              - img [ref=e138]
+              - text: Delete
+        - generic [ref=e141]:
+          - generic [ref=e142]:
+            - heading "Overview" [level=2] [ref=e143]
+            - generic [ref=e144]:
+              - generic [ref=e145]:
+                - term [ref=e146]: Connection
+                - definition [ref=e147]: Kubeconfig
+              - generic [ref=e148]:
+                - term [ref=e149]: Status
+                - definition [ref=e150]: connected
+              - generic [ref=e151]:
+                - term [ref=e152]: Kubernetes version
+                - definition [ref=e153]: v1.35.0
+              - generic [ref=e154]:
+                - term [ref=e155]: Endpoint
+                - definition [ref=e156]: —
+              - generic [ref=e157]:
+                - term [ref=e158]: Last checked
+                - definition [ref=e159]: 6/2/2026, 7:45:47 PM
+              - generic [ref=e160]:
+                - term [ref=e161]: Registered
+                - definition [ref=e162]: 6/2/2026, 3:24:08 PM
+          - generic [ref=e163]:
+            - generic [ref=e164]:
+              - generic [ref=e165]:
+                - heading "Capabilities / Access" [level=2] [ref=e166]
+                - button "Re-check" [ref=e167]:
+                  - img [ref=e168]
+                  - text: Re-check
+              - generic [ref=e173]:
+                - paragraph [ref=e174]:
+                  - text: Resolved identity kubernetes-admin
+                  - generic [ref=e175]: · groups kubeadm:cluster-admins, system:authenticated
+                - generic [ref=e176]:
+                  - heading "Observe" [level=3] [ref=e177]
+                  - list [ref=e178]:
+                    - listitem [ref=e179]:
+                      - generic [ref=e180]:
+                        - generic [ref=e181]:
+                          - checkbox "Include View nodes" [ref=e182]
+                          - generic [ref=e183]: View nodes
+                        - generic [ref=e184]:
+                          - img [ref=e185]
+                          - text: Allowed
+                    - listitem [ref=e188]:
+                      - generic [ref=e189]:
+                        - generic [ref=e190]:
+                          - checkbox "Include View namespaces" [ref=e191]
+                          - generic [ref=e192]: View namespaces
+                        - generic [ref=e193]:
+                          - img [ref=e194]
+                          - text: Allowed
+                    - listitem [ref=e197]:
+                      - generic [ref=e198]:
+                        - generic [ref=e199]:
+                          - checkbox "Include View pods" [ref=e200]
+                          - generic [ref=e201]: View pods
+                        - generic [ref=e202]:
+                          - img [ref=e203]
+                          - text: Allowed
+                    - listitem [ref=e206]:
+                      - generic [ref=e207]:
+                        - generic [ref=e208]:
+                          - checkbox "Include View pod logs" [ref=e209]
+                          - generic [ref=e210]: View pod logs
+                        - generic [ref=e211]:
+                          - img [ref=e212]
+                          - text: Allowed
+                - generic [ref=e215]:
+                  - heading "Operate" [level=3] [ref=e216]
+                  - list [ref=e217]:
+                    - listitem [ref=e218]:
+                      - generic [ref=e219]:
+                        - generic [ref=e220]:
+                          - checkbox "Include Restart workloads" [ref=e221]
+                          - generic [ref=e222]: Restart workloads
+                        - generic [ref=e223]:
+                          - img [ref=e224]
+                          - text: Allowed
+                    - listitem [ref=e227]:
+                      - generic [ref=e228]:
+                        - generic [ref=e229]:
+                          - checkbox "Include Scale workloads" [ref=e230]
+                          - generic [ref=e231]: Scale workloads
+                        - generic [ref=e232]:
+                          - img [ref=e233]
+                          - text: Allowed
+                - generic [ref=e236]:
+                  - heading "Deploy" [level=3] [ref=e237]
+                  - list [ref=e238]:
+                    - listitem [ref=e239]:
+                      - generic [ref=e240]:
+                        - generic [ref=e241]:
+                          - checkbox "Include Manage Helm releases" [ref=e242]
+                          - generic [ref=e243]: Manage Helm releases
+                        - generic [ref=e244]:
+                          - img [ref=e245]
+                          - text: Allowed
+                - generic [ref=e248]:
+                  - heading "Run" [level=3] [ref=e249]
+                  - list [ref=e250]:
+                    - listitem [ref=e251]:
+                      - generic [ref=e252]:
+                        - generic [ref=e253]:
+                          - checkbox "Include Run jobs (Tekton)" [ref=e254]
+                          - generic [ref=e255]: Run jobs (Tekton)
+                        - generic [ref=e256]:
+                          - img [ref=e257]
+                          - text: Allowed
+                - generic [ref=e261]:
+                  - paragraph [ref=e262]: Select capabilities to grant, then generate a single manifest.
+                  - button "Generate RBAC" [disabled] [ref=e263]
+            - generic [ref=e264]:
+              - heading "Jobs" [level=2] [ref=e265]
+              - generic [ref=e267]:
+                - generic [ref=e268]:
+                  - generic [ref=e269]:
+                    - generic [ref=e270]:
+                      - img [ref=e271]
+                      - text: installed
+                    - generic [ref=e274]:
+                      - img [ref=e275]
+                      - text: Existing install
+                    - generic [ref=e277]: job running disabled
+                  - paragraph [ref=e278]: Tekton v0.68.0 ready · installs v0.68.0
+                  - paragraph [ref=e279]: Installed outside Spacefleet — it won't be upgraded or removed from here. You can still enable job running and submit jobs to it; manage its install lifecycle wherever it was set up.
+                - generic [ref=e280]:
+                  - button "Enable job running" [ref=e281]:
+                    - img [ref=e282]
+                    - text: Enable job running
+                  - button "Run a job" [ref=e284]:
+                    - img [ref=e285]
+                    - text: Run a job

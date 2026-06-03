@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 )
 
 // ClusterCreate is the builder for creating a Cluster entity.
@@ -170,6 +171,25 @@ func (_c *ClusterCreate) SetNillableID(v *uuid.UUID) *ClusterCreate {
 // SetOrganization sets the "organization" edge to the Organization entity.
 func (_c *ClusterCreate) SetOrganization(v *Organization) *ClusterCreate {
 	return _c.SetOrganizationID(v.ID)
+}
+
+// SetTektonID sets the "tekton" edge to the TektonInstallation entity by ID.
+func (_c *ClusterCreate) SetTektonID(id uuid.UUID) *ClusterCreate {
+	_c.mutation.SetTektonID(id)
+	return _c
+}
+
+// SetNillableTektonID sets the "tekton" edge to the TektonInstallation entity by ID if the given value is not nil.
+func (_c *ClusterCreate) SetNillableTektonID(id *uuid.UUID) *ClusterCreate {
+	if id != nil {
+		_c = _c.SetTektonID(*id)
+	}
+	return _c
+}
+
+// SetTekton sets the "tekton" edge to the TektonInstallation entity.
+func (_c *ClusterCreate) SetTekton(v *TektonInstallation) *ClusterCreate {
+	return _c.SetTektonID(v.ID)
 }
 
 // Mutation returns the ClusterMutation object of the builder.
@@ -358,6 +378,22 @@ func (_c *ClusterCreate) createSpec() (*Cluster, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.OrganizationID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.TektonIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   cluster.TektonTable,
+			Columns: []string{cluster.TektonColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(tektoninstallation.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

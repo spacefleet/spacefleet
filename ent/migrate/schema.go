@@ -132,6 +132,40 @@ var (
 		Columns:    OrganizationsColumns,
 		PrimaryKey: []*schema.Column{OrganizationsColumns[0]},
 	}
+	// TektonInstallationsColumns holds the columns for the "tekton_installations" table.
+	TektonInstallationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "enabled", Type: field.TypeBool, Default: false},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"not_installed", "installing", "installed", "upgrading", "failed", "uninstalling"}, Default: "not_installed"},
+		{Name: "installed_version", Type: field.TypeString, Nullable: true},
+		{Name: "status_message", Type: field.TypeString, Nullable: true},
+		{Name: "job_id", Type: field.TypeString, Nullable: true},
+		{Name: "last_checked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "cluster_id", Type: field.TypeUUID, Unique: true},
+	}
+	// TektonInstallationsTable holds the schema information for the "tekton_installations" table.
+	TektonInstallationsTable = &schema.Table{
+		Name:       "tekton_installations",
+		Columns:    TektonInstallationsColumns,
+		PrimaryKey: []*schema.Column{TektonInstallationsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "tekton_installations_clusters_tekton",
+				Columns:    []*schema.Column{TektonInstallationsColumns[9]},
+				RefColumns: []*schema.Column{ClustersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "tektoninstallation_cluster_id",
+				Unique:  true,
+				Columns: []*schema.Column{TektonInstallationsColumns[9]},
+			},
+		},
+	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -152,6 +186,7 @@ var (
 		InvitationsTable,
 		MembershipsTable,
 		OrganizationsTable,
+		TektonInstallationsTable,
 		UsersTable,
 	}
 )
@@ -161,4 +196,5 @@ func init() {
 	InvitationsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	MembershipsTable.ForeignKeys[0].RefTable = UsersTable
 	MembershipsTable.ForeignKeys[1].RefTable = OrganizationsTable
+	TektonInstallationsTable.ForeignKeys[0].RefTable = ClustersTable
 }

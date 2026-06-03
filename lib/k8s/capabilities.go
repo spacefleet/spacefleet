@@ -125,6 +125,23 @@ var catalog = []Capability{
 			{APIGroup: "apps", Resource: "deployments", Verbs: []string{"create", "update", "delete"}, ClusterScoped: true},
 		},
 	},
+	{
+		Key:  "run_jobs",
+		Name: "Run jobs (Tekton)",
+		// The RUN path only: submit TaskRuns/PipelineRuns and read their pod logs.
+		// Installing Tekton itself needs cluster-admin-equivalent rights (CRDs,
+		// cluster RBAC, webhooks) and is NOT modeled as a least-privilege
+		// capability — it would just be "*/*". The install worker surfaces a
+		// forbidden error directly if the credentials can't install; this
+		// capability reports whether, once Tekton is present, the credentials can
+		// actually drive it.
+		Rules: []Rule{
+			{APIGroup: "tekton.dev", Resource: "taskruns", Verbs: []string{"create", "get", "list", "watch"}, ClusterScoped: true},
+			{APIGroup: "tekton.dev", Resource: "pipelineruns", Verbs: []string{"create", "get", "list", "watch"}, ClusterScoped: true},
+			{APIGroup: "", Resource: "pods", Verbs: []string{"get", "list"}, ClusterScoped: true},
+			{APIGroup: "", Resource: "pods", Subresource: "log", Verbs: []string{"get"}, ClusterScoped: true},
+		},
+	},
 }
 
 // Catalog returns the declarative capability catalog (current features first,

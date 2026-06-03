@@ -42,6 +42,8 @@ const (
 	FieldUpdatedAt = "updated_at"
 	// EdgeOrganization holds the string denoting the organization edge name in mutations.
 	EdgeOrganization = "organization"
+	// EdgeTekton holds the string denoting the tekton edge name in mutations.
+	EdgeTekton = "tekton"
 	// Table holds the table name of the cluster in the database.
 	Table = "clusters"
 	// OrganizationTable is the table that holds the organization relation/edge.
@@ -51,6 +53,13 @@ const (
 	OrganizationInverseTable = "organizations"
 	// OrganizationColumn is the table column denoting the organization relation/edge.
 	OrganizationColumn = "organization_id"
+	// TektonTable is the table that holds the tekton relation/edge.
+	TektonTable = "tekton_installations"
+	// TektonInverseTable is the table name for the TektonInstallation entity.
+	// It exists in this package in order to avoid circular dependency with the "tektoninstallation" package.
+	TektonInverseTable = "tekton_installations"
+	// TektonColumn is the table column denoting the tekton relation/edge.
+	TektonColumn = "cluster_id"
 )
 
 // Columns holds all SQL columns for cluster fields.
@@ -211,10 +220,24 @@ func ByOrganizationField(field string, opts ...sql.OrderTermOption) OrderOption 
 		sqlgraph.OrderByNeighborTerms(s, newOrganizationStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByTektonField orders the results by tekton field.
+func ByTektonField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newTektonStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newOrganizationStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(OrganizationInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, false, OrganizationTable, OrganizationColumn),
+	)
+}
+func newTektonStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(TektonInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2O, false, TektonTable, TektonColumn),
 	)
 }

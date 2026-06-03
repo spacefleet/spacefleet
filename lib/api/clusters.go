@@ -364,6 +364,7 @@ var capabilityAreas = map[string]string{
 	"restart_workloads":    "Operate",
 	"scale_workloads":      "Operate",
 	"manage_helm_releases": "Deploy",
+	"run_jobs":             "Run",
 }
 
 func capabilityArea(key string) string {
@@ -639,6 +640,7 @@ func toAPICluster(c *ent.Cluster) Cluster {
 		ConnectionMethod: ConnectionMethod(c.ConnectionMethod),
 		Status:           ClusterStatus(c.Status),
 		Config:           c.Config,
+		RunsJobs:         c.Edges.Tekton != nil && c.Edges.Tekton.Enabled,
 		LastCheckedAt:    c.LastCheckedAt,
 		CreatedAt:        c.CreatedAt,
 		UpdatedAt:        c.UpdatedAt,

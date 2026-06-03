@@ -7,6 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/spacefleet/spacefleet/ent"
+	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/lib/auth"
 	"github.com/spacefleet/spacefleet/lib/k8s"
 )
@@ -109,6 +111,190 @@ func (s *Server) StreamClusterNodes(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+}
+
+// StreamClusterTekton streams a cluster's Tekton install status as Server-Sent
+// Events: an initial `status` event, then a `status` event whenever the
+// installation row changes, until a terminal state is reached (installed,
+// failed, not_installed) or the client disconnects.
+//
+// This is the cross-process realtime path: the worker writes install progress to
+// Postgres; this handler (in the serve process) tails the row on a short cadence
+// and pushes each change to the browser. The browser only ever sees a live push
+// stream — the tail is a serve-side detail. It reuses the same authorization
+// path as GetClusterTekton, so the stream is not a security side door.
+func (s *Server) StreamClusterTekton(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	orgID, aerr, err := s.resolveOrg(ctx)
+	if err != nil {
+		writeStreamError(w, http.StatusInternalServerError, "internal", "internal error")
+		return
+	}
+	if aerr != nil {
+		writeStreamError(w, aerr.status, aerr.code, aerr.msg)
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeStreamError(w, http.StatusNotFound, "not_found", "cluster not found")
+		return
+	}
+
+	// The initial read doubles as an existence/authorization check, so a missing
+	// cluster surfaces as a normal HTTP error rather than a half-open stream.
+	row, err := s.clusters.TektonRow(ctx, orgID, id)
+	if err != nil {
+		status, code, msg := nodesFetchError(err)
+		writeStreamError(w, status, code, msg)
+		return
+	}
+
+	deadline := streamDeadline(ctx)
+	ctx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+
+	sse, ok := newSSEWriter(w)
+	if !ok {
+		writeStreamError(w, http.StatusInternalServerError, "internal", "streaming unsupported")
+		return
+	}
+	if err := sse.event("status", toAPITektonStatus(row, nil)); err != nil {
+		return
+	}
+	if tektonTerminal(row) {
+		return
+	}
+
+	prev := tektonRowKey(row)
+	poll := time.NewTicker(time.Second)
+	defer poll.Stop()
+	heartbeat := time.NewTicker(streamHeartbeat)
+	defer heartbeat.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-heartbeat.C:
+			if err := sse.comment("ping"); err != nil {
+				return
+			}
+		case <-poll.C:
+			row, err := s.clusters.TektonRow(ctx, orgID, id)
+			if err != nil {
+				return
+			}
+			key := tektonRowKey(row)
+			if key == prev {
+				continue
+			}
+			prev = key
+			if err := sse.event("status", toAPITektonStatus(row, nil)); err != nil {
+				return
+			}
+			if tektonTerminal(row) {
+				return
+			}
+		}
+	}
+}
+
+// StreamClusterTektonRun streams a single TaskRun's status as Server-Sent
+// Events: an initial `snapshot`, then `modified` events as the run progresses,
+// until it reaches a terminal phase (Succeeded/Failed) or the client
+// disconnects. It is driven by a live Tekton watch (genuinely event-driven).
+func (s *Server) StreamClusterTektonRun(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	orgID, aerr, err := s.resolveOrg(ctx)
+	if err != nil {
+		writeStreamError(w, http.StatusInternalServerError, "internal", "internal error")
+		return
+	}
+	if aerr != nil {
+		writeStreamError(w, aerr.status, aerr.code, aerr.msg)
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeStreamError(w, http.StatusNotFound, "not_found", "cluster not found")
+		return
+	}
+	name := r.PathValue("name")
+
+	deadline := streamDeadline(ctx)
+	ctx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+
+	stream, err := s.clusters.WatchRun(ctx, orgID, id, runNamespace, name)
+	if err != nil {
+		status, code, msg := nodesFetchError(err)
+		writeStreamError(w, status, code, msg)
+		return
+	}
+
+	sse, ok := newSSEWriter(w)
+	if !ok {
+		writeStreamError(w, http.StatusInternalServerError, "internal", "streaming unsupported")
+		return
+	}
+	if err := sse.event("snapshot", toAPITektonRun(&stream.Snapshot)); err != nil {
+		return
+	}
+	if stream.Snapshot.Terminal() {
+		return
+	}
+
+	heartbeat := time.NewTicker(streamHeartbeat)
+	defer heartbeat.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-heartbeat.C:
+			if err := sse.comment("ping"); err != nil {
+				return
+			}
+		case ev, ok := <-stream.Events:
+			if !ok {
+				return
+			}
+			run := ev.Object
+			if err := sse.event("modified", toAPITektonRun(&run)); err != nil {
+				return
+			}
+			if run.Terminal() {
+				return
+			}
+		}
+	}
+}
+
+// streamDeadline bounds a stream to the lesser of the token's expiry and
+// streamMaxLifetime, so it never outlives the credential that authorized it.
+func streamDeadline(ctx context.Context) time.Time {
+	deadline := time.Now().Add(streamMaxLifetime)
+	if sess, ok := auth.FromContext(ctx); ok && !sess.ExpiresAt.IsZero() && sess.ExpiresAt.Before(deadline) {
+		deadline = sess.ExpiresAt
+	}
+	return deadline
+}
+
+// tektonRowKey is a change key over the install fields the stream surfaces, so a
+// no-op poll doesn't emit a redundant event.
+func tektonRowKey(row *ent.TektonInstallation) string {
+	return string(row.Status) + "\x00" + row.StatusMessage + "\x00" + row.InstalledVersion + "\x00" + row.JobID
+}
+
+// tektonTerminal reports whether the install lifecycle has settled, so the
+// stream can close.
+func tektonTerminal(row *ent.TektonInstallation) bool {
+	switch row.Status {
+	case tektoninstallation.StatusInstalled, tektoninstallation.StatusFailed, tektoninstallation.StatusNotInstalled:
+		return true
+	default:
+		return false
 	}
 }
 

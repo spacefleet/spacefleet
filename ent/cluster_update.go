@@ -11,8 +11,10 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/predicate"
+	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 )
 
 // ClusterUpdate is the builder for updating Cluster entities.
@@ -180,9 +182,34 @@ func (_u *ClusterUpdate) SetUpdatedAt(v time.Time) *ClusterUpdate {
 	return _u
 }
 
+// SetTektonID sets the "tekton" edge to the TektonInstallation entity by ID.
+func (_u *ClusterUpdate) SetTektonID(id uuid.UUID) *ClusterUpdate {
+	_u.mutation.SetTektonID(id)
+	return _u
+}
+
+// SetNillableTektonID sets the "tekton" edge to the TektonInstallation entity by ID if the given value is not nil.
+func (_u *ClusterUpdate) SetNillableTektonID(id *uuid.UUID) *ClusterUpdate {
+	if id != nil {
+		_u = _u.SetTektonID(*id)
+	}
+	return _u
+}
+
+// SetTekton sets the "tekton" edge to the TektonInstallation entity.
+func (_u *ClusterUpdate) SetTekton(v *TektonInstallation) *ClusterUpdate {
+	return _u.SetTektonID(v.ID)
+}
+
 // Mutation returns the ClusterMutation object of the builder.
 func (_u *ClusterUpdate) Mutation() *ClusterMutation {
 	return _u.mutation
+}
+
+// ClearTekton clears the "tekton" edge to the TektonInstallation entity.
+func (_u *ClusterUpdate) ClearTekton() *ClusterUpdate {
+	_u.mutation.ClearTekton()
+	return _u
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -303,6 +330,35 @@ func (_u *ClusterUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(cluster.FieldUpdatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.TektonCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   cluster.TektonTable,
+			Columns: []string{cluster.TektonColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(tektoninstallation.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TektonIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   cluster.TektonTable,
+			Columns: []string{cluster.TektonColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(tektoninstallation.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -476,9 +532,34 @@ func (_u *ClusterUpdateOne) SetUpdatedAt(v time.Time) *ClusterUpdateOne {
 	return _u
 }
 
+// SetTektonID sets the "tekton" edge to the TektonInstallation entity by ID.
+func (_u *ClusterUpdateOne) SetTektonID(id uuid.UUID) *ClusterUpdateOne {
+	_u.mutation.SetTektonID(id)
+	return _u
+}
+
+// SetNillableTektonID sets the "tekton" edge to the TektonInstallation entity by ID if the given value is not nil.
+func (_u *ClusterUpdateOne) SetNillableTektonID(id *uuid.UUID) *ClusterUpdateOne {
+	if id != nil {
+		_u = _u.SetTektonID(*id)
+	}
+	return _u
+}
+
+// SetTekton sets the "tekton" edge to the TektonInstallation entity.
+func (_u *ClusterUpdateOne) SetTekton(v *TektonInstallation) *ClusterUpdateOne {
+	return _u.SetTektonID(v.ID)
+}
+
 // Mutation returns the ClusterMutation object of the builder.
 func (_u *ClusterUpdateOne) Mutation() *ClusterMutation {
 	return _u.mutation
+}
+
+// ClearTekton clears the "tekton" edge to the TektonInstallation entity.
+func (_u *ClusterUpdateOne) ClearTekton() *ClusterUpdateOne {
+	_u.mutation.ClearTekton()
+	return _u
 }
 
 // Where appends a list predicates to the ClusterUpdate builder.
@@ -629,6 +710,35 @@ func (_u *ClusterUpdateOne) sqlSave(ctx context.Context) (_node *Cluster, err er
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(cluster.FieldUpdatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.TektonCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   cluster.TektonTable,
+			Columns: []string{cluster.TektonColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(tektoninstallation.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TektonIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   cluster.TektonTable,
+			Columns: []string{cluster.TektonColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(tektoninstallation.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	_node = &Cluster{config: _u.config}
 	_spec.Assign = _node.assignValues

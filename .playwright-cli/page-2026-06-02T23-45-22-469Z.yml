@@ -1,0 +1,62 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - link "Home" [ref=e5] [cursor=pointer]:
+      - /url: /
+      - img "Spacefleet" [ref=e6]
+      - generic [ref=e7]: Spacefleet
+    - generic [ref=e8]: /
+    - button "E2E Org 1780366019921" [ref=e10]:
+      - generic [ref=e11]: E2E Org 1780366019921
+      - img [ref=e12]
+    - generic [ref=e14]:
+      - generic [ref=e15]: admin@example.com
+      - button "Sign out" [ref=e16]
+  - generic [ref=e17]:
+    - navigation "Primary" [ref=e18]:
+      - generic [ref=e19]:
+        - button "Dashboard" [expanded] [ref=e20]:
+          - img [ref=e21]
+          - generic [ref=e26]: Dashboard
+          - img [ref=e27]
+        - list [ref=e29]:
+          - listitem [ref=e30]:
+            - link "Overview" [ref=e31] [cursor=pointer]:
+              - /url: /
+              - generic [ref=e32]: Overview
+          - listitem [ref=e33]:
+            - link "Activity" [ref=e34] [cursor=pointer]:
+              - /url: /activity
+              - generic [ref=e35]: Activity
+          - listitem [ref=e36]:
+            - link "Alerts" [ref=e37] [cursor=pointer]:
+              - /url: /alerts
+              - generic [ref=e38]: Alerts
+      - button "Applications" [ref=e40]:
+        - img [ref=e41]
+        - generic [ref=e43]: Applications
+        - img [ref=e44]
+      - button "Infrastructure" [ref=e47]:
+        - img [ref=e48]
+        - generic [ref=e51]: Infrastructure
+        - img [ref=e52]
+      - button "Security" [ref=e55]:
+        - img [ref=e56]
+        - generic [ref=e59]: Security
+        - img [ref=e60]
+      - button "Cost" [ref=e63]:
+        - img [ref=e64]
+        - generic [ref=e67]: Cost
+        - img [ref=e68]
+      - button "Providers" [ref=e71]:
+        - img [ref=e72]
+        - generic [ref=e74]: Providers
+        - img [ref=e75]
+      - button "Organization" [ref=e78]:
+        - img [ref=e79]
+        - generic [ref=e84]: Organization
+        - img [ref=e85]
+    - main [ref=e87]:
+      - generic [ref=e88]:
+        - heading "E2E Org 1780366019921" [level=1] [ref=e89]
+        - paragraph [ref=e90]: You're working in E2E Org 1780366019921 as admin. Switch organizations from the menu in the top bar.
+        - generic [ref=e91]: Your organization's content goes here.

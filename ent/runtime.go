@@ -11,6 +11,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/schema"
+	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/user"
 )
 
@@ -82,6 +83,26 @@ func init() {
 	organizationDescID := organizationFields[0].Descriptor()
 	// organization.DefaultID holds the default value on creation for the id field.
 	organization.DefaultID = organizationDescID.Default.(func() uuid.UUID)
+	tektoninstallationFields := schema.TektonInstallation{}.Fields()
+	_ = tektoninstallationFields
+	// tektoninstallationDescEnabled is the schema descriptor for enabled field.
+	tektoninstallationDescEnabled := tektoninstallationFields[2].Descriptor()
+	// tektoninstallation.DefaultEnabled holds the default value on creation for the enabled field.
+	tektoninstallation.DefaultEnabled = tektoninstallationDescEnabled.Default.(bool)
+	// tektoninstallationDescCreatedAt is the schema descriptor for created_at field.
+	tektoninstallationDescCreatedAt := tektoninstallationFields[8].Descriptor()
+	// tektoninstallation.DefaultCreatedAt holds the default value on creation for the created_at field.
+	tektoninstallation.DefaultCreatedAt = tektoninstallationDescCreatedAt.Default.(func() time.Time)
+	// tektoninstallationDescUpdatedAt is the schema descriptor for updated_at field.
+	tektoninstallationDescUpdatedAt := tektoninstallationFields[9].Descriptor()
+	// tektoninstallation.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	tektoninstallation.DefaultUpdatedAt = tektoninstallationDescUpdatedAt.Default.(func() time.Time)
+	// tektoninstallation.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	tektoninstallation.UpdateDefaultUpdatedAt = tektoninstallationDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// tektoninstallationDescID is the schema descriptor for id field.
+	tektoninstallationDescID := tektoninstallationFields[0].Descriptor()
+	// tektoninstallation.DefaultID holds the default value on creation for the id field.
+	tektoninstallation.DefaultID = tektoninstallationDescID.Default.(func() uuid.UUID)
 	userFields := schema.User{}.Fields()
 	_ = userFields
 	// userDescOidcSubject is the schema descriptor for oidc_subject field.

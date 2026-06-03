@@ -150,6 +150,60 @@ func (e Role) Valid() bool {
 	}
 }
 
+// Defines values for TektonInstallStatus.
+const (
+	TektonInstallStatusFailed       TektonInstallStatus = "failed"
+	TektonInstallStatusInstalled    TektonInstallStatus = "installed"
+	TektonInstallStatusInstalling   TektonInstallStatus = "installing"
+	TektonInstallStatusNotInstalled TektonInstallStatus = "not_installed"
+	TektonInstallStatusUninstalling TektonInstallStatus = "uninstalling"
+	TektonInstallStatusUpgrading    TektonInstallStatus = "upgrading"
+)
+
+// Valid indicates whether the value is a known member of the TektonInstallStatus enum.
+func (e TektonInstallStatus) Valid() bool {
+	switch e {
+	case TektonInstallStatusFailed:
+		return true
+	case TektonInstallStatusInstalled:
+		return true
+	case TektonInstallStatusInstalling:
+		return true
+	case TektonInstallStatusNotInstalled:
+		return true
+	case TektonInstallStatusUninstalling:
+		return true
+	case TektonInstallStatusUpgrading:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TektonRunPhase.
+const (
+	TektonRunPhaseFailed    TektonRunPhase = "Failed"
+	TektonRunPhasePending   TektonRunPhase = "Pending"
+	TektonRunPhaseRunning   TektonRunPhase = "Running"
+	TektonRunPhaseSucceeded TektonRunPhase = "Succeeded"
+)
+
+// Valid indicates whether the value is a known member of the TektonRunPhase enum.
+func (e TektonRunPhase) Valid() bool {
+	switch e {
+	case TektonRunPhaseFailed:
+		return true
+	case TektonRunPhasePending:
+		return true
+	case TektonRunPhaseRunning:
+		return true
+	case TektonRunPhaseSucceeded:
+		return true
+	default:
+		return false
+	}
+}
+
 // Capability One product capability and whether the cluster's credentials are allowed
 // it. Denied capabilities carry the missing rules that explain why.
 type Capability struct {
@@ -203,6 +257,10 @@ type Cluster struct {
 	K8sVersion    *string    `json:"k8s_version,omitempty"`
 	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
 	Name          string     `json:"name"`
+
+	// RunsJobs Whether this cluster is designated to run jobs (Tekton job running
+	// is enabled). See /api/clusters/{id}/tekton for the full status.
+	RunsJobs bool `json:"runs_jobs"`
 
 	// Status Result of the most recent connectivity probe.
 	Status ClusterStatus `json:"status"`
@@ -614,6 +672,91 @@ type PodCondition struct {
 // org; viewer is read-only.
 type Role string
 
+// TektonInstallStatus The Tekton install lifecycle for a cluster.
+//   - not_installed: Tekton is absent (or was uninstalled).
+//   - installing: a background job is installing Tekton.
+//   - installed: Tekton is present and the controller is ready.
+//   - upgrading: re-applying a newer pinned release.
+//   - failed: the last install/upgrade job errored (see status_message).
+//   - uninstalling: a background job is removing Tekton.
+type TektonInstallStatus string
+
+// TektonRun A Tekton TaskRun's status.
+type TektonRun struct {
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	Message     *string    `json:"message,omitempty"`
+	Name        string     `json:"name"`
+	Namespace   string     `json:"namespace"`
+
+	// Phase Derived from the run's Succeeded condition.
+	Phase TektonRunPhase `json:"phase"`
+
+	// PodName The backing pod, once scheduled (stream logs from it).
+	PodName   *string    `json:"pod_name,omitempty"`
+	StartedAt *time.Time `json:"started_at,omitempty"`
+}
+
+// TektonRunPhase Derived from the run's Succeeded condition.
+type TektonRunPhase string
+
+// TektonRunRequest A minimal single-step job to run as a Tekton TaskRun.
+type TektonRunRequest struct {
+	// Image The container image the step runs in.
+	Image string `json:"image"`
+
+	// Name A name prefix for the run (a unique suffix is added).
+	Name string `json:"name"`
+
+	// Script The shell script the step executes.
+	Script string `json:"script"`
+}
+
+// TektonStatus Whether a cluster is designated to run jobs (enabled) and the Tekton
+// install lifecycle (status), reconciled with a live presence detection
+// (present/controller_ready/detected_version). present and controller_ready
+// reflect the most recent detection; enable/disable responses carry the
+// stored state only, until the next status read or stream tick.
+type TektonStatus struct {
+	// ControllerReady Whether the Tekton controller has a ready replica.
+	ControllerReady bool `json:"controller_ready"`
+
+	// DetectedVersion The running controller's reported version, if detected.
+	DetectedVersion *string `json:"detected_version,omitempty"`
+
+	// Enabled Whether this cluster is designated to run jobs.
+	Enabled bool `json:"enabled"`
+
+	// InstalledVersion The pinned Tekton version applied by the last install.
+	InstalledVersion *string `json:"installed_version,omitempty"`
+
+	// JobId Id of the in-flight install/uninstall job, for correlation.
+	JobId         *string    `json:"job_id,omitempty"`
+	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
+
+	// Managed Whether Tekton in this cluster was installed by Spacefleet. Upgrade
+	// and delete are only offered when true — a Tekton installed outside
+	// Spacefleet is never modified or removed.
+	Managed bool `json:"managed"`
+
+	// PinnedVersion The Tekton version Spacefleet installs (the upgrade target).
+	PinnedVersion string `json:"pinned_version"`
+
+	// Present Whether the Tekton API group is registered in the cluster.
+	Present bool `json:"present"`
+
+	// Status The Tekton install lifecycle for a cluster.
+	//   - not_installed: Tekton is absent (or was uninstalled).
+	//   - installing: a background job is installing Tekton.
+	//   - installed: Tekton is present and the controller is ready.
+	//   - upgrading: re-applying a newer pinned release.
+	//   - failed: the last install/upgrade job errored (see status_message).
+	//   - uninstalling: a background job is removing Tekton.
+	Status TektonInstallStatus `json:"status"`
+
+	// StatusMessage The last install-progress line, or the error when failed.
+	StatusMessage *string `json:"status_message,omitempty"`
+}
+
 // User defines model for User.
 type User struct {
 	Email string             `json:"email"`
@@ -643,6 +786,9 @@ type UpdateClusterJSONRequestBody = ClusterUpdateRequest
 
 // GenerateClusterRbacJSONRequestBody defines body for GenerateClusterRbac for application/json ContentType.
 type GenerateClusterRbacJSONRequestBody = ClusterRbacRequest
+
+// SubmitClusterTektonRunJSONRequestBody defines body for SubmitClusterTektonRun for application/json ContentType.
+type SubmitClusterTektonRunJSONRequestBody = TektonRunRequest
 
 // CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
 type CreateInvitationJSONRequestBody = InvitationCreateRequest
@@ -688,6 +834,27 @@ type ServerInterface interface {
 	// List the Kubernetes pods of a cluster
 	// (GET /api/clusters/{id}/pods)
 	ListClusterPods(w http.ResponseWriter, r *http.Request, id ClusterID)
+	// Report a cluster's Tekton (job-running) status
+	// (GET /api/clusters/{id}/tekton)
+	GetClusterTekton(w http.ResponseWriter, r *http.Request, id ClusterID)
+	// Stop designating a cluster as a job runner
+	// (POST /api/clusters/{id}/tekton/disable)
+	DisableClusterTekton(w http.ResponseWriter, r *http.Request, id ClusterID)
+	// Designate a cluster to run jobs (install Tekton)
+	// (POST /api/clusters/{id}/tekton/enable)
+	EnableClusterTekton(w http.ResponseWriter, r *http.Request, id ClusterID)
+	// Submit a job (TaskRun) to a cluster
+	// (POST /api/clusters/{id}/tekton/runs)
+	SubmitClusterTektonRun(w http.ResponseWriter, r *http.Request, id ClusterID)
+	// Get a job (TaskRun) status
+	// (GET /api/clusters/{id}/tekton/runs/{name})
+	GetClusterTektonRun(w http.ResponseWriter, r *http.Request, id ClusterID, name string)
+	// Remove a Spacefleet-managed Tekton install
+	// (POST /api/clusters/{id}/tekton/uninstall)
+	UninstallClusterTekton(w http.ResponseWriter, r *http.Request, id ClusterID)
+	// Upgrade a Spacefleet-managed Tekton install
+	// (POST /api/clusters/{id}/tekton/upgrade)
+	UpgradeClusterTekton(w http.ResponseWriter, r *http.Request, id ClusterID)
 	// Re-probe a cluster's connectivity
 	// (POST /api/clusters/{id}/test)
 	TestCluster(w http.ResponseWriter, r *http.Request, id ClusterID)
@@ -957,6 +1124,190 @@ func (siw *ServerInterfaceWrapper) ListClusterPods(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListClusterPods(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetClusterTekton operation middleware
+func (siw *ServerInterfaceWrapper) GetClusterTekton(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id ClusterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetClusterTekton(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DisableClusterTekton operation middleware
+func (siw *ServerInterfaceWrapper) DisableClusterTekton(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id ClusterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DisableClusterTekton(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EnableClusterTekton operation middleware
+func (siw *ServerInterfaceWrapper) EnableClusterTekton(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id ClusterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EnableClusterTekton(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SubmitClusterTektonRun operation middleware
+func (siw *ServerInterfaceWrapper) SubmitClusterTektonRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id ClusterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SubmitClusterTektonRun(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetClusterTektonRun operation middleware
+func (siw *ServerInterfaceWrapper) GetClusterTektonRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id ClusterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetClusterTektonRun(w, r, id, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UninstallClusterTekton operation middleware
+func (siw *ServerInterfaceWrapper) UninstallClusterTekton(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id ClusterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UninstallClusterTekton(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpgradeClusterTekton operation middleware
+func (siw *ServerInterfaceWrapper) UpgradeClusterTekton(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id ClusterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpgradeClusterTekton(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1355,6 +1706,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/clusters/{id}/namespaces", wrapper.ListClusterNamespaces)
 	m.HandleFunc("GET "+options.BaseURL+"/api/clusters/{id}/nodes", wrapper.ListClusterNodes)
 	m.HandleFunc("GET "+options.BaseURL+"/api/clusters/{id}/pods", wrapper.ListClusterPods)
+	m.HandleFunc("GET "+options.BaseURL+"/api/clusters/{id}/tekton", wrapper.GetClusterTekton)
+	m.HandleFunc("POST "+options.BaseURL+"/api/clusters/{id}/tekton/disable", wrapper.DisableClusterTekton)
+	m.HandleFunc("POST "+options.BaseURL+"/api/clusters/{id}/tekton/enable", wrapper.EnableClusterTekton)
+	m.HandleFunc("POST "+options.BaseURL+"/api/clusters/{id}/tekton/runs", wrapper.SubmitClusterTektonRun)
+	m.HandleFunc("GET "+options.BaseURL+"/api/clusters/{id}/tekton/runs/{name}", wrapper.GetClusterTektonRun)
+	m.HandleFunc("POST "+options.BaseURL+"/api/clusters/{id}/tekton/uninstall", wrapper.UninstallClusterTekton)
+	m.HandleFunc("POST "+options.BaseURL+"/api/clusters/{id}/tekton/upgrade", wrapper.UpgradeClusterTekton)
 	m.HandleFunc("POST "+options.BaseURL+"/api/clusters/{id}/test", wrapper.TestCluster)
 	m.HandleFunc("GET "+options.BaseURL+"/api/health", wrapper.GetHealth)
 	m.HandleFunc("GET "+options.BaseURL+"/api/invitations", wrapper.ListInvitations)
@@ -1658,6 +2016,211 @@ type ListClusterPodsdefaultJSONResponse struct {
 }
 
 func (response ListClusterPodsdefaultJSONResponse) VisitListClusterPodsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type GetClusterTektonRequestObject struct {
+	Id ClusterID `json:"id"`
+}
+
+type GetClusterTektonResponseObject interface {
+	VisitGetClusterTektonResponse(w http.ResponseWriter) error
+}
+
+type GetClusterTekton200JSONResponse TektonStatus
+
+func (response GetClusterTekton200JSONResponse) VisitGetClusterTektonResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetClusterTektondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetClusterTektondefaultJSONResponse) VisitGetClusterTektonResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type DisableClusterTektonRequestObject struct {
+	Id ClusterID `json:"id"`
+}
+
+type DisableClusterTektonResponseObject interface {
+	VisitDisableClusterTektonResponse(w http.ResponseWriter) error
+}
+
+type DisableClusterTekton200JSONResponse TektonStatus
+
+func (response DisableClusterTekton200JSONResponse) VisitDisableClusterTektonResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DisableClusterTektondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DisableClusterTektondefaultJSONResponse) VisitDisableClusterTektonResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type EnableClusterTektonRequestObject struct {
+	Id ClusterID `json:"id"`
+}
+
+type EnableClusterTektonResponseObject interface {
+	VisitEnableClusterTektonResponse(w http.ResponseWriter) error
+}
+
+type EnableClusterTekton202JSONResponse TektonStatus
+
+func (response EnableClusterTekton202JSONResponse) VisitEnableClusterTektonResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type EnableClusterTektondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response EnableClusterTektondefaultJSONResponse) VisitEnableClusterTektonResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type SubmitClusterTektonRunRequestObject struct {
+	Id   ClusterID `json:"id"`
+	Body *SubmitClusterTektonRunJSONRequestBody
+}
+
+type SubmitClusterTektonRunResponseObject interface {
+	VisitSubmitClusterTektonRunResponse(w http.ResponseWriter) error
+}
+
+type SubmitClusterTektonRun201JSONResponse TektonRun
+
+func (response SubmitClusterTektonRun201JSONResponse) VisitSubmitClusterTektonRunResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SubmitClusterTektonRundefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SubmitClusterTektonRundefaultJSONResponse) VisitSubmitClusterTektonRunResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type GetClusterTektonRunRequestObject struct {
+	Id   ClusterID `json:"id"`
+	Name string    `json:"name"`
+}
+
+type GetClusterTektonRunResponseObject interface {
+	VisitGetClusterTektonRunResponse(w http.ResponseWriter) error
+}
+
+type GetClusterTektonRun200JSONResponse TektonRun
+
+func (response GetClusterTektonRun200JSONResponse) VisitGetClusterTektonRunResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetClusterTektonRundefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetClusterTektonRundefaultJSONResponse) VisitGetClusterTektonRunResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type UninstallClusterTektonRequestObject struct {
+	Id ClusterID `json:"id"`
+}
+
+type UninstallClusterTektonResponseObject interface {
+	VisitUninstallClusterTektonResponse(w http.ResponseWriter) error
+}
+
+type UninstallClusterTekton202JSONResponse TektonStatus
+
+func (response UninstallClusterTekton202JSONResponse) VisitUninstallClusterTektonResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UninstallClusterTektondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UninstallClusterTektondefaultJSONResponse) VisitUninstallClusterTektonResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type UpgradeClusterTektonRequestObject struct {
+	Id ClusterID `json:"id"`
+}
+
+type UpgradeClusterTektonResponseObject interface {
+	VisitUpgradeClusterTektonResponse(w http.ResponseWriter) error
+}
+
+type UpgradeClusterTekton202JSONResponse TektonStatus
+
+func (response UpgradeClusterTekton202JSONResponse) VisitUpgradeClusterTektonResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpgradeClusterTektondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpgradeClusterTektondefaultJSONResponse) VisitUpgradeClusterTektonResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(response.StatusCode)
 
@@ -2057,6 +2620,27 @@ type StrictServerInterface interface {
 	// List the Kubernetes pods of a cluster
 	// (GET /api/clusters/{id}/pods)
 	ListClusterPods(ctx context.Context, request ListClusterPodsRequestObject) (ListClusterPodsResponseObject, error)
+	// Report a cluster's Tekton (job-running) status
+	// (GET /api/clusters/{id}/tekton)
+	GetClusterTekton(ctx context.Context, request GetClusterTektonRequestObject) (GetClusterTektonResponseObject, error)
+	// Stop designating a cluster as a job runner
+	// (POST /api/clusters/{id}/tekton/disable)
+	DisableClusterTekton(ctx context.Context, request DisableClusterTektonRequestObject) (DisableClusterTektonResponseObject, error)
+	// Designate a cluster to run jobs (install Tekton)
+	// (POST /api/clusters/{id}/tekton/enable)
+	EnableClusterTekton(ctx context.Context, request EnableClusterTektonRequestObject) (EnableClusterTektonResponseObject, error)
+	// Submit a job (TaskRun) to a cluster
+	// (POST /api/clusters/{id}/tekton/runs)
+	SubmitClusterTektonRun(ctx context.Context, request SubmitClusterTektonRunRequestObject) (SubmitClusterTektonRunResponseObject, error)
+	// Get a job (TaskRun) status
+	// (GET /api/clusters/{id}/tekton/runs/{name})
+	GetClusterTektonRun(ctx context.Context, request GetClusterTektonRunRequestObject) (GetClusterTektonRunResponseObject, error)
+	// Remove a Spacefleet-managed Tekton install
+	// (POST /api/clusters/{id}/tekton/uninstall)
+	UninstallClusterTekton(ctx context.Context, request UninstallClusterTektonRequestObject) (UninstallClusterTektonResponseObject, error)
+	// Upgrade a Spacefleet-managed Tekton install
+	// (POST /api/clusters/{id}/tekton/upgrade)
+	UpgradeClusterTekton(ctx context.Context, request UpgradeClusterTektonRequestObject) (UpgradeClusterTektonResponseObject, error)
 	// Re-probe a cluster's connectivity
 	// (POST /api/clusters/{id}/test)
 	TestCluster(ctx context.Context, request TestClusterRequestObject) (TestClusterResponseObject, error)
@@ -2397,6 +2981,196 @@ func (sh *strictHandler) ListClusterPods(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListClusterPodsResponseObject); ok {
 		if err := validResponse.VisitListClusterPodsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetClusterTekton operation middleware
+func (sh *strictHandler) GetClusterTekton(w http.ResponseWriter, r *http.Request, id ClusterID) {
+	var request GetClusterTektonRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetClusterTekton(ctx, request.(GetClusterTektonRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetClusterTekton")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetClusterTektonResponseObject); ok {
+		if err := validResponse.VisitGetClusterTektonResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DisableClusterTekton operation middleware
+func (sh *strictHandler) DisableClusterTekton(w http.ResponseWriter, r *http.Request, id ClusterID) {
+	var request DisableClusterTektonRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DisableClusterTekton(ctx, request.(DisableClusterTektonRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DisableClusterTekton")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DisableClusterTektonResponseObject); ok {
+		if err := validResponse.VisitDisableClusterTektonResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EnableClusterTekton operation middleware
+func (sh *strictHandler) EnableClusterTekton(w http.ResponseWriter, r *http.Request, id ClusterID) {
+	var request EnableClusterTektonRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EnableClusterTekton(ctx, request.(EnableClusterTektonRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EnableClusterTekton")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EnableClusterTektonResponseObject); ok {
+		if err := validResponse.VisitEnableClusterTektonResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SubmitClusterTektonRun operation middleware
+func (sh *strictHandler) SubmitClusterTektonRun(w http.ResponseWriter, r *http.Request, id ClusterID) {
+	var request SubmitClusterTektonRunRequestObject
+
+	request.Id = id
+
+	var body SubmitClusterTektonRunJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SubmitClusterTektonRun(ctx, request.(SubmitClusterTektonRunRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SubmitClusterTektonRun")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SubmitClusterTektonRunResponseObject); ok {
+		if err := validResponse.VisitSubmitClusterTektonRunResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetClusterTektonRun operation middleware
+func (sh *strictHandler) GetClusterTektonRun(w http.ResponseWriter, r *http.Request, id ClusterID, name string) {
+	var request GetClusterTektonRunRequestObject
+
+	request.Id = id
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetClusterTektonRun(ctx, request.(GetClusterTektonRunRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetClusterTektonRun")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetClusterTektonRunResponseObject); ok {
+		if err := validResponse.VisitGetClusterTektonRunResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UninstallClusterTekton operation middleware
+func (sh *strictHandler) UninstallClusterTekton(w http.ResponseWriter, r *http.Request, id ClusterID) {
+	var request UninstallClusterTektonRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UninstallClusterTekton(ctx, request.(UninstallClusterTektonRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UninstallClusterTekton")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UninstallClusterTektonResponseObject); ok {
+		if err := validResponse.VisitUninstallClusterTektonResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpgradeClusterTekton operation middleware
+func (sh *strictHandler) UpgradeClusterTekton(w http.ResponseWriter, r *http.Request, id ClusterID) {
+	var request UpgradeClusterTektonRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpgradeClusterTekton(ctx, request.(UpgradeClusterTektonRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpgradeClusterTekton")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpgradeClusterTektonResponseObject); ok {
+		if err := validResponse.VisitUpgradeClusterTektonResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2761,111 +3535,139 @@ func (sh *strictHandler) RenameOrganization(w http.ResponseWriter, r *http.Reque
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
+	"/5GaIbA1lgAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

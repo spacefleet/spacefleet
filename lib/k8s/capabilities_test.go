@@ -86,7 +86,7 @@ func TestInspectAllAllowed(t *testing.T) {
 
 	want := []string{
 		"view_nodes", "view_namespaces", "view_pods", "view_pod_logs",
-		"restart_workloads", "scale_workloads", "manage_helm_releases",
+		"restart_workloads", "scale_workloads", "manage_helm_releases", "run_jobs",
 	}
 	if len(report.Capabilities) != len(want) {
 		t.Fatalf("got %d capabilities, want %d: %+v", len(report.Capabilities), len(want), report.Capabilities)
@@ -167,6 +167,32 @@ func TestInspectWriteCapabilityDenied(t *testing.T) {
 	}
 	if nodes, _ := findCap(report, "view_nodes"); !nodes.Allowed {
 		t.Errorf("reads should stay allowed, view_nodes failed=%+v", nodes.Failed)
+	}
+}
+
+// TestInspectRunJobsDenied confirms the run_jobs capability is denied when the
+// credentials can't create Tekton TaskRuns, and records the missing tekton.dev
+// rule.
+func TestInspectRunJobsDenied(t *testing.T) {
+	// Deny create on tekton.dev/taskruns; everything else allowed.
+	allow := func(a authzv1.ResourceAttributes) bool {
+		return a.Group != "tekton.dev" || a.Resource != "taskruns" || a.Verb != "create"
+	}
+	cs := fakeClientset(authnv1.UserInfo{Username: "runner"}, allow)
+
+	report, err := inspect(context.Background(), cs, catalog)
+	if err != nil {
+		t.Fatalf("inspect: %v", err)
+	}
+	runJobs, ok := findCap(report, "run_jobs")
+	if !ok {
+		t.Fatal("missing run_jobs")
+	}
+	if runJobs.Allowed {
+		t.Error("run_jobs should be denied when taskruns/create is denied")
+	}
+	if len(runJobs.Failed) != 1 || runJobs.Failed[0].Rule.Resource != "taskruns" || runJobs.Failed[0].Verb != "create" {
+		t.Errorf("run_jobs Failed = %+v, want exactly taskruns/create", runJobs.Failed)
 	}
 }
 
@@ -294,7 +320,7 @@ func TestCatalogShape(t *testing.T) {
 
 	want := []string{
 		"view_nodes", "view_namespaces", "view_pods", "view_pod_logs",
-		"restart_workloads", "scale_workloads", "manage_helm_releases",
+		"restart_workloads", "scale_workloads", "manage_helm_releases", "run_jobs",
 	}
 	for _, key := range want {
 		found := false

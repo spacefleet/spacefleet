@@ -1,4 +1,4 @@
-.PHONY: run build test test-integration e2e fmt vet tidy dev worker clean gen \
+.PHONY: run build test test-integration e2e fmt vet tidy dev dev-all worker clean gen \
 	ui-install ui-dev ui-build services-up services-down services-logs \
 	services-reset migrate-up migrate-status secret-key helm-deps helm-lint helm-template
 
@@ -63,8 +63,20 @@ secret-key:
 dev:
 	air
 
+# Dev backend AND worker together, both live-reloaded (two Air instances, see
+# .air.toml + .air.worker.toml). Use this when you're working on background
+# jobs (e.g. the Tekton install flow) so the worker rebuilds on save too. Ctrl-C
+# stops both (the trap kills the whole process group). Still run `make ui-dev`
+# in a second terminal for the React dev server.
+dev-all:
+	@trap 'kill 0' EXIT INT TERM; \
+		air -c .air.toml & \
+		air -c .air.worker.toml & \
+		wait
+
 # Long-lived worker process for River-backed background jobs. Run alongside
-# `make dev` in a second terminal when you have jobs to process.
+# `make dev` in a second terminal when you have jobs to process. (For
+# live-reload of both server and worker at once, use `make dev-all`.)
 worker:
 	go run $(PKG) worker
 

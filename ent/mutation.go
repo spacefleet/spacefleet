@@ -17,6 +17,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/predicate"
+	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/user"
 )
 
@@ -29,11 +30,12 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeCluster      = "Cluster"
-	TypeInvitation   = "Invitation"
-	TypeMembership   = "Membership"
-	TypeOrganization = "Organization"
-	TypeUser         = "User"
+	TypeCluster            = "Cluster"
+	TypeInvitation         = "Invitation"
+	TypeMembership         = "Membership"
+	TypeOrganization       = "Organization"
+	TypeTektonInstallation = "TektonInstallation"
+	TypeUser               = "User"
 )
 
 // ClusterMutation represents an operation that mutates the Cluster nodes in the graph.
@@ -56,6 +58,8 @@ type ClusterMutation struct {
 	clearedFields         map[string]struct{}
 	organization          *uuid.UUID
 	clearedorganization   bool
+	tekton                *uuid.UUID
+	clearedtekton         bool
 	done                  bool
 	oldValue              func(context.Context) (*Cluster, error)
 	predicates            []predicate.Cluster
@@ -702,6 +706,45 @@ func (m *ClusterMutation) ResetOrganization() {
 	m.clearedorganization = false
 }
 
+// SetTektonID sets the "tekton" edge to the TektonInstallation entity by id.
+func (m *ClusterMutation) SetTektonID(id uuid.UUID) {
+	m.tekton = &id
+}
+
+// ClearTekton clears the "tekton" edge to the TektonInstallation entity.
+func (m *ClusterMutation) ClearTekton() {
+	m.clearedtekton = true
+}
+
+// TektonCleared reports if the "tekton" edge to the TektonInstallation entity was cleared.
+func (m *ClusterMutation) TektonCleared() bool {
+	return m.clearedtekton
+}
+
+// TektonID returns the "tekton" edge ID in the mutation.
+func (m *ClusterMutation) TektonID() (id uuid.UUID, exists bool) {
+	if m.tekton != nil {
+		return *m.tekton, true
+	}
+	return
+}
+
+// TektonIDs returns the "tekton" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// TektonID instead. It exists only for internal usage by the builders.
+func (m *ClusterMutation) TektonIDs() (ids []uuid.UUID) {
+	if id := m.tekton; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetTekton resets all changes to the "tekton" edge.
+func (m *ClusterMutation) ResetTekton() {
+	m.tekton = nil
+	m.clearedtekton = false
+}
+
 // Where appends a list predicates to the ClusterMutation builder.
 func (m *ClusterMutation) Where(ps ...predicate.Cluster) {
 	m.predicates = append(m.predicates, ps...)
@@ -1061,9 +1104,12 @@ func (m *ClusterMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ClusterMutation) AddedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.organization != nil {
 		edges = append(edges, cluster.EdgeOrganization)
+	}
+	if m.tekton != nil {
+		edges = append(edges, cluster.EdgeTekton)
 	}
 	return edges
 }
@@ -1076,13 +1122,17 @@ func (m *ClusterMutation) AddedIDs(name string) []ent.Value {
 		if id := m.organization; id != nil {
 			return []ent.Value{*id}
 		}
+	case cluster.EdgeTekton:
+		if id := m.tekton; id != nil {
+			return []ent.Value{*id}
+		}
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ClusterMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	return edges
 }
 
@@ -1094,9 +1144,12 @@ func (m *ClusterMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ClusterMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.clearedorganization {
 		edges = append(edges, cluster.EdgeOrganization)
+	}
+	if m.clearedtekton {
+		edges = append(edges, cluster.EdgeTekton)
 	}
 	return edges
 }
@@ -1107,6 +1160,8 @@ func (m *ClusterMutation) EdgeCleared(name string) bool {
 	switch name {
 	case cluster.EdgeOrganization:
 		return m.clearedorganization
+	case cluster.EdgeTekton:
+		return m.clearedtekton
 	}
 	return false
 }
@@ -1118,6 +1173,9 @@ func (m *ClusterMutation) ClearEdge(name string) error {
 	case cluster.EdgeOrganization:
 		m.ClearOrganization()
 		return nil
+	case cluster.EdgeTekton:
+		m.ClearTekton()
+		return nil
 	}
 	return fmt.Errorf("unknown Cluster unique edge %s", name)
 }
@@ -1128,6 +1186,9 @@ func (m *ClusterMutation) ResetEdge(name string) error {
 	switch name {
 	case cluster.EdgeOrganization:
 		m.ResetOrganization()
+		return nil
+	case cluster.EdgeTekton:
+		m.ResetTekton()
 		return nil
 	}
 	return fmt.Errorf("unknown Cluster edge %s", name)
@@ -3200,6 +3261,903 @@ func (m *OrganizationMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Organization edge %s", name)
+}
+
+// TektonInstallationMutation represents an operation that mutates the TektonInstallation nodes in the graph.
+type TektonInstallationMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *uuid.UUID
+	enabled           *bool
+	status            *tektoninstallation.Status
+	installed_version *string
+	status_message    *string
+	job_id            *string
+	last_checked_at   *time.Time
+	created_at        *time.Time
+	updated_at        *time.Time
+	clearedFields     map[string]struct{}
+	cluster           *uuid.UUID
+	clearedcluster    bool
+	done              bool
+	oldValue          func(context.Context) (*TektonInstallation, error)
+	predicates        []predicate.TektonInstallation
+}
+
+var _ ent.Mutation = (*TektonInstallationMutation)(nil)
+
+// tektoninstallationOption allows management of the mutation configuration using functional options.
+type tektoninstallationOption func(*TektonInstallationMutation)
+
+// newTektonInstallationMutation creates new mutation for the TektonInstallation entity.
+func newTektonInstallationMutation(c config, op Op, opts ...tektoninstallationOption) *TektonInstallationMutation {
+	m := &TektonInstallationMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTektonInstallation,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTektonInstallationID sets the ID field of the mutation.
+func withTektonInstallationID(id uuid.UUID) tektoninstallationOption {
+	return func(m *TektonInstallationMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TektonInstallation
+		)
+		m.oldValue = func(ctx context.Context) (*TektonInstallation, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TektonInstallation.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTektonInstallation sets the old TektonInstallation of the mutation.
+func withTektonInstallation(node *TektonInstallation) tektoninstallationOption {
+	return func(m *TektonInstallationMutation) {
+		m.oldValue = func(context.Context) (*TektonInstallation, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TektonInstallationMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TektonInstallationMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TektonInstallation entities.
+func (m *TektonInstallationMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TektonInstallationMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TektonInstallationMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TektonInstallation.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetClusterID sets the "cluster_id" field.
+func (m *TektonInstallationMutation) SetClusterID(u uuid.UUID) {
+	m.cluster = &u
+}
+
+// ClusterID returns the value of the "cluster_id" field in the mutation.
+func (m *TektonInstallationMutation) ClusterID() (r uuid.UUID, exists bool) {
+	v := m.cluster
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClusterID returns the old "cluster_id" field's value of the TektonInstallation entity.
+// If the TektonInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TektonInstallationMutation) OldClusterID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClusterID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClusterID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClusterID: %w", err)
+	}
+	return oldValue.ClusterID, nil
+}
+
+// ResetClusterID resets all changes to the "cluster_id" field.
+func (m *TektonInstallationMutation) ResetClusterID() {
+	m.cluster = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *TektonInstallationMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *TektonInstallationMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the TektonInstallation entity.
+// If the TektonInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TektonInstallationMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *TektonInstallationMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *TektonInstallationMutation) SetStatus(t tektoninstallation.Status) {
+	m.status = &t
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *TektonInstallationMutation) Status() (r tektoninstallation.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the TektonInstallation entity.
+// If the TektonInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TektonInstallationMutation) OldStatus(ctx context.Context) (v tektoninstallation.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *TektonInstallationMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetInstalledVersion sets the "installed_version" field.
+func (m *TektonInstallationMutation) SetInstalledVersion(s string) {
+	m.installed_version = &s
+}
+
+// InstalledVersion returns the value of the "installed_version" field in the mutation.
+func (m *TektonInstallationMutation) InstalledVersion() (r string, exists bool) {
+	v := m.installed_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInstalledVersion returns the old "installed_version" field's value of the TektonInstallation entity.
+// If the TektonInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TektonInstallationMutation) OldInstalledVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInstalledVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInstalledVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInstalledVersion: %w", err)
+	}
+	return oldValue.InstalledVersion, nil
+}
+
+// ClearInstalledVersion clears the value of the "installed_version" field.
+func (m *TektonInstallationMutation) ClearInstalledVersion() {
+	m.installed_version = nil
+	m.clearedFields[tektoninstallation.FieldInstalledVersion] = struct{}{}
+}
+
+// InstalledVersionCleared returns if the "installed_version" field was cleared in this mutation.
+func (m *TektonInstallationMutation) InstalledVersionCleared() bool {
+	_, ok := m.clearedFields[tektoninstallation.FieldInstalledVersion]
+	return ok
+}
+
+// ResetInstalledVersion resets all changes to the "installed_version" field.
+func (m *TektonInstallationMutation) ResetInstalledVersion() {
+	m.installed_version = nil
+	delete(m.clearedFields, tektoninstallation.FieldInstalledVersion)
+}
+
+// SetStatusMessage sets the "status_message" field.
+func (m *TektonInstallationMutation) SetStatusMessage(s string) {
+	m.status_message = &s
+}
+
+// StatusMessage returns the value of the "status_message" field in the mutation.
+func (m *TektonInstallationMutation) StatusMessage() (r string, exists bool) {
+	v := m.status_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatusMessage returns the old "status_message" field's value of the TektonInstallation entity.
+// If the TektonInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TektonInstallationMutation) OldStatusMessage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatusMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatusMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatusMessage: %w", err)
+	}
+	return oldValue.StatusMessage, nil
+}
+
+// ClearStatusMessage clears the value of the "status_message" field.
+func (m *TektonInstallationMutation) ClearStatusMessage() {
+	m.status_message = nil
+	m.clearedFields[tektoninstallation.FieldStatusMessage] = struct{}{}
+}
+
+// StatusMessageCleared returns if the "status_message" field was cleared in this mutation.
+func (m *TektonInstallationMutation) StatusMessageCleared() bool {
+	_, ok := m.clearedFields[tektoninstallation.FieldStatusMessage]
+	return ok
+}
+
+// ResetStatusMessage resets all changes to the "status_message" field.
+func (m *TektonInstallationMutation) ResetStatusMessage() {
+	m.status_message = nil
+	delete(m.clearedFields, tektoninstallation.FieldStatusMessage)
+}
+
+// SetJobID sets the "job_id" field.
+func (m *TektonInstallationMutation) SetJobID(s string) {
+	m.job_id = &s
+}
+
+// JobID returns the value of the "job_id" field in the mutation.
+func (m *TektonInstallationMutation) JobID() (r string, exists bool) {
+	v := m.job_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldJobID returns the old "job_id" field's value of the TektonInstallation entity.
+// If the TektonInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TektonInstallationMutation) OldJobID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldJobID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldJobID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldJobID: %w", err)
+	}
+	return oldValue.JobID, nil
+}
+
+// ClearJobID clears the value of the "job_id" field.
+func (m *TektonInstallationMutation) ClearJobID() {
+	m.job_id = nil
+	m.clearedFields[tektoninstallation.FieldJobID] = struct{}{}
+}
+
+// JobIDCleared returns if the "job_id" field was cleared in this mutation.
+func (m *TektonInstallationMutation) JobIDCleared() bool {
+	_, ok := m.clearedFields[tektoninstallation.FieldJobID]
+	return ok
+}
+
+// ResetJobID resets all changes to the "job_id" field.
+func (m *TektonInstallationMutation) ResetJobID() {
+	m.job_id = nil
+	delete(m.clearedFields, tektoninstallation.FieldJobID)
+}
+
+// SetLastCheckedAt sets the "last_checked_at" field.
+func (m *TektonInstallationMutation) SetLastCheckedAt(t time.Time) {
+	m.last_checked_at = &t
+}
+
+// LastCheckedAt returns the value of the "last_checked_at" field in the mutation.
+func (m *TektonInstallationMutation) LastCheckedAt() (r time.Time, exists bool) {
+	v := m.last_checked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastCheckedAt returns the old "last_checked_at" field's value of the TektonInstallation entity.
+// If the TektonInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TektonInstallationMutation) OldLastCheckedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastCheckedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastCheckedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastCheckedAt: %w", err)
+	}
+	return oldValue.LastCheckedAt, nil
+}
+
+// ClearLastCheckedAt clears the value of the "last_checked_at" field.
+func (m *TektonInstallationMutation) ClearLastCheckedAt() {
+	m.last_checked_at = nil
+	m.clearedFields[tektoninstallation.FieldLastCheckedAt] = struct{}{}
+}
+
+// LastCheckedAtCleared returns if the "last_checked_at" field was cleared in this mutation.
+func (m *TektonInstallationMutation) LastCheckedAtCleared() bool {
+	_, ok := m.clearedFields[tektoninstallation.FieldLastCheckedAt]
+	return ok
+}
+
+// ResetLastCheckedAt resets all changes to the "last_checked_at" field.
+func (m *TektonInstallationMutation) ResetLastCheckedAt() {
+	m.last_checked_at = nil
+	delete(m.clearedFields, tektoninstallation.FieldLastCheckedAt)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *TektonInstallationMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *TektonInstallationMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the TektonInstallation entity.
+// If the TektonInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TektonInstallationMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *TektonInstallationMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *TektonInstallationMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *TektonInstallationMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the TektonInstallation entity.
+// If the TektonInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TektonInstallationMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *TektonInstallationMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearCluster clears the "cluster" edge to the Cluster entity.
+func (m *TektonInstallationMutation) ClearCluster() {
+	m.clearedcluster = true
+	m.clearedFields[tektoninstallation.FieldClusterID] = struct{}{}
+}
+
+// ClusterCleared reports if the "cluster" edge to the Cluster entity was cleared.
+func (m *TektonInstallationMutation) ClusterCleared() bool {
+	return m.clearedcluster
+}
+
+// ClusterIDs returns the "cluster" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ClusterID instead. It exists only for internal usage by the builders.
+func (m *TektonInstallationMutation) ClusterIDs() (ids []uuid.UUID) {
+	if id := m.cluster; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetCluster resets all changes to the "cluster" edge.
+func (m *TektonInstallationMutation) ResetCluster() {
+	m.cluster = nil
+	m.clearedcluster = false
+}
+
+// Where appends a list predicates to the TektonInstallationMutation builder.
+func (m *TektonInstallationMutation) Where(ps ...predicate.TektonInstallation) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TektonInstallationMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TektonInstallationMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TektonInstallation, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TektonInstallationMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TektonInstallationMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TektonInstallation).
+func (m *TektonInstallationMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TektonInstallationMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.cluster != nil {
+		fields = append(fields, tektoninstallation.FieldClusterID)
+	}
+	if m.enabled != nil {
+		fields = append(fields, tektoninstallation.FieldEnabled)
+	}
+	if m.status != nil {
+		fields = append(fields, tektoninstallation.FieldStatus)
+	}
+	if m.installed_version != nil {
+		fields = append(fields, tektoninstallation.FieldInstalledVersion)
+	}
+	if m.status_message != nil {
+		fields = append(fields, tektoninstallation.FieldStatusMessage)
+	}
+	if m.job_id != nil {
+		fields = append(fields, tektoninstallation.FieldJobID)
+	}
+	if m.last_checked_at != nil {
+		fields = append(fields, tektoninstallation.FieldLastCheckedAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, tektoninstallation.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, tektoninstallation.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TektonInstallationMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case tektoninstallation.FieldClusterID:
+		return m.ClusterID()
+	case tektoninstallation.FieldEnabled:
+		return m.Enabled()
+	case tektoninstallation.FieldStatus:
+		return m.Status()
+	case tektoninstallation.FieldInstalledVersion:
+		return m.InstalledVersion()
+	case tektoninstallation.FieldStatusMessage:
+		return m.StatusMessage()
+	case tektoninstallation.FieldJobID:
+		return m.JobID()
+	case tektoninstallation.FieldLastCheckedAt:
+		return m.LastCheckedAt()
+	case tektoninstallation.FieldCreatedAt:
+		return m.CreatedAt()
+	case tektoninstallation.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TektonInstallationMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case tektoninstallation.FieldClusterID:
+		return m.OldClusterID(ctx)
+	case tektoninstallation.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case tektoninstallation.FieldStatus:
+		return m.OldStatus(ctx)
+	case tektoninstallation.FieldInstalledVersion:
+		return m.OldInstalledVersion(ctx)
+	case tektoninstallation.FieldStatusMessage:
+		return m.OldStatusMessage(ctx)
+	case tektoninstallation.FieldJobID:
+		return m.OldJobID(ctx)
+	case tektoninstallation.FieldLastCheckedAt:
+		return m.OldLastCheckedAt(ctx)
+	case tektoninstallation.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case tektoninstallation.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TektonInstallation field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TektonInstallationMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case tektoninstallation.FieldClusterID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClusterID(v)
+		return nil
+	case tektoninstallation.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case tektoninstallation.FieldStatus:
+		v, ok := value.(tektoninstallation.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case tektoninstallation.FieldInstalledVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInstalledVersion(v)
+		return nil
+	case tektoninstallation.FieldStatusMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatusMessage(v)
+		return nil
+	case tektoninstallation.FieldJobID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetJobID(v)
+		return nil
+	case tektoninstallation.FieldLastCheckedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastCheckedAt(v)
+		return nil
+	case tektoninstallation.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case tektoninstallation.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TektonInstallation field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TektonInstallationMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TektonInstallationMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TektonInstallationMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown TektonInstallation numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TektonInstallationMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(tektoninstallation.FieldInstalledVersion) {
+		fields = append(fields, tektoninstallation.FieldInstalledVersion)
+	}
+	if m.FieldCleared(tektoninstallation.FieldStatusMessage) {
+		fields = append(fields, tektoninstallation.FieldStatusMessage)
+	}
+	if m.FieldCleared(tektoninstallation.FieldJobID) {
+		fields = append(fields, tektoninstallation.FieldJobID)
+	}
+	if m.FieldCleared(tektoninstallation.FieldLastCheckedAt) {
+		fields = append(fields, tektoninstallation.FieldLastCheckedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TektonInstallationMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TektonInstallationMutation) ClearField(name string) error {
+	switch name {
+	case tektoninstallation.FieldInstalledVersion:
+		m.ClearInstalledVersion()
+		return nil
+	case tektoninstallation.FieldStatusMessage:
+		m.ClearStatusMessage()
+		return nil
+	case tektoninstallation.FieldJobID:
+		m.ClearJobID()
+		return nil
+	case tektoninstallation.FieldLastCheckedAt:
+		m.ClearLastCheckedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TektonInstallation nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TektonInstallationMutation) ResetField(name string) error {
+	switch name {
+	case tektoninstallation.FieldClusterID:
+		m.ResetClusterID()
+		return nil
+	case tektoninstallation.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case tektoninstallation.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case tektoninstallation.FieldInstalledVersion:
+		m.ResetInstalledVersion()
+		return nil
+	case tektoninstallation.FieldStatusMessage:
+		m.ResetStatusMessage()
+		return nil
+	case tektoninstallation.FieldJobID:
+		m.ResetJobID()
+		return nil
+	case tektoninstallation.FieldLastCheckedAt:
+		m.ResetLastCheckedAt()
+		return nil
+	case tektoninstallation.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case tektoninstallation.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TektonInstallation field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TektonInstallationMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.cluster != nil {
+		edges = append(edges, tektoninstallation.EdgeCluster)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TektonInstallationMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case tektoninstallation.EdgeCluster:
+		if id := m.cluster; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TektonInstallationMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TektonInstallationMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TektonInstallationMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedcluster {
+		edges = append(edges, tektoninstallation.EdgeCluster)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TektonInstallationMutation) EdgeCleared(name string) bool {
+	switch name {
+	case tektoninstallation.EdgeCluster:
+		return m.clearedcluster
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TektonInstallationMutation) ClearEdge(name string) error {
+	switch name {
+	case tektoninstallation.EdgeCluster:
+		m.ClearCluster()
+		return nil
+	}
+	return fmt.Errorf("unknown TektonInstallation unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TektonInstallationMutation) ResetEdge(name string) error {
+	switch name {
+	case tektoninstallation.EdgeCluster:
+		m.ResetCluster()
+		return nil
+	}
+	return fmt.Errorf("unknown TektonInstallation edge %s", name)
 }
 
 // UserMutation represents an operation that mutates the User nodes in the graph.

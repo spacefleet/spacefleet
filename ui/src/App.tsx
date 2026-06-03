@@ -8,6 +8,7 @@ import { OrgProvider } from "./contexts/OrgContext";
 import { AcceptInvite } from "./routes/AcceptInvite";
 import { AuthCallback } from "./routes/AuthCallback";
 import { Clusters } from "./routes/Clusters";
+import { ClusterDetail } from "./routes/ClusterDetail";
 import { CreateOrganization } from "./routes/CreateOrganization";
 import { Home } from "./routes/Home";
 import { Login } from "./routes/Login";
@@ -73,6 +74,13 @@ export function App() {
                       element={pageComponents[leaf.path] ?? <Placeholder />}
                     />
                   ))}
+                {/* Cluster drill-down: the per-cluster management page, reached
+                    by clicking a row on the Clusters leaf (not a nav entry of
+                    its own, so it's added here rather than in nav.ts). */}
+                <Route
+                  path="/providers/clusters/:clusterId"
+                  element={<ClusterDetail />}
+                />
                 {/* Node drill-down: a detail route under the Nodes leaf, not a
                     nav entry of its own (so it's added here, not in nav.ts). */}
                 <Route

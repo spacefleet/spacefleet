@@ -39,10 +39,10 @@ type Server struct {
 	// /config.js so the UI can tune its wording.
 	emailEnabled bool
 
-	// emailQueue enqueues invitation emails. Nil-able: when nil (or an enqueue
-	// fails) the invitation is still created and its link returned — email is
-	// best-effort on top.
-	emailQueue *queue.Client
+	// jobQueue enqueues background jobs (invitation emails, Tekton installs).
+	// Nil-able: handlers degrade gracefully (invites still return a link; a
+	// Tekton install that genuinely needs the worker returns 503).
+	jobQueue *queue.Client
 }
 
 // ServerDeps bundles the runtime dependencies of the API server. Every field is
@@ -57,7 +57,7 @@ type ServerDeps struct {
 	AllowOrgCreation bool
 	ExternalURL      string
 	EmailEnabled     bool
-	EmailQueue       *queue.Client
+	JobQueue         *queue.Client
 }
 
 // NewServer builds the API server from its dependencies.
@@ -70,7 +70,7 @@ func NewServer(d ServerDeps) *Server {
 		allowOrgCreation: d.AllowOrgCreation,
 		externalURL:      d.ExternalURL,
 		emailEnabled:     d.EmailEnabled,
-		emailQueue:       d.EmailQueue,
+		jobQueue:         d.JobQueue,
 	}
 }
 
@@ -78,10 +78,10 @@ func NewServer(d ServerDeps) *Server {
 // whether the email was accepted for delivery (enqueued); callers always return
 // the invite link regardless, so a false result just means "send it manually".
 func (s *Server) enqueueInviteEmail(ctx context.Context, args email.InviteEmailArgs) bool {
-	if !s.emailEnabled || s.emailQueue == nil {
+	if !s.emailEnabled || s.jobQueue == nil {
 		return false
 	}
-	if _, err := s.emailQueue.Insert(ctx, args); err != nil {
+	if _, err := s.jobQueue.Insert(ctx, args); err != nil {
 		return false
 	}
 	return true

@@ -1,44 +1,45 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import {
   CheckCircle2,
   CircleDashed,
+  Play,
   Plus,
   RefreshCw,
   Server,
-  ShieldCheck,
-  Trash2,
   XCircle,
 } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
-import { ClusterCapabilitiesModal } from "../components/ClusterCapabilitiesModal";
 import { RegisterClusterDialog } from "../components/RegisterClusterDialog";
 import { CONNECTION_METHODS } from "../components/connectionMethods";
 
 type Cluster = components["schemas"]["Cluster"];
 
 // Clusters is the Providers › Clusters page: it lists the clusters registered
-// to the current organization and opens a dialog to register more. It is the
-// first org-scoped resource — the X-Organization-ID header is attached
-// automatically by the API client (see api/client.ts).
+// to the current organization and opens a dialog to register more. Each row is
+// a way into the cluster's detail page (/providers/clusters/:id) — that's where
+// every per-cluster action now lives (capabilities, jobs, delete). The
+// list itself just shows identity and live connection status. It is the first
+// org-scoped resource — the X-Organization-ID header is attached automatically
+// by the API client (see api/client.ts).
 export function Clusters() {
   const { currentOrg, currentRole } = useOrg();
   // Viewers can see clusters and their live status but take no action.
   const canEdit = currentRole !== "viewer";
+  const navigate = useNavigate();
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [capsId, setCapsId] = useState<string | null>(null);
   // Clusters whose connectivity is being re-probed in the background.
   const [checking, setChecking] = useState<Set<string>>(new Set());
 
   // refreshConnectivity re-probes each cluster's live connectivity and updates
-  // its row as results arrive. Replaces the old manual "Test" button: the user
-  // shouldn't have to ask whether a cluster is still reachable — we check on
-  // every load and reflect the current state in the status badge.
+  // its row as results arrive. The user shouldn't have to ask whether a cluster
+  // is still reachable — we check on every load and reflect the current state in
+  // the status badge.
   const refreshConnectivity = useCallback(async (list: Cluster[]) => {
     if (list.length === 0) return;
     setChecking(new Set(list.map((c) => c.id)));
@@ -74,16 +75,6 @@ export function Clusters() {
   useEffect(() => {
     void load();
   }, [load, currentOrg?.id]);
-
-  async function onDelete(id: string) {
-    if (!confirm("Delete this cluster registration?")) return;
-    setBusyId(id);
-    const { error } = await api.DELETE("/api/clusters/{id}", {
-      params: { path: { id } },
-    });
-    if (!error) setClusters((cs) => cs.filter((c) => c.id !== id));
-    setBusyId(null);
-  }
 
   return (
     <div>
@@ -131,15 +122,16 @@ export function Clusters() {
                 <th className="px-4 py-2 font-medium">Name</th>
                 <th className="px-4 py-2 font-medium">Connection</th>
                 <th className="px-4 py-2 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium">Jobs</th>
                 <th className="px-4 py-2 font-medium">Version</th>
-                <th className="px-4 py-2" />
               </tr>
             </thead>
             <tbody>
               {clusters.map((c) => (
                 <tr
                   key={c.id}
-                  className="border-b border-neutral-100 last:border-0"
+                  onClick={() => navigate(`/providers/clusters/${c.id}`)}
+                  className="cursor-pointer border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
                 >
                   <td className="px-4 py-3 font-medium text-neutral-900">
                     {c.name}
@@ -159,29 +151,11 @@ export function Clusters() {
                       checking={checking.has(c.id)}
                     />
                   </td>
+                  <td className="px-4 py-3">
+                    <JobsBadge runsJobs={c.runs_jobs} />
+                  </td>
                   <td className="px-4 py-3 text-neutral-600">
                     {c.k8s_version || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right whitespace-nowrap">
-                    <button
-                      type="button"
-                      onClick={() => setCapsId(c.id)}
-                      className="inline-flex items-center gap-1.5 text-neutral-500 hover:text-neutral-900"
-                    >
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                      Capabilities
-                    </button>
-                    {canEdit && (
-                      <button
-                        type="button"
-                        onClick={() => void onDelete(c.id)}
-                        disabled={busyId === c.id}
-                        className="ml-4 inline-flex items-center gap-1.5 text-red-500 hover:text-red-700 disabled:opacity-50"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Delete
-                      </button>
-                    )}
                   </td>
                 </tr>
               ))}
@@ -194,23 +168,33 @@ export function Clusters() {
         <RegisterClusterDialog
           onClose={() => setRegistering(false)}
           onRegistered={(c) => {
-            setClusters((cs) => [...cs, c]);
             setRegistering(false);
-            // Surface the capability report immediately so the operator can act
-            // on any missing permissions right after connecting.
-            setCapsId(c.id);
+            // Land on the new cluster's detail page, where its capability check
+            // runs on arrival so the operator can act on anything missing right
+            // after connecting.
+            navigate(`/providers/clusters/${c.id}`);
           }}
         />
       )}
-
-      {capsId && (
-        <ClusterCapabilitiesModal
-          clusterId={capsId}
-          clusterName={clusters.find((c) => c.id === capsId)?.name}
-          onClose={() => setCapsId(null)}
-        />
-      )}
     </div>
+  );
+}
+
+// JobsBadge shows whether a cluster is designated to run jobs. This is plain
+// info, not a connection state — so it reads as understated neutral text (with
+// a small icon) rather than a colored status chip like the connection badge,
+// which would otherwise be easy to confuse with it. It says "Jobs enabled"
+// (the cluster is eligible to run jobs, not necessarily running one right now)
+// and shows nothing at all when jobs aren't enabled.
+function JobsBadge({ runsJobs }: { runsJobs: boolean }) {
+  if (!runsJobs) {
+    return null;
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-neutral-600">
+      <Play className="h-3.5 w-3.5 text-neutral-400" />
+      Jobs enabled
+    </span>
   );
 }
 

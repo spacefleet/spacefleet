@@ -10,9 +10,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/config"
+	"github.com/spacefleet/spacefleet/lib/db"
 	"github.com/spacefleet/spacefleet/lib/email"
 	"github.com/spacefleet/spacefleet/lib/queue"
+	"github.com/spacefleet/spacefleet/lib/secrets"
+	"github.com/spacefleet/spacefleet/lib/tekton"
 )
 
 // runWorker is `spacefleet worker` — the long-lived consumer of River
@@ -51,27 +55,29 @@ func runWorker(_ []string) {
 		}
 	}
 
-	// Register job workers. The invite-email worker sends organization
-	// invitation emails enqueued by the API. Its Sender is SMTP when configured
-	// and a no-op otherwise — the API only enqueues when email is configured, so
-	// the no-op path is just a safety net.
+	// The Tekton install worker needs the domain service (to open sealed
+	// credentials and persist install status), so the worker process builds its
+	// own ent client + sealer + clusters service — it owns credential access, the
+	// same way it owns the email Sender. Job args carry only ids, never secrets.
+	sqlDB, entClient, err := db.Open(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("worker: open database: %v", err)
+	}
+	defer func() { _ = entClient.Close(); _ = sqlDB.Close() }()
+
+	sealer, err := secrets.NewSealer(cfg.SecretKey)
+	if err != nil {
+		log.Fatalf("worker: build secret sealer: %v", err)
+	}
+	clustersSvc := clusters.NewService(entClient, sealer)
+
+	// Register job workers:
+	//   - invite-email: sends org invitation emails (Sender is SMTP when
+	//     configured, a no-op otherwise — the API only enqueues when email is on).
+	//   - tekton-install: installs Tekton into a cluster on enable.
 	workers := queue.NewWorkers()
 	queue.AddWorker(workers, &email.InviteEmailWorker{Sender: emailSender(cfg)})
-
-	// River refuses to Start a client with an empty worker bundle ("at
-	// least one Worker must be added"). Until a real job type is
-	// registered above there is nothing to work, so idle instead of
-	// crashlooping: the migrations above have run, and the process stays
-	// up (heartbeating) so the Deployment is healthy and ready for the
-	// first registered job. Drop into the worker path as soon as one is.
-	if workers.Empty() {
-		log.Print("worker: no job workers registered; idling (migrations applied, nothing to work)")
-		go heartbeat(ctx, 30*time.Second)
-		waitForSignal()
-		log.Println("worker: shutting down")
-		cancel() // stop heartbeat
-		return
-	}
+	queue.AddWorker(workers, &tekton.InstallWorker{Store: clustersSvc})
 
 	client, err := queue.NewClient(rpool, queue.Config{
 		WorkerMode:  true,

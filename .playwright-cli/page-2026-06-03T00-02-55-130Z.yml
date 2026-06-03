@@ -1,0 +1,72 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - link "Home" [ref=e5] [cursor=pointer]:
+      - /url: /
+      - img "Spacefleet" [ref=e6]
+      - generic [ref=e7]: Spacefleet
+    - generic [ref=e8]: /
+    - button "E2E Org 1780366019921" [ref=e10]:
+      - generic [ref=e11]: E2E Org 1780366019921
+      - img [ref=e12]
+    - generic [ref=e14]:
+      - generic [ref=e15]: admin@example.com
+      - button "Sign out" [ref=e16]
+  - generic [ref=e17]:
+    - navigation "Primary" [ref=e18]:
+      - button "Dashboard" [ref=e20]:
+        - img [ref=e21]
+        - generic [ref=e26]: Dashboard
+        - img [ref=e27]
+      - button "Applications" [ref=e30]:
+        - img [ref=e31]
+        - generic [ref=e33]: Applications
+        - img [ref=e34]
+      - button "Infrastructure" [ref=e37]:
+        - img [ref=e38]
+        - generic [ref=e41]: Infrastructure
+        - img [ref=e42]
+      - button "Security" [ref=e45]:
+        - img [ref=e46]
+        - generic [ref=e49]: Security
+        - img [ref=e50]
+      - button "Cost" [ref=e53]:
+        - img [ref=e54]
+        - generic [ref=e57]: Cost
+        - img [ref=e58]
+      - generic [ref=e60]:
+        - button "Providers" [expanded] [ref=e61]:
+          - img [ref=e62]
+          - generic [ref=e64]: Providers
+          - img [ref=e65]
+        - list [ref=e67]:
+          - listitem [ref=e68]:
+            - link "Git" [ref=e69] [cursor=pointer]:
+              - /url: /providers/git
+              - generic [ref=e70]: Git
+          - listitem [ref=e71]:
+            - link "Clusters" [ref=e72] [cursor=pointer]:
+              - /url: /providers/clusters
+              - generic [ref=e73]: Clusters
+          - listitem [ref=e74]:
+            - link "CI/CD" [ref=e75] [cursor=pointer]:
+              - /url: /providers/cicd
+              - generic [ref=e76]: CI/CD
+          - listitem [ref=e77]:
+            - link "Monitoring" [ref=e78] [cursor=pointer]:
+              - /url: /providers/monitoring
+              - generic [ref=e79]: Monitoring
+      - button "Organization" [ref=e81]:
+        - img [ref=e82]
+        - generic [ref=e87]: Organization
+        - img [ref=e88]
+    - main [ref=e90]:
+      - generic [ref=e91]:
+        - generic [ref=e92]:
+          - generic [ref=e93]:
+            - paragraph [ref=e94]: Providers
+            - heading "Clusters" [level=1] [ref=e95]
+            - paragraph [ref=e96]: Register the Kubernetes clusters Spacefleet manages.
+          - button "Add cluster" [ref=e97]:
+            - img [ref=e98]
+            - text: Add cluster
+        - paragraph [ref=e100]: Loading…

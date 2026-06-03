@@ -20,6 +20,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/user"
 )
 
@@ -36,6 +37,8 @@ type Client struct {
 	Membership *MembershipClient
 	// Organization is the client for interacting with the Organization builders.
 	Organization *OrganizationClient
+	// TektonInstallation is the client for interacting with the TektonInstallation builders.
+	TektonInstallation *TektonInstallationClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 }
@@ -53,6 +56,7 @@ func (c *Client) init() {
 	c.Invitation = NewInvitationClient(c.config)
 	c.Membership = NewMembershipClient(c.config)
 	c.Organization = NewOrganizationClient(c.config)
+	c.TektonInstallation = NewTektonInstallationClient(c.config)
 	c.User = NewUserClient(c.config)
 }
 
@@ -144,13 +148,14 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:          ctx,
-		config:       cfg,
-		Cluster:      NewClusterClient(cfg),
-		Invitation:   NewInvitationClient(cfg),
-		Membership:   NewMembershipClient(cfg),
-		Organization: NewOrganizationClient(cfg),
-		User:         NewUserClient(cfg),
+		ctx:                ctx,
+		config:             cfg,
+		Cluster:            NewClusterClient(cfg),
+		Invitation:         NewInvitationClient(cfg),
+		Membership:         NewMembershipClient(cfg),
+		Organization:       NewOrganizationClient(cfg),
+		TektonInstallation: NewTektonInstallationClient(cfg),
+		User:               NewUserClient(cfg),
 	}, nil
 }
 
@@ -168,13 +173,14 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:          ctx,
-		config:       cfg,
-		Cluster:      NewClusterClient(cfg),
-		Invitation:   NewInvitationClient(cfg),
-		Membership:   NewMembershipClient(cfg),
-		Organization: NewOrganizationClient(cfg),
-		User:         NewUserClient(cfg),
+		ctx:                ctx,
+		config:             cfg,
+		Cluster:            NewClusterClient(cfg),
+		Invitation:         NewInvitationClient(cfg),
+		Membership:         NewMembershipClient(cfg),
+		Organization:       NewOrganizationClient(cfg),
+		TektonInstallation: NewTektonInstallationClient(cfg),
+		User:               NewUserClient(cfg),
 	}, nil
 }
 
@@ -203,21 +209,23 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
-	c.Cluster.Use(hooks...)
-	c.Invitation.Use(hooks...)
-	c.Membership.Use(hooks...)
-	c.Organization.Use(hooks...)
-	c.User.Use(hooks...)
+	for _, n := range []interface{ Use(...Hook) }{
+		c.Cluster, c.Invitation, c.Membership, c.Organization, c.TektonInstallation,
+		c.User,
+	} {
+		n.Use(hooks...)
+	}
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
-	c.Cluster.Intercept(interceptors...)
-	c.Invitation.Intercept(interceptors...)
-	c.Membership.Intercept(interceptors...)
-	c.Organization.Intercept(interceptors...)
-	c.User.Intercept(interceptors...)
+	for _, n := range []interface{ Intercept(...Interceptor) }{
+		c.Cluster, c.Invitation, c.Membership, c.Organization, c.TektonInstallation,
+		c.User,
+	} {
+		n.Intercept(interceptors...)
+	}
 }
 
 // Mutate implements the ent.Mutator interface.
@@ -231,6 +239,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Membership.mutate(ctx, m)
 	case *OrganizationMutation:
 		return c.Organization.mutate(ctx, m)
+	case *TektonInstallationMutation:
+		return c.TektonInstallation.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
 	default:
@@ -355,6 +365,22 @@ func (c *ClusterClient) QueryOrganization(_m *Cluster) *OrganizationQuery {
 			sqlgraph.From(cluster.Table, cluster.FieldID, id),
 			sqlgraph.To(organization.Table, organization.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, false, cluster.OrganizationTable, cluster.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTekton queries the tekton edge of a Cluster.
+func (c *ClusterClient) QueryTekton(_m *Cluster) *TektonInstallationQuery {
+	query := (&TektonInstallationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(cluster.Table, cluster.FieldID, id),
+			sqlgraph.To(tektoninstallation.Table, tektoninstallation.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, cluster.TektonTable, cluster.TektonColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -866,6 +892,155 @@ func (c *OrganizationClient) mutate(ctx context.Context, m *OrganizationMutation
 	}
 }
 
+// TektonInstallationClient is a client for the TektonInstallation schema.
+type TektonInstallationClient struct {
+	config
+}
+
+// NewTektonInstallationClient returns a client for the TektonInstallation from the given config.
+func NewTektonInstallationClient(c config) *TektonInstallationClient {
+	return &TektonInstallationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `tektoninstallation.Hooks(f(g(h())))`.
+func (c *TektonInstallationClient) Use(hooks ...Hook) {
+	c.hooks.TektonInstallation = append(c.hooks.TektonInstallation, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `tektoninstallation.Intercept(f(g(h())))`.
+func (c *TektonInstallationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TektonInstallation = append(c.inters.TektonInstallation, interceptors...)
+}
+
+// Create returns a builder for creating a TektonInstallation entity.
+func (c *TektonInstallationClient) Create() *TektonInstallationCreate {
+	mutation := newTektonInstallationMutation(c.config, OpCreate)
+	return &TektonInstallationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TektonInstallation entities.
+func (c *TektonInstallationClient) CreateBulk(builders ...*TektonInstallationCreate) *TektonInstallationCreateBulk {
+	return &TektonInstallationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TektonInstallationClient) MapCreateBulk(slice any, setFunc func(*TektonInstallationCreate, int)) *TektonInstallationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TektonInstallationCreateBulk{err: fmt.Errorf("calling to TektonInstallationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TektonInstallationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TektonInstallationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TektonInstallation.
+func (c *TektonInstallationClient) Update() *TektonInstallationUpdate {
+	mutation := newTektonInstallationMutation(c.config, OpUpdate)
+	return &TektonInstallationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TektonInstallationClient) UpdateOne(_m *TektonInstallation) *TektonInstallationUpdateOne {
+	mutation := newTektonInstallationMutation(c.config, OpUpdateOne, withTektonInstallation(_m))
+	return &TektonInstallationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TektonInstallationClient) UpdateOneID(id uuid.UUID) *TektonInstallationUpdateOne {
+	mutation := newTektonInstallationMutation(c.config, OpUpdateOne, withTektonInstallationID(id))
+	return &TektonInstallationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TektonInstallation.
+func (c *TektonInstallationClient) Delete() *TektonInstallationDelete {
+	mutation := newTektonInstallationMutation(c.config, OpDelete)
+	return &TektonInstallationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TektonInstallationClient) DeleteOne(_m *TektonInstallation) *TektonInstallationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TektonInstallationClient) DeleteOneID(id uuid.UUID) *TektonInstallationDeleteOne {
+	builder := c.Delete().Where(tektoninstallation.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TektonInstallationDeleteOne{builder}
+}
+
+// Query returns a query builder for TektonInstallation.
+func (c *TektonInstallationClient) Query() *TektonInstallationQuery {
+	return &TektonInstallationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTektonInstallation},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TektonInstallation entity by its id.
+func (c *TektonInstallationClient) Get(ctx context.Context, id uuid.UUID) (*TektonInstallation, error) {
+	return c.Query().Where(tektoninstallation.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TektonInstallationClient) GetX(ctx context.Context, id uuid.UUID) *TektonInstallation {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryCluster queries the cluster edge of a TektonInstallation.
+func (c *TektonInstallationClient) QueryCluster(_m *TektonInstallation) *ClusterQuery {
+	query := (&ClusterClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(tektoninstallation.Table, tektoninstallation.FieldID, id),
+			sqlgraph.To(cluster.Table, cluster.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, true, tektoninstallation.ClusterTable, tektoninstallation.ClusterColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *TektonInstallationClient) Hooks() []Hook {
+	return c.hooks.TektonInstallation
+}
+
+// Interceptors returns the client interceptors.
+func (c *TektonInstallationClient) Interceptors() []Interceptor {
+	return c.inters.TektonInstallation
+}
+
+func (c *TektonInstallationClient) mutate(ctx context.Context, m *TektonInstallationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TektonInstallationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TektonInstallationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TektonInstallationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TektonInstallationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown TektonInstallation mutation op: %q", m.Op())
+	}
+}
+
 // UserClient is a client for the User schema.
 type UserClient struct {
 	config
@@ -1034,9 +1209,11 @@ func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error)
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Cluster, Invitation, Membership, Organization, User []ent.Hook
+		Cluster, Invitation, Membership, Organization, TektonInstallation,
+		User []ent.Hook
 	}
 	inters struct {
-		Cluster, Invitation, Membership, Organization, User []ent.Interceptor
+		Cluster, Invitation, Membership, Organization, TektonInstallation,
+		User []ent.Interceptor
 	}
 )

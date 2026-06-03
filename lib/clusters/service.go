@@ -19,12 +19,18 @@ import (
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/lib/k8s"
 	"github.com/spacefleet/spacefleet/lib/secrets"
+	"github.com/spacefleet/spacefleet/lib/tekton"
 )
 
 // Service is a thin wrapper over the ent client plus the credential sealer.
 type Service struct {
 	ent    *ent.Client
 	sealer *secrets.Sealer
+
+	// detectTekton resolves a cluster's live Tekton presence; it defaults to
+	// tekton.Detect (a real API-server call) and is overridden in tests so the
+	// upgrade/uninstall preconditions can be exercised without a live cluster.
+	detectTekton func(ctx context.Context, conn k8s.Connection) (*tekton.Presence, error)
 }
 
 func NewService(entClient *ent.Client, sealer *secrets.Sealer) *Service {
@@ -59,6 +65,7 @@ type UpdateParams struct {
 func (s *Service) List(ctx context.Context, orgID uuid.UUID) ([]*ent.Cluster, error) {
 	return s.ent.Cluster.Query().
 		Where(cluster.OrganizationID(orgID)).
+		WithTekton().
 		Order(ent.Asc(cluster.FieldCreatedAt)).
 		All(ctx)
 }
@@ -67,6 +74,7 @@ func (s *Service) List(ctx context.Context, orgID uuid.UUID) ([]*ent.Cluster, er
 func (s *Service) Get(ctx context.Context, orgID, id uuid.UUID) (*ent.Cluster, error) {
 	return s.ent.Cluster.Query().
 		Where(cluster.OrganizationID(orgID), cluster.ID(id)).
+		WithTekton().
 		Only(ctx)
 }
 
@@ -121,7 +129,9 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, p UpdateParam
 	if p.Connection != nil {
 		return s.probe(ctx, c)
 	}
-	return c, nil
+	// Re-fetch so the renamed row carries the tekton edge, consistent with the
+	// probe path (Save above drops eager-loaded edges).
+	return s.Get(ctx, orgID, id)
 }
 
 // Delete removes a cluster scoped to the organization.
@@ -368,7 +378,12 @@ func (s *Service) record(ctx context.Context, c *ent.Cluster, version string, pr
 			SetStatusMessage("").
 			SetK8sVersion(version)
 	}
-	return upd.Save(ctx)
+	if _, err := upd.Save(ctx); err != nil {
+		return nil, err
+	}
+	// Re-fetch through Get so the returned row carries the eager-loaded tekton
+	// edge (Save drops edges); callers map it to the runs_jobs field.
+	return s.Get(ctx, c.OrganizationID, c.ID)
 }
 
 // nonNilConfig guards against a nil map reaching the JSON column.

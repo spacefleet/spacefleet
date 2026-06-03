@@ -1,0 +1,22 @@
+# Air config for the River background-job worker, the companion to the default
+# .air.toml (which runs `serve`). Used by `make dev-all` to live-reload the
+# worker alongside the API. It builds the same binary but into a separate
+# tmp dir — so the two Air instances don't clobber each other's build output —
+# and runs it with the `worker` subcommand via args_bin.
+root = "."
+tmp_dir = "tmp-worker"
+
+[build]
+  cmd = "go build -o ./tmp-worker/spacefleet ./cmd/spacefleet"
+  entrypoint = ["./tmp-worker/spacefleet"]
+  args_bin = ["worker"]
+  include_ext = ["go", "tpl", "tmpl", "html"]
+  exclude_dir = ["bin", "tmp", "tmp-worker", "node_modules", "ui/node_modules", "ui/dist", "ui/src"]
+  delay = 500
+  stop_on_error = true
+
+[log]
+  time = true
+
+[misc]
+  clean_on_exit = true

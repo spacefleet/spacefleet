@@ -62,6 +62,11 @@ func (Cluster) Edges() []ent.Edge {
 			Unique().
 			Required().
 			Immutable(),
+		// The 1:1 Tekton installation (FK lives on tekton_installations). Lets a
+		// cluster query eager-load whether it's designated to run jobs without a
+		// second round-trip.
+		edge.To("tekton", TektonInstallation.Type).
+			Unique(),
 	}
 }
 

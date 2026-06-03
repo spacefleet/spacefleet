@@ -408,6 +408,166 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/clusters/{id}/tekton": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report a cluster's Tekton (job-running) status
+         * @description Org-scoped: returns whether the cluster is designated to run jobs and the
+         *     Tekton install lifecycle, reconciled with a live presence detection
+         *     (whether Tekton is installed and the controller is ready). An unreachable
+         *     cluster yields a 502. Live install progress is available as a stream at
+         *     /api/clusters/{id}/tekton/stream.
+         */
+        get: operations["getClusterTekton"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/clusters/{id}/tekton/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Designate a cluster to run jobs (install Tekton)
+         * @description Org-scoped, editor or above. Marks the cluster as a job runner and, when
+         *     Tekton isn't installed yet, enqueues a background job that installs the
+         *     pinned Tekton release into the cluster. Returns immediately (202); follow
+         *     progress via the Tekton status stream.
+         */
+        post: operations["enableClusterTekton"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/clusters/{id}/tekton/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop designating a cluster as a job runner
+         * @description Org-scoped, editor or above. Clears the job-runner flag. It does not
+         *     uninstall Tekton from the cluster.
+         */
+        post: operations["disableClusterTekton"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/clusters/{id}/tekton/upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upgrade a Spacefleet-managed Tekton install
+         * @description Org-scoped, editor or above. Re-applies the pinned Tekton release to a
+         *     cluster whose Tekton was installed by Spacefleet, bringing it to the
+         *     pinned version (and repairing a failed/partial install). Only available
+         *     when the install is Spacefleet-managed; returns 409 otherwise, and 409
+         *     if Tekton is not installed. Returns immediately (202); follow progress
+         *     via the Tekton status stream.
+         */
+        post: operations["upgradeClusterTekton"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/clusters/{id}/tekton/uninstall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove a Spacefleet-managed Tekton install
+         * @description Org-scoped, editor or above. Removes the Tekton release Spacefleet
+         *     installed (and clears the job-runner flag). Only available when the
+         *     install is Spacefleet-managed; returns 409 for a Tekton installed
+         *     outside Spacefleet, which is never removed. Returns immediately (202);
+         *     follow progress via the Tekton status stream.
+         */
+        post: operations["uninstallClusterTekton"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/clusters/{id}/tekton/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit a job (TaskRun) to a cluster
+         * @description Org-scoped, editor or above. Submits a minimal single-step TaskRun and
+         *     returns its initial status. Watch its status at
+         *     /api/clusters/{id}/tekton/runs/{name}/stream and its logs via the pod-log
+         *     stream once a pod name is reported.
+         */
+        post: operations["submitClusterTektonRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/clusters/{id}/tekton/runs/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a job (TaskRun) status
+         * @description Org-scoped: returns the current status of one TaskRun by name.
+         */
+        get: operations["getClusterTektonRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -527,6 +687,11 @@ export interface components {
             status_message?: string;
             /** @description Server version reported by the last successful probe. */
             k8s_version?: string;
+            /**
+             * @description Whether this cluster is designated to run jobs (Tekton job running
+             *     is enabled). See /api/clusters/{id}/tekton for the full status.
+             */
+            runs_jobs: boolean;
             /** Format: date-time */
             last_checked_at?: string | null;
             /** @description Non-secret per-method parameters (region, project, …). */
@@ -730,6 +895,77 @@ export interface components {
              *     guidance rather than a directly applicable manifest.
              */
             manifest: string;
+        };
+        /**
+         * @description The Tekton install lifecycle for a cluster.
+         *       - not_installed: Tekton is absent (or was uninstalled).
+         *       - installing: a background job is installing Tekton.
+         *       - installed: Tekton is present and the controller is ready.
+         *       - upgrading: re-applying a newer pinned release.
+         *       - failed: the last install/upgrade job errored (see status_message).
+         *       - uninstalling: a background job is removing Tekton.
+         * @enum {string}
+         */
+        TektonInstallStatus: "not_installed" | "installing" | "installed" | "upgrading" | "failed" | "uninstalling";
+        /**
+         * @description Whether a cluster is designated to run jobs (enabled) and the Tekton
+         *     install lifecycle (status), reconciled with a live presence detection
+         *     (present/controller_ready/detected_version). present and controller_ready
+         *     reflect the most recent detection; enable/disable responses carry the
+         *     stored state only, until the next status read or stream tick.
+         */
+        TektonStatus: {
+            /** @description Whether this cluster is designated to run jobs. */
+            enabled: boolean;
+            status: components["schemas"]["TektonInstallStatus"];
+            /** @description The last install-progress line, or the error when failed. */
+            status_message?: string;
+            /** @description The pinned Tekton version applied by the last install. */
+            installed_version?: string;
+            /** @description Id of the in-flight install/uninstall job, for correlation. */
+            job_id?: string;
+            /** @description Whether the Tekton API group is registered in the cluster. */
+            present: boolean;
+            /** @description Whether the Tekton controller has a ready replica. */
+            controller_ready: boolean;
+            /**
+             * @description Whether Tekton in this cluster was installed by Spacefleet. Upgrade
+             *     and delete are only offered when true — a Tekton installed outside
+             *     Spacefleet is never modified or removed.
+             */
+            managed: boolean;
+            /** @description The running controller's reported version, if detected. */
+            detected_version?: string;
+            /** @description The Tekton version Spacefleet installs (the upgrade target). */
+            pinned_version: string;
+            /** Format: date-time */
+            last_checked_at?: string | null;
+        };
+        /** @description A minimal single-step job to run as a Tekton TaskRun. */
+        TektonRunRequest: {
+            /** @description A name prefix for the run (a unique suffix is added). */
+            name: string;
+            /** @description The container image the step runs in. */
+            image: string;
+            /** @description The shell script the step executes. */
+            script: string;
+        };
+        /** @description A Tekton TaskRun's status. */
+        TektonRun: {
+            name: string;
+            namespace: string;
+            /**
+             * @description Derived from the run's Succeeded condition.
+             * @enum {string}
+             */
+            phase: "Pending" | "Running" | "Succeeded" | "Failed";
+            /** @description The backing pod, once scheduled (stream logs from it). */
+            pod_name?: string;
+            message?: string;
+            /** Format: date-time */
+            started_at?: string | null;
+            /** Format: date-time */
+            completed_at?: string | null;
         };
         /**
          * @description A flat object: only the fields relevant to the chosen connection_method
@@ -1350,6 +1586,173 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ClusterRbac"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getClusterTekton: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ClusterID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cluster's Tekton status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TektonStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    enableClusterTekton: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ClusterID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Enable accepted; install (if needed) is in progress */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TektonStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    disableClusterTekton: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ClusterID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cluster's Tekton status after disabling */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TektonStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    upgradeClusterTekton: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ClusterID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Upgrade accepted; the upgrade job is in progress */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TektonStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    uninstallClusterTekton: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ClusterID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Uninstall accepted; the uninstall job is in progress */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TektonStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    submitClusterTektonRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ClusterID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TektonRunRequest"];
+            };
+        };
+        responses: {
+            /** @description The submitted run's initial status */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TektonRun"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getClusterTektonRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ClusterID"];
+                /** @description The TaskRun name. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run's current status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TektonRun"];
                 };
             };
             default: components["responses"]["Error"];

@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 )
 
 // Cluster is the model entity for the Cluster schema.
@@ -54,9 +55,11 @@ type Cluster struct {
 type ClusterEdges struct {
 	// Organization holds the value of the organization edge.
 	Organization *Organization `json:"organization,omitempty"`
+	// Tekton holds the value of the tekton edge.
+	Tekton *TektonInstallation `json:"tekton,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
+	loadedTypes [2]bool
 }
 
 // OrganizationOrErr returns the Organization value or an error if the edge
@@ -68,6 +71,17 @@ func (e ClusterEdges) OrganizationOrErr() (*Organization, error) {
 		return nil, &NotFoundError{label: organization.Label}
 	}
 	return nil, &NotLoadedError{edge: "organization"}
+}
+
+// TektonOrErr returns the Tekton value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ClusterEdges) TektonOrErr() (*TektonInstallation, error) {
+	if e.Tekton != nil {
+		return e.Tekton, nil
+	} else if e.loadedTypes[1] {
+		return nil, &NotFoundError{label: tektoninstallation.Label}
+	}
+	return nil, &NotLoadedError{edge: "tekton"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -195,6 +209,11 @@ func (_m *Cluster) Value(name string) (ent.Value, error) {
 // QueryOrganization queries the "organization" edge of the Cluster entity.
 func (_m *Cluster) QueryOrganization() *OrganizationQuery {
 	return NewClusterClient(_m.config).QueryOrganization(_m)
+}
+
+// QueryTekton queries the "tekton" edge of the Cluster entity.
+func (_m *Cluster) QueryTekton() *TektonInstallationQuery {
+	return NewClusterClient(_m.config).QueryTekton(_m)
 }
 
 // Update returns a builder for updating this Cluster.

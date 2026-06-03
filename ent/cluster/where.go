@@ -664,6 +664,29 @@ func HasOrganizationWith(preds ...predicate.Organization) predicate.Cluster {
 	})
 }
 
+// HasTekton applies the HasEdge predicate on the "tekton" edge.
+func HasTekton() predicate.Cluster {
+	return predicate.Cluster(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, TektonTable, TektonColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasTektonWith applies the HasEdge predicate on the "tekton" edge with a given conditions (other predicates).
+func HasTektonWith(preds ...predicate.TektonInstallation) predicate.Cluster {
+	return predicate.Cluster(func(s *sql.Selector) {
+		step := newTektonStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.Cluster) predicate.Cluster {
 	return predicate.Cluster(sql.AndPredicates(predicates...))
