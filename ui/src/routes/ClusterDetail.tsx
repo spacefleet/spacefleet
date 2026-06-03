@@ -19,7 +19,7 @@ import { CONNECTION_METHODS } from "../components/connectionMethods";
 type Cluster = components["schemas"]["Cluster"];
 
 // ClusterDetail is the single place to see and manage one registered cluster
-// (route /providers/clusters/:clusterId). Registering a cluster lands here, and
+// (route /admin/clusters/:clusterId). Registering a cluster lands here, and
 // it's where the operator returns to re-check connectivity, review what the
 // cluster's credentials can do and grant what's missing (Capabilities), and set
 // up / run jobs (Tekton). The Clusters list is now just a way in — every
@@ -98,14 +98,14 @@ export function ClusterDetail() {
       setDeleting(false);
       return;
     }
-    navigate("/providers/clusters");
+    navigate("/admin/clusters");
   }
 
   return (
     <div>
       <button
         type="button"
-        onClick={() => navigate("/providers/clusters")}
+        onClick={() => navigate("/admin/clusters")}
         className="inline-flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-900"
       >
         <ArrowLeft className="h-4 w-4" />
@@ -115,7 +115,7 @@ export function ClusterDetail() {
       <div className="mt-3 flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-            Providers / Clusters
+            Admin / Clusters
           </p>
           <h1 className="mt-1 break-all text-2xl font-bold tracking-tight">
             {cluster?.name ?? (loading ? "…" : "Cluster")}
@@ -157,7 +157,7 @@ export function ClusterDetail() {
             {error ?? "Cluster not found."}
           </p>
           <Link
-            to="/providers/clusters"
+            to="/admin/clusters"
             className="mt-4 inline-block text-sm text-neutral-600 underline hover:text-neutral-900"
           >
             Return to clusters

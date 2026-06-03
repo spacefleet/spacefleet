@@ -26,11 +26,11 @@ import { navLeaves } from "./nav";
 // Real page components, keyed by nav path. Any leaf not listed here renders the
 // scaffolded Placeholder — swap entries in as pages are built.
 const pageComponents: Record<string, ReactNode> = {
-  "/providers/clusters": <Clusters />,
+  "/admin/clusters": <Clusters />,
   "/infrastructure/nodes": <Nodes />,
   "/infrastructure/namespaces": <Namespaces />,
   "/infrastructure/pods": <Pods />,
-  "/organization/members": <Members />,
+  "/admin/members": <Members />,
 };
 
 export function App() {
@@ -78,7 +78,7 @@ export function App() {
                     by clicking a row on the Clusters leaf (not a nav entry of
                     its own, so it's added here rather than in nav.ts). */}
                 <Route
-                  path="/providers/clusters/:clusterId"
+                  path="/admin/clusters/:clusterId"
                   element={<ClusterDetail />}
                 />
                 {/* Node drill-down: a detail route under the Nodes leaf, not a

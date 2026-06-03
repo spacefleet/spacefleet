@@ -17,9 +17,9 @@ import { CONNECTION_METHODS } from "../components/connectionMethods";
 
 type Cluster = components["schemas"]["Cluster"];
 
-// Clusters is the Providers › Clusters page: it lists the clusters registered
+// Clusters is the Admin › Clusters page: it lists the clusters registered
 // to the current organization and opens a dialog to register more. Each row is
-// a way into the cluster's detail page (/providers/clusters/:id) — that's where
+// a way into the cluster's detail page (/admin/clusters/:id) — that's where
 // every per-cluster action now lives (capabilities, jobs, delete). The
 // list itself just shows identity and live connection status. It is the first
 // org-scoped resource — the X-Organization-ID header is attached automatically
@@ -81,11 +81,11 @@ export function Clusters() {
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-            Providers
+            Admin
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">Clusters</h1>
           <p className="mt-1 text-sm text-neutral-600">
-            Register the Kubernetes clusters Spacefleet manages.
+            Register the Kubernetes clusters Spacefleet runs workloads on.
           </p>
         </div>
         {canEdit && (
@@ -130,7 +130,7 @@ export function Clusters() {
               {clusters.map((c) => (
                 <tr
                   key={c.id}
-                  onClick={() => navigate(`/providers/clusters/${c.id}`)}
+                  onClick={() => navigate(`/admin/clusters/${c.id}`)}
                   className="cursor-pointer border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
                 >
                   <td className="px-4 py-3 font-medium text-neutral-900">
@@ -172,7 +172,7 @@ export function Clusters() {
             // Land on the new cluster's detail page, where its capability check
             // runs on arrival so the operator can act on anything missing right
             // after connecting.
-            navigate(`/providers/clusters/${c.id}`);
+            navigate(`/admin/clusters/${c.id}`);
           }}
         />
       )}

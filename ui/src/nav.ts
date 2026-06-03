@@ -1,11 +1,8 @@
 import {
   AppWindow,
-  CircleDollarSign,
   LayoutDashboard,
-  Plug,
   Server,
-  ShieldCheck,
-  Users,
+  Shield,
   type LucideIcon,
 } from "lucide-react";
 
@@ -28,21 +25,25 @@ export interface NavLeaf {
 export interface NavSection {
   label: string;
   icon: LucideIcon;
-  items: NavLeaf[];
+  // A section is one of two shapes: a direct link (set `path`, omit `items` —
+  // the sidebar renders it as a single clickable row, e.g. Dashboard) or an
+  // expandable group (set `items` — the sidebar renders a toggle that reveals
+  // the sub-pages).
+  path?: string;
+  items?: NavLeaf[];
   // When true, the section is only shown to organization admins (it holds
   // org-management pages). The pages themselves also guard server-side.
   adminOnly?: boolean;
+  // When true, the sidebar pins this section to the bottom of the rail rather
+  // than the top-aligned flow (the Admin section sits at the bottom).
+  footer?: boolean;
 }
 
 export const navSections: NavSection[] = [
   {
     label: "Dashboard",
     icon: LayoutDashboard,
-    items: [
-      { label: "Overview", path: "/" },
-      { label: "Activity", path: "/activity" },
-      { label: "Alerts", path: "/alerts" },
-    ],
+    path: "/",
   },
   {
     label: "Applications",
@@ -71,47 +72,21 @@ export const navSections: NavSection[] = [
     ],
   },
   {
-    label: "Security",
-    icon: ShieldCheck,
-    items: [
-      { label: "Findings", path: "/security/findings" },
-      { label: "Policies", path: "/security/policies" },
-      { label: "Access", path: "/security/access" },
-      { label: "Secrets", path: "/security/secrets" },
-      { label: "Audit Log", path: "/security/audit" },
-    ],
-  },
-  {
-    label: "Cost",
-    icon: CircleDollarSign,
-    items: [
-      { label: "Overview", path: "/cost" },
-      { label: "Breakdown", path: "/cost/breakdown" },
-      { label: "Budgets", path: "/cost/budgets" },
-      { label: "Recommendations", path: "/cost/recommendations" },
-    ],
-  },
-  {
-    label: "Providers",
-    icon: Plug,
-    items: [
-      { label: "Git", path: "/providers/git" },
-      { label: "Clusters", path: "/providers/clusters" },
-      { label: "CI/CD", path: "/providers/cicd" },
-      { label: "Monitoring", path: "/providers/monitoring" },
-    ],
-  },
-  {
-    label: "Organization",
-    icon: Users,
+    label: "Admin",
+    icon: Shield,
     adminOnly: true,
-    items: [{ label: "Members", path: "/organization/members" }],
+    footer: true,
+    items: [
+      { label: "Members", path: "/admin/members" },
+      { label: "Clusters", path: "/admin/clusters" },
+    ],
   },
 ];
 
 // Flattened list of every leaf, paired with its section. Used to generate routes
-// and to resolve the current page's title/breadcrumb.
+// and to resolve the current page's title/breadcrumb. Direct-link sections
+// (those without `items`) contribute no leaves — their route is wired directly.
 export const navLeaves: { section: NavSection; leaf: NavLeaf }[] =
   navSections.flatMap((section) =>
-    section.items.map((leaf) => ({ section, leaf })),
+    (section.items ?? []).map((leaf) => ({ section, leaf })),
   );

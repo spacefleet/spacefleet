@@ -22,14 +22,14 @@ const mockApi = api as unknown as {
 };
 
 // Render the list inside a router, with a stand-in detail route so a row click
-// can be observed landing on /providers/clusters/:clusterId.
+// can be observed landing on /admin/clusters/:clusterId.
 function renderClusters() {
   return render(
-    <MemoryRouter initialEntries={["/providers/clusters"]}>
+    <MemoryRouter initialEntries={["/admin/clusters"]}>
       <Routes>
-        <Route path="/providers/clusters" element={<Clusters />} />
+        <Route path="/admin/clusters" element={<Clusters />} />
         <Route
-          path="/providers/clusters/:clusterId"
+          path="/admin/clusters/:clusterId"
           element={<div>cluster detail</div>}
         />
       </Routes>

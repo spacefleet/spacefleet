@@ -210,7 +210,7 @@ function NoClusters() {
         Register a Kubernetes cluster to see its namespaces here.
       </p>
       <Link
-        to="/providers/clusters"
+        to="/admin/clusters"
         className="mt-4 inline-flex items-center gap-2 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
       >
         Go to Clusters
