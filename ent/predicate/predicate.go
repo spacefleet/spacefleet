@@ -6,6 +6,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// Application is the predicate function for application builders.
+type Application func(*sql.Selector)
+
 // Cluster is the predicate function for cluster builders.
 type Cluster func(*sql.Selector)
 

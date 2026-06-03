@@ -12,12 +12,20 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
+
+// inClusterDNS is the stable in-cluster API server address. A kubeconfig built
+// for an in_cluster connection uses this (not the resolved KUBERNETES_SERVICE_HOST
+// IP) so it resolves from any pod in that cluster — e.g. the TaskRun pod on a
+// runner that is the same cluster.
+const inClusterDNS = "https://kubernetes.default.svc"
 
 // Method identifies how Spacefleet connects to a cluster. The string values
 // match the Cluster.connection_method enum in the ent schema.
@@ -102,6 +110,72 @@ func tokenRESTConfig(conn Connection) (*rest.Config, error) {
 		cfg.TLSClientConfig = rest.TLSClientConfig{CAData: []byte(ca)}
 	}
 	return cfg, nil
+}
+
+// Kubeconfig builds a portable, self-contained kubeconfig for the connection, so
+// it can be injected into a workload running elsewhere (e.g. a Helm rollout
+// TaskRun on a runner cluster, targeting this cluster). It resolves the
+// connection through RESTConfig — minting a cloud token late, per call, for the
+// eks/gke/aks methods, and reading the ServiceAccount config for in_cluster —
+// then serializes the host, CA (or insecure flag), and credentials (a bearer
+// token, or a client cert/key for a cert-based kubeconfig) into a single-context
+// kubeconfig via clientcmd.Write.
+//
+// For in_cluster the host is rewritten to the stable in-cluster DNS so the
+// kubeconfig resolves from another pod in the same cluster; this requires the
+// caller to run in-cluster (RESTConfig surfaces a clear error otherwise) and the
+// consumer to be in that same cluster (enforced upstream: runner == target).
+func Kubeconfig(ctx context.Context, conn Connection) ([]byte, error) {
+	cfg, err := RESTConfig(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
+
+	host := cfg.Host
+	if conn.Method == MethodInCluster {
+		host = inClusterDNS
+	}
+
+	cluster := clientcmdapi.NewCluster()
+	cluster.Server = host
+	if cfg.Insecure {
+		cluster.InsecureSkipTLSVerify = true
+	} else {
+		ca := cfg.CAData
+		// rest.InClusterConfig (and some kubeconfigs) reference the CA by file
+		// path rather than inlining it; read it so the result is self-contained.
+		if len(ca) == 0 && cfg.CAFile != "" {
+			ca, err = os.ReadFile(cfg.CAFile)
+			if err != nil {
+				return nil, fmt.Errorf("k8s: read CA file %q: %w", cfg.CAFile, err)
+			}
+		}
+		cluster.CertificateAuthorityData = ca
+	}
+
+	authInfo := clientcmdapi.NewAuthInfo()
+	switch {
+	case cfg.BearerToken != "":
+		authInfo.Token = cfg.BearerToken
+	case len(cfg.CertData) > 0 && len(cfg.KeyData) > 0:
+		authInfo.ClientCertificateData = cfg.CertData
+		authInfo.ClientKeyData = cfg.KeyData
+	default:
+		return nil, fmt.Errorf("k8s: connection has no serializable credentials (a bearer token or client certificate is required)")
+	}
+
+	const name = "spacefleet"
+	out := clientcmdapi.NewConfig()
+	out.Clusters[name] = cluster
+	out.AuthInfos[name] = authInfo
+	out.Contexts[name] = &clientcmdapi.Context{Cluster: name, AuthInfo: name}
+	out.CurrentContext = name
+
+	b, err := clientcmd.Write(*out)
+	if err != nil {
+		return nil, fmt.Errorf("k8s: serialize kubeconfig: %w", err)
+	}
+	return b, nil
 }
 
 // Verify probes the API server and returns its reported version. It mutates a

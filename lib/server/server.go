@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spacefleet/spacefleet/lib/api"
+	"github.com/spacefleet/spacefleet/lib/applications"
 	"github.com/spacefleet/spacefleet/lib/auth"
 	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/config"
@@ -42,6 +43,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 	usersSvc := users.NewService(entClient)
 	orgsSvc := organizations.NewService(entClient)
 	clustersSvc := clusters.NewService(entClient, sealer)
+	applicationsSvc := applications.NewService(entClient, clustersSvc)
 	invitesSvc := invitations.NewService(entClient)
 
 	// Build the request authenticator. Spacefleet always authenticates against
@@ -66,6 +68,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 		Users:            usersSvc,
 		Orgs:             orgsSvc,
 		Clusters:         clustersSvc,
+		Applications:     applicationsSvc,
 		Invites:          invitesSvc,
 		AllowOrgCreation: cfg.AllowOrgCreation,
 		ExternalURL:      cfg.ExternalURL,

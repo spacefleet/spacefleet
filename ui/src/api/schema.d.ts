@@ -568,6 +568,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the applications in the current organization
+         * @description Org-scoped: the organization is taken from the X-Organization-ID header.
+         */
+        get: operations["listApplications"];
+        put?: never;
+        /**
+         * Register an application in the current organization
+         * @description Org-scoped, editor or above. Persists the application in the pending
+         *     state; it does not start a rollout (POST .../rollout for that).
+         */
+        post: operations["createApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an application */
+        get: operations["getApplication"];
+        put?: never;
+        post?: never;
+        /** Delete an application */
+        delete: operations["deleteApplication"];
+        options?: never;
+        head?: never;
+        /**
+         * Update an application
+         * @description Org-scoped, editor or above. Updates mutable fields (name, chart
+         *     coordinates, values, release name, target namespace). The clusters and
+         *     chart source are fixed at registration.
+         */
+        patch: operations["updateApplication"];
+        trace?: never;
+    };
+    "/api/applications/{id}/rollout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deploy or upgrade an application (run the Helm rollout)
+         * @description Org-scoped, editor or above. Enqueues a background job that runs
+         *     `helm upgrade --install` against the target cluster as a TaskRun on the
+         *     runner cluster, waiting for the release's resources to become Ready.
+         *     Returns immediately (202); follow progress via the application stream
+         *     and the run/log streams. Requires the background worker (503 otherwise).
+         */
+        post: operations["rolloutApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{id}/uninstall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Uninstall an application's Helm release
+         * @description Org-scoped, editor or above. Enqueues a background job that runs
+         *     `helm uninstall` against the target cluster as a TaskRun on the runner.
+         *     Returns immediately (202). Requires the background worker (503 otherwise).
+         */
+        post: operations["uninstallApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1032,6 +1127,96 @@ export interface components {
             azure_client_id?: string;
             azure_client_secret?: string;
         };
+        /**
+         * @description The kind of application. Only "helm" today.
+         * @enum {string}
+         */
+        ApplicationType: "helm";
+        /**
+         * @description Where the Helm chart comes from.
+         *       - http_repo: an HTTP Helm repository (repo_url + chart [+ version]).
+         *       - oci: an OCI registry reference (repo_url [+ version]).
+         *       - git: a chart in a Git repo (repo_url [+ git_ref] [+ git_path]).
+         * @enum {string}
+         */
+        ChartSource: "http_repo" | "oci" | "git";
+        /**
+         * @description The rollout lifecycle state of the application.
+         * @enum {string}
+         */
+        ApplicationStatus: "pending" | "deploying" | "deployed" | "failed" | "uninstalling" | "uninstalled";
+        Application: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            type: components["schemas"]["ApplicationType"];
+            chart_source: components["schemas"]["ChartSource"];
+            /** @description Non-secret per-source parameters (repo_url, chart, version, …). */
+            config: {
+                [key: string]: string;
+            };
+            /** @description Raw values.yaml override. */
+            values?: string;
+            /** @description The Helm release name (defaults to the app name when empty). */
+            release_name?: string;
+            /** @description Namespace in the target cluster the release is installed into. */
+            target_namespace: string;
+            /** Format: uuid */
+            target_cluster_id: string;
+            /** Format: uuid */
+            runner_cluster_id: string;
+            status: components["schemas"]["ApplicationStatus"];
+            /** @description Human-readable detail (last rollout-progress line, or error). */
+            status_message?: string;
+            /** @description Id of the in-flight rollout job, for correlation. */
+            job_id?: string;
+            /** @description TaskRun name of the most recent rollout (for streaming). */
+            last_run_name?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /**
+         * @description A flat object. config carries the source-specific, non-secret chart
+         *     coordinates (repo_url, chart, version, git_ref, git_path); the server
+         *     validates which are required per chart_source.
+         */
+        ApplicationCreateRequest: {
+            name: string;
+            chart_source: components["schemas"]["ChartSource"];
+            config?: {
+                [key: string]: string;
+            };
+            values?: string;
+            release_name?: string;
+            target_namespace: string;
+            /** Format: uuid */
+            target_cluster_id: string;
+            /** Format: uuid */
+            runner_cluster_id: string;
+        };
+        /**
+         * @description All fields optional. The clusters and chart source are fixed at
+         *     registration; the chart coordinates (config), values, release name,
+         *     target namespace, and name can change.
+         */
+        ApplicationUpdateRequest: {
+            name?: string;
+            config?: {
+                [key: string]: string;
+            };
+            values?: string;
+            release_name?: string;
+            target_namespace?: string;
+        };
+        ApplicationRolloutRequest: {
+            /**
+             * @description deploy and upgrade both run `helm upgrade --install`.
+             * @enum {string}
+             */
+            action: "deploy" | "upgrade";
+        };
     };
     responses: {
         /** @description Error response */
@@ -1047,6 +1232,7 @@ export interface components {
     parameters: {
         OrganizationID: string;
         ClusterID: string;
+        ApplicationID: string;
         MemberUserID: string;
         InvitationID: string;
         InviteToken: string;
@@ -1753,6 +1939,173 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TektonRun"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listApplications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Applications in the current organization */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Application"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Application registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Application"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The application */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Application"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Application deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Application updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Application"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    rolloutApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationRolloutRequest"];
+            };
+        };
+        responses: {
+            /** @description Rollout accepted; the job is in progress */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Application"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    uninstallApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Uninstall accepted; the job is in progress */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Application"];
                 };
             };
             default: components["responses"]["Error"];

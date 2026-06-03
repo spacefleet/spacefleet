@@ -625,6 +625,143 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/applications:
+    get:
+      summary: List the applications in the current organization
+      description: |
+        Org-scoped: the organization is taken from the X-Organization-ID header.
+      operationId: listApplications
+      responses:
+        "200":
+          description: Applications in the current organization
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Application"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Register an application in the current organization
+      description: |
+        Org-scoped, editor or above. Persists the application in the pending
+        state; it does not start a rollout (POST .../rollout for that).
+      operationId: createApplication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationCreateRequest"
+      responses:
+        "201":
+          description: Application registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/applications/{id}:
+    get:
+      summary: Get an application
+      operationId: getApplication
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+      responses:
+        "200":
+          description: The application
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      summary: Update an application
+      description: |
+        Org-scoped, editor or above. Updates mutable fields (name, chart
+        coordinates, values, release name, target namespace). The clusters and
+        chart source are fixed at registration.
+      operationId: updateApplication
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationUpdateRequest"
+      responses:
+        "200":
+          description: Application updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete an application
+      operationId: deleteApplication
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+      responses:
+        "204":
+          description: Application deleted
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/applications/{id}/rollout:
+    post:
+      summary: Deploy or upgrade an application (run the Helm rollout)
+      description: |
+        Org-scoped, editor or above. Enqueues a background job that runs
+        `helm upgrade --install` against the target cluster as a TaskRun on the
+        runner cluster, waiting for the release's resources to become Ready.
+        Returns immediately (202); follow progress via the application stream
+        and the run/log streams. Requires the background worker (503 otherwise).
+      operationId: rolloutApplication
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationRolloutRequest"
+      responses:
+        "202":
+          description: Rollout accepted; the job is in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/applications/{id}/uninstall:
+    post:
+      summary: Uninstall an application's Helm release
+      description: |
+        Org-scoped, editor or above. Enqueues a background job that runs
+        `helm uninstall` against the target cluster as a TaskRun on the runner.
+        Returns immediately (202). Requires the background worker (503 otherwise).
+      operationId: uninstallApplication
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+      responses:
+        "202":
+          description: Uninstall accepted; the job is in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+        default:
+          $ref: "#/components/responses/Error"
+
 components:
   schemas:
     Health:
@@ -1439,6 +1576,153 @@ components:
         azure_client_secret:
           type: string
 
+    ApplicationType:
+      type: string
+      description: The kind of application. Only "helm" today.
+      enum: [helm]
+
+    ChartSource:
+      type: string
+      description: |
+        Where the Helm chart comes from.
+          - http_repo: an HTTP Helm repository (repo_url + chart [+ version]).
+          - oci: an OCI registry reference (repo_url [+ version]).
+          - git: a chart in a Git repo (repo_url [+ git_ref] [+ git_path]).
+      enum: [http_repo, oci, git]
+
+    ApplicationStatus:
+      type: string
+      description: The rollout lifecycle state of the application.
+      enum: [pending, deploying, deployed, failed, uninstalling, uninstalled]
+
+    Application:
+      type: object
+      required:
+        [
+          id,
+          name,
+          type,
+          chart_source,
+          config,
+          target_namespace,
+          target_cluster_id,
+          runner_cluster_id,
+          status,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/ApplicationType"
+        chart_source:
+          $ref: "#/components/schemas/ChartSource"
+        config:
+          type: object
+          description: Non-secret per-source parameters (repo_url, chart, version, …).
+          additionalProperties:
+            type: string
+        values:
+          type: string
+          description: Raw values.yaml override.
+        release_name:
+          type: string
+          description: The Helm release name (defaults to the app name when empty).
+        target_namespace:
+          type: string
+          description: Namespace in the target cluster the release is installed into.
+        target_cluster_id:
+          type: string
+          format: uuid
+        runner_cluster_id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/ApplicationStatus"
+        status_message:
+          type: string
+          description: Human-readable detail (last rollout-progress line, or error).
+        job_id:
+          type: string
+          description: Id of the in-flight rollout job, for correlation.
+        last_run_name:
+          type: string
+          description: TaskRun name of the most recent rollout (for streaming).
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ApplicationCreateRequest:
+      type: object
+      required: [name, chart_source, target_namespace, target_cluster_id, runner_cluster_id]
+      description: |
+        A flat object. config carries the source-specific, non-secret chart
+        coordinates (repo_url, chart, version, git_ref, git_path); the server
+        validates which are required per chart_source.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        chart_source:
+          $ref: "#/components/schemas/ChartSource"
+        config:
+          type: object
+          additionalProperties:
+            type: string
+        values:
+          type: string
+        release_name:
+          type: string
+        target_namespace:
+          type: string
+          minLength: 1
+        target_cluster_id:
+          type: string
+          format: uuid
+        runner_cluster_id:
+          type: string
+          format: uuid
+
+    ApplicationUpdateRequest:
+      type: object
+      description: |
+        All fields optional. The clusters and chart source are fixed at
+        registration; the chart coordinates (config), values, release name,
+        target namespace, and name can change.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        config:
+          type: object
+          additionalProperties:
+            type: string
+        values:
+          type: string
+        release_name:
+          type: string
+        target_namespace:
+          type: string
+          minLength: 1
+
+    ApplicationRolloutRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          description: deploy and upgrade both run `helm upgrade --install`.
+          enum: [deploy, upgrade]
+
   parameters:
     OrganizationID:
       in: path
@@ -1449,6 +1733,14 @@ components:
         format: uuid
 
     ClusterID:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    ApplicationID:
       in: path
       name: id
       required: true

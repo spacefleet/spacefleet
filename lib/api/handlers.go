@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/spacefleet/spacefleet/ent"
+	"github.com/spacefleet/spacefleet/lib/applications"
 	"github.com/spacefleet/spacefleet/lib/auth"
 	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/email"
@@ -19,10 +20,11 @@ import (
 )
 
 type Server struct {
-	users    *users.Service
-	orgs     *organizations.Service
-	clusters *clusters.Service
-	invites  *invitations.Service
+	users        *users.Service
+	orgs         *organizations.Service
+	clusters     *clusters.Service
+	applications *applications.Service
+	invites      *invitations.Service
 
 	// allowOrgCreation gates the create-organization endpoint. When false,
 	// the server refuses to mint new organizations (see config.AllowOrgCreation)
@@ -53,6 +55,7 @@ type ServerDeps struct {
 	Users            *users.Service
 	Orgs             *organizations.Service
 	Clusters         *clusters.Service
+	Applications     *applications.Service
 	Invites          *invitations.Service
 	AllowOrgCreation bool
 	ExternalURL      string
@@ -66,6 +69,7 @@ func NewServer(d ServerDeps) *Server {
 		users:            d.Users,
 		orgs:             d.Orgs,
 		clusters:         d.Clusters,
+		applications:     d.Applications,
 		invites:          d.Invites,
 		allowOrgCreation: d.AllowOrgCreation,
 		externalURL:      d.ExternalURL,

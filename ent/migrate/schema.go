@@ -8,6 +8,64 @@ import (
 )
 
 var (
+	// ApplicationsColumns holds the columns for the "applications" table.
+	ApplicationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"helm"}, Default: "helm"},
+		{Name: "chart_source", Type: field.TypeEnum, Enums: []string{"http_repo", "oci", "git"}},
+		{Name: "config", Type: field.TypeJSON, Nullable: true},
+		{Name: "values", Type: field.TypeString, Nullable: true},
+		{Name: "release_name", Type: field.TypeString, Nullable: true},
+		{Name: "target_namespace", Type: field.TypeString},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "deploying", "deployed", "failed", "uninstalling", "uninstalled"}, Default: "pending"},
+		{Name: "status_message", Type: field.TypeString, Nullable: true},
+		{Name: "job_id", Type: field.TypeString, Nullable: true},
+		{Name: "last_run_name", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+		{Name: "target_cluster_id", Type: field.TypeUUID},
+		{Name: "runner_cluster_id", Type: field.TypeUUID},
+	}
+	// ApplicationsTable holds the schema information for the "applications" table.
+	ApplicationsTable = &schema.Table{
+		Name:       "applications",
+		Columns:    ApplicationsColumns,
+		PrimaryKey: []*schema.Column{ApplicationsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "applications_organizations_organization",
+				Columns:    []*schema.Column{ApplicationsColumns[14]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "applications_clusters_target_cluster",
+				Columns:    []*schema.Column{ApplicationsColumns[15]},
+				RefColumns: []*schema.Column{ClustersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "applications_clusters_runner_cluster",
+				Columns:    []*schema.Column{ApplicationsColumns[16]},
+				RefColumns: []*schema.Column{ClustersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "application_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{ApplicationsColumns[14]},
+			},
+			{
+				Name:    "application_organization_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{ApplicationsColumns[14], ApplicationsColumns[1]},
+			},
+		},
+	}
 	// ClustersColumns holds the columns for the "clusters" table.
 	ClustersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -182,6 +240,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		ApplicationsTable,
 		ClustersTable,
 		InvitationsTable,
 		MembershipsTable,
@@ -192,6 +251,9 @@ var (
 )
 
 func init() {
+	ApplicationsTable.ForeignKeys[0].RefTable = OrganizationsTable
+	ApplicationsTable.ForeignKeys[1].RefTable = ClustersTable
+	ApplicationsTable.ForeignKeys[2].RefTable = ClustersTable
 	ClustersTable.ForeignKeys[0].RefTable = OrganizationsTable
 	InvitationsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	MembershipsTable.ForeignKeys[0].RefTable = UsersTable

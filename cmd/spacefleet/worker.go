@@ -10,10 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spacefleet/spacefleet/lib/applications"
 	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/config"
 	"github.com/spacefleet/spacefleet/lib/db"
 	"github.com/spacefleet/spacefleet/lib/email"
+	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/secrets"
 	"github.com/spacefleet/spacefleet/lib/tekton"
@@ -70,14 +72,18 @@ func runWorker(_ []string) {
 		log.Fatalf("worker: build secret sealer: %v", err)
 	}
 	clustersSvc := clusters.NewService(entClient, sealer)
+	applicationsSvc := applications.NewService(entClient, clustersSvc)
 
 	// Register job workers:
 	//   - invite-email: sends org invitation emails (Sender is SMTP when
 	//     configured, a no-op otherwise — the API only enqueues when email is on).
 	//   - tekton-install: installs Tekton into a cluster on enable.
+	//   - helm-rollout: runs a Helm release rollout (deploy/upgrade/uninstall) as
+	//     a TaskRun on the app's runner cluster, against its target cluster.
 	workers := queue.NewWorkers()
 	queue.AddWorker(workers, &email.InviteEmailWorker{Sender: emailSender(cfg)})
 	queue.AddWorker(workers, &tekton.InstallWorker{Store: clustersSvc})
+	queue.AddWorker(workers, &helm.RolloutWorker{Store: applicationsSvc})
 
 	client, err := queue.NewClient(rpool, queue.Config{
 		WorkerMode:  true,

@@ -7,6 +7,8 @@ import { OrgGate } from "./components/OrgGate";
 import { OrgProvider } from "./contexts/OrgContext";
 import { AcceptInvite } from "./routes/AcceptInvite";
 import { AuthCallback } from "./routes/AuthCallback";
+import { Applications } from "./routes/Applications";
+import { ApplicationDetail } from "./routes/ApplicationDetail";
 import { Clusters } from "./routes/Clusters";
 import { ClusterDetail } from "./routes/ClusterDetail";
 import { CreateOrganization } from "./routes/CreateOrganization";
@@ -26,6 +28,7 @@ import { navLeaves } from "./nav";
 // Real page components, keyed by nav path. Any leaf not listed here renders the
 // scaffolded Placeholder — swap entries in as pages are built.
 const pageComponents: Record<string, ReactNode> = {
+  "/applications": <Applications />,
   "/admin/clusters": <Clusters />,
   "/infrastructure/nodes": <Nodes />,
   "/infrastructure/namespaces": <Namespaces />,
@@ -74,6 +77,13 @@ export function App() {
                       element={pageComponents[leaf.path] ?? <Placeholder />}
                     />
                   ))}
+                {/* Application drill-down: the per-app management page, reached
+                    by clicking a row on the Applications leaf (not a nav entry
+                    of its own, so it's added here rather than in nav.ts). */}
+                <Route
+                  path="/applications/:appId"
+                  element={<ApplicationDetail />}
+                />
                 {/* Cluster drill-down: the per-cluster management page, reached
                     by clicking a row on the Clusters leaf (not a nav entry of
                     its own, so it's added here rather than in nav.ts). */}

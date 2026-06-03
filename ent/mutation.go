@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
+	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
@@ -30,6 +31,7 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
+	TypeApplication        = "Application"
 	TypeCluster            = "Cluster"
 	TypeInvitation         = "Invitation"
 	TypeMembership         = "Membership"
@@ -37,6 +39,1411 @@ const (
 	TypeTektonInstallation = "TektonInstallation"
 	TypeUser               = "User"
 )
+
+// ApplicationMutation represents an operation that mutates the Application nodes in the graph.
+type ApplicationMutation struct {
+	config
+	op                    Op
+	typ                   string
+	id                    *uuid.UUID
+	name                  *string
+	_type                 *application.Type
+	chart_source          *application.ChartSource
+	_config               *map[string]string
+	values                *string
+	release_name          *string
+	target_namespace      *string
+	status                *application.Status
+	status_message        *string
+	job_id                *string
+	last_run_name         *string
+	created_at            *time.Time
+	updated_at            *time.Time
+	clearedFields         map[string]struct{}
+	organization          *uuid.UUID
+	clearedorganization   bool
+	target_cluster        *uuid.UUID
+	clearedtarget_cluster bool
+	runner_cluster        *uuid.UUID
+	clearedrunner_cluster bool
+	done                  bool
+	oldValue              func(context.Context) (*Application, error)
+	predicates            []predicate.Application
+}
+
+var _ ent.Mutation = (*ApplicationMutation)(nil)
+
+// applicationOption allows management of the mutation configuration using functional options.
+type applicationOption func(*ApplicationMutation)
+
+// newApplicationMutation creates new mutation for the Application entity.
+func newApplicationMutation(c config, op Op, opts ...applicationOption) *ApplicationMutation {
+	m := &ApplicationMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeApplication,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withApplicationID sets the ID field of the mutation.
+func withApplicationID(id uuid.UUID) applicationOption {
+	return func(m *ApplicationMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Application
+		)
+		m.oldValue = func(ctx context.Context) (*Application, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Application.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withApplication sets the old Application of the mutation.
+func withApplication(node *Application) applicationOption {
+	return func(m *ApplicationMutation) {
+		m.oldValue = func(context.Context) (*Application, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ApplicationMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ApplicationMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Application entities.
+func (m *ApplicationMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ApplicationMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ApplicationMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Application.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (m *ApplicationMutation) SetOrganizationID(u uuid.UUID) {
+	m.organization = &u
+}
+
+// OrganizationID returns the value of the "organization_id" field in the mutation.
+func (m *ApplicationMutation) OrganizationID() (r uuid.UUID, exists bool) {
+	v := m.organization
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrganizationID returns the old "organization_id" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldOrganizationID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrganizationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrganizationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrganizationID: %w", err)
+	}
+	return oldValue.OrganizationID, nil
+}
+
+// ResetOrganizationID resets all changes to the "organization_id" field.
+func (m *ApplicationMutation) ResetOrganizationID() {
+	m.organization = nil
+}
+
+// SetName sets the "name" field.
+func (m *ApplicationMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *ApplicationMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *ApplicationMutation) ResetName() {
+	m.name = nil
+}
+
+// SetType sets the "type" field.
+func (m *ApplicationMutation) SetType(a application.Type) {
+	m._type = &a
+}
+
+// GetType returns the value of the "type" field in the mutation.
+func (m *ApplicationMutation) GetType() (r application.Type, exists bool) {
+	v := m._type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldType returns the old "type" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldType(ctx context.Context) (v application.Type, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldType: %w", err)
+	}
+	return oldValue.Type, nil
+}
+
+// ResetType resets all changes to the "type" field.
+func (m *ApplicationMutation) ResetType() {
+	m._type = nil
+}
+
+// SetChartSource sets the "chart_source" field.
+func (m *ApplicationMutation) SetChartSource(as application.ChartSource) {
+	m.chart_source = &as
+}
+
+// ChartSource returns the value of the "chart_source" field in the mutation.
+func (m *ApplicationMutation) ChartSource() (r application.ChartSource, exists bool) {
+	v := m.chart_source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChartSource returns the old "chart_source" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldChartSource(ctx context.Context) (v application.ChartSource, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChartSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChartSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChartSource: %w", err)
+	}
+	return oldValue.ChartSource, nil
+}
+
+// ResetChartSource resets all changes to the "chart_source" field.
+func (m *ApplicationMutation) ResetChartSource() {
+	m.chart_source = nil
+}
+
+// SetConfig sets the "config" field.
+func (m *ApplicationMutation) SetConfig(value map[string]string) {
+	m._config = &value
+}
+
+// Config returns the value of the "config" field in the mutation.
+func (m *ApplicationMutation) Config() (r map[string]string, exists bool) {
+	v := m._config
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConfig returns the old "config" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldConfig(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConfig is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConfig requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConfig: %w", err)
+	}
+	return oldValue.Config, nil
+}
+
+// ClearConfig clears the value of the "config" field.
+func (m *ApplicationMutation) ClearConfig() {
+	m._config = nil
+	m.clearedFields[application.FieldConfig] = struct{}{}
+}
+
+// ConfigCleared returns if the "config" field was cleared in this mutation.
+func (m *ApplicationMutation) ConfigCleared() bool {
+	_, ok := m.clearedFields[application.FieldConfig]
+	return ok
+}
+
+// ResetConfig resets all changes to the "config" field.
+func (m *ApplicationMutation) ResetConfig() {
+	m._config = nil
+	delete(m.clearedFields, application.FieldConfig)
+}
+
+// SetValues sets the "values" field.
+func (m *ApplicationMutation) SetValues(s string) {
+	m.values = &s
+}
+
+// Values returns the value of the "values" field in the mutation.
+func (m *ApplicationMutation) Values() (r string, exists bool) {
+	v := m.values
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValues returns the old "values" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldValues(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValues is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValues requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValues: %w", err)
+	}
+	return oldValue.Values, nil
+}
+
+// ClearValues clears the value of the "values" field.
+func (m *ApplicationMutation) ClearValues() {
+	m.values = nil
+	m.clearedFields[application.FieldValues] = struct{}{}
+}
+
+// ValuesCleared returns if the "values" field was cleared in this mutation.
+func (m *ApplicationMutation) ValuesCleared() bool {
+	_, ok := m.clearedFields[application.FieldValues]
+	return ok
+}
+
+// ResetValues resets all changes to the "values" field.
+func (m *ApplicationMutation) ResetValues() {
+	m.values = nil
+	delete(m.clearedFields, application.FieldValues)
+}
+
+// SetReleaseName sets the "release_name" field.
+func (m *ApplicationMutation) SetReleaseName(s string) {
+	m.release_name = &s
+}
+
+// ReleaseName returns the value of the "release_name" field in the mutation.
+func (m *ApplicationMutation) ReleaseName() (r string, exists bool) {
+	v := m.release_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReleaseName returns the old "release_name" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldReleaseName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReleaseName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReleaseName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReleaseName: %w", err)
+	}
+	return oldValue.ReleaseName, nil
+}
+
+// ClearReleaseName clears the value of the "release_name" field.
+func (m *ApplicationMutation) ClearReleaseName() {
+	m.release_name = nil
+	m.clearedFields[application.FieldReleaseName] = struct{}{}
+}
+
+// ReleaseNameCleared returns if the "release_name" field was cleared in this mutation.
+func (m *ApplicationMutation) ReleaseNameCleared() bool {
+	_, ok := m.clearedFields[application.FieldReleaseName]
+	return ok
+}
+
+// ResetReleaseName resets all changes to the "release_name" field.
+func (m *ApplicationMutation) ResetReleaseName() {
+	m.release_name = nil
+	delete(m.clearedFields, application.FieldReleaseName)
+}
+
+// SetTargetNamespace sets the "target_namespace" field.
+func (m *ApplicationMutation) SetTargetNamespace(s string) {
+	m.target_namespace = &s
+}
+
+// TargetNamespace returns the value of the "target_namespace" field in the mutation.
+func (m *ApplicationMutation) TargetNamespace() (r string, exists bool) {
+	v := m.target_namespace
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTargetNamespace returns the old "target_namespace" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldTargetNamespace(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTargetNamespace is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTargetNamespace requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTargetNamespace: %w", err)
+	}
+	return oldValue.TargetNamespace, nil
+}
+
+// ResetTargetNamespace resets all changes to the "target_namespace" field.
+func (m *ApplicationMutation) ResetTargetNamespace() {
+	m.target_namespace = nil
+}
+
+// SetTargetClusterID sets the "target_cluster_id" field.
+func (m *ApplicationMutation) SetTargetClusterID(u uuid.UUID) {
+	m.target_cluster = &u
+}
+
+// TargetClusterID returns the value of the "target_cluster_id" field in the mutation.
+func (m *ApplicationMutation) TargetClusterID() (r uuid.UUID, exists bool) {
+	v := m.target_cluster
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTargetClusterID returns the old "target_cluster_id" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldTargetClusterID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTargetClusterID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTargetClusterID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTargetClusterID: %w", err)
+	}
+	return oldValue.TargetClusterID, nil
+}
+
+// ResetTargetClusterID resets all changes to the "target_cluster_id" field.
+func (m *ApplicationMutation) ResetTargetClusterID() {
+	m.target_cluster = nil
+}
+
+// SetRunnerClusterID sets the "runner_cluster_id" field.
+func (m *ApplicationMutation) SetRunnerClusterID(u uuid.UUID) {
+	m.runner_cluster = &u
+}
+
+// RunnerClusterID returns the value of the "runner_cluster_id" field in the mutation.
+func (m *ApplicationMutation) RunnerClusterID() (r uuid.UUID, exists bool) {
+	v := m.runner_cluster
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRunnerClusterID returns the old "runner_cluster_id" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldRunnerClusterID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRunnerClusterID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRunnerClusterID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRunnerClusterID: %w", err)
+	}
+	return oldValue.RunnerClusterID, nil
+}
+
+// ResetRunnerClusterID resets all changes to the "runner_cluster_id" field.
+func (m *ApplicationMutation) ResetRunnerClusterID() {
+	m.runner_cluster = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *ApplicationMutation) SetStatus(a application.Status) {
+	m.status = &a
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *ApplicationMutation) Status() (r application.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldStatus(ctx context.Context) (v application.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *ApplicationMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetStatusMessage sets the "status_message" field.
+func (m *ApplicationMutation) SetStatusMessage(s string) {
+	m.status_message = &s
+}
+
+// StatusMessage returns the value of the "status_message" field in the mutation.
+func (m *ApplicationMutation) StatusMessage() (r string, exists bool) {
+	v := m.status_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatusMessage returns the old "status_message" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldStatusMessage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatusMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatusMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatusMessage: %w", err)
+	}
+	return oldValue.StatusMessage, nil
+}
+
+// ClearStatusMessage clears the value of the "status_message" field.
+func (m *ApplicationMutation) ClearStatusMessage() {
+	m.status_message = nil
+	m.clearedFields[application.FieldStatusMessage] = struct{}{}
+}
+
+// StatusMessageCleared returns if the "status_message" field was cleared in this mutation.
+func (m *ApplicationMutation) StatusMessageCleared() bool {
+	_, ok := m.clearedFields[application.FieldStatusMessage]
+	return ok
+}
+
+// ResetStatusMessage resets all changes to the "status_message" field.
+func (m *ApplicationMutation) ResetStatusMessage() {
+	m.status_message = nil
+	delete(m.clearedFields, application.FieldStatusMessage)
+}
+
+// SetJobID sets the "job_id" field.
+func (m *ApplicationMutation) SetJobID(s string) {
+	m.job_id = &s
+}
+
+// JobID returns the value of the "job_id" field in the mutation.
+func (m *ApplicationMutation) JobID() (r string, exists bool) {
+	v := m.job_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldJobID returns the old "job_id" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldJobID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldJobID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldJobID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldJobID: %w", err)
+	}
+	return oldValue.JobID, nil
+}
+
+// ClearJobID clears the value of the "job_id" field.
+func (m *ApplicationMutation) ClearJobID() {
+	m.job_id = nil
+	m.clearedFields[application.FieldJobID] = struct{}{}
+}
+
+// JobIDCleared returns if the "job_id" field was cleared in this mutation.
+func (m *ApplicationMutation) JobIDCleared() bool {
+	_, ok := m.clearedFields[application.FieldJobID]
+	return ok
+}
+
+// ResetJobID resets all changes to the "job_id" field.
+func (m *ApplicationMutation) ResetJobID() {
+	m.job_id = nil
+	delete(m.clearedFields, application.FieldJobID)
+}
+
+// SetLastRunName sets the "last_run_name" field.
+func (m *ApplicationMutation) SetLastRunName(s string) {
+	m.last_run_name = &s
+}
+
+// LastRunName returns the value of the "last_run_name" field in the mutation.
+func (m *ApplicationMutation) LastRunName() (r string, exists bool) {
+	v := m.last_run_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastRunName returns the old "last_run_name" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldLastRunName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastRunName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastRunName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastRunName: %w", err)
+	}
+	return oldValue.LastRunName, nil
+}
+
+// ClearLastRunName clears the value of the "last_run_name" field.
+func (m *ApplicationMutation) ClearLastRunName() {
+	m.last_run_name = nil
+	m.clearedFields[application.FieldLastRunName] = struct{}{}
+}
+
+// LastRunNameCleared returns if the "last_run_name" field was cleared in this mutation.
+func (m *ApplicationMutation) LastRunNameCleared() bool {
+	_, ok := m.clearedFields[application.FieldLastRunName]
+	return ok
+}
+
+// ResetLastRunName resets all changes to the "last_run_name" field.
+func (m *ApplicationMutation) ResetLastRunName() {
+	m.last_run_name = nil
+	delete(m.clearedFields, application.FieldLastRunName)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ApplicationMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ApplicationMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ApplicationMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ApplicationMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ApplicationMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ApplicationMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearOrganization clears the "organization" edge to the Organization entity.
+func (m *ApplicationMutation) ClearOrganization() {
+	m.clearedorganization = true
+	m.clearedFields[application.FieldOrganizationID] = struct{}{}
+}
+
+// OrganizationCleared reports if the "organization" edge to the Organization entity was cleared.
+func (m *ApplicationMutation) OrganizationCleared() bool {
+	return m.clearedorganization
+}
+
+// OrganizationIDs returns the "organization" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OrganizationID instead. It exists only for internal usage by the builders.
+func (m *ApplicationMutation) OrganizationIDs() (ids []uuid.UUID) {
+	if id := m.organization; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOrganization resets all changes to the "organization" edge.
+func (m *ApplicationMutation) ResetOrganization() {
+	m.organization = nil
+	m.clearedorganization = false
+}
+
+// ClearTargetCluster clears the "target_cluster" edge to the Cluster entity.
+func (m *ApplicationMutation) ClearTargetCluster() {
+	m.clearedtarget_cluster = true
+	m.clearedFields[application.FieldTargetClusterID] = struct{}{}
+}
+
+// TargetClusterCleared reports if the "target_cluster" edge to the Cluster entity was cleared.
+func (m *ApplicationMutation) TargetClusterCleared() bool {
+	return m.clearedtarget_cluster
+}
+
+// TargetClusterIDs returns the "target_cluster" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// TargetClusterID instead. It exists only for internal usage by the builders.
+func (m *ApplicationMutation) TargetClusterIDs() (ids []uuid.UUID) {
+	if id := m.target_cluster; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetTargetCluster resets all changes to the "target_cluster" edge.
+func (m *ApplicationMutation) ResetTargetCluster() {
+	m.target_cluster = nil
+	m.clearedtarget_cluster = false
+}
+
+// ClearRunnerCluster clears the "runner_cluster" edge to the Cluster entity.
+func (m *ApplicationMutation) ClearRunnerCluster() {
+	m.clearedrunner_cluster = true
+	m.clearedFields[application.FieldRunnerClusterID] = struct{}{}
+}
+
+// RunnerClusterCleared reports if the "runner_cluster" edge to the Cluster entity was cleared.
+func (m *ApplicationMutation) RunnerClusterCleared() bool {
+	return m.clearedrunner_cluster
+}
+
+// RunnerClusterIDs returns the "runner_cluster" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// RunnerClusterID instead. It exists only for internal usage by the builders.
+func (m *ApplicationMutation) RunnerClusterIDs() (ids []uuid.UUID) {
+	if id := m.runner_cluster; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetRunnerCluster resets all changes to the "runner_cluster" edge.
+func (m *ApplicationMutation) ResetRunnerCluster() {
+	m.runner_cluster = nil
+	m.clearedrunner_cluster = false
+}
+
+// Where appends a list predicates to the ApplicationMutation builder.
+func (m *ApplicationMutation) Where(ps ...predicate.Application) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ApplicationMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ApplicationMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Application, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ApplicationMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ApplicationMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Application).
+func (m *ApplicationMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ApplicationMutation) Fields() []string {
+	fields := make([]string, 0, 16)
+	if m.organization != nil {
+		fields = append(fields, application.FieldOrganizationID)
+	}
+	if m.name != nil {
+		fields = append(fields, application.FieldName)
+	}
+	if m._type != nil {
+		fields = append(fields, application.FieldType)
+	}
+	if m.chart_source != nil {
+		fields = append(fields, application.FieldChartSource)
+	}
+	if m._config != nil {
+		fields = append(fields, application.FieldConfig)
+	}
+	if m.values != nil {
+		fields = append(fields, application.FieldValues)
+	}
+	if m.release_name != nil {
+		fields = append(fields, application.FieldReleaseName)
+	}
+	if m.target_namespace != nil {
+		fields = append(fields, application.FieldTargetNamespace)
+	}
+	if m.target_cluster != nil {
+		fields = append(fields, application.FieldTargetClusterID)
+	}
+	if m.runner_cluster != nil {
+		fields = append(fields, application.FieldRunnerClusterID)
+	}
+	if m.status != nil {
+		fields = append(fields, application.FieldStatus)
+	}
+	if m.status_message != nil {
+		fields = append(fields, application.FieldStatusMessage)
+	}
+	if m.job_id != nil {
+		fields = append(fields, application.FieldJobID)
+	}
+	if m.last_run_name != nil {
+		fields = append(fields, application.FieldLastRunName)
+	}
+	if m.created_at != nil {
+		fields = append(fields, application.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, application.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ApplicationMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case application.FieldOrganizationID:
+		return m.OrganizationID()
+	case application.FieldName:
+		return m.Name()
+	case application.FieldType:
+		return m.GetType()
+	case application.FieldChartSource:
+		return m.ChartSource()
+	case application.FieldConfig:
+		return m.Config()
+	case application.FieldValues:
+		return m.Values()
+	case application.FieldReleaseName:
+		return m.ReleaseName()
+	case application.FieldTargetNamespace:
+		return m.TargetNamespace()
+	case application.FieldTargetClusterID:
+		return m.TargetClusterID()
+	case application.FieldRunnerClusterID:
+		return m.RunnerClusterID()
+	case application.FieldStatus:
+		return m.Status()
+	case application.FieldStatusMessage:
+		return m.StatusMessage()
+	case application.FieldJobID:
+		return m.JobID()
+	case application.FieldLastRunName:
+		return m.LastRunName()
+	case application.FieldCreatedAt:
+		return m.CreatedAt()
+	case application.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ApplicationMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case application.FieldOrganizationID:
+		return m.OldOrganizationID(ctx)
+	case application.FieldName:
+		return m.OldName(ctx)
+	case application.FieldType:
+		return m.OldType(ctx)
+	case application.FieldChartSource:
+		return m.OldChartSource(ctx)
+	case application.FieldConfig:
+		return m.OldConfig(ctx)
+	case application.FieldValues:
+		return m.OldValues(ctx)
+	case application.FieldReleaseName:
+		return m.OldReleaseName(ctx)
+	case application.FieldTargetNamespace:
+		return m.OldTargetNamespace(ctx)
+	case application.FieldTargetClusterID:
+		return m.OldTargetClusterID(ctx)
+	case application.FieldRunnerClusterID:
+		return m.OldRunnerClusterID(ctx)
+	case application.FieldStatus:
+		return m.OldStatus(ctx)
+	case application.FieldStatusMessage:
+		return m.OldStatusMessage(ctx)
+	case application.FieldJobID:
+		return m.OldJobID(ctx)
+	case application.FieldLastRunName:
+		return m.OldLastRunName(ctx)
+	case application.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case application.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Application field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ApplicationMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case application.FieldOrganizationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrganizationID(v)
+		return nil
+	case application.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case application.FieldType:
+		v, ok := value.(application.Type)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetType(v)
+		return nil
+	case application.FieldChartSource:
+		v, ok := value.(application.ChartSource)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChartSource(v)
+		return nil
+	case application.FieldConfig:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConfig(v)
+		return nil
+	case application.FieldValues:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValues(v)
+		return nil
+	case application.FieldReleaseName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReleaseName(v)
+		return nil
+	case application.FieldTargetNamespace:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTargetNamespace(v)
+		return nil
+	case application.FieldTargetClusterID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTargetClusterID(v)
+		return nil
+	case application.FieldRunnerClusterID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRunnerClusterID(v)
+		return nil
+	case application.FieldStatus:
+		v, ok := value.(application.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case application.FieldStatusMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatusMessage(v)
+		return nil
+	case application.FieldJobID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetJobID(v)
+		return nil
+	case application.FieldLastRunName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastRunName(v)
+		return nil
+	case application.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case application.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Application field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ApplicationMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ApplicationMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ApplicationMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Application numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ApplicationMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(application.FieldConfig) {
+		fields = append(fields, application.FieldConfig)
+	}
+	if m.FieldCleared(application.FieldValues) {
+		fields = append(fields, application.FieldValues)
+	}
+	if m.FieldCleared(application.FieldReleaseName) {
+		fields = append(fields, application.FieldReleaseName)
+	}
+	if m.FieldCleared(application.FieldStatusMessage) {
+		fields = append(fields, application.FieldStatusMessage)
+	}
+	if m.FieldCleared(application.FieldJobID) {
+		fields = append(fields, application.FieldJobID)
+	}
+	if m.FieldCleared(application.FieldLastRunName) {
+		fields = append(fields, application.FieldLastRunName)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ApplicationMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ApplicationMutation) ClearField(name string) error {
+	switch name {
+	case application.FieldConfig:
+		m.ClearConfig()
+		return nil
+	case application.FieldValues:
+		m.ClearValues()
+		return nil
+	case application.FieldReleaseName:
+		m.ClearReleaseName()
+		return nil
+	case application.FieldStatusMessage:
+		m.ClearStatusMessage()
+		return nil
+	case application.FieldJobID:
+		m.ClearJobID()
+		return nil
+	case application.FieldLastRunName:
+		m.ClearLastRunName()
+		return nil
+	}
+	return fmt.Errorf("unknown Application nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ApplicationMutation) ResetField(name string) error {
+	switch name {
+	case application.FieldOrganizationID:
+		m.ResetOrganizationID()
+		return nil
+	case application.FieldName:
+		m.ResetName()
+		return nil
+	case application.FieldType:
+		m.ResetType()
+		return nil
+	case application.FieldChartSource:
+		m.ResetChartSource()
+		return nil
+	case application.FieldConfig:
+		m.ResetConfig()
+		return nil
+	case application.FieldValues:
+		m.ResetValues()
+		return nil
+	case application.FieldReleaseName:
+		m.ResetReleaseName()
+		return nil
+	case application.FieldTargetNamespace:
+		m.ResetTargetNamespace()
+		return nil
+	case application.FieldTargetClusterID:
+		m.ResetTargetClusterID()
+		return nil
+	case application.FieldRunnerClusterID:
+		m.ResetRunnerClusterID()
+		return nil
+	case application.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case application.FieldStatusMessage:
+		m.ResetStatusMessage()
+		return nil
+	case application.FieldJobID:
+		m.ResetJobID()
+		return nil
+	case application.FieldLastRunName:
+		m.ResetLastRunName()
+		return nil
+	case application.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case application.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Application field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ApplicationMutation) AddedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.organization != nil {
+		edges = append(edges, application.EdgeOrganization)
+	}
+	if m.target_cluster != nil {
+		edges = append(edges, application.EdgeTargetCluster)
+	}
+	if m.runner_cluster != nil {
+		edges = append(edges, application.EdgeRunnerCluster)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ApplicationMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case application.EdgeOrganization:
+		if id := m.organization; id != nil {
+			return []ent.Value{*id}
+		}
+	case application.EdgeTargetCluster:
+		if id := m.target_cluster; id != nil {
+			return []ent.Value{*id}
+		}
+	case application.EdgeRunnerCluster:
+		if id := m.runner_cluster; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ApplicationMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 3)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ApplicationMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ApplicationMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.clearedorganization {
+		edges = append(edges, application.EdgeOrganization)
+	}
+	if m.clearedtarget_cluster {
+		edges = append(edges, application.EdgeTargetCluster)
+	}
+	if m.clearedrunner_cluster {
+		edges = append(edges, application.EdgeRunnerCluster)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ApplicationMutation) EdgeCleared(name string) bool {
+	switch name {
+	case application.EdgeOrganization:
+		return m.clearedorganization
+	case application.EdgeTargetCluster:
+		return m.clearedtarget_cluster
+	case application.EdgeRunnerCluster:
+		return m.clearedrunner_cluster
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ApplicationMutation) ClearEdge(name string) error {
+	switch name {
+	case application.EdgeOrganization:
+		m.ClearOrganization()
+		return nil
+	case application.EdgeTargetCluster:
+		m.ClearTargetCluster()
+		return nil
+	case application.EdgeRunnerCluster:
+		m.ClearRunnerCluster()
+		return nil
+	}
+	return fmt.Errorf("unknown Application unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ApplicationMutation) ResetEdge(name string) error {
+	switch name {
+	case application.EdgeOrganization:
+		m.ResetOrganization()
+		return nil
+	case application.EdgeTargetCluster:
+		m.ResetTargetCluster()
+		return nil
+	case application.EdgeRunnerCluster:
+		m.ResetRunnerCluster()
+		return nil
+	}
+	return fmt.Errorf("unknown Application edge %s", name)
+}
 
 // ClusterMutation represents an operation that mutates the Cluster nodes in the graph.
 type ClusterMutation struct {

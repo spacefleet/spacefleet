@@ -54,6 +54,12 @@ func registerRoutes(mux *http.ServeMux, cfg *config.Config, deps api.ServerDeps,
 		auth.RequireAuth(publicAPIPaths, verifier)(auth.OrgContext(http.HandlerFunc(srv.StreamClusterTekton))))
 	mux.Handle("GET /api/clusters/{id}/tekton/runs/{name}/stream",
 		auth.RequireAuth(publicAPIPaths, verifier)(auth.OrgContext(http.HandlerFunc(srv.StreamClusterTektonRun))))
+	mux.Handle("GET /api/applications/{id}/stream",
+		auth.RequireAuth(publicAPIPaths, verifier)(auth.OrgContext(http.HandlerFunc(srv.StreamApplication))))
+	mux.Handle("GET /api/applications/{id}/run/stream",
+		auth.RequireAuth(publicAPIPaths, verifier)(auth.OrgContext(http.HandlerFunc(srv.StreamApplicationRun))))
+	mux.Handle("GET /api/applications/{id}/logs",
+		auth.RequireAuth(publicAPIPaths, verifier)(auth.OrgContext(http.HandlerFunc(srv.StreamApplicationLogs))))
 
 	// Public config exposed to the browser as `window.appConfig`. Only
 	// pre-approved, non-secret values go here — it ships to every client.
