@@ -230,6 +230,7 @@ commonly set:
 | `dex.staticPasswords` | seeded admin | built-in accounts — **change before exposing** |
 | `config.workerConcurrency` | `4` | worker parallelism |
 | `config.allowOrgCreation` | `true` | let users create organizations; set `false` so only invited users can onboard |
+| `config.allowPrivateClusterEndpoints` | `false` | allow registered cluster endpoints to point at loopback/private addresses; set `true` only if clusters live on a private network (cloud-metadata is always blocked) |
 | `config.extraEnv` | `[]` | extra **non-secret** env for web + worker pods |
 | `config.secrets.secretKey` | `""` | credential-encryption key (base64 32 bytes) — inline; `openssl rand -base64 32` |
 | `config.secrets.envFrom` | `[]` | load secret env from Secrets you manage (GitOps path; see [docs](../../../docs/operator/secrets.md)) |

@@ -50,6 +50,13 @@ config:
   # org) can use the app — a signed-in user with no organization is shown a
   # "request an invite" message instead of a create-organization screen.
   allowOrgCreation: true
+  # -- Whether registered cluster endpoints (the token/kubeconfig methods, whose
+  # endpoint is supplied by the user) may point at loopback or private
+  # (RFC1918/ULA) addresses. Off by default so an org member cannot use the app
+  # as an SSRF proxy to localhost services or the internal pod network. Turn on
+  # only if this deployment must reach clusters on a private network. The
+  # cloud-metadata endpoint (169.254.169.254) is always rejected regardless.
+  allowPrivateClusterEndpoints: false
 
   # SMTP for outbound email (today: organization invitation emails). Optional —
   # leave host or from empty to disable email, in which case invitations still

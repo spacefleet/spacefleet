@@ -19,6 +19,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/githubapp"
 	"github.com/spacefleet/spacefleet/lib/githubinstallations"
 	"github.com/spacefleet/spacefleet/lib/helm"
+	"github.com/spacefleet/spacefleet/lib/k8s"
 	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/secrets"
 	"github.com/spacefleet/spacefleet/lib/tekton"
@@ -38,6 +39,10 @@ func runWorker(_ []string) {
 	if err != nil {
 		log.Fatalf("worker: load config: %v", err)
 	}
+
+	// Jobs build cluster clients too (e.g. serializing a target kubeconfig for a
+	// rollout), so the worker enforces the same SSRF endpoint policy as serve.
+	k8s.SetEndpointPolicy(k8s.EndpointPolicy{AllowPrivate: cfg.AllowPrivateClusterEndpoints})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

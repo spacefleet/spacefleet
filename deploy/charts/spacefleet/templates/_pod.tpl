@@ -11,6 +11,8 @@ the ConfigMap, the DATABASE_URL secret ref, and any extraEnv.
   value: {{ .Values.config.workerConcurrency | quote }}
 - name: ALLOW_ORG_CREATION
   value: {{ .Values.config.allowOrgCreation | quote }}
+- name: ALLOW_PRIVATE_CLUSTER_ENDPOINTS
+  value: {{ .Values.config.allowPrivateClusterEndpoints | quote }}
 {{- /* Canonical public base URL — the single source of truth for external
        links (and the OIDC issuer/redirect below). Required. */}}
 - name: EXTERNAL_URL

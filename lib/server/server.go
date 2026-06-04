@@ -18,6 +18,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/githubapp"
 	"github.com/spacefleet/spacefleet/lib/githubinstallations"
 	"github.com/spacefleet/spacefleet/lib/invitations"
+	"github.com/spacefleet/spacefleet/lib/k8s"
 	"github.com/spacefleet/spacefleet/lib/organizations"
 	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/secrets"
@@ -28,6 +29,10 @@ import (
 // ready-to-serve *http.Server. Closing those dependencies is registered
 // with Server.RegisterOnShutdown so callers only drive the HTTP lifecycle.
 func New(cfg *config.Config) (*http.Server, error) {
+	// Install the process-wide SSRF policy for user-supplied cluster endpoints
+	// before any cluster probe can run.
+	k8s.SetEndpointPolicy(k8s.EndpointPolicy{AllowPrivate: cfg.AllowPrivateClusterEndpoints})
+
 	sqlDB, entClient, err := db.Open(cfg.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)

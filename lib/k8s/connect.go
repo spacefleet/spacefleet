@@ -12,7 +12,11 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"k8s.io/client-go/discovery"
@@ -54,6 +58,123 @@ const (
 // API server can't hang a request handler.
 const probeTimeout = 10 * time.Second
 
+// EndpointPolicy restricts which network destinations a user-supplied cluster
+// API endpoint is allowed to resolve to. It governs only the methods whose
+// endpoint is chosen by the caller — token and kubeconfig. The cloud methods
+// (eks/gke/aks) learn their endpoint from the provider after proving ownership
+// of cloud credentials, and in_cluster targets the pod's own fixed API server,
+// so neither is an attacker-controlled SSRF vector and neither is subject to
+// this policy.
+type EndpointPolicy struct {
+	// AllowPrivate permits loopback (127.0.0.0/8, ::1) and RFC1918/ULA private
+	// addresses (10/8, 172.16/12, 192.168/16, fc00::/7). Default false so a
+	// malicious org member cannot use the server as an SSRF proxy to localhost
+	// services (the bundled Postgres/Dex, debug endpoints) or to sweep the
+	// internal pod network. Self-hosters whose clusters live on a private
+	// network opt in via ALLOW_PRIVATE_CLUSTER_ENDPOINTS=true.
+	//
+	// Cloud-metadata / link-local (169.254.0.0/16, fe80::/10), the unspecified
+	// address, and multicast are rejected unconditionally — none is ever a
+	// legitimate Kubernetes API server, and the metadata endpoint is the
+	// highest-value SSRF target (it hands out the node's IAM credentials).
+	AllowPrivate bool
+}
+
+// endpointPolicy is the process-wide policy, configured once at startup via
+// SetEndpointPolicy. The zero value (AllowPrivate=false) is the secure default,
+// so it is safe before SetEndpointPolicy is called (e.g. in tests).
+var endpointPolicy atomic.Pointer[EndpointPolicy]
+
+func init() {
+	endpointPolicy.Store(&EndpointPolicy{})
+}
+
+// SetEndpointPolicy installs the process-wide endpoint policy from operator
+// configuration. Call once at startup, before serving requests.
+func SetEndpointPolicy(p EndpointPolicy) { endpointPolicy.Store(&p) }
+
+func currentEndpointPolicy() EndpointPolicy { return *endpointPolicy.Load() }
+
+// unconditionallyDeniedIP reports the addresses that are never a legitimate
+// Kubernetes API server regardless of policy: cloud-metadata / link-local
+// (169.254.0.0/16 incl. 169.254.169.254, fe80::/10), the unspecified address,
+// and multicast. These are rejected up front (a literal endpoint IP fails at
+// registration with a clear error) as well as at dial time.
+func unconditionallyDeniedIP(ip net.IP) error {
+	switch {
+	case ip.IsUnspecified():
+		return fmt.Errorf("k8s: endpoint resolves to the unspecified address %s, which is not allowed", ip)
+	case ip.IsLinkLocalUnicast(), ip.IsLinkLocalMulticast():
+		return fmt.Errorf("k8s: endpoint resolves to a link-local/metadata address %s, which is not allowed", ip)
+	case ip.IsMulticast():
+		return fmt.Errorf("k8s: endpoint resolves to a multicast address %s, which is not allowed", ip)
+	}
+	return nil
+}
+
+// allowsIP reports whether the policy permits connecting to ip. It is the
+// dial-time enforcement (run by the Control hook on the resolved IP of every
+// connection, which is what defeats DNS rebinding) and the full classifier the
+// up-front check builds on.
+func (p EndpointPolicy) allowsIP(ip net.IP) error {
+	if err := unconditionallyDeniedIP(ip); err != nil {
+		return err
+	}
+	if p.AllowPrivate {
+		return nil
+	}
+	if ip.IsLoopback() || ip.IsPrivate() {
+		return fmt.Errorf("k8s: endpoint resolves to a private address %s, which is not allowed; set ALLOW_PRIVATE_CLUSTER_ENDPOINTS=true if this deployment must reach clusters on a private network", ip)
+	}
+	return nil
+}
+
+// guardEndpoint applies the SSRF endpoint policy to a *rest.Config built from a
+// user-supplied endpoint. It requires https and installs a dial-time Control
+// hook that re-checks the resolved IP on every connection. That hook is the
+// actual security boundary: a hostname can resolve to a public IP at validation
+// time and a private one when dialed (DNS rebinding), and it covers the probe
+// and every live reader uniformly.
+//
+// A literal endpoint IP is additionally rejected up front, but only for the
+// unconditional set (metadata/link-local/…). Loopback/private are left to the
+// dial hook on purpose: a same-cluster kubeconfig whose loopback endpoint is
+// rewritten to in-cluster DNS (see Kubeconfig) is never actually dialed at the
+// loopback, so rejecting it at build time would be a false positive.
+func guardEndpoint(cfg *rest.Config) error {
+	policy := currentEndpointPolicy()
+	u, err := url.Parse(cfg.Host)
+	if err != nil {
+		return fmt.Errorf("k8s: invalid endpoint %q: %w", cfg.Host, err)
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("k8s: endpoint must use https, got %q", cfg.Host)
+	}
+	if u.Hostname() == "" {
+		return fmt.Errorf("k8s: endpoint %q has no host", cfg.Host)
+	}
+	if ip := net.ParseIP(u.Hostname()); ip != nil {
+		if err := unconditionallyDeniedIP(ip); err != nil {
+			return err
+		}
+	}
+	dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second,
+		Control: func(_, address string, _ syscall.RawConn) error {
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				return fmt.Errorf("k8s: parse dial address %q: %w", address, err)
+			}
+			ip := net.ParseIP(host)
+			if ip == nil {
+				return fmt.Errorf("k8s: dial address %q is not an IP", host)
+			}
+			return policy.allowsIP(ip)
+		},
+	}
+	cfg.Dial = dialer.DialContext
+	return nil
+}
+
 // Connection is the fully-resolved, decrypted view of a cluster needed to build
 // a client. Credentials carries already-decrypted secret material (a kubeconfig
 // or bearer token for the portable methods; cloud credentials for the rest).
@@ -72,12 +193,7 @@ func RESTConfig(ctx context.Context, conn Connection) (*rest.Config, error) {
 	case MethodInCluster:
 		return rest.InClusterConfig()
 	case MethodKubeconfig:
-		// NOTE: a kubeconfig that authenticates via an exec plugin (the
-		// `aws eks get-token` / `gke-gcloud-auth-plugin` / `kubelogin` helpers
-		// that cloud CLIs write) will not resolve server-side — those binaries
-		// aren't present. Such clusters should use the native eks/gke/aks
-		// methods, which mint tokens directly.
-		return clientcmd.RESTConfigFromKubeConfig(conn.Credentials)
+		return kubeconfigRESTConfig(conn.Credentials)
 	case MethodToken:
 		return tokenRESTConfig(conn)
 	case MethodEKS:
@@ -89,6 +205,51 @@ func RESTConfig(ctx context.Context, conn Connection) (*rest.Config, error) {
 	default:
 		return nil, fmt.Errorf("k8s: unknown connection method %q", conn.Method)
 	}
+}
+
+// kubeconfigRESTConfig builds a config from a user-supplied kubeconfig, after
+// rejecting any auth method that would run a local binary or external helper on
+// the Spacefleet host.
+//
+// A kubeconfig `exec` block names an arbitrary command that client-go runs (the
+// default policy is PluginPolicyAllowAll) the first time it authenticates — for
+// us, synchronously during the registration probe. That is remote code
+// execution on the serve/worker host from any caller who can register a
+// cluster, so we refuse exec entirely. The legacy `auth-provider` block is
+// rejected for the same reason (some providers shell out / make their own
+// network calls). Clusters that legitimately need such a helper — the cloud
+// CLIs' `aws eks get-token` / `gke-gcloud-auth-plugin` / `kubelogin` — must use
+// the native eks/gke/aks methods, which mint tokens directly. Only static
+// credentials (token, client cert, basic auth) are allowed here, mirroring the
+// existing AKS guard (see aks.go).
+func kubeconfigRESTConfig(kubeconfig []byte) (*rest.Config, error) {
+	raw, err := clientcmd.Load(kubeconfig)
+	if err != nil {
+		return nil, fmt.Errorf("k8s: parse kubeconfig: %w", err)
+	}
+	for name, authInfo := range raw.AuthInfos {
+		if authInfo.Exec != nil {
+			return nil, fmt.Errorf("k8s: kubeconfig user %q uses an exec credential plugin, which is not allowed; use the eks/gke/aks connection method or a static token/client-certificate kubeconfig", name)
+		}
+		if authInfo.AuthProvider != nil {
+			return nil, fmt.Errorf("k8s: kubeconfig user %q uses an auth-provider plugin, which is not allowed; use the eks/gke/aks connection method or a static token/client-certificate kubeconfig", name)
+		}
+	}
+	cfg, err := clientcmd.RESTConfigFromKubeConfig(kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+	// Belt-and-suspenders: even if a future client-go change resolved a plugin
+	// we didn't catch above, never hand a config that would exec a binary.
+	if cfg.ExecProvider != nil || cfg.AuthProvider != nil {
+		return nil, fmt.Errorf("k8s: kubeconfig resolves to an exec/auth-provider credential, which is not allowed")
+	}
+	// The kubeconfig's server URL is fully caller-controlled, so enforce the
+	// SSRF endpoint policy on it just like the token method.
+	if err := guardEndpoint(cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
 
 // tokenRESTConfig builds a config from an explicit API URL, CA, and bearer
@@ -108,6 +269,9 @@ func tokenRESTConfig(conn Connection) (*rest.Config, error) {
 		cfg.TLSClientConfig = rest.TLSClientConfig{Insecure: true}
 	} else if ca := conn.Config[ConfigKeyCA]; ca != "" {
 		cfg.TLSClientConfig = rest.TLSClientConfig{CAData: []byte(ca)}
+	}
+	if err := guardEndpoint(cfg); err != nil {
+		return nil, err
 	}
 	return cfg, nil
 }

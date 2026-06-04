@@ -83,6 +83,16 @@ type Config struct {
 	// surfaced to the browser via /config.js.
 	LoginMethods []LoginMethod
 
+	// AllowPrivateClusterEndpoints lets registered cluster endpoints (the token
+	// and kubeconfig methods, whose endpoint is caller-supplied) point at
+	// loopback or RFC1918/ULA private addresses. Off by default: a malicious org
+	// member must not be able to use the server as an SSRF proxy to localhost
+	// services (the bundled Postgres/Dex, debug endpoints) or to sweep the
+	// internal pod network. Self-hosters whose clusters live on a private network
+	// set ALLOW_PRIVATE_CLUSTER_ENDPOINTS=true. Cloud-metadata / link-local
+	// (169.254.x) is always rejected regardless of this flag. Non-secret.
+	AllowPrivateClusterEndpoints bool
+
 	// AllowOrgCreation controls whether users may create new organizations.
 	// On by default; set ALLOW_ORG_CREATION=false to lock it down so that
 	// only invited users (added to an existing org) can use the app — a
@@ -189,6 +199,12 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	cfg.AllowOrgCreation = allowOrgCreation
+
+	allowPrivateEndpoints, err := parseBool("ALLOW_PRIVATE_CLUSTER_ENDPOINTS", false)
+	if err != nil {
+		return nil, err
+	}
+	cfg.AllowPrivateClusterEndpoints = allowPrivateEndpoints
 
 	smtpPort, err := parsePositiveInt("SMTP_PORT", 587)
 	if err != nil {
