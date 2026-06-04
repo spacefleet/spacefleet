@@ -11,6 +11,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/lib/applications"
 	"github.com/spacefleet/spacefleet/lib/auth"
+	"github.com/spacefleet/spacefleet/lib/chartcredentials"
 	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/email"
 	"github.com/spacefleet/spacefleet/lib/invitations"
@@ -20,11 +21,12 @@ import (
 )
 
 type Server struct {
-	users        *users.Service
-	orgs         *organizations.Service
-	clusters     *clusters.Service
-	applications *applications.Service
-	invites      *invitations.Service
+	users            *users.Service
+	orgs             *organizations.Service
+	clusters         *clusters.Service
+	applications     *applications.Service
+	chartCredentials *chartcredentials.Service
+	invites          *invitations.Service
 
 	// allowOrgCreation gates the create-organization endpoint. When false,
 	// the server refuses to mint new organizations (see config.AllowOrgCreation)
@@ -56,6 +58,7 @@ type ServerDeps struct {
 	Orgs             *organizations.Service
 	Clusters         *clusters.Service
 	Applications     *applications.Service
+	ChartCredentials *chartcredentials.Service
 	Invites          *invitations.Service
 	AllowOrgCreation bool
 	ExternalURL      string
@@ -70,6 +73,7 @@ func NewServer(d ServerDeps) *Server {
 		orgs:             d.Orgs,
 		clusters:         d.Clusters,
 		applications:     d.Applications,
+		chartCredentials: d.ChartCredentials,
 		invites:          d.Invites,
 		allowOrgCreation: d.AllowOrgCreation,
 		externalURL:      d.ExternalURL,

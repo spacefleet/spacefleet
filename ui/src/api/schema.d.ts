@@ -663,6 +663,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{id}/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an application's deployment history
+         * @description Org-scoped. Returns the application's rollout runs newest-first — one per
+         *     deploy/upgrade/uninstall — for a CI-like history. Logs are not included
+         *     here (they can be large); fetch a single deployment for its logs.
+         */
+        get: operations["listDeployments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{id}/deployments/{deploymentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one deployment run, with its captured logs */
+        get: operations["getDeployment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chart-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the chart credentials in the current organization
+         * @description Org-scoped: the organization is taken from the X-Organization-ID header.
+         *     Credentials for pulling private Helm charts ("Private Charts"). The
+         *     password is never returned.
+         */
+        get: operations["listChartCredentials"];
+        put?: never;
+        /**
+         * Register a chart credential in the current organization
+         * @description Org-scoped, editor or above. The password is sealed at rest and never
+         *     returned. Requires an encryption key (SPACEFLEET_SECRET_KEY).
+         */
+        post: operations["createChartCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chart-credentials/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a chart credential */
+        get: operations["getChartCredential"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a chart credential
+         * @description Org-scoped, editor or above. A credential still attached to an
+         *     application cannot be deleted (409).
+         */
+        delete: operations["deleteChartCredential"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a chart credential
+         * @description Org-scoped, editor or above. Updates the name, username, and/or
+         *     password. The type is fixed at registration.
+         */
+        patch: operations["updateChartCredential"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1165,6 +1258,13 @@ export interface components {
             target_cluster_id: string;
             /** Format: uuid */
             runner_cluster_id: string;
+            /**
+             * Format: uuid
+             * @description Private-chart credential used to pull the chart (absent for public
+             *     charts). Its type matches chart_source (basic_auth → http_repo,
+             *     oci → oci).
+             */
+            chart_credential_id?: string;
             status: components["schemas"]["ApplicationStatus"];
             /** @description Human-readable detail (last rollout-progress line, or error). */
             status_message?: string;
@@ -1195,6 +1295,12 @@ export interface components {
             target_cluster_id: string;
             /** Format: uuid */
             runner_cluster_id: string;
+            /**
+             * Format: uuid
+             * @description Optional private-chart credential to attach. Its type must match
+             *     chart_source (basic_auth → http_repo, oci → oci); git charts take none.
+             */
+            chart_credential_id?: string;
         };
         /**
          * @description All fields optional. The clusters and chart source are fixed at
@@ -1209,6 +1315,12 @@ export interface components {
             values?: string;
             release_name?: string;
             target_namespace?: string;
+            /**
+             * Format: uuid
+             * @description Change the attached credential. Send the nil UUID
+             *     (00000000-0000-0000-0000-000000000000) to detach.
+             */
+            chart_credential_id?: string;
         };
         ApplicationRolloutRequest: {
             /**
@@ -1216,6 +1328,82 @@ export interface components {
              * @enum {string}
              */
             action: "deploy" | "upgrade";
+        };
+        /**
+         * @description The auth scheme of a chart credential, fixed at registration. Matches the
+         *     chart source it authenticates:
+         *       - basic_auth: HTTP Helm repository (helm repo add --username/--password).
+         *       - oci: OCI registry (helm registry login).
+         * @enum {string}
+         */
+        ChartCredentialType: "basic_auth" | "oci";
+        /**
+         * @description A named credential set for pulling private Helm charts ("Private
+         *     Charts"). The password is sealed at rest and never returned.
+         */
+        ChartCredential: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            type: components["schemas"]["ChartCredentialType"];
+            /** @description Registry/repo username (non-secret). */
+            username?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ChartCredentialCreateRequest: {
+            name: string;
+            type: components["schemas"]["ChartCredentialType"];
+            username?: string;
+            password: string;
+        };
+        /**
+         * @description All fields optional. The type is fixed at registration. Supplying a
+         *     password rotates it; an empty password is rejected.
+         */
+        ChartCredentialUpdateRequest: {
+            name?: string;
+            username?: string;
+            password?: string;
+        };
+        /**
+         * @description The rollout action a deployment run performed.
+         * @enum {string}
+         */
+        DeploymentAction: "deploy" | "upgrade" | "uninstall";
+        /**
+         * @description The run's lifecycle: running, then a terminal succeeded/failed.
+         * @enum {string}
+         */
+        DeploymentStatus: "running" | "succeeded" | "failed";
+        /** @description One rollout run of an application (a history entry). */
+        Deployment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            application_id: string;
+            action: components["schemas"]["DeploymentAction"];
+            status: components["schemas"]["DeploymentStatus"];
+            /** @description Human-readable detail (last progress line, or the error). */
+            message?: string;
+            /** @description The TaskRun name on the runner cluster for this run. */
+            run_name?: string;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the run settled; absent while still running.
+             */
+            finished_at?: string | null;
+        };
+        DeploymentDetail: components["schemas"]["Deployment"] & {
+            /**
+             * @description The captured Helm output, persisted when the run settled. Empty
+             *     while a run is still in flight (follow it live via the log stream).
+             */
+            logs?: string;
         };
     };
     responses: {
@@ -1233,6 +1421,8 @@ export interface components {
         OrganizationID: string;
         ClusterID: string;
         ApplicationID: string;
+        ChartCredentialID: string;
+        DeploymentID: string;
         MemberUserID: string;
         InvitationID: string;
         InviteToken: string;
@@ -2106,6 +2296,170 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Application"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listDeployments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The application's deployment runs, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Deployment"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                deploymentId: components["parameters"]["DeploymentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The deployment run, including its captured Helm output */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentDetail"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listChartCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Chart credentials in the current organization */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChartCredential"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createChartCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChartCredentialCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Chart credential registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChartCredential"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getChartCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ChartCredentialID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The chart credential */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChartCredential"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteChartCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ChartCredentialID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Chart credential deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateChartCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ChartCredentialID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChartCredentialUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Chart credential updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChartCredential"];
                 };
             };
             default: components["responses"]["Error"];

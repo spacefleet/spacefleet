@@ -73,6 +73,7 @@ export const navSections: NavSection[] = [
     items: [
       { label: "Members", path: "/admin/members" },
       { label: "Clusters", path: "/admin/clusters" },
+      { label: "Private Charts", path: "/admin/private-charts" },
     ],
   },
 ];

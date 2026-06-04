@@ -121,18 +121,20 @@ func tokenRESTConfig(conn Connection) (*rest.Config, error) {
 // token, or a client cert/key for a cert-based kubeconfig) into a single-context
 // kubeconfig via clientcmd.Write.
 //
-// For in_cluster the host is rewritten to the stable in-cluster DNS so the
-// kubeconfig resolves from another pod in the same cluster; this requires the
-// caller to run in-cluster (RESTConfig surfaces a clear error otherwise) and the
-// consumer to be in that same cluster (enforced upstream: runner == target).
-func Kubeconfig(ctx context.Context, conn Connection) ([]byte, error) {
+// The host is rewritten to the stable in-cluster DNS when the consumer runs in
+// this same cluster — always for in_cluster (whose resolved KUBERNETES_SERVICE_HOST
+// IP is never portable), and whenever inSameCluster is set (runner == target).
+// The latter matters for clusters whose registered endpoint is unreachable from
+// inside — e.g. a kind cluster's host-side loopback (127.0.0.1:<port>), which
+// points at the pod's own loopback once injected into a TaskRun in that cluster.
+func Kubeconfig(ctx context.Context, conn Connection, inSameCluster bool) ([]byte, error) {
 	cfg, err := RESTConfig(ctx, conn)
 	if err != nil {
 		return nil, err
 	}
 
 	host := cfg.Host
-	if conn.Method == MethodInCluster {
+	if conn.Method == MethodInCluster || inSameCluster {
 		host = inClusterDNS
 	}
 

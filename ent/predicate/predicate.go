@@ -9,8 +9,14 @@ import (
 // Application is the predicate function for application builders.
 type Application func(*sql.Selector)
 
+// ChartCredential is the predicate function for chartcredential builders.
+type ChartCredential func(*sql.Selector)
+
 // Cluster is the predicate function for cluster builders.
 type Cluster func(*sql.Selector)
+
+// Deployment is the predicate function for deployment builders.
+type Deployment func(*sql.Selector)
 
 // Invitation is the predicate function for invitation builders.
 type Invitation func(*sql.Selector)

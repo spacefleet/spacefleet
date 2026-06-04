@@ -762,6 +762,138 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/applications/{id}/deployments:
+    get:
+      summary: List an application's deployment history
+      description: |
+        Org-scoped. Returns the application's rollout runs newest-first — one per
+        deploy/upgrade/uninstall — for a CI-like history. Logs are not included
+        here (they can be large); fetch a single deployment for its logs.
+      operationId: listDeployments
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+      responses:
+        "200":
+          description: The application's deployment runs, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Deployment"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/applications/{id}/deployments/{deploymentId}:
+    get:
+      summary: Get one deployment run, with its captured logs
+      operationId: getDeployment
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+        - $ref: "#/components/parameters/DeploymentID"
+      responses:
+        "200":
+          description: The deployment run, including its captured Helm output
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeploymentDetail"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/chart-credentials:
+    get:
+      summary: List the chart credentials in the current organization
+      description: |
+        Org-scoped: the organization is taken from the X-Organization-ID header.
+        Credentials for pulling private Helm charts ("Private Charts"). The
+        password is never returned.
+      operationId: listChartCredentials
+      responses:
+        "200":
+          description: Chart credentials in the current organization
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChartCredential"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Register a chart credential in the current organization
+      description: |
+        Org-scoped, editor or above. The password is sealed at rest and never
+        returned. Requires an encryption key (SPACEFLEET_SECRET_KEY).
+      operationId: createChartCredential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChartCredentialCreateRequest"
+      responses:
+        "201":
+          description: Chart credential registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChartCredential"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/chart-credentials/{id}:
+    get:
+      summary: Get a chart credential
+      operationId: getChartCredential
+      parameters:
+        - $ref: "#/components/parameters/ChartCredentialID"
+      responses:
+        "200":
+          description: The chart credential
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChartCredential"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      summary: Update a chart credential
+      description: |
+        Org-scoped, editor or above. Updates the name, username, and/or
+        password. The type is fixed at registration.
+      operationId: updateChartCredential
+      parameters:
+        - $ref: "#/components/parameters/ChartCredentialID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChartCredentialUpdateRequest"
+      responses:
+        "200":
+          description: Chart credential updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChartCredential"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete a chart credential
+      description: |
+        Org-scoped, editor or above. A credential still attached to an
+        application cannot be deleted (409).
+      operationId: deleteChartCredential
+      parameters:
+        - $ref: "#/components/parameters/ChartCredentialID"
+      responses:
+        "204":
+          description: Chart credential deleted
+        default:
+          $ref: "#/components/responses/Error"
+
 components:
   schemas:
     Health:
@@ -1641,6 +1773,13 @@ components:
         runner_cluster_id:
           type: string
           format: uuid
+        chart_credential_id:
+          type: string
+          format: uuid
+          description: |
+            Private-chart credential used to pull the chart (absent for public
+            charts). Its type matches chart_source (basic_auth → http_repo,
+            oci → oci).
         status:
           $ref: "#/components/schemas/ApplicationStatus"
         status_message:
@@ -1690,6 +1829,12 @@ components:
         runner_cluster_id:
           type: string
           format: uuid
+        chart_credential_id:
+          type: string
+          format: uuid
+          description: |
+            Optional private-chart credential to attach. Its type must match
+            chart_source (basic_auth → http_repo, oci → oci); git charts take none.
 
     ApplicationUpdateRequest:
       type: object
@@ -1713,6 +1858,12 @@ components:
         target_namespace:
           type: string
           minLength: 1
+        chart_credential_id:
+          type: string
+          format: uuid
+          description: |
+            Change the attached credential. Send the nil UUID
+            (00000000-0000-0000-0000-000000000000) to detach.
 
     ApplicationRolloutRequest:
       type: object
@@ -1722,6 +1873,123 @@ components:
           type: string
           description: deploy and upgrade both run `helm upgrade --install`.
           enum: [deploy, upgrade]
+
+    ChartCredentialType:
+      type: string
+      description: |
+        The auth scheme of a chart credential, fixed at registration. Matches the
+        chart source it authenticates:
+          - basic_auth: HTTP Helm repository (helm repo add --username/--password).
+          - oci: OCI registry (helm registry login).
+      enum: [basic_auth, oci]
+
+    ChartCredential:
+      type: object
+      description: |
+        A named credential set for pulling private Helm charts ("Private
+        Charts"). The password is sealed at rest and never returned.
+      required: [id, name, type, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/ChartCredentialType"
+        username:
+          type: string
+          description: Registry/repo username (non-secret).
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ChartCredentialCreateRequest:
+      type: object
+      required: [name, type, password]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        type:
+          $ref: "#/components/schemas/ChartCredentialType"
+        username:
+          type: string
+        password:
+          type: string
+          minLength: 1
+
+    ChartCredentialUpdateRequest:
+      type: object
+      description: |
+        All fields optional. The type is fixed at registration. Supplying a
+        password rotates it; an empty password is rejected.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        username:
+          type: string
+        password:
+          type: string
+          minLength: 1
+
+    DeploymentAction:
+      type: string
+      description: The rollout action a deployment run performed.
+      enum: [deploy, upgrade, uninstall]
+
+    DeploymentStatus:
+      type: string
+      description: |
+        The run's lifecycle: running, then a terminal succeeded/failed.
+      enum: [running, succeeded, failed]
+
+    Deployment:
+      type: object
+      description: One rollout run of an application (a history entry).
+      required: [id, application_id, action, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        application_id:
+          type: string
+          format: uuid
+        action:
+          $ref: "#/components/schemas/DeploymentAction"
+        status:
+          $ref: "#/components/schemas/DeploymentStatus"
+        message:
+          type: string
+          description: Human-readable detail (last progress line, or the error).
+        run_name:
+          type: string
+          description: The TaskRun name on the runner cluster for this run.
+        created_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the run settled; absent while still running.
+
+    DeploymentDetail:
+      allOf:
+        - $ref: "#/components/schemas/Deployment"
+        - type: object
+          properties:
+            logs:
+              type: string
+              description: |
+                The captured Helm output, persisted when the run settled. Empty
+                while a run is still in flight (follow it live via the log stream).
 
   parameters:
     OrganizationID:
@@ -1743,6 +2011,22 @@ components:
     ApplicationID:
       in: path
       name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    ChartCredentialID:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    DeploymentID:
+      in: path
+      name: deploymentId
       required: true
       schema:
         type: string

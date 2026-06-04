@@ -60,10 +60,14 @@ const (
 )
 
 // File names injected into the rollout step (keys in tekton.RunSpec.Files),
-// mounted under tekton.CredsMountPath.
+// mounted under tekton.CredsMountPath. The registry files carry a private-chart
+// credential (when one is attached); the script reads them at runtime so the
+// password never appears in the script string, the TaskRun manifest, or env.
 const (
-	KubeconfigFile = "kubeconfig"
-	ValuesFile     = "values.yaml"
+	KubeconfigFile       = "kubeconfig"
+	ValuesFile           = "values.yaml"
+	RegistryUsernameFile = "registry-username"
+	RegistryPasswordFile = "registry-password"
 )
 
 // DefaultImage is the helm CLI image the rollout step runs in. alpine/k8s
@@ -96,6 +100,13 @@ type Rollout struct {
 	ReleaseName     string
 	TargetNamespace string
 	WaitTimeout     time.Duration
+	// HasCredential injects private-chart auth before the pull: for http_repo the
+	// helm repo add gets --username/--password (from the mounted registry files);
+	// for oci a `helm registry login --password-stdin` step runs first. The
+	// credential's type is validated against ChartSource upstream, so the source
+	// alone selects the injection. The values come from the mounted files, never
+	// this script string.
+	HasCredential bool
 }
 
 // Script renders the shell script the rollout step runs. All forms target the
@@ -122,6 +133,8 @@ func Script(r Rollout) string {
 
 	version := r.Config[ConfigVersion]
 	repoURL := r.Config[ConfigRepoURL]
+	userFile := tekton.CredsMountPath + "/" + RegistryUsernameFile
+	passFile := tekton.CredsMountPath + "/" + RegistryPasswordFile
 
 	// install is the shared `helm upgrade --install <release> <ref> [flags]` line;
 	// chartRef and any prep differ per source.
@@ -136,10 +149,23 @@ func Script(r Rollout) string {
 
 	switch r.ChartSource {
 	case SourceHTTPRepo:
-		fmt.Fprintf(&b, "helm repo add r %s\n", shQuote(repoURL))
+		if r.HasCredential {
+			// Read the username/password from the mounted files at runtime so the
+			// secret stays out of this script string and the TaskRun manifest.
+			fmt.Fprintf(&b, "helm repo add r %s --username \"$(cat %s)\" --password \"$(cat %s)\"\n",
+				shQuote(repoURL), shQuote(userFile), shQuote(passFile))
+		} else {
+			fmt.Fprintf(&b, "helm repo add r %s\n", shQuote(repoURL))
+		}
 		b.WriteString("helm repo update r\n")
 		install("r/" + r.Config[ConfigChart])
 	case SourceOCI:
+		if r.HasCredential {
+			// --password-stdin keeps the password off the process args entirely; the
+			// password file is redirected as stdin.
+			fmt.Fprintf(&b, "helm registry login %s --username \"$(cat %s)\" --password-stdin < %s\n",
+				shQuote(ociRegistryHost(repoURL)), shQuote(userFile), shQuote(passFile))
+		}
 		install(repoURL)
 	case SourceGit:
 		ref := r.Config[ConfigGitRef]
@@ -168,4 +194,15 @@ func Script(r Rollout) string {
 // escaping any embedded single quotes.
 func shQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// ociRegistryHost extracts the registry host `helm registry login` expects from
+// an OCI chart reference like "oci://registry-1.docker.io/org/chart": the scheme
+// is stripped and only the host (up to the first path separator) is kept.
+func ociRegistryHost(repoURL string) string {
+	s := strings.TrimPrefix(repoURL, "oci://")
+	if i := strings.IndexByte(s, '/'); i >= 0 {
+		s = s[:i]
+	}
+	return s
 }

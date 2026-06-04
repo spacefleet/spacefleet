@@ -129,8 +129,8 @@ func TestRolloutWorkerUninstall(t *testing.T) {
 	}
 }
 
-// TestRolloutWorkerReattach: when the plan carries an existing run that still
-// exists, the worker re-attaches (watches) instead of resubmitting.
+// TestRolloutWorkerReattach: when the plan carries an existing run that is still
+// in flight, the worker re-attaches (watches) instead of resubmitting.
 func TestRolloutWorkerReattach(t *testing.T) {
 	store := &fakeStore{plan: RolloutPlan{ExistingRun: "old-run"}}
 	submitCalls := 0
@@ -141,7 +141,7 @@ func TestRolloutWorkerReattach(t *testing.T) {
 			return &tekton.RunStatus{Name: "new-run"}, nil
 		},
 		getFn: func(context.Context, k8s.Connection, string, string) (*tekton.RunStatus, error) {
-			return &tekton.RunStatus{Name: "old-run"}, nil // exists
+			return &tekton.RunStatus{Name: "old-run", Phase: "Running"}, nil // still in flight
 		},
 		watchFn: func(_ context.Context, _ k8s.Connection, _, name string) (*tekton.RunStream, error) {
 			return terminalStream(name, "Succeeded", ""), nil
@@ -152,6 +152,36 @@ func TestRolloutWorkerReattach(t *testing.T) {
 	}
 	if submitCalls != 0 {
 		t.Errorf("expected re-attach (no submit), got %d submit calls", submitCalls)
+	}
+	if lastStatus(store) != StatusDeployed {
+		t.Errorf("final status = %q, want deployed", lastStatus(store))
+	}
+}
+
+// TestRolloutWorkerResubmitsAfterTerminalRun: a re-deploy whose existing run
+// already reached a terminal phase (e.g. the prior failed attempt) must submit a
+// fresh run, not re-attach and replay the old outcome.
+func TestRolloutWorkerResubmitsAfterTerminalRun(t *testing.T) {
+	store := &fakeStore{plan: RolloutPlan{ExistingRun: "old-run"}}
+	submitCalls := 0
+	w := &RolloutWorker{
+		Store: store,
+		submitFn: func(context.Context, k8s.Connection, string, tekton.RunSpec) (*tekton.RunStatus, error) {
+			submitCalls++
+			return &tekton.RunStatus{Name: "new-run"}, nil
+		},
+		getFn: func(context.Context, k8s.Connection, string, string) (*tekton.RunStatus, error) {
+			return &tekton.RunStatus{Name: "old-run", Phase: "Failed"}, nil // terminal
+		},
+		watchFn: func(_ context.Context, _ k8s.Connection, _, name string) (*tekton.RunStream, error) {
+			return terminalStream(name, "Succeeded", ""), nil
+		},
+	}
+	if err := w.Work(context.Background(), rolloutJob(ActionDeploy)); err != nil {
+		t.Fatalf("Work: %v", err)
+	}
+	if submitCalls != 1 {
+		t.Errorf("expected a fresh submit after a terminal run, got %d submit calls", submitCalls)
 	}
 	if lastStatus(store) != StatusDeployed {
 		t.Errorf("final status = %q, want deployed", lastStatus(store))

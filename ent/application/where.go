@@ -91,6 +91,11 @@ func RunnerClusterID(v uuid.UUID) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldRunnerClusterID, v))
 }
 
+// ChartCredentialID applies equality check predicate on the "chart_credential_id" field. It's identical to ChartCredentialIDEQ.
+func ChartCredentialID(v uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldChartCredentialID, v))
+}
+
 // StatusMessage applies equality check predicate on the "status_message" field. It's identical to StatusMessageEQ.
 func StatusMessage(v string) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldStatusMessage, v))
@@ -506,6 +511,36 @@ func RunnerClusterIDNotIn(vs ...uuid.UUID) predicate.Application {
 	return predicate.Application(sql.FieldNotIn(FieldRunnerClusterID, vs...))
 }
 
+// ChartCredentialIDEQ applies the EQ predicate on the "chart_credential_id" field.
+func ChartCredentialIDEQ(v uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldChartCredentialID, v))
+}
+
+// ChartCredentialIDNEQ applies the NEQ predicate on the "chart_credential_id" field.
+func ChartCredentialIDNEQ(v uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldChartCredentialID, v))
+}
+
+// ChartCredentialIDIn applies the In predicate on the "chart_credential_id" field.
+func ChartCredentialIDIn(vs ...uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldIn(FieldChartCredentialID, vs...))
+}
+
+// ChartCredentialIDNotIn applies the NotIn predicate on the "chart_credential_id" field.
+func ChartCredentialIDNotIn(vs ...uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldNotIn(FieldChartCredentialID, vs...))
+}
+
+// ChartCredentialIDIsNil applies the IsNil predicate on the "chart_credential_id" field.
+func ChartCredentialIDIsNil() predicate.Application {
+	return predicate.Application(sql.FieldIsNull(FieldChartCredentialID))
+}
+
+// ChartCredentialIDNotNil applies the NotNil predicate on the "chart_credential_id" field.
+func ChartCredentialIDNotNil() predicate.Application {
+	return predicate.Application(sql.FieldNotNull(FieldChartCredentialID))
+}
+
 // StatusEQ applies the EQ predicate on the "status" field.
 func StatusEQ(v Status) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldStatus, v))
@@ -892,6 +927,29 @@ func HasRunnerCluster() predicate.Application {
 func HasRunnerClusterWith(preds ...predicate.Cluster) predicate.Application {
 	return predicate.Application(func(s *sql.Selector) {
 		step := newRunnerClusterStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasChartCredential applies the HasEdge predicate on the "chart_credential" edge.
+func HasChartCredential() predicate.Application {
+	return predicate.Application(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, ChartCredentialTable, ChartCredentialColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasChartCredentialWith applies the HasEdge predicate on the "chart_credential" edge with a given conditions (other predicates).
+func HasChartCredentialWith(preds ...predicate.ChartCredential) predicate.Application {
+	return predicate.Application(func(s *sql.Selector) {
+		step := newChartCredentialStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

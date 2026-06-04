@@ -14,8 +14,12 @@ type Tx struct {
 	config
 	// Application is the client for interacting with the Application builders.
 	Application *ApplicationClient
+	// ChartCredential is the client for interacting with the ChartCredential builders.
+	ChartCredential *ChartCredentialClient
 	// Cluster is the client for interacting with the Cluster builders.
 	Cluster *ClusterClient
+	// Deployment is the client for interacting with the Deployment builders.
+	Deployment *DeploymentClient
 	// Invitation is the client for interacting with the Invitation builders.
 	Invitation *InvitationClient
 	// Membership is the client for interacting with the Membership builders.
@@ -158,7 +162,9 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.Application = NewApplicationClient(tx.config)
+	tx.ChartCredential = NewChartCredentialClient(tx.config)
 	tx.Cluster = NewClusterClient(tx.config)
+	tx.Deployment = NewDeploymentClient(tx.config)
 	tx.Invitation = NewInvitationClient(tx.config)
 	tx.Membership = NewMembershipClient(tx.config)
 	tx.Organization = NewOrganizationClient(tx.config)

@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/application"
+	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/organization"
 )
@@ -41,6 +42,8 @@ type Application struct {
 	TargetClusterID uuid.UUID `json:"target_cluster_id,omitempty"`
 	// RunnerClusterID holds the value of the "runner_cluster_id" field.
 	RunnerClusterID uuid.UUID `json:"runner_cluster_id,omitempty"`
+	// ChartCredentialID holds the value of the "chart_credential_id" field.
+	ChartCredentialID uuid.UUID `json:"chart_credential_id,omitempty"`
 	// Status holds the value of the "status" field.
 	Status application.Status `json:"status,omitempty"`
 	// StatusMessage holds the value of the "status_message" field.
@@ -67,9 +70,11 @@ type ApplicationEdges struct {
 	TargetCluster *Cluster `json:"target_cluster,omitempty"`
 	// RunnerCluster holds the value of the runner_cluster edge.
 	RunnerCluster *Cluster `json:"runner_cluster,omitempty"`
+	// ChartCredential holds the value of the chart_credential edge.
+	ChartCredential *ChartCredential `json:"chart_credential,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [4]bool
 }
 
 // OrganizationOrErr returns the Organization value or an error if the edge
@@ -105,6 +110,17 @@ func (e ApplicationEdges) RunnerClusterOrErr() (*Cluster, error) {
 	return nil, &NotLoadedError{edge: "runner_cluster"}
 }
 
+// ChartCredentialOrErr returns the ChartCredential value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ApplicationEdges) ChartCredentialOrErr() (*ChartCredential, error) {
+	if e.ChartCredential != nil {
+		return e.ChartCredential, nil
+	} else if e.loadedTypes[3] {
+		return nil, &NotFoundError{label: chartcredential.Label}
+	}
+	return nil, &NotLoadedError{edge: "chart_credential"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*Application) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
@@ -116,7 +132,7 @@ func (*Application) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullString)
 		case application.FieldCreatedAt, application.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
-		case application.FieldID, application.FieldOrganizationID, application.FieldTargetClusterID, application.FieldRunnerClusterID:
+		case application.FieldID, application.FieldOrganizationID, application.FieldTargetClusterID, application.FieldRunnerClusterID, application.FieldChartCredentialID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -201,6 +217,12 @@ func (_m *Application) assignValues(columns []string, values []any) error {
 			} else if value != nil {
 				_m.RunnerClusterID = *value
 			}
+		case application.FieldChartCredentialID:
+			if value, ok := values[i].(*uuid.UUID); !ok {
+				return fmt.Errorf("unexpected type %T for field chart_credential_id", values[i])
+			} else if value != nil {
+				_m.ChartCredentialID = *value
+			}
 		case application.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
@@ -265,6 +287,11 @@ func (_m *Application) QueryRunnerCluster() *ClusterQuery {
 	return NewApplicationClient(_m.config).QueryRunnerCluster(_m)
 }
 
+// QueryChartCredential queries the "chart_credential" edge of the Application entity.
+func (_m *Application) QueryChartCredential() *ChartCredentialQuery {
+	return NewApplicationClient(_m.config).QueryChartCredential(_m)
+}
+
 // Update returns a builder for updating this Application.
 // Note that you need to call Application.Unwrap() before calling this method if this Application
 // was returned from a transaction, and the transaction was committed or rolled back.
@@ -317,6 +344,9 @@ func (_m *Application) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("runner_cluster_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RunnerClusterID))
+	builder.WriteString(", ")
+	builder.WriteString("chart_credential_id=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ChartCredentialID))
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Status))

@@ -7,7 +7,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/application"
+	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/deployment"
 	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/organization"
@@ -31,11 +33,11 @@ func init() {
 	// application.TargetNamespaceValidator is a validator for the "target_namespace" field. It is called by the builders before save.
 	application.TargetNamespaceValidator = applicationDescTargetNamespace.Validators[0].(func(string) error)
 	// applicationDescCreatedAt is the schema descriptor for created_at field.
-	applicationDescCreatedAt := applicationFields[15].Descriptor()
+	applicationDescCreatedAt := applicationFields[16].Descriptor()
 	// application.DefaultCreatedAt holds the default value on creation for the created_at field.
 	application.DefaultCreatedAt = applicationDescCreatedAt.Default.(func() time.Time)
 	// applicationDescUpdatedAt is the schema descriptor for updated_at field.
-	applicationDescUpdatedAt := applicationFields[16].Descriptor()
+	applicationDescUpdatedAt := applicationFields[17].Descriptor()
 	// application.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	application.DefaultUpdatedAt = applicationDescUpdatedAt.Default.(func() time.Time)
 	// application.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -44,6 +46,26 @@ func init() {
 	applicationDescID := applicationFields[0].Descriptor()
 	// application.DefaultID holds the default value on creation for the id field.
 	application.DefaultID = applicationDescID.Default.(func() uuid.UUID)
+	chartcredentialFields := schema.ChartCredential{}.Fields()
+	_ = chartcredentialFields
+	// chartcredentialDescName is the schema descriptor for name field.
+	chartcredentialDescName := chartcredentialFields[2].Descriptor()
+	// chartcredential.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	chartcredential.NameValidator = chartcredentialDescName.Validators[0].(func(string) error)
+	// chartcredentialDescCreatedAt is the schema descriptor for created_at field.
+	chartcredentialDescCreatedAt := chartcredentialFields[6].Descriptor()
+	// chartcredential.DefaultCreatedAt holds the default value on creation for the created_at field.
+	chartcredential.DefaultCreatedAt = chartcredentialDescCreatedAt.Default.(func() time.Time)
+	// chartcredentialDescUpdatedAt is the schema descriptor for updated_at field.
+	chartcredentialDescUpdatedAt := chartcredentialFields[7].Descriptor()
+	// chartcredential.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	chartcredential.DefaultUpdatedAt = chartcredentialDescUpdatedAt.Default.(func() time.Time)
+	// chartcredential.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	chartcredential.UpdateDefaultUpdatedAt = chartcredentialDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// chartcredentialDescID is the schema descriptor for id field.
+	chartcredentialDescID := chartcredentialFields[0].Descriptor()
+	// chartcredential.DefaultID holds the default value on creation for the id field.
+	chartcredential.DefaultID = chartcredentialDescID.Default.(func() uuid.UUID)
 	clusterFields := schema.Cluster{}.Fields()
 	_ = clusterFields
 	// clusterDescName is the schema descriptor for name field.
@@ -64,6 +86,22 @@ func init() {
 	clusterDescID := clusterFields[0].Descriptor()
 	// cluster.DefaultID holds the default value on creation for the id field.
 	cluster.DefaultID = clusterDescID.Default.(func() uuid.UUID)
+	deploymentFields := schema.Deployment{}.Fields()
+	_ = deploymentFields
+	// deploymentDescCreatedAt is the schema descriptor for created_at field.
+	deploymentDescCreatedAt := deploymentFields[9].Descriptor()
+	// deployment.DefaultCreatedAt holds the default value on creation for the created_at field.
+	deployment.DefaultCreatedAt = deploymentDescCreatedAt.Default.(func() time.Time)
+	// deploymentDescUpdatedAt is the schema descriptor for updated_at field.
+	deploymentDescUpdatedAt := deploymentFields[11].Descriptor()
+	// deployment.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	deployment.DefaultUpdatedAt = deploymentDescUpdatedAt.Default.(func() time.Time)
+	// deployment.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	deployment.UpdateDefaultUpdatedAt = deploymentDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// deploymentDescID is the schema descriptor for id field.
+	deploymentDescID := deploymentFields[0].Descriptor()
+	// deployment.DefaultID holds the default value on creation for the id field.
+	deployment.DefaultID = deploymentDescID.Default.(func() uuid.UUID)
 	invitationFields := schema.Invitation{}.Fields()
 	_ = invitationFields
 	// invitationDescEmail is the schema descriptor for email field.

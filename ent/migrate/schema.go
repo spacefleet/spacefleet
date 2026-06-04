@@ -27,6 +27,7 @@ var (
 		{Name: "organization_id", Type: field.TypeUUID},
 		{Name: "target_cluster_id", Type: field.TypeUUID},
 		{Name: "runner_cluster_id", Type: field.TypeUUID},
+		{Name: "chart_credential_id", Type: field.TypeUUID, Nullable: true},
 	}
 	// ApplicationsTable holds the schema information for the "applications" table.
 	ApplicationsTable = &schema.Table{
@@ -52,6 +53,12 @@ var (
 				RefColumns: []*schema.Column{ClustersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
+			{
+				Symbol:     "applications_chart_credentials_chart_credential",
+				Columns:    []*schema.Column{ApplicationsColumns[17]},
+				RefColumns: []*schema.Column{ChartCredentialsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
 		},
 		Indexes: []*schema.Index{
 			{
@@ -63,6 +70,43 @@ var (
 				Name:    "application_organization_id_name",
 				Unique:  true,
 				Columns: []*schema.Column{ApplicationsColumns[14], ApplicationsColumns[1]},
+			},
+		},
+	}
+	// ChartCredentialsColumns holds the columns for the "chart_credentials" table.
+	ChartCredentialsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"basic_auth", "oci"}},
+		{Name: "username", Type: field.TypeString, Nullable: true},
+		{Name: "encrypted_password", Type: field.TypeBytes, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+	}
+	// ChartCredentialsTable holds the schema information for the "chart_credentials" table.
+	ChartCredentialsTable = &schema.Table{
+		Name:       "chart_credentials",
+		Columns:    ChartCredentialsColumns,
+		PrimaryKey: []*schema.Column{ChartCredentialsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "chart_credentials_organizations_organization",
+				Columns:    []*schema.Column{ChartCredentialsColumns[7]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "chartcredential_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{ChartCredentialsColumns[7]},
+			},
+			{
+				Name:    "chartcredential_organization_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{ChartCredentialsColumns[7], ChartCredentialsColumns[1]},
 			},
 		},
 	}
@@ -105,6 +149,58 @@ var (
 				Name:    "cluster_organization_id_name",
 				Unique:  true,
 				Columns: []*schema.Column{ClustersColumns[12], ClustersColumns[1]},
+			},
+		},
+	}
+	// DeploymentsColumns holds the columns for the "deployments" table.
+	DeploymentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "action", Type: field.TypeEnum, Enums: []string{"deploy", "upgrade", "uninstall"}},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"running", "succeeded", "failed"}, Default: "running"},
+		{Name: "message", Type: field.TypeString, Nullable: true},
+		{Name: "job_id", Type: field.TypeString, Nullable: true},
+		{Name: "run_name", Type: field.TypeString, Nullable: true},
+		{Name: "logs", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+		{Name: "application_id", Type: field.TypeUUID},
+	}
+	// DeploymentsTable holds the schema information for the "deployments" table.
+	DeploymentsTable = &schema.Table{
+		Name:       "deployments",
+		Columns:    DeploymentsColumns,
+		PrimaryKey: []*schema.Column{DeploymentsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "deployments_organizations_organization",
+				Columns:    []*schema.Column{DeploymentsColumns[10]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "deployments_applications_application",
+				Columns:    []*schema.Column{DeploymentsColumns[11]},
+				RefColumns: []*schema.Column{ApplicationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "deployment_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{DeploymentsColumns[10]},
+			},
+			{
+				Name:    "deployment_application_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{DeploymentsColumns[11], DeploymentsColumns[7]},
+			},
+			{
+				Name:    "deployment_organization_id_job_id",
+				Unique:  false,
+				Columns: []*schema.Column{DeploymentsColumns[10], DeploymentsColumns[4]},
 			},
 		},
 	}
@@ -241,7 +337,9 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		ApplicationsTable,
+		ChartCredentialsTable,
 		ClustersTable,
+		DeploymentsTable,
 		InvitationsTable,
 		MembershipsTable,
 		OrganizationsTable,
@@ -254,7 +352,11 @@ func init() {
 	ApplicationsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ApplicationsTable.ForeignKeys[1].RefTable = ClustersTable
 	ApplicationsTable.ForeignKeys[2].RefTable = ClustersTable
+	ApplicationsTable.ForeignKeys[3].RefTable = ChartCredentialsTable
+	ChartCredentialsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ClustersTable.ForeignKeys[0].RefTable = OrganizationsTable
+	DeploymentsTable.ForeignKeys[0].RefTable = OrganizationsTable
+	DeploymentsTable.ForeignKeys[1].RefTable = ApplicationsTable
 	InvitationsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	MembershipsTable.ForeignKeys[0].RefTable = UsersTable
 	MembershipsTable.ForeignKeys[1].RefTable = OrganizationsTable

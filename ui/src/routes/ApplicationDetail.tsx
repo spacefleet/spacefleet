@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router";
-import { ArrowLeft, ArrowUpCircle, Play, Trash2 } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router";
+import { ArrowLeft, ArrowUpCircle, History, Play, Trash2 } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import { AppStatusBadge } from "./Applications";
+import { DeploymentStatusBadge } from "./DeploymentDetail";
 import { chartSourceLabel } from "../components/chartSources";
+import { formatDuration } from "../lib/duration";
 import { useObjectStream } from "../lib/useObjectStream";
-import { usePodLogs } from "../lib/usePodLogs";
 
 type Application = components["schemas"]["Application"];
-type TektonRun = components["schemas"]["TektonRun"];
+type Deployment = components["schemas"]["Deployment"];
 
 // Statuses where a rollout job is in flight — the status/run/log streams are
 // open and the UI shows live progress.
@@ -28,6 +29,7 @@ export function ApplicationDetail() {
   const canEdit = currentRole !== "viewer";
 
   const [app, setApp] = useState<Application | null>(null);
+  const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [clusters, setClusters] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,10 +67,24 @@ export function ApplicationDetail() {
   }, [currentOrg?.id]);
 
   const inFlight = app ? IN_FLIGHT.includes(app.status) : false;
-  const hasRun = !!app?.last_run_name;
+
+  // The deployment history (rollout runs, newest first). Reloaded whenever a
+  // rollout starts or settles — keyed below on the app's job id + status, which
+  // change exactly on those transitions — so a new run appears and a finishing
+  // run flips to its terminal state without polling.
+  const loadDeployments = useCallback(async () => {
+    const { data } = await api.GET("/api/applications/{id}/deployments", {
+      params: { path: { id: appId } },
+    });
+    setDeployments(data ?? []);
+  }, [appId]);
+  useEffect(() => {
+    void loadDeployments();
+  }, [loadDeployments, currentOrg?.id, app?.job_id, app?.status]);
 
   // Follow the rollout status live while a job is in flight; on settle, the
-  // stream delivers the terminal row, which we fold in directly.
+  // stream delivers the terminal row, which we fold in directly (and the effect
+  // above then refreshes the history with the finished run).
   const { value: streamedApp } = useObjectStream<Application>(
     `/api/applications/${appId}/stream`,
     inFlight,
@@ -76,19 +92,6 @@ export function ApplicationDetail() {
   useEffect(() => {
     if (streamedApp) setApp(streamedApp);
   }, [streamedApp]);
-
-  // Follow the rollout TaskRun while in flight (its phase/message complement the
-  // app status with the run-level detail).
-  const { value: run } = useObjectStream<TektonRun>(
-    `/api/applications/${appId}/run/stream`,
-    inFlight && hasRun,
-  );
-
-  // Follow the helm logs while there's a run to read (the stream ends on eof).
-  const { lines, status: logStatus } = usePodLogs(
-    `/api/applications/${appId}/logs`,
-    hasRun,
-  );
 
   async function rollout(action: "deploy" | "upgrade") {
     setBusy(true);
@@ -235,31 +238,65 @@ export function ApplicationDetail() {
             </dl>
           </div>
 
-          {/* Live rollout */}
-          {hasRun && (
-            <div className="mt-6 border border-neutral-200 bg-white">
-              <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-2">
-                <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-                  Last rollout
-                </h2>
-                {run && (
-                  <span className="text-xs text-neutral-500">
-                    run {run.phase.toLowerCase()}
-                  </span>
-                )}
-              </div>
-              <div className="px-4 py-3">
-                <p className="mb-2 text-xs text-neutral-500">
-                  Helm output ({logStatus})
-                </p>
-                <pre className="max-h-96 overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-100">
-                  {lines.length === 0
-                    ? "Waiting for log output…"
-                    : lines.join("\n")}
-                </pre>
-              </div>
+          {/* Deployment history (rollout runs, newest first) */}
+          <div className="mt-6 border border-neutral-200 bg-white">
+            <div className="flex items-center gap-2 border-b border-neutral-200 px-4 py-2">
+              <History className="h-3.5 w-3.5 text-neutral-400" />
+              <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+                Deployments
+              </h2>
             </div>
-          )}
+            {deployments.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-neutral-500">
+                No rollouts yet. Deploy this application to start one.
+              </p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
+                    <th className="px-4 py-2 font-medium">Run</th>
+                    <th className="px-4 py-2 font-medium">Action</th>
+                    <th className="px-4 py-2 font-medium">Status</th>
+                    <th className="px-4 py-2 font-medium">Started</th>
+                    <th className="px-4 py-2 font-medium">Duration</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deployments.map((d, i) => (
+                    <tr
+                      key={d.id}
+                      onClick={() =>
+                        navigate(`/applications/${appId}/deployments/${d.id}`)
+                      }
+                      className="cursor-pointer border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
+                    >
+                      <td className="px-4 py-3 font-medium text-neutral-900">
+                        <Link
+                          to={`/applications/${appId}/deployments/${d.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="hover:underline"
+                        >
+                          #{deployments.length - i}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 capitalize text-neutral-600">
+                        {d.action}
+                      </td>
+                      <td className="px-4 py-3">
+                        <DeploymentStatusBadge status={d.status} />
+                      </td>
+                      <td className="px-4 py-3 text-neutral-600">
+                        {new Date(d.created_at).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3 text-neutral-600">
+                        {formatDuration(d.created_at, d.finished_at)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </>
       )}
     </div>

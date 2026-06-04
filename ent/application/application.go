@@ -36,6 +36,8 @@ const (
 	FieldTargetClusterID = "target_cluster_id"
 	// FieldRunnerClusterID holds the string denoting the runner_cluster_id field in the database.
 	FieldRunnerClusterID = "runner_cluster_id"
+	// FieldChartCredentialID holds the string denoting the chart_credential_id field in the database.
+	FieldChartCredentialID = "chart_credential_id"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldStatusMessage holds the string denoting the status_message field in the database.
@@ -54,6 +56,8 @@ const (
 	EdgeTargetCluster = "target_cluster"
 	// EdgeRunnerCluster holds the string denoting the runner_cluster edge name in mutations.
 	EdgeRunnerCluster = "runner_cluster"
+	// EdgeChartCredential holds the string denoting the chart_credential edge name in mutations.
+	EdgeChartCredential = "chart_credential"
 	// Table holds the table name of the application in the database.
 	Table = "applications"
 	// OrganizationTable is the table that holds the organization relation/edge.
@@ -77,6 +81,13 @@ const (
 	RunnerClusterInverseTable = "clusters"
 	// RunnerClusterColumn is the table column denoting the runner_cluster relation/edge.
 	RunnerClusterColumn = "runner_cluster_id"
+	// ChartCredentialTable is the table that holds the chart_credential relation/edge.
+	ChartCredentialTable = "applications"
+	// ChartCredentialInverseTable is the table name for the ChartCredential entity.
+	// It exists in this package in order to avoid circular dependency with the "chartcredential" package.
+	ChartCredentialInverseTable = "chart_credentials"
+	// ChartCredentialColumn is the table column denoting the chart_credential relation/edge.
+	ChartCredentialColumn = "chart_credential_id"
 )
 
 // Columns holds all SQL columns for application fields.
@@ -92,6 +103,7 @@ var Columns = []string{
 	FieldTargetNamespace,
 	FieldTargetClusterID,
 	FieldRunnerClusterID,
+	FieldChartCredentialID,
 	FieldStatus,
 	FieldStatusMessage,
 	FieldJobID,
@@ -257,6 +269,11 @@ func ByRunnerClusterID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRunnerClusterID, opts...).ToFunc()
 }
 
+// ByChartCredentialID orders the results by the chart_credential_id field.
+func ByChartCredentialID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldChartCredentialID, opts...).ToFunc()
+}
+
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
@@ -307,6 +324,13 @@ func ByRunnerClusterField(field string, opts ...sql.OrderTermOption) OrderOption
 		sqlgraph.OrderByNeighborTerms(s, newRunnerClusterStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByChartCredentialField orders the results by chart_credential field.
+func ByChartCredentialField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newChartCredentialStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newOrganizationStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -326,5 +350,12 @@ func newRunnerClusterStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(RunnerClusterInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, false, RunnerClusterTable, RunnerClusterColumn),
+	)
+}
+func newChartCredentialStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ChartCredentialInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, false, ChartCredentialTable, ChartCredentialColumn),
 	)
 }

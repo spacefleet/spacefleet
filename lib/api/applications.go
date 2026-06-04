@@ -97,14 +97,15 @@ func (s *Server) CreateApplication(ctx context.Context, req CreateApplicationReq
 		return errResp[CreateApplicationdefaultJSONResponse](http.StatusBadRequest, "bad_request", "name is required"), nil
 	}
 	a, err := s.applications.Create(ctx, orgID, applications.CreateParams{
-		Name:            name,
-		ChartSource:     string(req.Body.ChartSource),
-		Config:          derefMap(req.Body.Config),
-		Values:          deref(req.Body.Values),
-		ReleaseName:     deref(req.Body.ReleaseName),
-		TargetNamespace: strings.TrimSpace(req.Body.TargetNamespace),
-		TargetClusterID: req.Body.TargetClusterId,
-		RunnerClusterID: req.Body.RunnerClusterId,
+		Name:              name,
+		ChartSource:       string(req.Body.ChartSource),
+		Config:            derefMap(req.Body.Config),
+		Values:            deref(req.Body.Values),
+		ReleaseName:       deref(req.Body.ReleaseName),
+		TargetNamespace:   strings.TrimSpace(req.Body.TargetNamespace),
+		TargetClusterID:   req.Body.TargetClusterId,
+		RunnerClusterID:   req.Body.RunnerClusterId,
+		ChartCredentialID: req.Body.ChartCredentialId,
 	})
 	if err != nil {
 		if resp, ok := appWriteError[CreateApplicationdefaultJSONResponse](err); ok {
@@ -143,6 +144,9 @@ func (s *Server) UpdateApplication(ctx context.Context, req UpdateApplicationReq
 	}
 	if req.Body.Config != nil {
 		params.Config = req.Body.Config
+	}
+	if req.Body.ChartCredentialId != nil {
+		params.ChartCredentialID = req.Body.ChartCredentialId
 	}
 	a, err := s.applications.Update(ctx, orgID, req.Id, params)
 	if err != nil {
@@ -244,6 +248,11 @@ func (s *Server) beginRollout(ctx context.Context, orgID, id uuid.UUID, action s
 		return nil, nil, err
 	}
 	jobID := strconv.FormatInt(res.Job.ID, 10)
+	// Open this rollout's history record before the status flip below, so the
+	// MarkRollout transitions (here and from the worker) find it by job id.
+	if _, err := s.applications.RecordDeployment(ctx, orgID, id, action, jobID); err != nil {
+		return nil, nil, err
+	}
 	if err := s.applications.MarkRollout(ctx, orgID, id, jobID, statusForAction(action), "queued", ""); err != nil {
 		return nil, nil, err
 	}
@@ -294,6 +303,10 @@ func toAPIApplication(a *ent.Application) Application {
 	}
 	if out.Config == nil {
 		out.Config = map[string]string{}
+	}
+	if a.ChartCredentialID != uuid.Nil {
+		id := a.ChartCredentialID
+		out.ChartCredentialId = &id
 	}
 	return out
 }

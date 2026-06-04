@@ -9,12 +9,14 @@ import { AcceptInvite } from "./routes/AcceptInvite";
 import { AuthCallback } from "./routes/AuthCallback";
 import { Applications } from "./routes/Applications";
 import { ApplicationDetail } from "./routes/ApplicationDetail";
+import { DeploymentDetail } from "./routes/DeploymentDetail";
 import { Clusters } from "./routes/Clusters";
 import { ClusterDetail } from "./routes/ClusterDetail";
 import { CreateOrganization } from "./routes/CreateOrganization";
 import { Home } from "./routes/Home";
 import { Login } from "./routes/Login";
 import { Members } from "./routes/Members";
+import { PrivateCharts } from "./routes/PrivateCharts";
 import { NamespaceDetail } from "./routes/NamespaceDetail";
 import { Namespaces } from "./routes/Namespaces";
 import { NodeDetail } from "./routes/NodeDetail";
@@ -34,6 +36,7 @@ const pageComponents: Record<string, ReactNode> = {
   "/infrastructure/namespaces": <Namespaces />,
   "/infrastructure/pods": <Pods />,
   "/admin/members": <Members />,
+  "/admin/private-charts": <PrivateCharts />,
 };
 
 export function App() {
@@ -83,6 +86,12 @@ export function App() {
                 <Route
                   path="/applications/:appId"
                   element={<ApplicationDetail />}
+                />
+                {/* One rollout run's page (its status + Helm logs), reached by
+                    clicking a row in the application's deployment history. */}
+                <Route
+                  path="/applications/:appId/deployments/:deploymentId"
+                  element={<DeploymentDetail />}
                 />
                 {/* Cluster drill-down: the per-cluster management page, reached
                     by clicking a row on the Clusters leaf (not a nav entry of

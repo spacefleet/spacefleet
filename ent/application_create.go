@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/application"
+	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/organization"
 )
@@ -107,6 +108,20 @@ func (_c *ApplicationCreate) SetTargetClusterID(v uuid.UUID) *ApplicationCreate 
 // SetRunnerClusterID sets the "runner_cluster_id" field.
 func (_c *ApplicationCreate) SetRunnerClusterID(v uuid.UUID) *ApplicationCreate {
 	_c.mutation.SetRunnerClusterID(v)
+	return _c
+}
+
+// SetChartCredentialID sets the "chart_credential_id" field.
+func (_c *ApplicationCreate) SetChartCredentialID(v uuid.UUID) *ApplicationCreate {
+	_c.mutation.SetChartCredentialID(v)
+	return _c
+}
+
+// SetNillableChartCredentialID sets the "chart_credential_id" field if the given value is not nil.
+func (_c *ApplicationCreate) SetNillableChartCredentialID(v *uuid.UUID) *ApplicationCreate {
+	if v != nil {
+		_c.SetChartCredentialID(*v)
+	}
 	return _c
 }
 
@@ -221,6 +236,11 @@ func (_c *ApplicationCreate) SetTargetCluster(v *Cluster) *ApplicationCreate {
 // SetRunnerCluster sets the "runner_cluster" edge to the Cluster entity.
 func (_c *ApplicationCreate) SetRunnerCluster(v *Cluster) *ApplicationCreate {
 	return _c.SetRunnerClusterID(v.ID)
+}
+
+// SetChartCredential sets the "chart_credential" edge to the ChartCredential entity.
+func (_c *ApplicationCreate) SetChartCredential(v *ChartCredential) *ApplicationCreate {
+	return _c.SetChartCredentialID(v.ID)
 }
 
 // Mutation returns the ApplicationMutation object of the builder.
@@ -485,6 +505,23 @@ func (_c *ApplicationCreate) createSpec() (*Application, *sqlgraph.CreateSpec) {
 		_node.RunnerClusterID = nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.ChartCredentialIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   application.ChartCredentialTable,
+			Columns: []string{application.ChartCredentialColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chartcredential.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.ChartCredentialID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	return _node, _spec
 }
 
@@ -660,6 +697,24 @@ func (u *ApplicationUpsert) SetRunnerClusterID(v uuid.UUID) *ApplicationUpsert {
 // UpdateRunnerClusterID sets the "runner_cluster_id" field to the value that was provided on create.
 func (u *ApplicationUpsert) UpdateRunnerClusterID() *ApplicationUpsert {
 	u.SetExcluded(application.FieldRunnerClusterID)
+	return u
+}
+
+// SetChartCredentialID sets the "chart_credential_id" field.
+func (u *ApplicationUpsert) SetChartCredentialID(v uuid.UUID) *ApplicationUpsert {
+	u.Set(application.FieldChartCredentialID, v)
+	return u
+}
+
+// UpdateChartCredentialID sets the "chart_credential_id" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdateChartCredentialID() *ApplicationUpsert {
+	u.SetExcluded(application.FieldChartCredentialID)
+	return u
+}
+
+// ClearChartCredentialID clears the value of the "chart_credential_id" field.
+func (u *ApplicationUpsert) ClearChartCredentialID() *ApplicationUpsert {
+	u.SetNull(application.FieldChartCredentialID)
 	return u
 }
 
@@ -939,6 +994,27 @@ func (u *ApplicationUpsertOne) SetRunnerClusterID(v uuid.UUID) *ApplicationUpser
 func (u *ApplicationUpsertOne) UpdateRunnerClusterID() *ApplicationUpsertOne {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.UpdateRunnerClusterID()
+	})
+}
+
+// SetChartCredentialID sets the "chart_credential_id" field.
+func (u *ApplicationUpsertOne) SetChartCredentialID(v uuid.UUID) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetChartCredentialID(v)
+	})
+}
+
+// UpdateChartCredentialID sets the "chart_credential_id" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdateChartCredentialID() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateChartCredentialID()
+	})
+}
+
+// ClearChartCredentialID clears the value of the "chart_credential_id" field.
+func (u *ApplicationUpsertOne) ClearChartCredentialID() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearChartCredentialID()
 	})
 }
 
@@ -1398,6 +1474,27 @@ func (u *ApplicationUpsertBulk) SetRunnerClusterID(v uuid.UUID) *ApplicationUpse
 func (u *ApplicationUpsertBulk) UpdateRunnerClusterID() *ApplicationUpsertBulk {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.UpdateRunnerClusterID()
+	})
+}
+
+// SetChartCredentialID sets the "chart_credential_id" field.
+func (u *ApplicationUpsertBulk) SetChartCredentialID(v uuid.UUID) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetChartCredentialID(v)
+	})
+}
+
+// UpdateChartCredentialID sets the "chart_credential_id" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdateChartCredentialID() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateChartCredentialID()
+	})
+}
+
+// ClearChartCredentialID clears the value of the "chart_credential_id" field.
+func (u *ApplicationUpsertBulk) ClearChartCredentialID() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearChartCredentialID()
 	})
 }
 

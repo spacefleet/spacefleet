@@ -123,10 +123,13 @@ func (w *RolloutWorker) Work(ctx context.Context, job *river.Job[RolloutArgs]) e
 		return err
 	}
 
-	// Idempotent submit: on a retry, re-attach to the in-flight run if it still
-	// exists rather than spawning a duplicate TaskRun.
+	// Idempotent submit: on a retry, re-attach to the run only while it's still
+	// in flight, rather than spawning a duplicate TaskRun. A run that already
+	// reached a terminal phase (e.g. the prior failed attempt) must not be
+	// re-attached — that would just replay the old outcome — so a fresh rollout
+	// submits a new run.
 	runName := plan.ExistingRun
-	if runName == "" || !w.runExists(ctx, plan.RunnerConn, runName) {
+	if runName == "" || !w.runActive(ctx, plan.RunnerConn, runName) {
 		run, serr := w.submit(ctx, plan.RunnerConn, RunNamespace, plan.RunSpec)
 		if serr != nil {
 			_ = w.Store.MarkRollout(ctx, a.OrgID, a.ApplicationID, jobID, StatusFailed, serr.Error(), "")
@@ -154,10 +157,12 @@ func (w *RolloutWorker) Work(ctx context.Context, job *river.Job[RolloutArgs]) e
 	return w.Store.MarkRollout(ctx, a.OrgID, a.ApplicationID, jobID, terminalOK, final.Message, runName)
 }
 
-// runExists reports whether the named TaskRun is still present on the runner.
-func (w *RolloutWorker) runExists(ctx context.Context, conn k8s.Connection, name string) bool {
-	_, err := w.getRun(ctx, conn, RunNamespace, name)
-	return err == nil
+// runActive reports whether the named TaskRun is still present on the runner and
+// has not yet reached a terminal phase — the only state in which re-attaching
+// (rather than submitting a fresh run) is correct.
+func (w *RolloutWorker) runActive(ctx context.Context, conn k8s.Connection, name string) bool {
+	st, err := w.getRun(ctx, conn, RunNamespace, name)
+	return err == nil && !st.Terminal()
 }
 
 // awaitRun watches the run until it reaches a terminal phase and returns its

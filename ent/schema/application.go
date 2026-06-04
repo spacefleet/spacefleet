@@ -53,6 +53,10 @@ func (Application) Fields() []ent.Field {
 		// FK columns bound to the cluster edges below.
 		field.UUID("target_cluster_id", uuid.UUID{}),
 		field.UUID("runner_cluster_id", uuid.UUID{}),
+		// Optional chart credential for pulling a private chart. Bound to the
+		// chart_credential edge below; nil for public charts. Its type must match
+		// chart_source (basic_auth → http_repo, oci → oci), enforced in the service.
+		field.UUID("chart_credential_id", uuid.UUID{}).Optional(),
 		// Rollout lifecycle: pending (created, never rolled out) → deploying →
 		// deployed/failed, plus uninstalling → uninstalled.
 		field.Enum("status").
@@ -87,6 +91,11 @@ func (Application) Edges() []ent.Edge {
 			Field("runner_cluster_id").
 			Unique().
 			Required(),
+		// Optional credential for pulling a private chart. RESTRICT in the
+		// migration: a credential in use can't be deleted out from under an app.
+		edge.To("chart_credential", ChartCredential.Type).
+			Field("chart_credential_id").
+			Unique(),
 	}
 }
 

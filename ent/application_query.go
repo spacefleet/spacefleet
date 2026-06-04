@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/application"
+	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/predicate"
@@ -21,13 +22,14 @@ import (
 // ApplicationQuery is the builder for querying Application entities.
 type ApplicationQuery struct {
 	config
-	ctx               *QueryContext
-	order             []application.OrderOption
-	inters            []Interceptor
-	predicates        []predicate.Application
-	withOrganization  *OrganizationQuery
-	withTargetCluster *ClusterQuery
-	withRunnerCluster *ClusterQuery
+	ctx                 *QueryContext
+	order               []application.OrderOption
+	inters              []Interceptor
+	predicates          []predicate.Application
+	withOrganization    *OrganizationQuery
+	withTargetCluster   *ClusterQuery
+	withRunnerCluster   *ClusterQuery
+	withChartCredential *ChartCredentialQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -123,6 +125,28 @@ func (_q *ApplicationQuery) QueryRunnerCluster() *ClusterQuery {
 			sqlgraph.From(application.Table, application.FieldID, selector),
 			sqlgraph.To(cluster.Table, cluster.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, false, application.RunnerClusterTable, application.RunnerClusterColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryChartCredential chains the current query on the "chart_credential" edge.
+func (_q *ApplicationQuery) QueryChartCredential() *ChartCredentialQuery {
+	query := (&ChartCredentialClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(application.Table, application.FieldID, selector),
+			sqlgraph.To(chartcredential.Table, chartcredential.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, application.ChartCredentialTable, application.ChartCredentialColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -317,14 +341,15 @@ func (_q *ApplicationQuery) Clone() *ApplicationQuery {
 		return nil
 	}
 	return &ApplicationQuery{
-		config:            _q.config,
-		ctx:               _q.ctx.Clone(),
-		order:             append([]application.OrderOption{}, _q.order...),
-		inters:            append([]Interceptor{}, _q.inters...),
-		predicates:        append([]predicate.Application{}, _q.predicates...),
-		withOrganization:  _q.withOrganization.Clone(),
-		withTargetCluster: _q.withTargetCluster.Clone(),
-		withRunnerCluster: _q.withRunnerCluster.Clone(),
+		config:              _q.config,
+		ctx:                 _q.ctx.Clone(),
+		order:               append([]application.OrderOption{}, _q.order...),
+		inters:              append([]Interceptor{}, _q.inters...),
+		predicates:          append([]predicate.Application{}, _q.predicates...),
+		withOrganization:    _q.withOrganization.Clone(),
+		withTargetCluster:   _q.withTargetCluster.Clone(),
+		withRunnerCluster:   _q.withRunnerCluster.Clone(),
+		withChartCredential: _q.withChartCredential.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -361,6 +386,17 @@ func (_q *ApplicationQuery) WithRunnerCluster(opts ...func(*ClusterQuery)) *Appl
 		opt(query)
 	}
 	_q.withRunnerCluster = query
+	return _q
+}
+
+// WithChartCredential tells the query-builder to eager-load the nodes that are connected to
+// the "chart_credential" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ApplicationQuery) WithChartCredential(opts ...func(*ChartCredentialQuery)) *ApplicationQuery {
+	query := (&ChartCredentialClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withChartCredential = query
 	return _q
 }
 
@@ -442,10 +478,11 @@ func (_q *ApplicationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	var (
 		nodes       = []*Application{}
 		_spec       = _q.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [4]bool{
 			_q.withOrganization != nil,
 			_q.withTargetCluster != nil,
 			_q.withRunnerCluster != nil,
+			_q.withChartCredential != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -481,6 +518,12 @@ func (_q *ApplicationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	if query := _q.withRunnerCluster; query != nil {
 		if err := _q.loadRunnerCluster(ctx, query, nodes, nil,
 			func(n *Application, e *Cluster) { n.Edges.RunnerCluster = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withChartCredential; query != nil {
+		if err := _q.loadChartCredential(ctx, query, nodes, nil,
+			func(n *Application, e *ChartCredential) { n.Edges.ChartCredential = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -574,6 +617,35 @@ func (_q *ApplicationQuery) loadRunnerCluster(ctx context.Context, query *Cluste
 	}
 	return nil
 }
+func (_q *ApplicationQuery) loadChartCredential(ctx context.Context, query *ChartCredentialQuery, nodes []*Application, init func(*Application), assign func(*Application, *ChartCredential)) error {
+	ids := make([]uuid.UUID, 0, len(nodes))
+	nodeids := make(map[uuid.UUID][]*Application)
+	for i := range nodes {
+		fk := nodes[i].ChartCredentialID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(chartcredential.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "chart_credential_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
 
 func (_q *ApplicationQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
@@ -608,6 +680,9 @@ func (_q *ApplicationQuery) querySpec() *sqlgraph.QuerySpec {
 		}
 		if _q.withRunnerCluster != nil {
 			_spec.Node.AddColumnOnce(application.FieldRunnerClusterID)
+		}
+		if _q.withChartCredential != nil {
+			_spec.Node.AddColumnOnce(application.FieldChartCredentialID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

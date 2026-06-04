@@ -358,75 +358,6 @@ func (s *Server) StreamApplication(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// StreamApplicationRun streams the live status of an application's most recent
-// rollout TaskRun (on its runner cluster). It looks up the app's runner cluster
-// + last run name, then reuses the cluster TaskRun watch — so it needs no new
-// service method. Mirrors StreamClusterTektonRun.
-func (s *Server) StreamApplicationRun(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	orgID, aerr, err := s.resolveApp(ctx)
-	if err != nil {
-		writeStreamError(w, http.StatusInternalServerError, "internal", "internal error")
-		return
-	}
-	if aerr != nil {
-		writeStreamError(w, aerr.status, aerr.code, aerr.msg)
-		return
-	}
-	app, aerr := s.appForStream(ctx, orgID, r)
-	if aerr != nil {
-		writeStreamError(w, aerr.status, aerr.code, aerr.msg)
-		return
-	}
-
-	ctx, cancel := context.WithDeadline(ctx, streamDeadline(ctx))
-	defer cancel()
-
-	stream, err := s.clusters.WatchRun(ctx, orgID, app.RunnerClusterID, helm.RunNamespace, app.LastRunName)
-	if err != nil {
-		status, code, msg := nodesFetchError(err)
-		writeStreamError(w, status, code, msg)
-		return
-	}
-
-	sse, ok := newSSEWriter(w)
-	if !ok {
-		writeStreamError(w, http.StatusInternalServerError, "internal", "streaming unsupported")
-		return
-	}
-	if err := sse.event("snapshot", toAPITektonRun(&stream.Snapshot)); err != nil {
-		return
-	}
-	if stream.Snapshot.Terminal() {
-		return
-	}
-
-	heartbeat := time.NewTicker(streamHeartbeat)
-	defer heartbeat.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-heartbeat.C:
-			if err := sse.comment("ping"); err != nil {
-				return
-			}
-		case ev, ok := <-stream.Events:
-			if !ok {
-				return
-			}
-			run := ev.Object
-			if err := sse.event("modified", toAPITektonRun(&run)); err != nil {
-				return
-			}
-			if run.Terminal() {
-				return
-			}
-		}
-	}
-}
-
 // StreamApplicationLogs streams the helm rollout pod's logs (the TaskRun pod on
 // the runner cluster). It resolves the app's run → pod, then reuses the cluster
 // pod-log stream. Mirrors StreamPodLogs.
@@ -450,6 +381,14 @@ func (s *Server) StreamApplicationLogs(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithDeadline(ctx, streamDeadline(ctx))
 	defer cancel()
+
+	// The client passes the run it's viewing (?run=) so it reopens this stream
+	// when a new rollout starts. Only the app's current run is streamable; a
+	// stale name means the client is behind and should reconnect on the new one.
+	if q := r.URL.Query().Get("run"); q != "" && q != app.LastRunName {
+		writeStreamError(w, http.StatusConflict, "stale_run", "this run is no longer the current rollout")
+		return
+	}
 
 	// Resolve the run's backing pod before switching to event-stream mode.
 	run, err := s.clusters.GetRun(ctx, orgID, app.RunnerClusterID, helm.RunNamespace, app.LastRunName)

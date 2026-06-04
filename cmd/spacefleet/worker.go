@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/spacefleet/spacefleet/lib/applications"
+	"github.com/spacefleet/spacefleet/lib/chartcredentials"
 	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/config"
 	"github.com/spacefleet/spacefleet/lib/db"
@@ -72,7 +73,8 @@ func runWorker(_ []string) {
 		log.Fatalf("worker: build secret sealer: %v", err)
 	}
 	clustersSvc := clusters.NewService(entClient, sealer)
-	applicationsSvc := applications.NewService(entClient, clustersSvc)
+	chartCredsSvc := chartcredentials.NewService(entClient, sealer)
+	applicationsSvc := applications.NewService(entClient, clustersSvc, chartCredsSvc)
 
 	// Register job workers:
 	//   - invite-email: sends org invitation emails (Sender is SMTP when

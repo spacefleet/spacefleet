@@ -8,6 +8,16 @@ type Application = components["schemas"]["Application"];
 type ChartSource = components["schemas"]["ChartSource"];
 type CreateRequest = components["schemas"]["ApplicationCreateRequest"];
 type Cluster = components["schemas"]["Cluster"];
+type ChartCredential = components["schemas"]["ChartCredential"];
+
+// The credential type compatible with each chart source. git charts use the git
+// repo's own auth, so they take no chart credential.
+const CREDENTIAL_TYPE_FOR_SOURCE: Partial<
+  Record<ChartSource, ChartCredential["type"]>
+> = {
+  http_repo: "basic_auth",
+  oci: "oci",
+};
 
 // CreateApplicationDialog is a modal that registers a Helm application. It
 // collects the target cluster + namespace, the runner cluster (filtered to
@@ -30,6 +40,8 @@ export function CreateApplicationDialog({
   const [targetClusterId, setTargetClusterId] = useState("");
   const [runnerClusterId, setRunnerClusterId] = useState("");
   const [clusters, setClusters] = useState<Cluster[]>([]);
+  const [credentials, setCredentials] = useState<ChartCredential[]>([]);
+  const [credentialId, setCredentialId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -38,11 +50,21 @@ export function CreateApplicationDialog({
       const { data } = await api.GET("/api/clusters");
       setClusters(data ?? []);
     })();
+    void (async () => {
+      const { data } = await api.GET("/api/chart-credentials");
+      setCredentials(data ?? []);
+    })();
   }, []);
 
   const selected = CHART_SOURCES.find((s) => s.value === chartSource)!;
   // Only job-running clusters can host a rollout's TaskRun.
   const runnerClusters = clusters.filter((c) => c.runs_jobs);
+  // Credentials compatible with the selected source (none for git). A selected
+  // credential is cleared when it no longer matches after a source change.
+  const credentialType = CREDENTIAL_TYPE_FOR_SOURCE[chartSource];
+  const compatibleCredentials = credentials.filter(
+    (c) => c.type === credentialType,
+  );
 
   function setField(key: string, value: string) {
     setConfig((c) => ({ ...c, [key]: value }));
@@ -68,6 +90,7 @@ export function CreateApplicationDialog({
     };
     if (values.trim() !== "") body.values = values;
     if (releaseName.trim() !== "") body.release_name = releaseName.trim();
+    if (credentialId !== "") body.chart_credential_id = credentialId;
 
     const { data, error } = await api.POST("/api/applications", { body });
     setSubmitting(false);
@@ -172,6 +195,7 @@ export function CreateApplicationDialog({
               onChange={(e) => {
                 setChartSource(e.target.value as ChartSource);
                 setConfig({});
+                setCredentialId("");
                 setError(null);
               }}
             >
@@ -196,6 +220,32 @@ export function CreateApplicationDialog({
               />
             </Labeled>
           ))}
+
+          {credentialType && (
+            <Labeled
+              label="Chart credential"
+              help="Optional. Required only if the chart is in a private repo or registry. Manage these under Admin › Private Charts."
+            >
+              <select
+                className="w-full border border-gray-300 bg-white px-3 py-2 text-sm"
+                value={credentialId}
+                onChange={(e) => setCredentialId(e.target.value)}
+              >
+                <option value="">None (public chart)</option>
+                {compatibleCredentials.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              {compatibleCredentials.length === 0 && (
+                <p className="mt-1 text-xs text-gray-500">
+                  No matching credentials yet. Add one under Admin › Private
+                  Charts.
+                </p>
+              )}
+            </Labeled>
+          )}
 
           <Labeled
             label="Release name"

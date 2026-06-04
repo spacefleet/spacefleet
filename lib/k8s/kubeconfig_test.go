@@ -16,7 +16,7 @@ func TestKubeconfigTokenRoundTrip(t *testing.T) {
 		Config:      map[string]string{ConfigKeyCA: "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"},
 		Credentials: []byte("sa-bearer-token"),
 	}
-	kc, err := Kubeconfig(context.Background(), conn)
+	kc, err := Kubeconfig(context.Background(), conn, false)
 	if err != nil {
 		t.Fatalf("Kubeconfig: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestKubeconfigInsecure(t *testing.T) {
 		Config:      map[string]string{ConfigKeyInsecureSkipTLS: "true"},
 		Credentials: []byte("tok"),
 	}
-	kc, err := Kubeconfig(context.Background(), conn)
+	kc, err := Kubeconfig(context.Background(), conn, false)
 	if err != nil {
 		t.Fatalf("Kubeconfig: %v", err)
 	}
@@ -94,7 +94,7 @@ contexts:
 current-context: ctx
 `)
 	conn := Connection{Method: MethodKubeconfig, Credentials: src}
-	kc, err := Kubeconfig(context.Background(), conn)
+	kc, err := Kubeconfig(context.Background(), conn, false)
 	if err != nil {
 		t.Fatalf("Kubeconfig: %v", err)
 	}
@@ -108,5 +108,29 @@ current-context: ctx
 	}
 	if ai.Token != "" {
 		t.Errorf("did not expect a token, got %q", ai.Token)
+	}
+}
+
+// TestKubeconfigInSameClusterRewritesHost: when the consumer runs in the same
+// cluster, a registered host-only endpoint (e.g. a kind cluster's loopback) is
+// rewritten to the in-cluster DNS so it resolves from inside a pod.
+func TestKubeconfigInSameClusterRewritesHost(t *testing.T) {
+	conn := Connection{
+		Method:      MethodToken,
+		Endpoint:    "https://127.0.0.1:60694",
+		Config:      map[string]string{ConfigKeyInsecureSkipTLS: "true"},
+		Credentials: []byte("tok"),
+	}
+	kc, err := Kubeconfig(context.Background(), conn, true)
+	if err != nil {
+		t.Fatalf("Kubeconfig: %v", err)
+	}
+	raw, err := clientcmd.Load(kc)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	cl := raw.Clusters[raw.Contexts[raw.CurrentContext].Cluster]
+	if cl.Server != inClusterDNS {
+		t.Errorf("server = %q, want in-cluster DNS %q", cl.Server, inClusterDNS)
 	}
 }

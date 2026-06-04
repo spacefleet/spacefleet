@@ -16,13 +16,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/ent/application"
+	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/deployment"
+	"github.com/spacefleet/spacefleet/lib/chartcredentials"
 	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/k8s"
 	"github.com/spacefleet/spacefleet/lib/tekton"
@@ -36,14 +41,59 @@ type ConnResolver interface {
 	ConnForTekton(ctx context.Context, orgID, clusterID uuid.UUID) (k8s.Connection, error)
 }
 
+// CredentialResolver decrypts an org-scoped chart credential for a rollout. It is
+// the narrow slice of *chartcredentials.Service the rollout needs to inject
+// private-chart auth; may be nil (no chart-credentials service wired), in which
+// case an app referencing a credential fails the rollout with a clear error.
+type CredentialResolver interface {
+	Resolve(ctx context.Context, orgID, id uuid.UUID) (chartcredentials.Resolved, error)
+}
+
 // Service is a thin wrapper over the ent client plus the connection resolver.
 type Service struct {
 	ent   *ent.Client
 	conns ConnResolver
+	creds CredentialResolver
+
+	// captureLogs reads a terminal run's full output for its deployment record.
+	// A seam over the runner-cluster interaction (resolve conn → find pod → read
+	// logs): defaults to the real path below, overridden in tests to avoid a live
+	// cluster. Returns "" on any failure (best-effort; never fails the rollout).
+	captureLogs func(ctx context.Context, app *ent.Application, runName string) string
 }
 
-func NewService(entClient *ent.Client, conns ConnResolver) *Service {
-	return &Service{ent: entClient, conns: conns}
+func NewService(entClient *ent.Client, conns ConnResolver, creds CredentialResolver) *Service {
+	svc := &Service{ent: entClient, conns: conns, creds: creds}
+	svc.captureLogs = svc.fetchRunLogs
+	return svc
+}
+
+// fetchRunLogs is the default captureLogs: it resolves the runner connection,
+// finds the run's backing pod, and reads its logs in full (no follow), so the
+// run stays readable after the TaskRun pod is garbage-collected. Best-effort —
+// any failure (no pod, unreachable runner, read error) yields "".
+func (s *Service) fetchRunLogs(ctx context.Context, app *ent.Application, runName string) string {
+	if runName == "" {
+		return ""
+	}
+	conn, err := s.conns.ConnForTekton(ctx, app.OrganizationID, app.RunnerClusterID)
+	if err != nil {
+		return ""
+	}
+	run, err := tekton.GetRun(ctx, conn, helm.RunNamespace, runName)
+	if err != nil || run.PodName == "" {
+		return ""
+	}
+	rc, err := k8s.StreamPodLogs(ctx, conn, helm.RunNamespace, run.PodName, k8s.LogOptions{Follow: false})
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = rc.Close() }()
+	b, err := io.ReadAll(rc)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // The rollout worker drives the service through the helm.Store seam.
@@ -75,6 +125,9 @@ type CreateParams struct {
 	TargetNamespace string
 	TargetClusterID uuid.UUID
 	RunnerClusterID uuid.UUID
+	// ChartCredentialID optionally attaches a private-chart credential. Nil means
+	// public chart. Its type must be compatible with ChartSource (validated).
+	ChartCredentialID *uuid.UUID
 }
 
 // UpdateParams describes a change to an application. A nil field is unchanged.
@@ -86,6 +139,10 @@ type UpdateParams struct {
 	Values          *string
 	ReleaseName     *string
 	TargetNamespace *string
+	// ChartCredentialID changes the attached credential. Nil leaves it unchanged;
+	// a non-nil uuid.Nil detaches it; any other value attaches that credential
+	// (validated against the app's chart source).
+	ChartCredentialID *uuid.UUID
 }
 
 // List returns the organization's applications, oldest first.
@@ -109,7 +166,7 @@ func (s *Service) Create(ctx context.Context, orgID uuid.UUID, p CreateParams) (
 	if err := s.validate(ctx, orgID, p); err != nil {
 		return nil, err
 	}
-	return s.ent.Application.Create().
+	create := s.ent.Application.Create().
 		SetOrganizationID(orgID).
 		SetName(p.Name).
 		SetChartSource(application.ChartSource(p.ChartSource)).
@@ -118,8 +175,11 @@ func (s *Service) Create(ctx context.Context, orgID uuid.UUID, p CreateParams) (
 		SetReleaseName(p.ReleaseName).
 		SetTargetNamespace(p.TargetNamespace).
 		SetTargetClusterID(p.TargetClusterID).
-		SetRunnerClusterID(p.RunnerClusterID).
-		Save(ctx)
+		SetRunnerClusterID(p.RunnerClusterID)
+	if p.ChartCredentialID != nil && *p.ChartCredentialID != uuid.Nil {
+		create.SetChartCredentialID(*p.ChartCredentialID)
+	}
+	return create.Save(ctx)
 }
 
 // Update changes mutable fields of an application scoped to the organization,
@@ -151,6 +211,16 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, p UpdateParam
 			return nil, err
 		}
 		upd.SetConfig(cfg)
+	}
+	if p.ChartCredentialID != nil {
+		if *p.ChartCredentialID == uuid.Nil {
+			upd.ClearChartCredentialID()
+		} else {
+			if err := s.validateCredential(ctx, orgID, app.ChartSource.String(), *p.ChartCredentialID); err != nil {
+				return nil, err
+			}
+			upd.SetChartCredentialID(*p.ChartCredentialID)
+		}
 	}
 	return upd.Save(ctx)
 }
@@ -192,7 +262,8 @@ func (s *Service) BeginRollout(ctx context.Context, orgID, id uuid.UUID, action 
 // jobID/runName are set only when non-empty, message is always set (pass "" to
 // clear). The org id from the job args still flows through the scoped query.
 func (s *Service) MarkRollout(ctx context.Context, orgID, appID uuid.UUID, jobID, status, message, runName string) error {
-	if _, err := s.Get(ctx, orgID, appID); err != nil {
+	app, err := s.Get(ctx, orgID, appID)
+	if err != nil {
 		return err
 	}
 	st, err := rolloutStatusEnum(status)
@@ -209,8 +280,86 @@ func (s *Service) MarkRollout(ctx context.Context, orgID, appID uuid.UUID, jobID
 	if runName != "" {
 		upd.SetLastRunName(runName)
 	}
-	_, err = upd.Save(ctx)
-	return err
+	if _, err := upd.Save(ctx); err != nil {
+		return err
+	}
+	// Mirror the transition onto this rollout's history record (created by the
+	// API at enqueue time, found by job id). Best-effort: the application row is
+	// the source of truth for the live UI, so a history-write or log-capture
+	// failure must not fail the rollout job (the worker retries on a non-nil
+	// return). A missing record (pre-feature rows, DB-less route tests) is a no-op.
+	s.markDeployment(ctx, app, jobID, st, message, runName)
+	return nil
+}
+
+// markDeployment folds a rollout transition into the matching deployment row and,
+// once the run is terminal, stamps finished_at and captures the run's logs.
+func (s *Service) markDeployment(ctx context.Context, app *ent.Application, jobID string, appStatus application.Status, message, runName string) {
+	if jobID == "" {
+		return
+	}
+	dep, err := s.ent.Deployment.Query().
+		Where(
+			deployment.OrganizationID(app.OrganizationID),
+			deployment.ApplicationID(app.ID),
+			deployment.JobID(jobID),
+		).
+		Only(ctx)
+	if err != nil {
+		return
+	}
+	runStatus, terminal := deploymentStatusFor(appStatus)
+	upd := dep.Update().SetStatus(runStatus).SetMessage(message)
+	if runName != "" {
+		upd.SetRunName(runName)
+	}
+	if terminal {
+		upd.SetFinishedAt(time.Now())
+		if s.captureLogs != nil {
+			if logs := s.captureLogs(ctx, app, runName); logs != "" {
+				upd.SetLogs(logs)
+			}
+		}
+	}
+	_, _ = upd.Save(ctx)
+}
+
+// RecordDeployment creates the history record for a rollout the API is about to
+// enqueue, in the running state, keyed by the River job id so the worker's
+// MarkRollout transitions find it. Returns a ValidationError for an unknown action.
+func (s *Service) RecordDeployment(ctx context.Context, orgID, appID uuid.UUID, action, jobID string) (*ent.Deployment, error) {
+	act, err := deploymentActionEnum(action)
+	if err != nil {
+		return nil, err
+	}
+	return s.ent.Deployment.Create().
+		SetOrganizationID(orgID).
+		SetApplicationID(appID).
+		SetAction(act).
+		SetJobID(jobID).
+		Save(ctx)
+}
+
+// ListDeployments returns an application's rollout runs newest-first, scoped to
+// the organization. Capped — the history is for recent runs, not an archive.
+func (s *Service) ListDeployments(ctx context.Context, orgID, appID uuid.UUID) ([]*ent.Deployment, error) {
+	return s.ent.Deployment.Query().
+		Where(deployment.OrganizationID(orgID), deployment.ApplicationID(appID)).
+		Order(ent.Desc(deployment.FieldCreatedAt)).
+		Limit(100).
+		All(ctx)
+}
+
+// GetDeployment returns one rollout run scoped to the organization and
+// application, or ent's NotFoundError.
+func (s *Service) GetDeployment(ctx context.Context, orgID, appID, id uuid.UUID) (*ent.Deployment, error) {
+	return s.ent.Deployment.Query().
+		Where(
+			deployment.OrganizationID(orgID),
+			deployment.ApplicationID(appID),
+			deployment.ID(id),
+		).
+		Only(ctx)
 }
 
 // ResolveRollout satisfies helm.Store: it resolves the runner connection, builds
@@ -230,9 +379,37 @@ func (s *Service) ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, ac
 	if err != nil {
 		return helm.RolloutPlan{}, err
 	}
-	kubeconfig, err := k8s.Kubeconfig(ctx, targetConn)
+	// When the runner is the target cluster, the Helm job runs inside the cluster
+	// it deploys to, so the injected kubeconfig must use the in-cluster API server
+	// address rather than the registered (possibly host-only) endpoint.
+	sameCluster := app.RunnerClusterID == app.TargetClusterID
+	kubeconfig, err := k8s.Kubeconfig(ctx, targetConn, sameCluster)
 	if err != nil {
 		return helm.RolloutPlan{}, err
+	}
+
+	files := map[string]string{
+		helm.KubeconfigFile: string(kubeconfig),
+		helm.ValuesFile:     app.Values,
+	}
+
+	// Attach a private-chart credential, when one is set: resolve (decrypt) it and
+	// inject the username/password as mounted files. The script reads them at
+	// runtime, so the password never lands in the script string, the TaskRun
+	// manifest, or env — only in the same owner-referenced, GC'd Secret as the
+	// kubeconfig. Uninstall pulls no chart, so it needs no credential.
+	hasCredential := false
+	if app.ChartCredentialID != uuid.Nil && action != helm.ActionUninstall {
+		if s.creds == nil {
+			return helm.RolloutPlan{}, fmt.Errorf("applications: app references a chart credential but the chart-credentials service is not configured")
+		}
+		cred, err := s.creds.Resolve(ctx, orgID, app.ChartCredentialID)
+		if err != nil {
+			return helm.RolloutPlan{}, err
+		}
+		files[helm.RegistryUsernameFile] = cred.Username
+		files[helm.RegistryPasswordFile] = cred.Password
+		hasCredential = true
 	}
 
 	script := helm.Script(helm.Rollout{
@@ -242,6 +419,7 @@ func (s *Service) ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, ac
 		ReleaseName:     releaseName(app),
 		TargetNamespace: app.TargetNamespace,
 		WaitTimeout:     helm.WaitTimeout(targetConn.Method),
+		HasCredential:   hasCredential,
 	})
 
 	return helm.RolloutPlan{
@@ -251,10 +429,7 @@ func (s *Service) ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, ac
 			Name:   runPrefix(app),
 			Image:  helm.DefaultImage,
 			Script: script,
-			Files: map[string]string{
-				helm.KubeconfigFile: string(kubeconfig),
-				helm.ValuesFile:     app.Values,
-			},
+			Files:  files,
 		},
 	}, nil
 }
@@ -293,7 +468,50 @@ func (s *Service) validate(ctx context.Context, orgID uuid.UUID, p CreateParams)
 	if runner.Edges.Tekton == nil || !runner.Edges.Tekton.Enabled {
 		return validationErr("runner cluster is not configured to run jobs (enable Tekton on it first)")
 	}
-	return validateSourceConfig(p.ChartSource, p.Config)
+	if err := validateSourceConfig(p.ChartSource, p.Config); err != nil {
+		return err
+	}
+	if p.ChartCredentialID != nil && *p.ChartCredentialID != uuid.Nil {
+		return s.validateCredential(ctx, orgID, p.ChartSource, *p.ChartCredentialID)
+	}
+	return nil
+}
+
+// validateCredential confirms the chart credential exists in the organization
+// and its type is compatible with the chart source (the scoping query is the
+// security boundary; the type match prevents attaching, say, OCI creds to an
+// HTTP-repo app or any credential to a git chart).
+func (s *Service) validateCredential(ctx context.Context, orgID uuid.UUID, source string, credID uuid.UUID) error {
+	want, ok := credentialTypeForSource(source)
+	if !ok {
+		return validationErr("chart source %q does not support credentials", source)
+	}
+	cred, err := s.ent.ChartCredential.Query().
+		Where(chartcredential.OrganizationID(orgID), chartcredential.ID(credID)).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return validationErr("chart credential not found in this organization")
+		}
+		return err
+	}
+	if cred.Type != want {
+		return validationErr("credential type %q is not compatible with chart source %q (expected %q)", cred.Type, source, want)
+	}
+	return nil
+}
+
+// credentialTypeForSource maps a chart source to the credential type that
+// authenticates it. git charts take no credential (use the git repo's own auth).
+func credentialTypeForSource(source string) (chartcredential.Type, bool) {
+	switch source {
+	case helm.SourceHTTPRepo:
+		return chartcredential.TypeBasicAuth, true
+	case helm.SourceOCI:
+		return chartcredential.TypeOci, true
+	default:
+		return "", false
+	}
 }
 
 // validateSourceConfig checks the per-source required fields are present.
@@ -369,6 +587,35 @@ func rolloutStatusEnum(s string) (application.Status, error) {
 		return st, nil
 	default:
 		return "", fmt.Errorf("applications: unknown rollout status %q", s)
+	}
+}
+
+// deploymentStatusFor maps an application rollout status to the run-level
+// deployment status, and reports whether the run has reached a terminal phase
+// (deployed/uninstalled → succeeded, failed → failed; everything else running).
+func deploymentStatusFor(appStatus application.Status) (deployment.Status, bool) {
+	switch appStatus {
+	case application.StatusDeployed, application.StatusUninstalled:
+		return deployment.StatusSucceeded, true
+	case application.StatusFailed:
+		return deployment.StatusFailed, true
+	default:
+		return deployment.StatusRunning, false
+	}
+}
+
+// deploymentActionEnum validates and converts a rollout action string to the ent
+// enum, rejecting unknown values.
+func deploymentActionEnum(action string) (deployment.Action, error) {
+	switch action {
+	case helm.ActionDeploy:
+		return deployment.ActionDeploy, nil
+	case helm.ActionUpgrade:
+		return deployment.ActionUpgrade, nil
+	case helm.ActionUninstall:
+		return deployment.ActionUninstall, nil
+	default:
+		return "", validationErr("unknown rollout action %q", action)
 	}
 }
 

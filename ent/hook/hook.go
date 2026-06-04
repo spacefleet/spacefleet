@@ -21,6 +21,18 @@ func (f ApplicationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ApplicationMutation", m)
 }
 
+// The ChartCredentialFunc type is an adapter to allow the use of ordinary
+// function as ChartCredential mutator.
+type ChartCredentialFunc func(context.Context, *ent.ChartCredentialMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ChartCredentialFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ChartCredentialMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ChartCredentialMutation", m)
+}
+
 // The ClusterFunc type is an adapter to allow the use of ordinary
 // function as Cluster mutator.
 type ClusterFunc func(context.Context, *ent.ClusterMutation) (ent.Value, error)
@@ -31,6 +43,18 @@ func (f ClusterFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ClusterMutation", m)
+}
+
+// The DeploymentFunc type is an adapter to allow the use of ordinary
+// function as Deployment mutator.
+type DeploymentFunc func(context.Context, *ent.DeploymentMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f DeploymentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.DeploymentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DeploymentMutation", m)
 }
 
 // The InvitationFunc type is an adapter to allow the use of ordinary

@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/application"
+	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/predicate"
 )
@@ -166,6 +167,26 @@ func (_u *ApplicationUpdate) SetNillableRunnerClusterID(v *uuid.UUID) *Applicati
 	return _u
 }
 
+// SetChartCredentialID sets the "chart_credential_id" field.
+func (_u *ApplicationUpdate) SetChartCredentialID(v uuid.UUID) *ApplicationUpdate {
+	_u.mutation.SetChartCredentialID(v)
+	return _u
+}
+
+// SetNillableChartCredentialID sets the "chart_credential_id" field if the given value is not nil.
+func (_u *ApplicationUpdate) SetNillableChartCredentialID(v *uuid.UUID) *ApplicationUpdate {
+	if v != nil {
+		_u.SetChartCredentialID(*v)
+	}
+	return _u
+}
+
+// ClearChartCredentialID clears the value of the "chart_credential_id" field.
+func (_u *ApplicationUpdate) ClearChartCredentialID() *ApplicationUpdate {
+	_u.mutation.ClearChartCredentialID()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *ApplicationUpdate) SetStatus(v application.Status) *ApplicationUpdate {
 	_u.mutation.SetStatus(v)
@@ -256,6 +277,11 @@ func (_u *ApplicationUpdate) SetRunnerCluster(v *Cluster) *ApplicationUpdate {
 	return _u.SetRunnerClusterID(v.ID)
 }
 
+// SetChartCredential sets the "chart_credential" edge to the ChartCredential entity.
+func (_u *ApplicationUpdate) SetChartCredential(v *ChartCredential) *ApplicationUpdate {
+	return _u.SetChartCredentialID(v.ID)
+}
+
 // Mutation returns the ApplicationMutation object of the builder.
 func (_u *ApplicationUpdate) Mutation() *ApplicationMutation {
 	return _u.mutation
@@ -270,6 +296,12 @@ func (_u *ApplicationUpdate) ClearTargetCluster() *ApplicationUpdate {
 // ClearRunnerCluster clears the "runner_cluster" edge to the Cluster entity.
 func (_u *ApplicationUpdate) ClearRunnerCluster() *ApplicationUpdate {
 	_u.mutation.ClearRunnerCluster()
+	return _u
+}
+
+// ClearChartCredential clears the "chart_credential" edge to the ChartCredential entity.
+func (_u *ApplicationUpdate) ClearChartCredential() *ApplicationUpdate {
+	_u.mutation.ClearChartCredential()
 	return _u
 }
 
@@ -472,6 +504,35 @@ func (_u *ApplicationUpdate) sqlSave(ctx context.Context) (_node int, err error)
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.ChartCredentialCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   application.ChartCredentialTable,
+			Columns: []string{application.ChartCredentialColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chartcredential.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ChartCredentialIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   application.ChartCredentialTable,
+			Columns: []string{application.ChartCredentialColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chartcredential.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{application.Label}
@@ -628,6 +689,26 @@ func (_u *ApplicationUpdateOne) SetNillableRunnerClusterID(v *uuid.UUID) *Applic
 	return _u
 }
 
+// SetChartCredentialID sets the "chart_credential_id" field.
+func (_u *ApplicationUpdateOne) SetChartCredentialID(v uuid.UUID) *ApplicationUpdateOne {
+	_u.mutation.SetChartCredentialID(v)
+	return _u
+}
+
+// SetNillableChartCredentialID sets the "chart_credential_id" field if the given value is not nil.
+func (_u *ApplicationUpdateOne) SetNillableChartCredentialID(v *uuid.UUID) *ApplicationUpdateOne {
+	if v != nil {
+		_u.SetChartCredentialID(*v)
+	}
+	return _u
+}
+
+// ClearChartCredentialID clears the value of the "chart_credential_id" field.
+func (_u *ApplicationUpdateOne) ClearChartCredentialID() *ApplicationUpdateOne {
+	_u.mutation.ClearChartCredentialID()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *ApplicationUpdateOne) SetStatus(v application.Status) *ApplicationUpdateOne {
 	_u.mutation.SetStatus(v)
@@ -718,6 +799,11 @@ func (_u *ApplicationUpdateOne) SetRunnerCluster(v *Cluster) *ApplicationUpdateO
 	return _u.SetRunnerClusterID(v.ID)
 }
 
+// SetChartCredential sets the "chart_credential" edge to the ChartCredential entity.
+func (_u *ApplicationUpdateOne) SetChartCredential(v *ChartCredential) *ApplicationUpdateOne {
+	return _u.SetChartCredentialID(v.ID)
+}
+
 // Mutation returns the ApplicationMutation object of the builder.
 func (_u *ApplicationUpdateOne) Mutation() *ApplicationMutation {
 	return _u.mutation
@@ -732,6 +818,12 @@ func (_u *ApplicationUpdateOne) ClearTargetCluster() *ApplicationUpdateOne {
 // ClearRunnerCluster clears the "runner_cluster" edge to the Cluster entity.
 func (_u *ApplicationUpdateOne) ClearRunnerCluster() *ApplicationUpdateOne {
 	_u.mutation.ClearRunnerCluster()
+	return _u
+}
+
+// ClearChartCredential clears the "chart_credential" edge to the ChartCredential entity.
+func (_u *ApplicationUpdateOne) ClearChartCredential() *ApplicationUpdateOne {
+	_u.mutation.ClearChartCredential()
 	return _u
 }
 
@@ -957,6 +1049,35 @@ func (_u *ApplicationUpdateOne) sqlSave(ctx context.Context) (_node *Application
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(cluster.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ChartCredentialCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   application.ChartCredentialTable,
+			Columns: []string{application.ChartCredentialColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chartcredential.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ChartCredentialIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   application.ChartCredentialTable,
+			Columns: []string{application.ChartCredentialColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chartcredential.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

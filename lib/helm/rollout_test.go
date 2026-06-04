@@ -70,6 +70,76 @@ func TestScriptOCI(t *testing.T) {
 	}
 }
 
+func TestScriptHTTPRepoWithCredential(t *testing.T) {
+	s := Script(Rollout{
+		Action:          ActionDeploy,
+		ChartSource:     SourceHTTPRepo,
+		Config:          map[string]string{ConfigRepoURL: "https://charts.example.com", ConfigChart: "nginx"},
+		ReleaseName:     "web",
+		TargetNamespace: "apps",
+		WaitTimeout:     30 * time.Minute,
+		HasCredential:   true,
+	})
+	// Auth is read from the mounted files on the repo add, never the password
+	// itself in the script.
+	want := "helm repo add r 'https://charts.example.com' --username \"$(cat '/workspace/creds/registry-username')\" --password \"$(cat '/workspace/creds/registry-password')\""
+	if !strings.Contains(s, want) {
+		t.Errorf("script missing credentialed repo add\nwant: %s\n---\n%s", want, s)
+	}
+}
+
+func TestScriptOCIWithCredential(t *testing.T) {
+	s := Script(Rollout{
+		Action:          ActionUpgrade,
+		ChartSource:     SourceOCI,
+		Config:          map[string]string{ConfigRepoURL: "oci://reg.example.com/charts/app"},
+		ReleaseName:     "app",
+		TargetNamespace: "prod",
+		WaitTimeout:     10 * time.Minute,
+		HasCredential:   true,
+	})
+	// registry login uses --password-stdin (the password file redirected as
+	// stdin), so the password never reaches the process args, and the host is the
+	// registry host only — not the full chart path.
+	want := "helm registry login 'reg.example.com' --username \"$(cat '/workspace/creds/registry-username')\" --password-stdin < '/workspace/creds/registry-password'"
+	if !strings.Contains(s, want) {
+		t.Errorf("script missing registry login\nwant: %s\n---\n%s", want, s)
+	}
+	// The login must come before the pull.
+	if strings.Index(s, "registry login") > strings.Index(s, "upgrade --install") {
+		t.Errorf("registry login must precede the chart pull:\n%s", s)
+	}
+}
+
+func TestScriptUninstallIgnoresCredential(t *testing.T) {
+	s := Script(Rollout{
+		Action:          ActionUninstall,
+		ChartSource:     SourceOCI,
+		Config:          map[string]string{ConfigRepoURL: "oci://reg.example.com/charts/app"},
+		ReleaseName:     "app",
+		TargetNamespace: "prod",
+		WaitTimeout:     10 * time.Minute,
+		HasCredential:   true,
+	})
+	// Uninstall pulls no chart, so it needs no registry login.
+	if strings.Contains(s, "registry login") {
+		t.Errorf("uninstall should not log in to a registry:\n%s", s)
+	}
+}
+
+func TestOCIRegistryHost(t *testing.T) {
+	cases := map[string]string{
+		"oci://reg.example.com/charts/app": "reg.example.com",
+		"oci://reg.example.com":            "reg.example.com",
+		"reg.example.com/charts/app":       "reg.example.com",
+	}
+	for in, want := range cases {
+		if got := ociRegistryHost(in); got != want {
+			t.Errorf("ociRegistryHost(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestScriptGit(t *testing.T) {
 	s := Script(Rollout{
 		Action:      ActionDeploy,
