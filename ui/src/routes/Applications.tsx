@@ -12,7 +12,6 @@ import {
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
-import { CreateApplicationDialog } from "../components/CreateApplicationDialog";
 import { chartSourceLabel } from "../components/chartSources";
 
 type Application = components["schemas"]["Application"];
@@ -28,7 +27,6 @@ export function Applications() {
   const [apps, setApps] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,7 +53,9 @@ export function Applications() {
             Deploy and manage Helm releases on your clusters.
           </p>
         </div>
-        {canEdit && <CreateAppButton onHelm={() => setCreating(true)} />}
+        {canEdit && (
+          <CreateAppButton onHelm={() => navigate("/applications/new")} />
+        )}
       </div>
 
       <div className="mt-6 border border-neutral-200 bg-white">
@@ -108,25 +108,6 @@ export function Applications() {
           </table>
         )}
       </div>
-
-      {creating && (
-        <CreateApplicationDialog
-          onClose={() => setCreating(false)}
-          onCreated={(app) => {
-            setCreating(false);
-            // Kick off the first rollout, then land on the detail page where its
-            // live status + logs stream. A failure to enqueue (e.g. no worker)
-            // is non-fatal — the detail page shows the app pending with a Deploy
-            // button.
-            void api
-              .POST("/api/applications/{id}/rollout", {
-                params: { path: { id: app.id } },
-                body: { action: "deploy" },
-              })
-              .finally(() => navigate(`/applications/${app.id}`));
-          }}
-        />
-      )}
     </div>
   );
 }

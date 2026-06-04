@@ -8,6 +8,7 @@ import { OrgProvider } from "./contexts/OrgContext";
 import { AcceptInvite } from "./routes/AcceptInvite";
 import { AuthCallback } from "./routes/AuthCallback";
 import { Applications } from "./routes/Applications";
+import { ApplicationForm } from "./routes/ApplicationForm";
 import { ApplicationDetail } from "./routes/ApplicationDetail";
 import { DeploymentDetail } from "./routes/DeploymentDetail";
 import { Clusters } from "./routes/Clusters";
@@ -88,6 +89,15 @@ export function App() {
                       element={pageComponents[leaf.path] ?? <Placeholder />}
                     />
                   ))}
+                {/* Application create/edit: the full-page form, reached from the
+                    Applications leaf's "Create app" button and the detail page's
+                    "Edit" button. "/new" is listed before the ":appId" detail
+                    route below so it isn't captured as an app id. */}
+                <Route path="/applications/new" element={<ApplicationForm />} />
+                <Route
+                  path="/applications/:appId/edit"
+                  element={<ApplicationForm />}
+                />
                 {/* Application drill-down: the per-app management page, reached
                     by clicking a row on the Applications leaf (not a nav entry
                     of its own, so it's added here rather than in nav.ts). */}

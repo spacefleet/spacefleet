@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { ArrowLeft, ArrowUpCircle, History, Play, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowUpCircle, History, Pencil, Play, Trash2 } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import { AppStatusBadge } from "./Applications";
 import { DeploymentStatusBadge } from "./DeploymentDetail";
+import { DeleteApplicationDialog } from "../components/DeleteApplicationDialog";
 import { chartSourceLabel } from "../components/chartSources";
 import { formatDuration } from "../lib/duration";
 import { useObjectStream } from "../lib/useObjectStream";
@@ -19,9 +20,11 @@ const IN_FLIGHT: Application["status"][] = ["deploying", "uninstalling"];
 
 // ApplicationDetail is the single place to see and manage one application
 // (route /applications/:appId). It shows the chart config and current rollout
-// status, offers Deploy/Upgrade/Uninstall, and streams the live rollout status,
-// the TaskRun, and the helm logs while a rollout runs. The status reflects the
-// outcome of the last rollout (helm --wait), not ongoing release health.
+// status, offers Deploy/Upgrade/Edit/Delete, and streams the live rollout
+// status, the TaskRun, and the helm logs while a rollout runs. The status
+// reflects the outcome of the last rollout (helm --wait), not ongoing release
+// health. Deleting an app optionally uninstalls its release first (see the
+// delete dialog) — there's no standalone uninstall.
 export function ApplicationDetail() {
   const { appId = "" } = useParams();
   const { currentOrg, currentRole } = useOrg();
@@ -35,6 +38,7 @@ export function ApplicationDetail() {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -105,33 +109,6 @@ export function ApplicationDetail() {
     else if (data) setApp(data);
   }
 
-  async function uninstall() {
-    if (!confirm("Uninstall this application's Helm release?")) return;
-    setBusy(true);
-    setActionError(null);
-    const { data, error } = await api.POST("/api/applications/{id}/uninstall", {
-      params: { path: { id: appId } },
-    });
-    setBusy(false);
-    if (error) setActionError(error.message ?? "Could not start the uninstall");
-    else if (data) setApp(data);
-  }
-
-  async function onDelete() {
-    if (!confirm("Delete this application? This does not uninstall the release."))
-      return;
-    setBusy(true);
-    const { error } = await api.DELETE("/api/applications/{id}", {
-      params: { path: { id: appId } },
-    });
-    if (error) {
-      setActionError(error.message ?? "Could not delete this application");
-      setBusy(false);
-      return;
-    }
-    navigate("/applications");
-  }
-
   return (
     <div>
       <button
@@ -184,22 +161,22 @@ export function ApplicationDetail() {
                     Deploy
                   </button>
                 )}
-                {(app.status === "deployed" || app.status === "failed") && (
-                  <button
-                    type="button"
-                    onClick={() => void uninstall()}
-                    disabled={busy || inFlight}
-                    className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    Uninstall
-                  </button>
-                )}
                 <button
                   type="button"
-                  onClick={() => void onDelete()}
+                  onClick={() => navigate(`/applications/${appId}/edit`)}
+                  disabled={busy || inFlight}
+                  title="Edit this application"
+                  className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeleting(true)}
                   disabled={busy || inFlight}
                   title="Delete this application"
-                  className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   Delete
@@ -297,6 +274,14 @@ export function ApplicationDetail() {
               </table>
             )}
           </div>
+
+          {deleting && (
+            <DeleteApplicationDialog
+              app={app}
+              onClose={() => setDeleting(false)}
+              onDeleted={() => navigate("/applications")}
+            />
+          )}
         </>
       )}
     </div>
