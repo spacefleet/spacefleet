@@ -95,7 +95,9 @@ config:
 Every key in the referenced Secret becomes an environment variable on the web
 and worker pods. This is the **scalable path for all secret configuration**: as
 Spacefleet (or your own integrations) gain new secret settings, add them as keys
-to your Secret — no chart change and no new values needed.
+to your Secret — no chart change and no new values needed. Today these include
+`SPACEFLEET_SECRET_KEY`, `SMTP_PASSWORD` (see [Email](email.md)), and
+`GITHUB_APP_PRIVATE_KEY` (see [Private Git charts](private-git-charts.md)).
 
 `config.secrets.envFrom` accepts the standard Kubernetes `envFrom` list, so you
 can reference multiple Secrets, mix in a ConfigMap, or add a prefix:

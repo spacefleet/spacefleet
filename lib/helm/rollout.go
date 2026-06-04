@@ -68,6 +68,12 @@ const (
 	ValuesFile           = "values.yaml"
 	RegistryUsernameFile = "registry-username"
 	RegistryPasswordFile = "registry-password"
+	// GitCredentialsFile carries a git credential line
+	// (https://x-access-token:<token>@github.com) for a private-Git chart. It is
+	// wired into git via `credential.helper store --file=<this>` so the token is
+	// read from the mounted file at runtime and never lands in the script string,
+	// the clone's argv, the TaskRun manifest, or the workspace's .git/config.
+	GitCredentialsFile = "git-credentials"
 )
 
 // DefaultImage is the helm CLI image the rollout step runs in. alpine/k8s
@@ -107,6 +113,12 @@ type Rollout struct {
 	// alone selects the injection. The values come from the mounted files, never
 	// this script string.
 	HasCredential bool
+	// HasGitToken authenticates a private-Git (SourceGit) clone: a git credential
+	// helper backed by the mounted GitCredentialsFile is configured before the
+	// clone, so the token is read from the file at runtime rather than appearing
+	// in the script string, the clone's argv, or the workspace .git/config. Set
+	// by the rollout resolver when the app has a GitHub App installation attached.
+	HasGitToken bool
 }
 
 // Script renders the shell script the rollout step runs. All forms target the
@@ -168,6 +180,14 @@ func Script(r Rollout) string {
 		}
 		install(repoURL)
 	case SourceGit:
+		if r.HasGitToken {
+			// Wire git's credential-store helper to the mounted credentials file so
+			// the token is read at clone time without ever appearing in argv or the
+			// workspace .git/config. `helm dependency build` reuses the same helper.
+			gitCredsFile := tekton.CredsMountPath + "/" + GitCredentialsFile
+			fmt.Fprintf(&b, "git config --global credential.helper %s\n",
+				shQuote("store --file="+gitCredsFile))
+		}
 		ref := r.Config[ConfigGitRef]
 		if ref != "" {
 			fmt.Fprintf(&b, "git clone --depth 1 --branch %s %s /src\n", shQuote(ref), shQuote(repoURL))

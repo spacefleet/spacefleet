@@ -20,6 +20,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/deployment"
+	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/organization"
@@ -40,6 +41,8 @@ type Client struct {
 	Cluster *ClusterClient
 	// Deployment is the client for interacting with the Deployment builders.
 	Deployment *DeploymentClient
+	// GitHubInstallation is the client for interacting with the GitHubInstallation builders.
+	GitHubInstallation *GitHubInstallationClient
 	// Invitation is the client for interacting with the Invitation builders.
 	Invitation *InvitationClient
 	// Membership is the client for interacting with the Membership builders.
@@ -65,6 +68,7 @@ func (c *Client) init() {
 	c.ChartCredential = NewChartCredentialClient(c.config)
 	c.Cluster = NewClusterClient(c.config)
 	c.Deployment = NewDeploymentClient(c.config)
+	c.GitHubInstallation = NewGitHubInstallationClient(c.config)
 	c.Invitation = NewInvitationClient(c.config)
 	c.Membership = NewMembershipClient(c.config)
 	c.Organization = NewOrganizationClient(c.config)
@@ -166,6 +170,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ChartCredential:    NewChartCredentialClient(cfg),
 		Cluster:            NewClusterClient(cfg),
 		Deployment:         NewDeploymentClient(cfg),
+		GitHubInstallation: NewGitHubInstallationClient(cfg),
 		Invitation:         NewInvitationClient(cfg),
 		Membership:         NewMembershipClient(cfg),
 		Organization:       NewOrganizationClient(cfg),
@@ -194,6 +199,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ChartCredential:    NewChartCredentialClient(cfg),
 		Cluster:            NewClusterClient(cfg),
 		Deployment:         NewDeploymentClient(cfg),
+		GitHubInstallation: NewGitHubInstallationClient(cfg),
 		Invitation:         NewInvitationClient(cfg),
 		Membership:         NewMembershipClient(cfg),
 		Organization:       NewOrganizationClient(cfg),
@@ -228,8 +234,8 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Application, c.ChartCredential, c.Cluster, c.Deployment, c.Invitation,
-		c.Membership, c.Organization, c.TektonInstallation, c.User,
+		c.Application, c.ChartCredential, c.Cluster, c.Deployment, c.GitHubInstallation,
+		c.Invitation, c.Membership, c.Organization, c.TektonInstallation, c.User,
 	} {
 		n.Use(hooks...)
 	}
@@ -239,8 +245,8 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Application, c.ChartCredential, c.Cluster, c.Deployment, c.Invitation,
-		c.Membership, c.Organization, c.TektonInstallation, c.User,
+		c.Application, c.ChartCredential, c.Cluster, c.Deployment, c.GitHubInstallation,
+		c.Invitation, c.Membership, c.Organization, c.TektonInstallation, c.User,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -257,6 +263,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Cluster.mutate(ctx, m)
 	case *DeploymentMutation:
 		return c.Deployment.mutate(ctx, m)
+	case *GitHubInstallationMutation:
+		return c.GitHubInstallation.mutate(ctx, m)
 	case *InvitationMutation:
 		return c.Invitation.mutate(ctx, m)
 	case *MembershipMutation:
@@ -437,6 +445,22 @@ func (c *ApplicationClient) QueryChartCredential(_m *Application) *ChartCredenti
 			sqlgraph.From(application.Table, application.FieldID, id),
 			sqlgraph.To(chartcredential.Table, chartcredential.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, false, application.ChartCredentialTable, application.ChartCredentialColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGithubInstallation queries the github_installation edge of a Application.
+func (c *ApplicationClient) QueryGithubInstallation(_m *Application) *GitHubInstallationQuery {
+	query := (&GitHubInstallationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(application.Table, application.FieldID, id),
+			sqlgraph.To(githubinstallation.Table, githubinstallation.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, application.GithubInstallationTable, application.GithubInstallationColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -945,6 +969,155 @@ func (c *DeploymentClient) mutate(ctx context.Context, m *DeploymentMutation) (V
 		return (&DeploymentDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Deployment mutation op: %q", m.Op())
+	}
+}
+
+// GitHubInstallationClient is a client for the GitHubInstallation schema.
+type GitHubInstallationClient struct {
+	config
+}
+
+// NewGitHubInstallationClient returns a client for the GitHubInstallation from the given config.
+func NewGitHubInstallationClient(c config) *GitHubInstallationClient {
+	return &GitHubInstallationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `githubinstallation.Hooks(f(g(h())))`.
+func (c *GitHubInstallationClient) Use(hooks ...Hook) {
+	c.hooks.GitHubInstallation = append(c.hooks.GitHubInstallation, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `githubinstallation.Intercept(f(g(h())))`.
+func (c *GitHubInstallationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.GitHubInstallation = append(c.inters.GitHubInstallation, interceptors...)
+}
+
+// Create returns a builder for creating a GitHubInstallation entity.
+func (c *GitHubInstallationClient) Create() *GitHubInstallationCreate {
+	mutation := newGitHubInstallationMutation(c.config, OpCreate)
+	return &GitHubInstallationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of GitHubInstallation entities.
+func (c *GitHubInstallationClient) CreateBulk(builders ...*GitHubInstallationCreate) *GitHubInstallationCreateBulk {
+	return &GitHubInstallationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *GitHubInstallationClient) MapCreateBulk(slice any, setFunc func(*GitHubInstallationCreate, int)) *GitHubInstallationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &GitHubInstallationCreateBulk{err: fmt.Errorf("calling to GitHubInstallationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*GitHubInstallationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &GitHubInstallationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for GitHubInstallation.
+func (c *GitHubInstallationClient) Update() *GitHubInstallationUpdate {
+	mutation := newGitHubInstallationMutation(c.config, OpUpdate)
+	return &GitHubInstallationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *GitHubInstallationClient) UpdateOne(_m *GitHubInstallation) *GitHubInstallationUpdateOne {
+	mutation := newGitHubInstallationMutation(c.config, OpUpdateOne, withGitHubInstallation(_m))
+	return &GitHubInstallationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *GitHubInstallationClient) UpdateOneID(id uuid.UUID) *GitHubInstallationUpdateOne {
+	mutation := newGitHubInstallationMutation(c.config, OpUpdateOne, withGitHubInstallationID(id))
+	return &GitHubInstallationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for GitHubInstallation.
+func (c *GitHubInstallationClient) Delete() *GitHubInstallationDelete {
+	mutation := newGitHubInstallationMutation(c.config, OpDelete)
+	return &GitHubInstallationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *GitHubInstallationClient) DeleteOne(_m *GitHubInstallation) *GitHubInstallationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *GitHubInstallationClient) DeleteOneID(id uuid.UUID) *GitHubInstallationDeleteOne {
+	builder := c.Delete().Where(githubinstallation.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &GitHubInstallationDeleteOne{builder}
+}
+
+// Query returns a query builder for GitHubInstallation.
+func (c *GitHubInstallationClient) Query() *GitHubInstallationQuery {
+	return &GitHubInstallationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeGitHubInstallation},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a GitHubInstallation entity by its id.
+func (c *GitHubInstallationClient) Get(ctx context.Context, id uuid.UUID) (*GitHubInstallation, error) {
+	return c.Query().Where(githubinstallation.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *GitHubInstallationClient) GetX(ctx context.Context, id uuid.UUID) *GitHubInstallation {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryOrganization queries the organization edge of a GitHubInstallation.
+func (c *GitHubInstallationClient) QueryOrganization(_m *GitHubInstallation) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(githubinstallation.Table, githubinstallation.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, githubinstallation.OrganizationTable, githubinstallation.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *GitHubInstallationClient) Hooks() []Hook {
+	return c.hooks.GitHubInstallation
+}
+
+// Interceptors returns the client interceptors.
+func (c *GitHubInstallationClient) Interceptors() []Interceptor {
+	return c.inters.GitHubInstallation
+}
+
+func (c *GitHubInstallationClient) mutate(ctx context.Context, m *GitHubInstallationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&GitHubInstallationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&GitHubInstallationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&GitHubInstallationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&GitHubInstallationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown GitHubInstallation mutation op: %q", m.Op())
 	}
 }
 
@@ -1744,11 +1917,12 @@ func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error)
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Application, ChartCredential, Cluster, Deployment, Invitation, Membership,
-		Organization, TektonInstallation, User []ent.Hook
+		Application, ChartCredential, Cluster, Deployment, GitHubInstallation,
+		Invitation, Membership, Organization, TektonInstallation, User []ent.Hook
 	}
 	inters struct {
-		Application, ChartCredential, Cluster, Deployment, Invitation, Membership,
-		Organization, TektonInstallation, User []ent.Interceptor
+		Application, ChartCredential, Cluster, Deployment, GitHubInstallation,
+		Invitation, Membership, Organization, TektonInstallation,
+		User []ent.Interceptor
 	}
 )

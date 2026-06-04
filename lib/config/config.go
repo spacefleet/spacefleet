@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -105,6 +106,33 @@ type Config struct {
 	// SMTPStartTLS upgrades the connection with STARTTLS after connecting (the
 	// common submission setup on port 587). Default true.
 	SMTPStartTLS bool
+
+	// GitHub App config, for pulling charts from private Git repositories. The
+	// operator registers one GitHub App and supplies its numeric App ID, its URL
+	// slug (the App's page is github.com/apps/<slug>, used to build the install
+	// link), and its RSA private key (PEM). An organization installs the App on
+	// its repos; at rollout time the backend mints a short-lived installation
+	// access token from these to authenticate the clone — no git secret is stored
+	// per organization. Optional: when any is unset the feature is simply off
+	// (GitHubAppEnabled reports false), unlike the fail-closed OIDC/EXTERNAL_URL.
+	//
+	// GitHubAppPrivateKey is a secret and is never surfaced to the browser; the
+	// App ID and slug are non-secret. The key is accepted either as a raw PEM
+	// (multi-line, "-----BEGIN …") or base64-encoded (single-line, friendlier for
+	// env vars / Secrets); Load normalizes it to raw PEM. It is parsed to an RSA
+	// key in lib/githubapp, not here, so config keeps no crypto dependency.
+	GitHubAppID         int64
+	GitHubAppSlug       string
+	GitHubAppPrivateKey string
+}
+
+// GitHubAppEnabled reports whether the GitHub App is fully configured (App ID,
+// slug, and private key all set), so the private-Git-charts feature is
+// available. Kept independent of SecretKey: the state-token signing that the
+// connect flow also needs is checked separately where it is used, so a missing
+// SecretKey yields a clear error there rather than silently hiding the feature.
+func (c *Config) GitHubAppEnabled() bool {
+	return c.GitHubAppID != 0 && c.GitHubAppSlug != "" && c.GitHubAppPrivateKey != ""
 }
 
 // EmailEnabled reports whether outbound email is configured. Invitations always
@@ -180,7 +208,53 @@ func Load() (*Config, error) {
 	}
 	cfg.LoginMethods = loginMethods
 
+	appID, err := parseOptionalInt64("GITHUB_APP_ID")
+	if err != nil {
+		return nil, err
+	}
+	cfg.GitHubAppID = appID
+	cfg.GitHubAppSlug = os.Getenv("GITHUB_APP_SLUG")
+	privateKey, err := normalizePEM(os.Getenv("GITHUB_APP_PRIVATE_KEY"))
+	if err != nil {
+		return nil, fmt.Errorf("GITHUB_APP_PRIVATE_KEY: %w", err)
+	}
+	cfg.GitHubAppPrivateKey = privateKey
+
 	return cfg, nil
+}
+
+// parseOptionalInt64 reads an integer env var, returning 0 when unset (the
+// feature using it is then simply off). A non-numeric value is rejected rather
+// than silently treated as 0.
+func parseOptionalInt64(key string) (int64, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return 0, nil
+	}
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", key, err)
+	}
+	return v, nil
+}
+
+// normalizePEM accepts a PEM private key either raw (multi-line, beginning with
+// "-----BEGIN") or base64-encoded (single-line, friendlier for env vars and
+// Kubernetes Secrets) and returns the raw PEM. Empty in → empty out (the feature
+// is off). A value that is neither a PEM nor valid base64 is rejected.
+func normalizePEM(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(raw, "-----BEGIN") {
+		return raw, nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return "", fmt.Errorf("must be a PEM key or base64-encoded PEM: %w", err)
+	}
+	return string(decoded), nil
 }
 
 // parseLoginMethods reads a JSON array of login methods from the named env var,

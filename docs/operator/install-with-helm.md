@@ -289,6 +289,7 @@ reach for most:
 | `config.externalURL` | _(required)_ | public base URL users reach the app at; drives the OIDC issuer, login redirect, and external links (e.g. invitations) — see [Authentication](authentication.md#sign-in-for-the-first-time) |
 | `config.allowOrgCreation` | `true` | whether signed-in users may create their own organization (`false` = invite-only) — see [Authentication](authentication.md#control-who-can-create-organizations) |
 | `config.smtp.host` / `config.smtp.from` | _(empty)_ | enable outbound email (invitations) — see [Email](email.md) |
+| `config.github.appId` / `config.github.slug` / `config.github.privateKey` | _(empty)_ | register a GitHub App to deploy charts from private Git repositories — see [Private Git charts](private-git-charts.md) |
 | `config.oidc.clientID` | `spacefleet` | OIDC client ID the app uses (keep in sync with `dex.clientID`) |
 | `config.secrets.envFrom` | `[]` | load secret env (e.g. `SPACEFLEET_SECRET_KEY`, `SMTP_PASSWORD`) from Secrets you manage — see [Secret configuration](secrets.md) |
 | `dex.storage` | `crd` | Dex storage backend — `crd` keeps state in-cluster |
@@ -378,6 +379,8 @@ the package is private you'll need to `helm registry login ghcr.io` first.
   identity provider, plus adding GitHub/Google logins, controlling who can create
   organizations, storage, and hardening.
 - [Email](email.md) — configure SMTP so invitations are delivered by email.
+- [Private Git charts](private-git-charts.md) — register a GitHub App so
+  organizations can deploy charts from private Git repositories.
 - [Secret configuration](secrets.md) — the credential-encryption key and other
   secret settings (inline for a trial, or from a Secret you manage).
 - [Database configuration](database.md) — connection string, TLS modes, and

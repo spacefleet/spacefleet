@@ -16,6 +16,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/organization"
 )
 
@@ -121,6 +122,20 @@ func (_c *ApplicationCreate) SetChartCredentialID(v uuid.UUID) *ApplicationCreat
 func (_c *ApplicationCreate) SetNillableChartCredentialID(v *uuid.UUID) *ApplicationCreate {
 	if v != nil {
 		_c.SetChartCredentialID(*v)
+	}
+	return _c
+}
+
+// SetGithubInstallationID sets the "github_installation_id" field.
+func (_c *ApplicationCreate) SetGithubInstallationID(v uuid.UUID) *ApplicationCreate {
+	_c.mutation.SetGithubInstallationID(v)
+	return _c
+}
+
+// SetNillableGithubInstallationID sets the "github_installation_id" field if the given value is not nil.
+func (_c *ApplicationCreate) SetNillableGithubInstallationID(v *uuid.UUID) *ApplicationCreate {
+	if v != nil {
+		_c.SetGithubInstallationID(*v)
 	}
 	return _c
 }
@@ -241,6 +256,11 @@ func (_c *ApplicationCreate) SetRunnerCluster(v *Cluster) *ApplicationCreate {
 // SetChartCredential sets the "chart_credential" edge to the ChartCredential entity.
 func (_c *ApplicationCreate) SetChartCredential(v *ChartCredential) *ApplicationCreate {
 	return _c.SetChartCredentialID(v.ID)
+}
+
+// SetGithubInstallation sets the "github_installation" edge to the GitHubInstallation entity.
+func (_c *ApplicationCreate) SetGithubInstallation(v *GitHubInstallation) *ApplicationCreate {
+	return _c.SetGithubInstallationID(v.ID)
 }
 
 // Mutation returns the ApplicationMutation object of the builder.
@@ -522,6 +542,23 @@ func (_c *ApplicationCreate) createSpec() (*Application, *sqlgraph.CreateSpec) {
 		_node.ChartCredentialID = nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.GithubInstallationIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   application.GithubInstallationTable,
+			Columns: []string{application.GithubInstallationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(githubinstallation.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.GithubInstallationID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	return _node, _spec
 }
 
@@ -715,6 +752,24 @@ func (u *ApplicationUpsert) UpdateChartCredentialID() *ApplicationUpsert {
 // ClearChartCredentialID clears the value of the "chart_credential_id" field.
 func (u *ApplicationUpsert) ClearChartCredentialID() *ApplicationUpsert {
 	u.SetNull(application.FieldChartCredentialID)
+	return u
+}
+
+// SetGithubInstallationID sets the "github_installation_id" field.
+func (u *ApplicationUpsert) SetGithubInstallationID(v uuid.UUID) *ApplicationUpsert {
+	u.Set(application.FieldGithubInstallationID, v)
+	return u
+}
+
+// UpdateGithubInstallationID sets the "github_installation_id" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdateGithubInstallationID() *ApplicationUpsert {
+	u.SetExcluded(application.FieldGithubInstallationID)
+	return u
+}
+
+// ClearGithubInstallationID clears the value of the "github_installation_id" field.
+func (u *ApplicationUpsert) ClearGithubInstallationID() *ApplicationUpsert {
+	u.SetNull(application.FieldGithubInstallationID)
 	return u
 }
 
@@ -1015,6 +1070,27 @@ func (u *ApplicationUpsertOne) UpdateChartCredentialID() *ApplicationUpsertOne {
 func (u *ApplicationUpsertOne) ClearChartCredentialID() *ApplicationUpsertOne {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.ClearChartCredentialID()
+	})
+}
+
+// SetGithubInstallationID sets the "github_installation_id" field.
+func (u *ApplicationUpsertOne) SetGithubInstallationID(v uuid.UUID) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetGithubInstallationID(v)
+	})
+}
+
+// UpdateGithubInstallationID sets the "github_installation_id" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdateGithubInstallationID() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateGithubInstallationID()
+	})
+}
+
+// ClearGithubInstallationID clears the value of the "github_installation_id" field.
+func (u *ApplicationUpsertOne) ClearGithubInstallationID() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearGithubInstallationID()
 	})
 }
 
@@ -1495,6 +1571,27 @@ func (u *ApplicationUpsertBulk) UpdateChartCredentialID() *ApplicationUpsertBulk
 func (u *ApplicationUpsertBulk) ClearChartCredentialID() *ApplicationUpsertBulk {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.ClearChartCredentialID()
+	})
+}
+
+// SetGithubInstallationID sets the "github_installation_id" field.
+func (u *ApplicationUpsertBulk) SetGithubInstallationID(v uuid.UUID) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetGithubInstallationID(v)
+	})
+}
+
+// UpdateGithubInstallationID sets the "github_installation_id" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdateGithubInstallationID() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateGithubInstallationID()
+	})
+}
+
+// ClearGithubInstallationID clears the value of the "github_installation_id" field.
+func (u *ApplicationUpsertBulk) ClearGithubInstallationID() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearGithubInstallationID()
 	})
 }
 

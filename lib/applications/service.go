@@ -27,6 +27,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/deployment"
+	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/lib/chartcredentials"
 	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/k8s"
@@ -49,11 +50,21 @@ type CredentialResolver interface {
 	Resolve(ctx context.Context, orgID, id uuid.UUID) (chartcredentials.Resolved, error)
 }
 
+// GitTokenResolver mints a short-lived GitHub App installation token for an
+// org-scoped installation, for the rollout to authenticate a private-Git chart
+// clone. It is the narrow slice of *githubinstallations.Service the rollout
+// needs; may be nil (no GitHub App / installations service wired), in which case
+// an app referencing an installation fails the rollout with a clear error.
+type GitTokenResolver interface {
+	InstallationToken(ctx context.Context, orgID, id uuid.UUID) (string, error)
+}
+
 // Service is a thin wrapper over the ent client plus the connection resolver.
 type Service struct {
-	ent   *ent.Client
-	conns ConnResolver
-	creds CredentialResolver
+	ent       *ent.Client
+	conns     ConnResolver
+	creds     CredentialResolver
+	gitTokens GitTokenResolver
 
 	// captureLogs reads a terminal run's full output for its deployment record.
 	// A seam over the runner-cluster interaction (resolve conn → find pod → read
@@ -62,8 +73,8 @@ type Service struct {
 	captureLogs func(ctx context.Context, app *ent.Application, runName string) string
 }
 
-func NewService(entClient *ent.Client, conns ConnResolver, creds CredentialResolver) *Service {
-	svc := &Service{ent: entClient, conns: conns, creds: creds}
+func NewService(entClient *ent.Client, conns ConnResolver, creds CredentialResolver, gitTokens GitTokenResolver) *Service {
+	svc := &Service{ent: entClient, conns: conns, creds: creds, gitTokens: gitTokens}
 	svc.captureLogs = svc.fetchRunLogs
 	return svc
 }
@@ -128,6 +139,10 @@ type CreateParams struct {
 	// ChartCredentialID optionally attaches a private-chart credential. Nil means
 	// public chart. Its type must be compatible with ChartSource (validated).
 	ChartCredentialID *uuid.UUID
+	// GitHubInstallationID optionally attaches a GitHub App installation for a
+	// private-Git chart. Nil means public repo; only valid when ChartSource is
+	// git (validated).
+	GitHubInstallationID *uuid.UUID
 }
 
 // UpdateParams describes a change to an application. A nil field is unchanged.
@@ -143,6 +158,10 @@ type UpdateParams struct {
 	// a non-nil uuid.Nil detaches it; any other value attaches that credential
 	// (validated against the app's chart source).
 	ChartCredentialID *uuid.UUID
+	// GitHubInstallationID changes the attached GitHub App installation. Nil
+	// leaves it unchanged; a non-nil uuid.Nil detaches it; any other value
+	// attaches that installation (only valid for a git chart source).
+	GitHubInstallationID *uuid.UUID
 }
 
 // List returns the organization's applications, oldest first.
@@ -178,6 +197,9 @@ func (s *Service) Create(ctx context.Context, orgID uuid.UUID, p CreateParams) (
 		SetRunnerClusterID(p.RunnerClusterID)
 	if p.ChartCredentialID != nil && *p.ChartCredentialID != uuid.Nil {
 		create.SetChartCredentialID(*p.ChartCredentialID)
+	}
+	if p.GitHubInstallationID != nil && *p.GitHubInstallationID != uuid.Nil {
+		create.SetGithubInstallationID(*p.GitHubInstallationID)
 	}
 	return create.Save(ctx)
 }
@@ -220,6 +242,16 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, p UpdateParam
 				return nil, err
 			}
 			upd.SetChartCredentialID(*p.ChartCredentialID)
+		}
+	}
+	if p.GitHubInstallationID != nil {
+		if *p.GitHubInstallationID == uuid.Nil {
+			upd.ClearGithubInstallationID()
+		} else {
+			if err := s.validateInstallation(ctx, orgID, app.ChartSource.String(), *p.GitHubInstallationID); err != nil {
+				return nil, err
+			}
+			upd.SetGithubInstallationID(*p.GitHubInstallationID)
 		}
 	}
 	return upd.Save(ctx)
@@ -412,6 +444,25 @@ func (s *Service) ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, ac
 		hasCredential = true
 	}
 
+	// Attach a GitHub App installation token, when one is set, for a private-Git
+	// chart: mint it late (this attempt) so River retries always carry a fresh
+	// token, and inject it as the mounted git-credentials file. The script wires
+	// git's credential helper to it, so the token never lands in the script
+	// string, the clone's argv, or the workspace .git/config. Uninstall pulls no
+	// chart, so it needs no token.
+	hasGitToken := false
+	if app.GithubInstallationID != uuid.Nil && action != helm.ActionUninstall {
+		if s.gitTokens == nil {
+			return helm.RolloutPlan{}, fmt.Errorf("applications: app references a github installation but the github-installations service is not configured")
+		}
+		token, err := s.gitTokens.InstallationToken(ctx, orgID, app.GithubInstallationID)
+		if err != nil {
+			return helm.RolloutPlan{}, err
+		}
+		files[helm.GitCredentialsFile] = "https://x-access-token:" + token + "@github.com"
+		hasGitToken = true
+	}
+
 	script := helm.Script(helm.Rollout{
 		Action:          action,
 		ChartSource:     app.ChartSource.String(),
@@ -420,6 +471,7 @@ func (s *Service) ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, ac
 		TargetNamespace: app.TargetNamespace,
 		WaitTimeout:     helm.WaitTimeout(targetConn.Method),
 		HasCredential:   hasCredential,
+		HasGitToken:     hasGitToken,
 	})
 
 	return helm.RolloutPlan{
@@ -472,7 +524,35 @@ func (s *Service) validate(ctx context.Context, orgID uuid.UUID, p CreateParams)
 		return err
 	}
 	if p.ChartCredentialID != nil && *p.ChartCredentialID != uuid.Nil {
-		return s.validateCredential(ctx, orgID, p.ChartSource, *p.ChartCredentialID)
+		if err := s.validateCredential(ctx, orgID, p.ChartSource, *p.ChartCredentialID); err != nil {
+			return err
+		}
+	}
+	if p.GitHubInstallationID != nil && *p.GitHubInstallationID != uuid.Nil {
+		if err := s.validateInstallation(ctx, orgID, p.ChartSource, *p.GitHubInstallationID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateInstallation confirms the GitHub App installation exists in the
+// organization and that the chart source is git (the only source that pulls
+// from a Git repo). The scoping query is the security boundary; the source check
+// prevents attaching an installation to an http_repo/oci app where it would do
+// nothing.
+func (s *Service) validateInstallation(ctx context.Context, orgID uuid.UUID, source string, installID uuid.UUID) error {
+	if source != helm.SourceGit {
+		return validationErr("a github installation can only be attached to a git chart source")
+	}
+	exists, err := s.ent.GitHubInstallation.Query().
+		Where(githubinstallation.OrganizationID(orgID), githubinstallation.ID(installID)).
+		Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return validationErr("github installation not found in this organization")
 	}
 	return nil
 }

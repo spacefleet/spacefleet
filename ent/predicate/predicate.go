@@ -18,6 +18,9 @@ type Cluster func(*sql.Selector)
 // Deployment is the predicate function for deployment builders.
 type Deployment func(*sql.Selector)
 
+// GitHubInstallation is the predicate function for githubinstallation builders.
+type GitHubInstallation func(*sql.Selector)
+
 // Invitation is the predicate function for invitation builders.
 type Invitation func(*sql.Selector)
 

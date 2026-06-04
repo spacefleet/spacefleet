@@ -15,6 +15,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/predicate"
 )
@@ -22,14 +23,15 @@ import (
 // ApplicationQuery is the builder for querying Application entities.
 type ApplicationQuery struct {
 	config
-	ctx                 *QueryContext
-	order               []application.OrderOption
-	inters              []Interceptor
-	predicates          []predicate.Application
-	withOrganization    *OrganizationQuery
-	withTargetCluster   *ClusterQuery
-	withRunnerCluster   *ClusterQuery
-	withChartCredential *ChartCredentialQuery
+	ctx                    *QueryContext
+	order                  []application.OrderOption
+	inters                 []Interceptor
+	predicates             []predicate.Application
+	withOrganization       *OrganizationQuery
+	withTargetCluster      *ClusterQuery
+	withRunnerCluster      *ClusterQuery
+	withChartCredential    *ChartCredentialQuery
+	withGithubInstallation *GitHubInstallationQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -147,6 +149,28 @@ func (_q *ApplicationQuery) QueryChartCredential() *ChartCredentialQuery {
 			sqlgraph.From(application.Table, application.FieldID, selector),
 			sqlgraph.To(chartcredential.Table, chartcredential.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, false, application.ChartCredentialTable, application.ChartCredentialColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryGithubInstallation chains the current query on the "github_installation" edge.
+func (_q *ApplicationQuery) QueryGithubInstallation() *GitHubInstallationQuery {
+	query := (&GitHubInstallationClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(application.Table, application.FieldID, selector),
+			sqlgraph.To(githubinstallation.Table, githubinstallation.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, application.GithubInstallationTable, application.GithubInstallationColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -341,15 +365,16 @@ func (_q *ApplicationQuery) Clone() *ApplicationQuery {
 		return nil
 	}
 	return &ApplicationQuery{
-		config:              _q.config,
-		ctx:                 _q.ctx.Clone(),
-		order:               append([]application.OrderOption{}, _q.order...),
-		inters:              append([]Interceptor{}, _q.inters...),
-		predicates:          append([]predicate.Application{}, _q.predicates...),
-		withOrganization:    _q.withOrganization.Clone(),
-		withTargetCluster:   _q.withTargetCluster.Clone(),
-		withRunnerCluster:   _q.withRunnerCluster.Clone(),
-		withChartCredential: _q.withChartCredential.Clone(),
+		config:                 _q.config,
+		ctx:                    _q.ctx.Clone(),
+		order:                  append([]application.OrderOption{}, _q.order...),
+		inters:                 append([]Interceptor{}, _q.inters...),
+		predicates:             append([]predicate.Application{}, _q.predicates...),
+		withOrganization:       _q.withOrganization.Clone(),
+		withTargetCluster:      _q.withTargetCluster.Clone(),
+		withRunnerCluster:      _q.withRunnerCluster.Clone(),
+		withChartCredential:    _q.withChartCredential.Clone(),
+		withGithubInstallation: _q.withGithubInstallation.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -397,6 +422,17 @@ func (_q *ApplicationQuery) WithChartCredential(opts ...func(*ChartCredentialQue
 		opt(query)
 	}
 	_q.withChartCredential = query
+	return _q
+}
+
+// WithGithubInstallation tells the query-builder to eager-load the nodes that are connected to
+// the "github_installation" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ApplicationQuery) WithGithubInstallation(opts ...func(*GitHubInstallationQuery)) *ApplicationQuery {
+	query := (&GitHubInstallationClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withGithubInstallation = query
 	return _q
 }
 
@@ -478,11 +514,12 @@ func (_q *ApplicationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	var (
 		nodes       = []*Application{}
 		_spec       = _q.querySpec()
-		loadedTypes = [4]bool{
+		loadedTypes = [5]bool{
 			_q.withOrganization != nil,
 			_q.withTargetCluster != nil,
 			_q.withRunnerCluster != nil,
 			_q.withChartCredential != nil,
+			_q.withGithubInstallation != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -524,6 +561,12 @@ func (_q *ApplicationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	if query := _q.withChartCredential; query != nil {
 		if err := _q.loadChartCredential(ctx, query, nodes, nil,
 			func(n *Application, e *ChartCredential) { n.Edges.ChartCredential = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withGithubInstallation; query != nil {
+		if err := _q.loadGithubInstallation(ctx, query, nodes, nil,
+			func(n *Application, e *GitHubInstallation) { n.Edges.GithubInstallation = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -646,6 +689,35 @@ func (_q *ApplicationQuery) loadChartCredential(ctx context.Context, query *Char
 	}
 	return nil
 }
+func (_q *ApplicationQuery) loadGithubInstallation(ctx context.Context, query *GitHubInstallationQuery, nodes []*Application, init func(*Application), assign func(*Application, *GitHubInstallation)) error {
+	ids := make([]uuid.UUID, 0, len(nodes))
+	nodeids := make(map[uuid.UUID][]*Application)
+	for i := range nodes {
+		fk := nodes[i].GithubInstallationID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(githubinstallation.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "github_installation_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
 
 func (_q *ApplicationQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
@@ -683,6 +755,9 @@ func (_q *ApplicationQuery) querySpec() *sqlgraph.QuerySpec {
 		}
 		if _q.withChartCredential != nil {
 			_spec.Node.AddColumnOnce(application.FieldChartCredentialID)
+		}
+		if _q.withGithubInstallation != nil {
+			_spec.Node.AddColumnOnce(application.FieldGithubInstallationID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

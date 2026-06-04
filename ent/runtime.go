@@ -10,6 +10,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/deployment"
+	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/organization"
@@ -33,11 +34,11 @@ func init() {
 	// application.TargetNamespaceValidator is a validator for the "target_namespace" field. It is called by the builders before save.
 	application.TargetNamespaceValidator = applicationDescTargetNamespace.Validators[0].(func(string) error)
 	// applicationDescCreatedAt is the schema descriptor for created_at field.
-	applicationDescCreatedAt := applicationFields[16].Descriptor()
+	applicationDescCreatedAt := applicationFields[17].Descriptor()
 	// application.DefaultCreatedAt holds the default value on creation for the created_at field.
 	application.DefaultCreatedAt = applicationDescCreatedAt.Default.(func() time.Time)
 	// applicationDescUpdatedAt is the schema descriptor for updated_at field.
-	applicationDescUpdatedAt := applicationFields[17].Descriptor()
+	applicationDescUpdatedAt := applicationFields[18].Descriptor()
 	// application.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	application.DefaultUpdatedAt = applicationDescUpdatedAt.Default.(func() time.Time)
 	// application.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -102,6 +103,22 @@ func init() {
 	deploymentDescID := deploymentFields[0].Descriptor()
 	// deployment.DefaultID holds the default value on creation for the id field.
 	deployment.DefaultID = deploymentDescID.Default.(func() uuid.UUID)
+	githubinstallationFields := schema.GitHubInstallation{}.Fields()
+	_ = githubinstallationFields
+	// githubinstallationDescCreatedAt is the schema descriptor for created_at field.
+	githubinstallationDescCreatedAt := githubinstallationFields[5].Descriptor()
+	// githubinstallation.DefaultCreatedAt holds the default value on creation for the created_at field.
+	githubinstallation.DefaultCreatedAt = githubinstallationDescCreatedAt.Default.(func() time.Time)
+	// githubinstallationDescUpdatedAt is the schema descriptor for updated_at field.
+	githubinstallationDescUpdatedAt := githubinstallationFields[6].Descriptor()
+	// githubinstallation.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	githubinstallation.DefaultUpdatedAt = githubinstallationDescUpdatedAt.Default.(func() time.Time)
+	// githubinstallation.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	githubinstallation.UpdateDefaultUpdatedAt = githubinstallationDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// githubinstallationDescID is the schema descriptor for id field.
+	githubinstallationDescID := githubinstallationFields[0].Descriptor()
+	// githubinstallation.DefaultID holds the default value on creation for the id field.
+	githubinstallation.DefaultID = githubinstallationDescID.Default.(func() uuid.UUID)
 	invitationFields := schema.Invitation{}.Fields()
 	_ = invitationFields
 	// invitationDescEmail is the schema descriptor for email field.

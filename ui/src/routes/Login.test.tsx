@@ -35,6 +35,7 @@ beforeEach(() => {
     loginMethods: [],
     allowOrgCreation: true,
     emailEnabled: false,
+    githubAppEnabled: false,
   };
 });
 

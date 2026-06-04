@@ -81,7 +81,7 @@ export const CHART_SOURCES: ChartSourceDef[] = [
     value: "git",
     label: "Git repository",
     description:
-      "A chart checked out from a Git repository. Public repositories only.",
+      "A chart checked out from a Git repository. Public, or private via a connected GitHub App (Admin › GitHub).",
     fields: [
       {
         key: "repo_url",

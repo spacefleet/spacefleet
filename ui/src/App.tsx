@@ -13,6 +13,8 @@ import { DeploymentDetail } from "./routes/DeploymentDetail";
 import { Clusters } from "./routes/Clusters";
 import { ClusterDetail } from "./routes/ClusterDetail";
 import { CreateOrganization } from "./routes/CreateOrganization";
+import { GitHubCallback } from "./routes/GitHubCallback";
+import { GitHubInstallations } from "./routes/GitHubInstallations";
 import { Home } from "./routes/Home";
 import { Login } from "./routes/Login";
 import { Members } from "./routes/Members";
@@ -37,6 +39,7 @@ const pageComponents: Record<string, ReactNode> = {
   "/infrastructure/pods": <Pods />,
   "/admin/members": <Members />,
   "/admin/private-charts": <PrivateCharts />,
+  "/admin/github": <GitHubInstallations />,
 };
 
 export function App() {
@@ -64,6 +67,11 @@ export function App() {
             {/* Invite acceptance lives above the OrgGate so a brand-new user
                 with no organization yet can still reach it after signing in. */}
             <Route path="/invite/:token" element={<AcceptInvite />} />
+            {/* GitHub App post-install redirect. Above the OrgGate (but inside
+                OrgProvider, so the selected org's header is sent with the POST)
+                so the connect flow completes regardless of the gate, then it
+                routes to Admin › GitHub itself. */}
+            <Route path="/github/callback" element={<GitHubCallback />} />
             <Route element={<OrgGate />}>
               <Route element={<Layout />}>
                 {/* Dashboard overview (the "/" leaf) is served by Home; every

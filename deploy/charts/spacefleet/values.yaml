@@ -72,6 +72,25 @@ config:
     from: ""
     # -- Upgrade the connection with STARTTLS after connecting.
     startTLS: true
+
+  # GitHub App for pulling Helm charts from private Git repositories. Register
+  # one GitHub App (with "Contents: read" repository permission) and set its
+  # Setup URL to "<your external URL>/github/callback" so the post-install
+  # redirect lands back in the app. The App ID and slug are non-secret (inline);
+  # the private key is a secret — set it inline here (it lands in the chart's
+  # managed env Secret as GITHUB_APP_PRIVATE_KEY) or, for GitOps, leave it empty
+  # and supply GITHUB_APP_PRIVATE_KEY via config.secrets.envFrom. Leave unset to
+  # disable the feature (the git chart source then supports public repos only).
+  github:
+    # -- Numeric GitHub App ID. Empty disables the feature.
+    appId: ""
+    # -- GitHub App URL slug (github.com/apps/<slug>), used to build the install
+    # link. Empty disables the feature.
+    slug: ""
+    # -- Inline GitHub App private key (PEM, or base64-encoded PEM). Prefer
+    # config.secrets.envFrom for GitOps. Empty disables the feature.
+    privateKey: ""
+
   # -- Extra environment variables for both web and worker pods. Standard
   # core/v1 EnvVar entries, e.g. [{name: FOO, value: bar}]. Plaintext — for
   # non-secret config only. Secrets go under `secrets` below.

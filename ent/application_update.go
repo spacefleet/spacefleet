@@ -15,6 +15,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/predicate"
 )
 
@@ -187,6 +188,26 @@ func (_u *ApplicationUpdate) ClearChartCredentialID() *ApplicationUpdate {
 	return _u
 }
 
+// SetGithubInstallationID sets the "github_installation_id" field.
+func (_u *ApplicationUpdate) SetGithubInstallationID(v uuid.UUID) *ApplicationUpdate {
+	_u.mutation.SetGithubInstallationID(v)
+	return _u
+}
+
+// SetNillableGithubInstallationID sets the "github_installation_id" field if the given value is not nil.
+func (_u *ApplicationUpdate) SetNillableGithubInstallationID(v *uuid.UUID) *ApplicationUpdate {
+	if v != nil {
+		_u.SetGithubInstallationID(*v)
+	}
+	return _u
+}
+
+// ClearGithubInstallationID clears the value of the "github_installation_id" field.
+func (_u *ApplicationUpdate) ClearGithubInstallationID() *ApplicationUpdate {
+	_u.mutation.ClearGithubInstallationID()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *ApplicationUpdate) SetStatus(v application.Status) *ApplicationUpdate {
 	_u.mutation.SetStatus(v)
@@ -282,6 +303,11 @@ func (_u *ApplicationUpdate) SetChartCredential(v *ChartCredential) *Application
 	return _u.SetChartCredentialID(v.ID)
 }
 
+// SetGithubInstallation sets the "github_installation" edge to the GitHubInstallation entity.
+func (_u *ApplicationUpdate) SetGithubInstallation(v *GitHubInstallation) *ApplicationUpdate {
+	return _u.SetGithubInstallationID(v.ID)
+}
+
 // Mutation returns the ApplicationMutation object of the builder.
 func (_u *ApplicationUpdate) Mutation() *ApplicationMutation {
 	return _u.mutation
@@ -302,6 +328,12 @@ func (_u *ApplicationUpdate) ClearRunnerCluster() *ApplicationUpdate {
 // ClearChartCredential clears the "chart_credential" edge to the ChartCredential entity.
 func (_u *ApplicationUpdate) ClearChartCredential() *ApplicationUpdate {
 	_u.mutation.ClearChartCredential()
+	return _u
+}
+
+// ClearGithubInstallation clears the "github_installation" edge to the GitHubInstallation entity.
+func (_u *ApplicationUpdate) ClearGithubInstallation() *ApplicationUpdate {
+	_u.mutation.ClearGithubInstallation()
 	return _u
 }
 
@@ -533,6 +565,35 @@ func (_u *ApplicationUpdate) sqlSave(ctx context.Context) (_node int, err error)
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.GithubInstallationCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   application.GithubInstallationTable,
+			Columns: []string{application.GithubInstallationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(githubinstallation.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GithubInstallationIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   application.GithubInstallationTable,
+			Columns: []string{application.GithubInstallationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(githubinstallation.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{application.Label}
@@ -709,6 +770,26 @@ func (_u *ApplicationUpdateOne) ClearChartCredentialID() *ApplicationUpdateOne {
 	return _u
 }
 
+// SetGithubInstallationID sets the "github_installation_id" field.
+func (_u *ApplicationUpdateOne) SetGithubInstallationID(v uuid.UUID) *ApplicationUpdateOne {
+	_u.mutation.SetGithubInstallationID(v)
+	return _u
+}
+
+// SetNillableGithubInstallationID sets the "github_installation_id" field if the given value is not nil.
+func (_u *ApplicationUpdateOne) SetNillableGithubInstallationID(v *uuid.UUID) *ApplicationUpdateOne {
+	if v != nil {
+		_u.SetGithubInstallationID(*v)
+	}
+	return _u
+}
+
+// ClearGithubInstallationID clears the value of the "github_installation_id" field.
+func (_u *ApplicationUpdateOne) ClearGithubInstallationID() *ApplicationUpdateOne {
+	_u.mutation.ClearGithubInstallationID()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *ApplicationUpdateOne) SetStatus(v application.Status) *ApplicationUpdateOne {
 	_u.mutation.SetStatus(v)
@@ -804,6 +885,11 @@ func (_u *ApplicationUpdateOne) SetChartCredential(v *ChartCredential) *Applicat
 	return _u.SetChartCredentialID(v.ID)
 }
 
+// SetGithubInstallation sets the "github_installation" edge to the GitHubInstallation entity.
+func (_u *ApplicationUpdateOne) SetGithubInstallation(v *GitHubInstallation) *ApplicationUpdateOne {
+	return _u.SetGithubInstallationID(v.ID)
+}
+
 // Mutation returns the ApplicationMutation object of the builder.
 func (_u *ApplicationUpdateOne) Mutation() *ApplicationMutation {
 	return _u.mutation
@@ -824,6 +910,12 @@ func (_u *ApplicationUpdateOne) ClearRunnerCluster() *ApplicationUpdateOne {
 // ClearChartCredential clears the "chart_credential" edge to the ChartCredential entity.
 func (_u *ApplicationUpdateOne) ClearChartCredential() *ApplicationUpdateOne {
 	_u.mutation.ClearChartCredential()
+	return _u
+}
+
+// ClearGithubInstallation clears the "github_installation" edge to the GitHubInstallation entity.
+func (_u *ApplicationUpdateOne) ClearGithubInstallation() *ApplicationUpdateOne {
+	_u.mutation.ClearGithubInstallation()
 	return _u
 }
 
@@ -1078,6 +1170,35 @@ func (_u *ApplicationUpdateOne) sqlSave(ctx context.Context) (_node *Application
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(chartcredential.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GithubInstallationCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   application.GithubInstallationTable,
+			Columns: []string{application.GithubInstallationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(githubinstallation.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GithubInstallationIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   application.GithubInstallationTable,
+			Columns: []string{application.GithubInstallationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(githubinstallation.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

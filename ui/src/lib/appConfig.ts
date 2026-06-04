@@ -24,3 +24,11 @@ export function loginMethods(): Window["appConfig"]["loginMethods"] {
 export function emailEnabled(): boolean {
   return window.appConfig?.emailEnabled === true;
 }
+
+// githubAppEnabled reports whether a GitHub App is configured, so the SPA can
+// offer connecting a GitHub installation for private-Git charts. Defaults to
+// false when config is missing, so the UI hides the affordance rather than
+// linking to an install flow that can't complete.
+export function githubAppEnabled(): boolean {
+  return window.appConfig?.githubAppEnabled === true;
+}

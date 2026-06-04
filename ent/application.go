@@ -14,6 +14,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/organization"
 )
 
@@ -44,6 +45,8 @@ type Application struct {
 	RunnerClusterID uuid.UUID `json:"runner_cluster_id,omitempty"`
 	// ChartCredentialID holds the value of the "chart_credential_id" field.
 	ChartCredentialID uuid.UUID `json:"chart_credential_id,omitempty"`
+	// GithubInstallationID holds the value of the "github_installation_id" field.
+	GithubInstallationID uuid.UUID `json:"github_installation_id,omitempty"`
 	// Status holds the value of the "status" field.
 	Status application.Status `json:"status,omitempty"`
 	// StatusMessage holds the value of the "status_message" field.
@@ -72,9 +75,11 @@ type ApplicationEdges struct {
 	RunnerCluster *Cluster `json:"runner_cluster,omitempty"`
 	// ChartCredential holds the value of the chart_credential edge.
 	ChartCredential *ChartCredential `json:"chart_credential,omitempty"`
+	// GithubInstallation holds the value of the github_installation edge.
+	GithubInstallation *GitHubInstallation `json:"github_installation,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [4]bool
+	loadedTypes [5]bool
 }
 
 // OrganizationOrErr returns the Organization value or an error if the edge
@@ -121,6 +126,17 @@ func (e ApplicationEdges) ChartCredentialOrErr() (*ChartCredential, error) {
 	return nil, &NotLoadedError{edge: "chart_credential"}
 }
 
+// GithubInstallationOrErr returns the GithubInstallation value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ApplicationEdges) GithubInstallationOrErr() (*GitHubInstallation, error) {
+	if e.GithubInstallation != nil {
+		return e.GithubInstallation, nil
+	} else if e.loadedTypes[4] {
+		return nil, &NotFoundError{label: githubinstallation.Label}
+	}
+	return nil, &NotLoadedError{edge: "github_installation"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*Application) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
@@ -132,7 +148,7 @@ func (*Application) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullString)
 		case application.FieldCreatedAt, application.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
-		case application.FieldID, application.FieldOrganizationID, application.FieldTargetClusterID, application.FieldRunnerClusterID, application.FieldChartCredentialID:
+		case application.FieldID, application.FieldOrganizationID, application.FieldTargetClusterID, application.FieldRunnerClusterID, application.FieldChartCredentialID, application.FieldGithubInstallationID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -223,6 +239,12 @@ func (_m *Application) assignValues(columns []string, values []any) error {
 			} else if value != nil {
 				_m.ChartCredentialID = *value
 			}
+		case application.FieldGithubInstallationID:
+			if value, ok := values[i].(*uuid.UUID); !ok {
+				return fmt.Errorf("unexpected type %T for field github_installation_id", values[i])
+			} else if value != nil {
+				_m.GithubInstallationID = *value
+			}
 		case application.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
@@ -292,6 +314,11 @@ func (_m *Application) QueryChartCredential() *ChartCredentialQuery {
 	return NewApplicationClient(_m.config).QueryChartCredential(_m)
 }
 
+// QueryGithubInstallation queries the "github_installation" edge of the Application entity.
+func (_m *Application) QueryGithubInstallation() *GitHubInstallationQuery {
+	return NewApplicationClient(_m.config).QueryGithubInstallation(_m)
+}
+
 // Update returns a builder for updating this Application.
 // Note that you need to call Application.Unwrap() before calling this method if this Application
 // was returned from a transaction, and the transaction was committed or rolled back.
@@ -347,6 +374,9 @@ func (_m *Application) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("chart_credential_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ChartCredentialID))
+	builder.WriteString(", ")
+	builder.WriteString("github_installation_id=")
+	builder.WriteString(fmt.Sprintf("%v", _m.GithubInstallationID))
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Status))

@@ -756,6 +756,80 @@ export interface paths {
         patch: operations["updateChartCredential"];
         trace?: never;
     };
+    "/api/github/installations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the GitHub App installations in the current organization
+         * @description Org-scoped: the organization is taken from the X-Organization-ID header.
+         *     Installations of the operator's GitHub App, used to pull charts from
+         *     private Git repositories.
+         */
+        get: operations["listGitHubInstallations"];
+        put?: never;
+        /**
+         * Record a GitHub App installation from the connect callback
+         * @description Org-scoped, editor or above. Called by the SPA after GitHub redirects
+         *     back from the install flow. The state token (issued by connect-url) is
+         *     verified to bind the installation to the initiating organization, and the
+         *     installation is confirmed against the GitHub App before it is recorded.
+         */
+        post: operations["createGitHubInstallation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/github/installations/connect-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the GitHub App install URL to begin connecting
+         * @description Org-scoped, editor or above. Returns the URL to redirect the browser to
+         *     so the user can install the operator's GitHub App. It carries a signed,
+         *     short-lived state token binding the flow to the current organization,
+         *     which the create endpoint verifies on the callback.
+         */
+        get: operations["getGitHubConnectUrl"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/github/installations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a GitHub App installation
+         * @description Org-scoped, editor or above. An installation still attached to an
+         *     application cannot be deleted (409). This removes the record from
+         *     Spacefleet only; it does not uninstall the App on GitHub.
+         */
+        delete: operations["deleteGitHubInstallation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1265,6 +1339,12 @@ export interface components {
              *     oci → oci).
              */
             chart_credential_id?: string;
+            /**
+             * Format: uuid
+             * @description GitHub App installation used to pull a private Git chart (absent for
+             *     public repos). Only valid when chart_source is git.
+             */
+            github_installation_id?: string;
             status: components["schemas"]["ApplicationStatus"];
             /** @description Human-readable detail (last rollout-progress line, or error). */
             status_message?: string;
@@ -1301,6 +1381,12 @@ export interface components {
              *     chart_source (basic_auth → http_repo, oci → oci); git charts take none.
              */
             chart_credential_id?: string;
+            /**
+             * Format: uuid
+             * @description Optional GitHub App installation to attach for a private Git chart.
+             *     Only valid when chart_source is git.
+             */
+            github_installation_id?: string;
         };
         /**
          * @description All fields optional. The clusters and chart source are fixed at
@@ -1321,6 +1407,12 @@ export interface components {
              *     (00000000-0000-0000-0000-000000000000) to detach.
              */
             chart_credential_id?: string;
+            /**
+             * Format: uuid
+             * @description Change the attached GitHub App installation (git charts). Send the
+             *     nil UUID (00000000-0000-0000-0000-000000000000) to detach.
+             */
+            github_installation_id?: string;
         };
         ApplicationRolloutRequest: {
             /**
@@ -1367,6 +1459,44 @@ export interface components {
             name?: string;
             username?: string;
             password?: string;
+        };
+        /**
+         * @description An organization's installation of the operator's GitHub App, used to
+         *     pull charts from private Git repositories. No secret is stored — the
+         *     access token is minted on demand at rollout time.
+         */
+        GitHubInstallation: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: int64
+             * @description The numeric GitHub App installation id.
+             */
+            installation_id: number;
+            /** @description The GitHub account (org or user) the App is installed on. */
+            account_login?: string;
+            /** @description The account type, e.g. "Organization" or "User". */
+            account_type?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        GitHubInstallationCreateRequest: {
+            /**
+             * Format: int64
+             * @description The installation id GitHub returned to the connect callback.
+             */
+            installation_id: number;
+            /**
+             * @description The signed state token issued by connect-url and round-tripped
+             *     through GitHub's redirect; binds the installation to this org.
+             */
+            state: string;
+        };
+        GitHubConnectUrl: {
+            /** @description The GitHub App install URL to redirect the browser to. */
+            url: string;
         };
         /**
          * @description The rollout action a deployment run performed.
@@ -1422,6 +1552,7 @@ export interface components {
         ClusterID: string;
         ApplicationID: string;
         ChartCredentialID: string;
+        GitHubInstallationID: string;
         DeploymentID: string;
         MemberUserID: string;
         InvitationID: string;
@@ -2461,6 +2592,94 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ChartCredential"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listGitHubInstallations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description GitHub installations in the current organization */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubInstallation"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createGitHubInstallation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitHubInstallationCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Installation recorded */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubInstallation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getGitHubConnectUrl: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The install URL */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubConnectUrl"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteGitHubInstallation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["GitHubInstallationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Installation deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

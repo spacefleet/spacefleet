@@ -70,6 +70,26 @@ the ConfigMap, the DATABASE_URL secret ref, and any extraEnv.
       key: SMTP_PASSWORD
 {{- end }}
 {{- end }}
+{{- /* GitHub App for pulling charts from private Git repositories. App ID and
+       slug are non-secret (inline); the private key (when supplied inline) comes
+       from the chart's env Secret. Leave unset to disable the feature. */}}
+{{- with (.Values.config.github | default dict) }}
+{{- with .appId }}
+- name: GITHUB_APP_ID
+  value: {{ . | quote }}
+{{- end }}
+{{- with .slug }}
+- name: GITHUB_APP_SLUG
+  value: {{ . | quote }}
+{{- end }}
+{{- with .privateKey }}
+- name: GITHUB_APP_PRIVATE_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "spacefleet.envSecretName" $ }}
+      key: GITHUB_APP_PRIVATE_KEY
+{{- end }}
+{{- end }}
 {{- with .Values.config.extraEnv }}
 {{- toYaml . | nindent 0 }}
 {{- end }}

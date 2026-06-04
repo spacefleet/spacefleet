@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AppWindow, X } from "lucide-react";
 import { api } from "../api/client";
 import type { components } from "../api/schema";
+import { githubAppEnabled } from "../lib/appConfig";
 import { CHART_SOURCES } from "./chartSources";
 
 type Application = components["schemas"]["Application"];
@@ -9,6 +10,7 @@ type ChartSource = components["schemas"]["ChartSource"];
 type CreateRequest = components["schemas"]["ApplicationCreateRequest"];
 type Cluster = components["schemas"]["Cluster"];
 type ChartCredential = components["schemas"]["ChartCredential"];
+type GitHubInstallation = components["schemas"]["GitHubInstallation"];
 
 // The credential type compatible with each chart source. git charts use the git
 // repo's own auth, so they take no chart credential.
@@ -42,8 +44,12 @@ export function CreateApplicationDialog({
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [credentials, setCredentials] = useState<ChartCredential[]>([]);
   const [credentialId, setCredentialId] = useState("");
+  const [installations, setInstallations] = useState<GitHubInstallation[]>([]);
+  const [installationId, setInstallationId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const githubEnabled = githubAppEnabled();
 
   useEffect(() => {
     void (async () => {
@@ -54,7 +60,13 @@ export function CreateApplicationDialog({
       const { data } = await api.GET("/api/chart-credentials");
       setCredentials(data ?? []);
     })();
-  }, []);
+    if (githubEnabled) {
+      void (async () => {
+        const { data } = await api.GET("/api/github/installations");
+        setInstallations(data ?? []);
+      })();
+    }
+  }, [githubEnabled]);
 
   const selected = CHART_SOURCES.find((s) => s.value === chartSource)!;
   // Only job-running clusters can host a rollout's TaskRun.
@@ -91,6 +103,8 @@ export function CreateApplicationDialog({
     if (values.trim() !== "") body.values = values;
     if (releaseName.trim() !== "") body.release_name = releaseName.trim();
     if (credentialId !== "") body.chart_credential_id = credentialId;
+    if (chartSource === "git" && installationId !== "")
+      body.github_installation_id = installationId;
 
     const { data, error } = await api.POST("/api/applications", { body });
     setSubmitting(false);
@@ -196,6 +210,7 @@ export function CreateApplicationDialog({
                 setChartSource(e.target.value as ChartSource);
                 setConfig({});
                 setCredentialId("");
+                setInstallationId("");
                 setError(null);
               }}
             >
@@ -242,6 +257,31 @@ export function CreateApplicationDialog({
                 <p className="mt-1 text-xs text-gray-500">
                   No matching credentials yet. Add one under Admin › Private
                   Charts.
+                </p>
+              )}
+            </Labeled>
+          )}
+
+          {chartSource === "git" && githubEnabled && (
+            <Labeled
+              label="GitHub installation"
+              help="Optional. Required only if the repository is private. Connect one under Admin › GitHub."
+            >
+              <select
+                className="w-full border border-gray-300 bg-white px-3 py-2 text-sm"
+                value={installationId}
+                onChange={(e) => setInstallationId(e.target.value)}
+              >
+                <option value="">None (public repository)</option>
+                {installations.map((inst) => (
+                  <option key={inst.id} value={inst.id}>
+                    {inst.account_login || inst.installation_id}
+                  </option>
+                ))}
+              </select>
+              {installations.length === 0 && (
+                <p className="mt-1 text-xs text-gray-500">
+                  No GitHub installations yet. Connect one under Admin › GitHub.
                 </p>
               )}
             </Labeled>

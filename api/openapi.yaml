@@ -894,6 +894,84 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/github/installations:
+    get:
+      summary: List the GitHub App installations in the current organization
+      description: |
+        Org-scoped: the organization is taken from the X-Organization-ID header.
+        Installations of the operator's GitHub App, used to pull charts from
+        private Git repositories.
+      operationId: listGitHubInstallations
+      responses:
+        "200":
+          description: GitHub installations in the current organization
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GitHubInstallation"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Record a GitHub App installation from the connect callback
+      description: |
+        Org-scoped, editor or above. Called by the SPA after GitHub redirects
+        back from the install flow. The state token (issued by connect-url) is
+        verified to bind the installation to the initiating organization, and the
+        installation is confirmed against the GitHub App before it is recorded.
+      operationId: createGitHubInstallation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GitHubInstallationCreateRequest"
+      responses:
+        "201":
+          description: Installation recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubInstallation"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/github/installations/connect-url:
+    get:
+      summary: Get the GitHub App install URL to begin connecting
+      description: |
+        Org-scoped, editor or above. Returns the URL to redirect the browser to
+        so the user can install the operator's GitHub App. It carries a signed,
+        short-lived state token binding the flow to the current organization,
+        which the create endpoint verifies on the callback.
+      operationId: getGitHubConnectUrl
+      responses:
+        "200":
+          description: The install URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubConnectUrl"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/github/installations/{id}:
+    delete:
+      summary: Delete a GitHub App installation
+      description: |
+        Org-scoped, editor or above. An installation still attached to an
+        application cannot be deleted (409). This removes the record from
+        Spacefleet only; it does not uninstall the App on GitHub.
+      operationId: deleteGitHubInstallation
+      parameters:
+        - $ref: "#/components/parameters/GitHubInstallationID"
+      responses:
+        "204":
+          description: Installation deleted
+        default:
+          $ref: "#/components/responses/Error"
+
 components:
   schemas:
     Health:
@@ -1780,6 +1858,12 @@ components:
             Private-chart credential used to pull the chart (absent for public
             charts). Its type matches chart_source (basic_auth → http_repo,
             oci → oci).
+        github_installation_id:
+          type: string
+          format: uuid
+          description: |
+            GitHub App installation used to pull a private Git chart (absent for
+            public repos). Only valid when chart_source is git.
         status:
           $ref: "#/components/schemas/ApplicationStatus"
         status_message:
@@ -1835,6 +1919,12 @@ components:
           description: |
             Optional private-chart credential to attach. Its type must match
             chart_source (basic_auth → http_repo, oci → oci); git charts take none.
+        github_installation_id:
+          type: string
+          format: uuid
+          description: |
+            Optional GitHub App installation to attach for a private Git chart.
+            Only valid when chart_source is git.
 
     ApplicationUpdateRequest:
       type: object
@@ -1864,6 +1954,12 @@ components:
           description: |
             Change the attached credential. Send the nil UUID
             (00000000-0000-0000-0000-000000000000) to detach.
+        github_installation_id:
+          type: string
+          format: uuid
+          description: |
+            Change the attached GitHub App installation (git charts). Send the
+            nil UUID (00000000-0000-0000-0000-000000000000) to detach.
 
     ApplicationRolloutRequest:
       type: object
@@ -1938,6 +2034,56 @@ components:
         password:
           type: string
           minLength: 1
+
+    GitHubInstallation:
+      type: object
+      description: |
+        An organization's installation of the operator's GitHub App, used to
+        pull charts from private Git repositories. No secret is stored — the
+        access token is minted on demand at rollout time.
+      required: [id, installation_id, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        installation_id:
+          type: integer
+          format: int64
+          description: The numeric GitHub App installation id.
+        account_login:
+          type: string
+          description: The GitHub account (org or user) the App is installed on.
+        account_type:
+          type: string
+          description: The account type, e.g. "Organization" or "User".
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    GitHubInstallationCreateRequest:
+      type: object
+      required: [installation_id, state]
+      properties:
+        installation_id:
+          type: integer
+          format: int64
+          description: The installation id GitHub returned to the connect callback.
+        state:
+          type: string
+          description: |
+            The signed state token issued by connect-url and round-tripped
+            through GitHub's redirect; binds the installation to this org.
+
+    GitHubConnectUrl:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          description: The GitHub App install URL to redirect the browser to.
 
     DeploymentAction:
       type: string
@@ -2017,6 +2163,14 @@ components:
         format: uuid
 
     ChartCredentialID:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    GitHubInstallationID:
       in: path
       name: id
       required: true

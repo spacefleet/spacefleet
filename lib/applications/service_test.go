@@ -67,7 +67,7 @@ func httpRepoParams(target, runner uuid.UUID) CreateParams {
 
 func TestCreateValidAndOrgScoped(t *testing.T) {
 	client := testsupport.NewEntClient(t)
-	svc := NewService(client, stubConns{}, nil)
+	svc := NewService(client, stubConns{}, nil, nil)
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
@@ -95,7 +95,7 @@ func TestCreateValidAndOrgScoped(t *testing.T) {
 
 func TestCreateRunnerNotJobRunner(t *testing.T) {
 	client := testsupport.NewEntClient(t)
-	svc := NewService(client, stubConns{}, nil)
+	svc := NewService(client, stubConns{}, nil, nil)
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
@@ -110,7 +110,7 @@ func TestCreateRunnerNotJobRunner(t *testing.T) {
 
 func TestCreateInClusterRequiresSameRunner(t *testing.T) {
 	client := testsupport.NewEntClient(t)
-	svc := NewService(client, stubConns{}, nil)
+	svc := NewService(client, stubConns{}, nil, nil)
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
@@ -136,7 +136,7 @@ func TestCreateInClusterRequiresSameRunner(t *testing.T) {
 
 func TestCreateMissingChartFields(t *testing.T) {
 	client := testsupport.NewEntClient(t)
-	svc := NewService(client, stubConns{}, nil)
+	svc := NewService(client, stubConns{}, nil, nil)
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
@@ -152,7 +152,7 @@ func TestCreateMissingChartFields(t *testing.T) {
 
 func TestCreateTargetClusterFromAnotherOrgRejected(t *testing.T) {
 	client := testsupport.NewEntClient(t)
-	svc := NewService(client, stubConns{}, nil)
+	svc := NewService(client, stubConns{}, nil, nil)
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
@@ -182,7 +182,7 @@ func newApp(t *testing.T, svc *Service, client *ent.Client, orgID uuid.UUID) *en
 
 func TestRecordAndListDeployments(t *testing.T) {
 	client := testsupport.NewEntClient(t)
-	svc := NewService(client, stubConns{}, nil)
+	svc := NewService(client, stubConns{}, nil, nil)
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
@@ -222,7 +222,7 @@ func TestRecordAndListDeployments(t *testing.T) {
 
 func TestGetDeploymentOrgScoped(t *testing.T) {
 	client := testsupport.NewEntClient(t)
-	svc := NewService(client, stubConns{}, nil)
+	svc := NewService(client, stubConns{}, nil, nil)
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
@@ -243,7 +243,7 @@ func TestGetDeploymentOrgScoped(t *testing.T) {
 
 func TestMarkRolloutUpdatesDeployment(t *testing.T) {
 	client := testsupport.NewEntClient(t)
-	svc := NewService(client, stubConns{}, nil)
+	svc := NewService(client, stubConns{}, nil, nil)
 	// Stub the cluster log-capture seam so the terminal transition stores logs
 	// without a live runner.
 	svc.captureLogs = func(context.Context, *ent.Application, string) string {
@@ -314,7 +314,7 @@ func newChartCredential(t *testing.T, client *ent.Client, orgID uuid.UUID, name 
 
 func TestCreateWithCompatibleCredential(t *testing.T) {
 	client := testsupport.NewEntClient(t)
-	svc := NewService(client, stubConns{}, nil)
+	svc := NewService(client, stubConns{}, nil, nil)
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
@@ -335,7 +335,7 @@ func TestCreateWithCompatibleCredential(t *testing.T) {
 
 func TestCreateWithIncompatibleCredentialRejected(t *testing.T) {
 	client := testsupport.NewEntClient(t)
-	svc := NewService(client, stubConns{}, nil)
+	svc := NewService(client, stubConns{}, nil, nil)
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
@@ -353,7 +353,7 @@ func TestCreateWithIncompatibleCredentialRejected(t *testing.T) {
 
 func TestCreateWithCredentialFromAnotherOrgRejected(t *testing.T) {
 	client := testsupport.NewEntClient(t)
-	svc := NewService(client, stubConns{}, nil)
+	svc := NewService(client, stubConns{}, nil, nil)
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
@@ -366,5 +366,88 @@ func TestCreateWithCredentialFromAnotherOrgRejected(t *testing.T) {
 	p.ChartCredentialID = &foreignCred.ID
 	if _, err := svc.Create(ctx, org.ID, p); !IsValidation(err) {
 		t.Fatalf("error = %v, want ValidationError for cross-org credential", err)
+	}
+}
+
+// newInstallation creates a GitHub installation row directly, for the
+// validateInstallation tests.
+func newInstallation(t *testing.T, client *ent.Client, orgID uuid.UUID, installationID int64) *ent.GitHubInstallation {
+	t.Helper()
+	inst, err := client.GitHubInstallation.Create().
+		SetOrganizationID(orgID).
+		SetInstallationID(installationID).
+		SetAccountLogin("acme").
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("create github installation: %v", err)
+	}
+	return inst
+}
+
+func gitParams(target, runner uuid.UUID) CreateParams {
+	return CreateParams{
+		Name:            "git-app",
+		ChartSource:     helm.SourceGit,
+		Config:          map[string]string{helm.ConfigRepoURL: "https://github.com/org/charts.git"},
+		TargetNamespace: "apps",
+		TargetClusterID: target,
+		RunnerClusterID: runner,
+	}
+}
+
+func TestCreateGitWithInstallation(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
+	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
+	inst := newInstallation(t, client, org.ID, 12345)
+
+	p := gitParams(target.ID, runner.ID)
+	p.GitHubInstallationID = &inst.ID
+	app, err := svc.Create(ctx, org.ID, p)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if app.GithubInstallationID != inst.ID {
+		t.Errorf("GithubInstallationID = %v, want %v", app.GithubInstallationID, inst.ID)
+	}
+}
+
+func TestCreateInstallationOnlyAllowedForGit(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
+	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
+	inst := newInstallation(t, client, org.ID, 12345)
+
+	// An installation on an http_repo (non-git) app is rejected.
+	p := httpRepoParams(target.ID, runner.ID)
+	p.GitHubInstallationID = &inst.ID
+	if _, err := svc.Create(ctx, org.ID, p); !IsValidation(err) {
+		t.Fatalf("error = %v, want ValidationError for installation on non-git source", err)
+	}
+}
+
+func TestCreateGitWithInstallationFromAnotherOrgRejected(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	other := newOrg(t, client, "Other")
+	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
+	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
+	foreign := newInstallation(t, client, other.ID, 999)
+
+	p := gitParams(target.ID, runner.ID)
+	p.GitHubInstallationID = &foreign.ID
+	if _, err := svc.Create(ctx, org.ID, p); !IsValidation(err) {
+		t.Fatalf("error = %v, want ValidationError for cross-org installation", err)
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/chartcredentials"
 	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/email"
+	"github.com/spacefleet/spacefleet/lib/githubinstallations"
 	"github.com/spacefleet/spacefleet/lib/invitations"
 	"github.com/spacefleet/spacefleet/lib/organizations"
 	"github.com/spacefleet/spacefleet/lib/queue"
@@ -21,12 +22,20 @@ import (
 )
 
 type Server struct {
-	users            *users.Service
-	orgs             *organizations.Service
-	clusters         *clusters.Service
-	applications     *applications.Service
-	chartCredentials *chartcredentials.Service
-	invites          *invitations.Service
+	users               *users.Service
+	orgs                *organizations.Service
+	clusters            *clusters.Service
+	applications        *applications.Service
+	chartCredentials    *chartcredentials.Service
+	githubInstallations *githubinstallations.Service
+	invites             *invitations.Service
+
+	// githubAppSlug is the operator's GitHub App URL slug, used to build the
+	// install link returned by GetGitHubConnectUrl. secretKey signs the
+	// short-lived state token that binds that connect flow to the org (the same
+	// base64 key as the credential sealer). Both empty when no App is configured.
+	githubAppSlug string
+	secretKey     string
 
 	// allowOrgCreation gates the create-organization endpoint. When false,
 	// the server refuses to mint new organizations (see config.AllowOrgCreation)
@@ -54,31 +63,37 @@ type Server struct {
 // configured" error instead of panicking, which keeps route-level tests usable
 // without a database or queue.
 type ServerDeps struct {
-	Users            *users.Service
-	Orgs             *organizations.Service
-	Clusters         *clusters.Service
-	Applications     *applications.Service
-	ChartCredentials *chartcredentials.Service
-	Invites          *invitations.Service
-	AllowOrgCreation bool
-	ExternalURL      string
-	EmailEnabled     bool
-	JobQueue         *queue.Client
+	Users               *users.Service
+	Orgs                *organizations.Service
+	Clusters            *clusters.Service
+	Applications        *applications.Service
+	ChartCredentials    *chartcredentials.Service
+	GitHubInstallations *githubinstallations.Service
+	Invites             *invitations.Service
+	AllowOrgCreation    bool
+	ExternalURL         string
+	EmailEnabled        bool
+	GitHubAppSlug       string
+	SecretKey           string
+	JobQueue            *queue.Client
 }
 
 // NewServer builds the API server from its dependencies.
 func NewServer(d ServerDeps) *Server {
 	return &Server{
-		users:            d.Users,
-		orgs:             d.Orgs,
-		clusters:         d.Clusters,
-		applications:     d.Applications,
-		chartCredentials: d.ChartCredentials,
-		invites:          d.Invites,
-		allowOrgCreation: d.AllowOrgCreation,
-		externalURL:      d.ExternalURL,
-		emailEnabled:     d.EmailEnabled,
-		jobQueue:         d.JobQueue,
+		users:               d.Users,
+		orgs:                d.Orgs,
+		clusters:            d.Clusters,
+		applications:        d.Applications,
+		chartCredentials:    d.ChartCredentials,
+		githubInstallations: d.GitHubInstallations,
+		invites:             d.Invites,
+		allowOrgCreation:    d.AllowOrgCreation,
+		externalURL:         d.ExternalURL,
+		emailEnabled:        d.EmailEnabled,
+		githubAppSlug:       d.GitHubAppSlug,
+		secretKey:           d.SecretKey,
+		jobQueue:            d.JobQueue,
 	}
 }
 

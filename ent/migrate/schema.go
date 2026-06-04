@@ -3,6 +3,7 @@
 package migrate
 
 import (
+	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/dialect/sql/schema"
 	"entgo.io/ent/schema/field"
 )
@@ -28,6 +29,7 @@ var (
 		{Name: "target_cluster_id", Type: field.TypeUUID},
 		{Name: "runner_cluster_id", Type: field.TypeUUID},
 		{Name: "chart_credential_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "github_installation_id", Type: field.TypeUUID, Nullable: true},
 	}
 	// ApplicationsTable holds the schema information for the "applications" table.
 	ApplicationsTable = &schema.Table{
@@ -57,6 +59,12 @@ var (
 				Symbol:     "applications_chart_credentials_chart_credential",
 				Columns:    []*schema.Column{ApplicationsColumns[17]},
 				RefColumns: []*schema.Column{ChartCredentialsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "applications_github_installations_github_installation",
+				Columns:    []*schema.Column{ApplicationsColumns[18]},
+				RefColumns: []*schema.Column{GithubInstallationsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 		},
@@ -204,6 +212,42 @@ var (
 			},
 		},
 	}
+	// GithubInstallationsColumns holds the columns for the "github_installations" table.
+	GithubInstallationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "installation_id", Type: field.TypeInt64},
+		{Name: "account_login", Type: field.TypeString, Nullable: true},
+		{Name: "account_type", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+	}
+	// GithubInstallationsTable holds the schema information for the "github_installations" table.
+	GithubInstallationsTable = &schema.Table{
+		Name:       "github_installations",
+		Columns:    GithubInstallationsColumns,
+		PrimaryKey: []*schema.Column{GithubInstallationsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "github_installations_organizations_organization",
+				Columns:    []*schema.Column{GithubInstallationsColumns[6]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "githubinstallation_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{GithubInstallationsColumns[6]},
+			},
+			{
+				Name:    "githubinstallation_organization_id_installation_id",
+				Unique:  true,
+				Columns: []*schema.Column{GithubInstallationsColumns[6], GithubInstallationsColumns[1]},
+			},
+		},
+	}
 	// InvitationsColumns holds the columns for the "invitations" table.
 	InvitationsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -340,6 +384,7 @@ var (
 		ChartCredentialsTable,
 		ClustersTable,
 		DeploymentsTable,
+		GithubInstallationsTable,
 		InvitationsTable,
 		MembershipsTable,
 		OrganizationsTable,
@@ -353,10 +398,15 @@ func init() {
 	ApplicationsTable.ForeignKeys[1].RefTable = ClustersTable
 	ApplicationsTable.ForeignKeys[2].RefTable = ClustersTable
 	ApplicationsTable.ForeignKeys[3].RefTable = ChartCredentialsTable
+	ApplicationsTable.ForeignKeys[4].RefTable = GithubInstallationsTable
 	ChartCredentialsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ClustersTable.ForeignKeys[0].RefTable = OrganizationsTable
 	DeploymentsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	DeploymentsTable.ForeignKeys[1].RefTable = ApplicationsTable
+	GithubInstallationsTable.ForeignKeys[0].RefTable = OrganizationsTable
+	GithubInstallationsTable.Annotation = &entsql.Annotation{
+		Table: "github_installations",
+	}
 	InvitationsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	MembershipsTable.ForeignKeys[0].RefTable = UsersTable
 	MembershipsTable.ForeignKeys[1].RefTable = OrganizationsTable

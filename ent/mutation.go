@@ -16,6 +16,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/deployment"
+	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/organization"
@@ -37,6 +38,7 @@ const (
 	TypeChartCredential    = "ChartCredential"
 	TypeCluster            = "Cluster"
 	TypeDeployment         = "Deployment"
+	TypeGitHubInstallation = "GitHubInstallation"
 	TypeInvitation         = "Invitation"
 	TypeMembership         = "Membership"
 	TypeOrganization       = "Organization"
@@ -47,34 +49,36 @@ const (
 // ApplicationMutation represents an operation that mutates the Application nodes in the graph.
 type ApplicationMutation struct {
 	config
-	op                      Op
-	typ                     string
-	id                      *uuid.UUID
-	name                    *string
-	_type                   *application.Type
-	chart_source            *application.ChartSource
-	_config                 *map[string]string
-	values                  *string
-	release_name            *string
-	target_namespace        *string
-	status                  *application.Status
-	status_message          *string
-	job_id                  *string
-	last_run_name           *string
-	created_at              *time.Time
-	updated_at              *time.Time
-	clearedFields           map[string]struct{}
-	organization            *uuid.UUID
-	clearedorganization     bool
-	target_cluster          *uuid.UUID
-	clearedtarget_cluster   bool
-	runner_cluster          *uuid.UUID
-	clearedrunner_cluster   bool
-	chart_credential        *uuid.UUID
-	clearedchart_credential bool
-	done                    bool
-	oldValue                func(context.Context) (*Application, error)
-	predicates              []predicate.Application
+	op                         Op
+	typ                        string
+	id                         *uuid.UUID
+	name                       *string
+	_type                      *application.Type
+	chart_source               *application.ChartSource
+	_config                    *map[string]string
+	values                     *string
+	release_name               *string
+	target_namespace           *string
+	status                     *application.Status
+	status_message             *string
+	job_id                     *string
+	last_run_name              *string
+	created_at                 *time.Time
+	updated_at                 *time.Time
+	clearedFields              map[string]struct{}
+	organization               *uuid.UUID
+	clearedorganization        bool
+	target_cluster             *uuid.UUID
+	clearedtarget_cluster      bool
+	runner_cluster             *uuid.UUID
+	clearedrunner_cluster      bool
+	chart_credential           *uuid.UUID
+	clearedchart_credential    bool
+	github_installation        *uuid.UUID
+	clearedgithub_installation bool
+	done                       bool
+	oldValue                   func(context.Context) (*Application, error)
+	predicates                 []predicate.Application
 }
 
 var _ ent.Mutation = (*ApplicationMutation)(nil)
@@ -629,6 +633,55 @@ func (m *ApplicationMutation) ResetChartCredentialID() {
 	delete(m.clearedFields, application.FieldChartCredentialID)
 }
 
+// SetGithubInstallationID sets the "github_installation_id" field.
+func (m *ApplicationMutation) SetGithubInstallationID(u uuid.UUID) {
+	m.github_installation = &u
+}
+
+// GithubInstallationID returns the value of the "github_installation_id" field in the mutation.
+func (m *ApplicationMutation) GithubInstallationID() (r uuid.UUID, exists bool) {
+	v := m.github_installation
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGithubInstallationID returns the old "github_installation_id" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldGithubInstallationID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGithubInstallationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGithubInstallationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGithubInstallationID: %w", err)
+	}
+	return oldValue.GithubInstallationID, nil
+}
+
+// ClearGithubInstallationID clears the value of the "github_installation_id" field.
+func (m *ApplicationMutation) ClearGithubInstallationID() {
+	m.github_installation = nil
+	m.clearedFields[application.FieldGithubInstallationID] = struct{}{}
+}
+
+// GithubInstallationIDCleared returns if the "github_installation_id" field was cleared in this mutation.
+func (m *ApplicationMutation) GithubInstallationIDCleared() bool {
+	_, ok := m.clearedFields[application.FieldGithubInstallationID]
+	return ok
+}
+
+// ResetGithubInstallationID resets all changes to the "github_installation_id" field.
+func (m *ApplicationMutation) ResetGithubInstallationID() {
+	m.github_installation = nil
+	delete(m.clearedFields, application.FieldGithubInstallationID)
+}
+
 // SetStatus sets the "status" field.
 func (m *ApplicationMutation) SetStatus(a application.Status) {
 	m.status = &a
@@ -992,6 +1045,33 @@ func (m *ApplicationMutation) ResetChartCredential() {
 	m.clearedchart_credential = false
 }
 
+// ClearGithubInstallation clears the "github_installation" edge to the GitHubInstallation entity.
+func (m *ApplicationMutation) ClearGithubInstallation() {
+	m.clearedgithub_installation = true
+	m.clearedFields[application.FieldGithubInstallationID] = struct{}{}
+}
+
+// GithubInstallationCleared reports if the "github_installation" edge to the GitHubInstallation entity was cleared.
+func (m *ApplicationMutation) GithubInstallationCleared() bool {
+	return m.GithubInstallationIDCleared() || m.clearedgithub_installation
+}
+
+// GithubInstallationIDs returns the "github_installation" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GithubInstallationID instead. It exists only for internal usage by the builders.
+func (m *ApplicationMutation) GithubInstallationIDs() (ids []uuid.UUID) {
+	if id := m.github_installation; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGithubInstallation resets all changes to the "github_installation" edge.
+func (m *ApplicationMutation) ResetGithubInstallation() {
+	m.github_installation = nil
+	m.clearedgithub_installation = false
+}
+
 // Where appends a list predicates to the ApplicationMutation builder.
 func (m *ApplicationMutation) Where(ps ...predicate.Application) {
 	m.predicates = append(m.predicates, ps...)
@@ -1026,7 +1106,7 @@ func (m *ApplicationMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ApplicationMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 18)
 	if m.organization != nil {
 		fields = append(fields, application.FieldOrganizationID)
 	}
@@ -1059,6 +1139,9 @@ func (m *ApplicationMutation) Fields() []string {
 	}
 	if m.chart_credential != nil {
 		fields = append(fields, application.FieldChartCredentialID)
+	}
+	if m.github_installation != nil {
+		fields = append(fields, application.FieldGithubInstallationID)
 	}
 	if m.status != nil {
 		fields = append(fields, application.FieldStatus)
@@ -1108,6 +1191,8 @@ func (m *ApplicationMutation) Field(name string) (ent.Value, bool) {
 		return m.RunnerClusterID()
 	case application.FieldChartCredentialID:
 		return m.ChartCredentialID()
+	case application.FieldGithubInstallationID:
+		return m.GithubInstallationID()
 	case application.FieldStatus:
 		return m.Status()
 	case application.FieldStatusMessage:
@@ -1151,6 +1236,8 @@ func (m *ApplicationMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldRunnerClusterID(ctx)
 	case application.FieldChartCredentialID:
 		return m.OldChartCredentialID(ctx)
+	case application.FieldGithubInstallationID:
+		return m.OldGithubInstallationID(ctx)
 	case application.FieldStatus:
 		return m.OldStatus(ctx)
 	case application.FieldStatusMessage:
@@ -1249,6 +1336,13 @@ func (m *ApplicationMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetChartCredentialID(v)
 		return nil
+	case application.FieldGithubInstallationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGithubInstallationID(v)
+		return nil
 	case application.FieldStatus:
 		v, ok := value.(application.Status)
 		if !ok {
@@ -1333,6 +1427,9 @@ func (m *ApplicationMutation) ClearedFields() []string {
 	if m.FieldCleared(application.FieldChartCredentialID) {
 		fields = append(fields, application.FieldChartCredentialID)
 	}
+	if m.FieldCleared(application.FieldGithubInstallationID) {
+		fields = append(fields, application.FieldGithubInstallationID)
+	}
 	if m.FieldCleared(application.FieldStatusMessage) {
 		fields = append(fields, application.FieldStatusMessage)
 	}
@@ -1367,6 +1464,9 @@ func (m *ApplicationMutation) ClearField(name string) error {
 		return nil
 	case application.FieldChartCredentialID:
 		m.ClearChartCredentialID()
+		return nil
+	case application.FieldGithubInstallationID:
+		m.ClearGithubInstallationID()
 		return nil
 	case application.FieldStatusMessage:
 		m.ClearStatusMessage()
@@ -1418,6 +1518,9 @@ func (m *ApplicationMutation) ResetField(name string) error {
 	case application.FieldChartCredentialID:
 		m.ResetChartCredentialID()
 		return nil
+	case application.FieldGithubInstallationID:
+		m.ResetGithubInstallationID()
+		return nil
 	case application.FieldStatus:
 		m.ResetStatus()
 		return nil
@@ -1442,7 +1545,7 @@ func (m *ApplicationMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ApplicationMutation) AddedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.organization != nil {
 		edges = append(edges, application.EdgeOrganization)
 	}
@@ -1454,6 +1557,9 @@ func (m *ApplicationMutation) AddedEdges() []string {
 	}
 	if m.chart_credential != nil {
 		edges = append(edges, application.EdgeChartCredential)
+	}
+	if m.github_installation != nil {
+		edges = append(edges, application.EdgeGithubInstallation)
 	}
 	return edges
 }
@@ -1478,13 +1584,17 @@ func (m *ApplicationMutation) AddedIDs(name string) []ent.Value {
 		if id := m.chart_credential; id != nil {
 			return []ent.Value{*id}
 		}
+	case application.EdgeGithubInstallation:
+		if id := m.github_installation; id != nil {
+			return []ent.Value{*id}
+		}
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ApplicationMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	return edges
 }
 
@@ -1496,7 +1606,7 @@ func (m *ApplicationMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ApplicationMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.clearedorganization {
 		edges = append(edges, application.EdgeOrganization)
 	}
@@ -1508,6 +1618,9 @@ func (m *ApplicationMutation) ClearedEdges() []string {
 	}
 	if m.clearedchart_credential {
 		edges = append(edges, application.EdgeChartCredential)
+	}
+	if m.clearedgithub_installation {
+		edges = append(edges, application.EdgeGithubInstallation)
 	}
 	return edges
 }
@@ -1524,6 +1637,8 @@ func (m *ApplicationMutation) EdgeCleared(name string) bool {
 		return m.clearedrunner_cluster
 	case application.EdgeChartCredential:
 		return m.clearedchart_credential
+	case application.EdgeGithubInstallation:
+		return m.clearedgithub_installation
 	}
 	return false
 }
@@ -1544,6 +1659,9 @@ func (m *ApplicationMutation) ClearEdge(name string) error {
 	case application.EdgeChartCredential:
 		m.ClearChartCredential()
 		return nil
+	case application.EdgeGithubInstallation:
+		m.ClearGithubInstallation()
+		return nil
 	}
 	return fmt.Errorf("unknown Application unique edge %s", name)
 }
@@ -1563,6 +1681,9 @@ func (m *ApplicationMutation) ResetEdge(name string) error {
 		return nil
 	case application.EdgeChartCredential:
 		m.ResetChartCredential()
+		return nil
+	case application.EdgeGithubInstallation:
+		m.ResetGithubInstallation()
 		return nil
 	}
 	return fmt.Errorf("unknown Application edge %s", name)
@@ -4543,6 +4664,739 @@ func (m *DeploymentMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Deployment edge %s", name)
+}
+
+// GitHubInstallationMutation represents an operation that mutates the GitHubInstallation nodes in the graph.
+type GitHubInstallationMutation struct {
+	config
+	op                  Op
+	typ                 string
+	id                  *uuid.UUID
+	installation_id     *int64
+	addinstallation_id  *int64
+	account_login       *string
+	account_type        *string
+	created_at          *time.Time
+	updated_at          *time.Time
+	clearedFields       map[string]struct{}
+	organization        *uuid.UUID
+	clearedorganization bool
+	done                bool
+	oldValue            func(context.Context) (*GitHubInstallation, error)
+	predicates          []predicate.GitHubInstallation
+}
+
+var _ ent.Mutation = (*GitHubInstallationMutation)(nil)
+
+// githubinstallationOption allows management of the mutation configuration using functional options.
+type githubinstallationOption func(*GitHubInstallationMutation)
+
+// newGitHubInstallationMutation creates new mutation for the GitHubInstallation entity.
+func newGitHubInstallationMutation(c config, op Op, opts ...githubinstallationOption) *GitHubInstallationMutation {
+	m := &GitHubInstallationMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeGitHubInstallation,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withGitHubInstallationID sets the ID field of the mutation.
+func withGitHubInstallationID(id uuid.UUID) githubinstallationOption {
+	return func(m *GitHubInstallationMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *GitHubInstallation
+		)
+		m.oldValue = func(ctx context.Context) (*GitHubInstallation, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().GitHubInstallation.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withGitHubInstallation sets the old GitHubInstallation of the mutation.
+func withGitHubInstallation(node *GitHubInstallation) githubinstallationOption {
+	return func(m *GitHubInstallationMutation) {
+		m.oldValue = func(context.Context) (*GitHubInstallation, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m GitHubInstallationMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m GitHubInstallationMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of GitHubInstallation entities.
+func (m *GitHubInstallationMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *GitHubInstallationMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *GitHubInstallationMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().GitHubInstallation.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (m *GitHubInstallationMutation) SetOrganizationID(u uuid.UUID) {
+	m.organization = &u
+}
+
+// OrganizationID returns the value of the "organization_id" field in the mutation.
+func (m *GitHubInstallationMutation) OrganizationID() (r uuid.UUID, exists bool) {
+	v := m.organization
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrganizationID returns the old "organization_id" field's value of the GitHubInstallation entity.
+// If the GitHubInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitHubInstallationMutation) OldOrganizationID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrganizationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrganizationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrganizationID: %w", err)
+	}
+	return oldValue.OrganizationID, nil
+}
+
+// ResetOrganizationID resets all changes to the "organization_id" field.
+func (m *GitHubInstallationMutation) ResetOrganizationID() {
+	m.organization = nil
+}
+
+// SetInstallationID sets the "installation_id" field.
+func (m *GitHubInstallationMutation) SetInstallationID(i int64) {
+	m.installation_id = &i
+	m.addinstallation_id = nil
+}
+
+// InstallationID returns the value of the "installation_id" field in the mutation.
+func (m *GitHubInstallationMutation) InstallationID() (r int64, exists bool) {
+	v := m.installation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInstallationID returns the old "installation_id" field's value of the GitHubInstallation entity.
+// If the GitHubInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitHubInstallationMutation) OldInstallationID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInstallationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInstallationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInstallationID: %w", err)
+	}
+	return oldValue.InstallationID, nil
+}
+
+// AddInstallationID adds i to the "installation_id" field.
+func (m *GitHubInstallationMutation) AddInstallationID(i int64) {
+	if m.addinstallation_id != nil {
+		*m.addinstallation_id += i
+	} else {
+		m.addinstallation_id = &i
+	}
+}
+
+// AddedInstallationID returns the value that was added to the "installation_id" field in this mutation.
+func (m *GitHubInstallationMutation) AddedInstallationID() (r int64, exists bool) {
+	v := m.addinstallation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetInstallationID resets all changes to the "installation_id" field.
+func (m *GitHubInstallationMutation) ResetInstallationID() {
+	m.installation_id = nil
+	m.addinstallation_id = nil
+}
+
+// SetAccountLogin sets the "account_login" field.
+func (m *GitHubInstallationMutation) SetAccountLogin(s string) {
+	m.account_login = &s
+}
+
+// AccountLogin returns the value of the "account_login" field in the mutation.
+func (m *GitHubInstallationMutation) AccountLogin() (r string, exists bool) {
+	v := m.account_login
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountLogin returns the old "account_login" field's value of the GitHubInstallation entity.
+// If the GitHubInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitHubInstallationMutation) OldAccountLogin(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountLogin is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountLogin requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountLogin: %w", err)
+	}
+	return oldValue.AccountLogin, nil
+}
+
+// ClearAccountLogin clears the value of the "account_login" field.
+func (m *GitHubInstallationMutation) ClearAccountLogin() {
+	m.account_login = nil
+	m.clearedFields[githubinstallation.FieldAccountLogin] = struct{}{}
+}
+
+// AccountLoginCleared returns if the "account_login" field was cleared in this mutation.
+func (m *GitHubInstallationMutation) AccountLoginCleared() bool {
+	_, ok := m.clearedFields[githubinstallation.FieldAccountLogin]
+	return ok
+}
+
+// ResetAccountLogin resets all changes to the "account_login" field.
+func (m *GitHubInstallationMutation) ResetAccountLogin() {
+	m.account_login = nil
+	delete(m.clearedFields, githubinstallation.FieldAccountLogin)
+}
+
+// SetAccountType sets the "account_type" field.
+func (m *GitHubInstallationMutation) SetAccountType(s string) {
+	m.account_type = &s
+}
+
+// AccountType returns the value of the "account_type" field in the mutation.
+func (m *GitHubInstallationMutation) AccountType() (r string, exists bool) {
+	v := m.account_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountType returns the old "account_type" field's value of the GitHubInstallation entity.
+// If the GitHubInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitHubInstallationMutation) OldAccountType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountType: %w", err)
+	}
+	return oldValue.AccountType, nil
+}
+
+// ClearAccountType clears the value of the "account_type" field.
+func (m *GitHubInstallationMutation) ClearAccountType() {
+	m.account_type = nil
+	m.clearedFields[githubinstallation.FieldAccountType] = struct{}{}
+}
+
+// AccountTypeCleared returns if the "account_type" field was cleared in this mutation.
+func (m *GitHubInstallationMutation) AccountTypeCleared() bool {
+	_, ok := m.clearedFields[githubinstallation.FieldAccountType]
+	return ok
+}
+
+// ResetAccountType resets all changes to the "account_type" field.
+func (m *GitHubInstallationMutation) ResetAccountType() {
+	m.account_type = nil
+	delete(m.clearedFields, githubinstallation.FieldAccountType)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *GitHubInstallationMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *GitHubInstallationMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the GitHubInstallation entity.
+// If the GitHubInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitHubInstallationMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *GitHubInstallationMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *GitHubInstallationMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *GitHubInstallationMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the GitHubInstallation entity.
+// If the GitHubInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitHubInstallationMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *GitHubInstallationMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearOrganization clears the "organization" edge to the Organization entity.
+func (m *GitHubInstallationMutation) ClearOrganization() {
+	m.clearedorganization = true
+	m.clearedFields[githubinstallation.FieldOrganizationID] = struct{}{}
+}
+
+// OrganizationCleared reports if the "organization" edge to the Organization entity was cleared.
+func (m *GitHubInstallationMutation) OrganizationCleared() bool {
+	return m.clearedorganization
+}
+
+// OrganizationIDs returns the "organization" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OrganizationID instead. It exists only for internal usage by the builders.
+func (m *GitHubInstallationMutation) OrganizationIDs() (ids []uuid.UUID) {
+	if id := m.organization; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOrganization resets all changes to the "organization" edge.
+func (m *GitHubInstallationMutation) ResetOrganization() {
+	m.organization = nil
+	m.clearedorganization = false
+}
+
+// Where appends a list predicates to the GitHubInstallationMutation builder.
+func (m *GitHubInstallationMutation) Where(ps ...predicate.GitHubInstallation) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the GitHubInstallationMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *GitHubInstallationMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.GitHubInstallation, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *GitHubInstallationMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *GitHubInstallationMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (GitHubInstallation).
+func (m *GitHubInstallationMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *GitHubInstallationMutation) Fields() []string {
+	fields := make([]string, 0, 6)
+	if m.organization != nil {
+		fields = append(fields, githubinstallation.FieldOrganizationID)
+	}
+	if m.installation_id != nil {
+		fields = append(fields, githubinstallation.FieldInstallationID)
+	}
+	if m.account_login != nil {
+		fields = append(fields, githubinstallation.FieldAccountLogin)
+	}
+	if m.account_type != nil {
+		fields = append(fields, githubinstallation.FieldAccountType)
+	}
+	if m.created_at != nil {
+		fields = append(fields, githubinstallation.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, githubinstallation.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *GitHubInstallationMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case githubinstallation.FieldOrganizationID:
+		return m.OrganizationID()
+	case githubinstallation.FieldInstallationID:
+		return m.InstallationID()
+	case githubinstallation.FieldAccountLogin:
+		return m.AccountLogin()
+	case githubinstallation.FieldAccountType:
+		return m.AccountType()
+	case githubinstallation.FieldCreatedAt:
+		return m.CreatedAt()
+	case githubinstallation.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *GitHubInstallationMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case githubinstallation.FieldOrganizationID:
+		return m.OldOrganizationID(ctx)
+	case githubinstallation.FieldInstallationID:
+		return m.OldInstallationID(ctx)
+	case githubinstallation.FieldAccountLogin:
+		return m.OldAccountLogin(ctx)
+	case githubinstallation.FieldAccountType:
+		return m.OldAccountType(ctx)
+	case githubinstallation.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case githubinstallation.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown GitHubInstallation field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GitHubInstallationMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case githubinstallation.FieldOrganizationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrganizationID(v)
+		return nil
+	case githubinstallation.FieldInstallationID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInstallationID(v)
+		return nil
+	case githubinstallation.FieldAccountLogin:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountLogin(v)
+		return nil
+	case githubinstallation.FieldAccountType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountType(v)
+		return nil
+	case githubinstallation.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case githubinstallation.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown GitHubInstallation field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *GitHubInstallationMutation) AddedFields() []string {
+	var fields []string
+	if m.addinstallation_id != nil {
+		fields = append(fields, githubinstallation.FieldInstallationID)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *GitHubInstallationMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case githubinstallation.FieldInstallationID:
+		return m.AddedInstallationID()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GitHubInstallationMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case githubinstallation.FieldInstallationID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddInstallationID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown GitHubInstallation numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *GitHubInstallationMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(githubinstallation.FieldAccountLogin) {
+		fields = append(fields, githubinstallation.FieldAccountLogin)
+	}
+	if m.FieldCleared(githubinstallation.FieldAccountType) {
+		fields = append(fields, githubinstallation.FieldAccountType)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *GitHubInstallationMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *GitHubInstallationMutation) ClearField(name string) error {
+	switch name {
+	case githubinstallation.FieldAccountLogin:
+		m.ClearAccountLogin()
+		return nil
+	case githubinstallation.FieldAccountType:
+		m.ClearAccountType()
+		return nil
+	}
+	return fmt.Errorf("unknown GitHubInstallation nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *GitHubInstallationMutation) ResetField(name string) error {
+	switch name {
+	case githubinstallation.FieldOrganizationID:
+		m.ResetOrganizationID()
+		return nil
+	case githubinstallation.FieldInstallationID:
+		m.ResetInstallationID()
+		return nil
+	case githubinstallation.FieldAccountLogin:
+		m.ResetAccountLogin()
+		return nil
+	case githubinstallation.FieldAccountType:
+		m.ResetAccountType()
+		return nil
+	case githubinstallation.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case githubinstallation.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown GitHubInstallation field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *GitHubInstallationMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.organization != nil {
+		edges = append(edges, githubinstallation.EdgeOrganization)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *GitHubInstallationMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case githubinstallation.EdgeOrganization:
+		if id := m.organization; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *GitHubInstallationMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *GitHubInstallationMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *GitHubInstallationMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedorganization {
+		edges = append(edges, githubinstallation.EdgeOrganization)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *GitHubInstallationMutation) EdgeCleared(name string) bool {
+	switch name {
+	case githubinstallation.EdgeOrganization:
+		return m.clearedorganization
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *GitHubInstallationMutation) ClearEdge(name string) error {
+	switch name {
+	case githubinstallation.EdgeOrganization:
+		m.ClearOrganization()
+		return nil
+	}
+	return fmt.Errorf("unknown GitHubInstallation unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *GitHubInstallationMutation) ResetEdge(name string) error {
+	switch name {
+	case githubinstallation.EdgeOrganization:
+		m.ResetOrganization()
+		return nil
+	}
+	return fmt.Errorf("unknown GitHubInstallation edge %s", name)
 }
 
 // InvitationMutation represents an operation that mutates the Invitation nodes in the graph.

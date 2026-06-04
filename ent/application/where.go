@@ -96,6 +96,11 @@ func ChartCredentialID(v uuid.UUID) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldChartCredentialID, v))
 }
 
+// GithubInstallationID applies equality check predicate on the "github_installation_id" field. It's identical to GithubInstallationIDEQ.
+func GithubInstallationID(v uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldGithubInstallationID, v))
+}
+
 // StatusMessage applies equality check predicate on the "status_message" field. It's identical to StatusMessageEQ.
 func StatusMessage(v string) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldStatusMessage, v))
@@ -541,6 +546,36 @@ func ChartCredentialIDNotNil() predicate.Application {
 	return predicate.Application(sql.FieldNotNull(FieldChartCredentialID))
 }
 
+// GithubInstallationIDEQ applies the EQ predicate on the "github_installation_id" field.
+func GithubInstallationIDEQ(v uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldGithubInstallationID, v))
+}
+
+// GithubInstallationIDNEQ applies the NEQ predicate on the "github_installation_id" field.
+func GithubInstallationIDNEQ(v uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldGithubInstallationID, v))
+}
+
+// GithubInstallationIDIn applies the In predicate on the "github_installation_id" field.
+func GithubInstallationIDIn(vs ...uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldIn(FieldGithubInstallationID, vs...))
+}
+
+// GithubInstallationIDNotIn applies the NotIn predicate on the "github_installation_id" field.
+func GithubInstallationIDNotIn(vs ...uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldNotIn(FieldGithubInstallationID, vs...))
+}
+
+// GithubInstallationIDIsNil applies the IsNil predicate on the "github_installation_id" field.
+func GithubInstallationIDIsNil() predicate.Application {
+	return predicate.Application(sql.FieldIsNull(FieldGithubInstallationID))
+}
+
+// GithubInstallationIDNotNil applies the NotNil predicate on the "github_installation_id" field.
+func GithubInstallationIDNotNil() predicate.Application {
+	return predicate.Application(sql.FieldNotNull(FieldGithubInstallationID))
+}
+
 // StatusEQ applies the EQ predicate on the "status" field.
 func StatusEQ(v Status) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldStatus, v))
@@ -950,6 +985,29 @@ func HasChartCredential() predicate.Application {
 func HasChartCredentialWith(preds ...predicate.ChartCredential) predicate.Application {
 	return predicate.Application(func(s *sql.Selector) {
 		step := newChartCredentialStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasGithubInstallation applies the HasEdge predicate on the "github_installation" edge.
+func HasGithubInstallation() predicate.Application {
+	return predicate.Application(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, GithubInstallationTable, GithubInstallationColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasGithubInstallationWith applies the HasEdge predicate on the "github_installation" edge with a given conditions (other predicates).
+func HasGithubInstallationWith(preds ...predicate.GitHubInstallation) predicate.Application {
+	return predicate.Application(func(s *sql.Selector) {
+		step := newGithubInstallationStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

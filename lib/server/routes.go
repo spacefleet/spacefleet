@@ -117,6 +117,10 @@ func appConfigHandler(cfg *config.Config) http.HandlerFunc {
 		// lets the invite UI tell admins whether an email will be sent or they
 		// need to copy the link manually. Sending is decided server-side.
 		"emailEnabled": cfg.EmailEnabled(),
+		// Whether a GitHub App is configured, so the SPA can show the "Connect
+		// GitHub" affordance for pulling charts from private Git repositories.
+		// Non-secret (the App's private key never leaves the server).
+		"githubAppEnabled": cfg.GitHubAppEnabled(),
 	})
 	if err != nil {
 		panic(err)

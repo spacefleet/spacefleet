@@ -204,7 +204,8 @@ Secret of its own.
 {{- $manageDB := eq (include "spacefleet.manageDatabaseSecret" .) "true" -}}
 {{- $secretKey := (.Values.config.secrets | default dict).secretKey -}}
 {{- $smtpPassword := (.Values.config.smtp | default dict).password -}}
-{{- if or $manageDB $secretKey $smtpPassword -}}true{{- else -}}false{{- end -}}
+{{- $githubKey := (.Values.config.github | default dict).privateKey -}}
+{{- if or $manageDB $secretKey $smtpPassword $githubKey -}}true{{- else -}}false{{- end -}}
 {{- end -}}
 
 {{/*

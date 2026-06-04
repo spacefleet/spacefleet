@@ -57,6 +57,10 @@ func (Application) Fields() []ent.Field {
 		// chart_credential edge below; nil for public charts. Its type must match
 		// chart_source (basic_auth → http_repo, oci → oci), enforced in the service.
 		field.UUID("chart_credential_id", uuid.UUID{}).Optional(),
+		// Optional GitHub App installation for pulling a private Git chart. Bound
+		// to the github_installation edge below; nil for public repos. Only valid
+		// when chart_source is git, enforced in the service.
+		field.UUID("github_installation_id", uuid.UUID{}).Optional(),
 		// Rollout lifecycle: pending (created, never rolled out) → deploying →
 		// deployed/failed, plus uninstalling → uninstalled.
 		field.Enum("status").
@@ -95,6 +99,12 @@ func (Application) Edges() []ent.Edge {
 		// migration: a credential in use can't be deleted out from under an app.
 		edge.To("chart_credential", ChartCredential.Type).
 			Field("chart_credential_id").
+			Unique(),
+		// Optional GitHub App installation for pulling a private Git chart.
+		// RESTRICT in the migration: an installation in use can't be deleted out
+		// from under an app.
+		edge.To("github_installation", GitHubInstallation.Type).
+			Field("github_installation_id").
 			Unique(),
 	}
 }

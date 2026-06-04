@@ -97,15 +97,16 @@ func (s *Server) CreateApplication(ctx context.Context, req CreateApplicationReq
 		return errResp[CreateApplicationdefaultJSONResponse](http.StatusBadRequest, "bad_request", "name is required"), nil
 	}
 	a, err := s.applications.Create(ctx, orgID, applications.CreateParams{
-		Name:              name,
-		ChartSource:       string(req.Body.ChartSource),
-		Config:            derefMap(req.Body.Config),
-		Values:            deref(req.Body.Values),
-		ReleaseName:       deref(req.Body.ReleaseName),
-		TargetNamespace:   strings.TrimSpace(req.Body.TargetNamespace),
-		TargetClusterID:   req.Body.TargetClusterId,
-		RunnerClusterID:   req.Body.RunnerClusterId,
-		ChartCredentialID: req.Body.ChartCredentialId,
+		Name:                 name,
+		ChartSource:          string(req.Body.ChartSource),
+		Config:               derefMap(req.Body.Config),
+		Values:               deref(req.Body.Values),
+		ReleaseName:          deref(req.Body.ReleaseName),
+		TargetNamespace:      strings.TrimSpace(req.Body.TargetNamespace),
+		TargetClusterID:      req.Body.TargetClusterId,
+		RunnerClusterID:      req.Body.RunnerClusterId,
+		ChartCredentialID:    req.Body.ChartCredentialId,
+		GitHubInstallationID: req.Body.GithubInstallationId,
 	})
 	if err != nil {
 		if resp, ok := appWriteError[CreateApplicationdefaultJSONResponse](err); ok {
@@ -147,6 +148,9 @@ func (s *Server) UpdateApplication(ctx context.Context, req UpdateApplicationReq
 	}
 	if req.Body.ChartCredentialId != nil {
 		params.ChartCredentialID = req.Body.ChartCredentialId
+	}
+	if req.Body.GithubInstallationId != nil {
+		params.GitHubInstallationID = req.Body.GithubInstallationId
 	}
 	a, err := s.applications.Update(ctx, orgID, req.Id, params)
 	if err != nil {
@@ -307,6 +311,10 @@ func toAPIApplication(a *ent.Application) Application {
 	if a.ChartCredentialID != uuid.Nil {
 		id := a.ChartCredentialID
 		out.ChartCredentialId = &id
+	}
+	if a.GithubInstallationID != uuid.Nil {
+		id := a.GithubInstallationID
+		out.GithubInstallationId = &id
 	}
 	return out
 }

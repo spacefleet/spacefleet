@@ -38,6 +38,8 @@ const (
 	FieldRunnerClusterID = "runner_cluster_id"
 	// FieldChartCredentialID holds the string denoting the chart_credential_id field in the database.
 	FieldChartCredentialID = "chart_credential_id"
+	// FieldGithubInstallationID holds the string denoting the github_installation_id field in the database.
+	FieldGithubInstallationID = "github_installation_id"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldStatusMessage holds the string denoting the status_message field in the database.
@@ -58,6 +60,8 @@ const (
 	EdgeRunnerCluster = "runner_cluster"
 	// EdgeChartCredential holds the string denoting the chart_credential edge name in mutations.
 	EdgeChartCredential = "chart_credential"
+	// EdgeGithubInstallation holds the string denoting the github_installation edge name in mutations.
+	EdgeGithubInstallation = "github_installation"
 	// Table holds the table name of the application in the database.
 	Table = "applications"
 	// OrganizationTable is the table that holds the organization relation/edge.
@@ -88,6 +92,13 @@ const (
 	ChartCredentialInverseTable = "chart_credentials"
 	// ChartCredentialColumn is the table column denoting the chart_credential relation/edge.
 	ChartCredentialColumn = "chart_credential_id"
+	// GithubInstallationTable is the table that holds the github_installation relation/edge.
+	GithubInstallationTable = "applications"
+	// GithubInstallationInverseTable is the table name for the GitHubInstallation entity.
+	// It exists in this package in order to avoid circular dependency with the "githubinstallation" package.
+	GithubInstallationInverseTable = "github_installations"
+	// GithubInstallationColumn is the table column denoting the github_installation relation/edge.
+	GithubInstallationColumn = "github_installation_id"
 )
 
 // Columns holds all SQL columns for application fields.
@@ -104,6 +115,7 @@ var Columns = []string{
 	FieldTargetClusterID,
 	FieldRunnerClusterID,
 	FieldChartCredentialID,
+	FieldGithubInstallationID,
 	FieldStatus,
 	FieldStatusMessage,
 	FieldJobID,
@@ -274,6 +286,11 @@ func ByChartCredentialID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldChartCredentialID, opts...).ToFunc()
 }
 
+// ByGithubInstallationID orders the results by the github_installation_id field.
+func ByGithubInstallationID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGithubInstallationID, opts...).ToFunc()
+}
+
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
@@ -331,6 +348,13 @@ func ByChartCredentialField(field string, opts ...sql.OrderTermOption) OrderOpti
 		sqlgraph.OrderByNeighborTerms(s, newChartCredentialStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByGithubInstallationField orders the results by github_installation field.
+func ByGithubInstallationField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newGithubInstallationStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newOrganizationStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -357,5 +381,12 @@ func newChartCredentialStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ChartCredentialInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, false, ChartCredentialTable, ChartCredentialColumn),
+	)
+}
+func newGithubInstallationStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(GithubInstallationInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, false, GithubInstallationTable, GithubInstallationColumn),
 	)
 }

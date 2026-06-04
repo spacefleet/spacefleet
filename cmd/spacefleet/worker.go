@@ -16,6 +16,8 @@ import (
 	"github.com/spacefleet/spacefleet/lib/config"
 	"github.com/spacefleet/spacefleet/lib/db"
 	"github.com/spacefleet/spacefleet/lib/email"
+	"github.com/spacefleet/spacefleet/lib/githubapp"
+	"github.com/spacefleet/spacefleet/lib/githubinstallations"
 	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/secrets"
@@ -74,7 +76,21 @@ func runWorker(_ []string) {
 	}
 	clustersSvc := clusters.NewService(entClient, sealer)
 	chartCredsSvc := chartcredentials.NewService(entClient, sealer)
-	applicationsSvc := applications.NewService(entClient, clustersSvc, chartCredsSvc)
+
+	// GitHub App authenticator + installations service, so a Helm rollout can mint
+	// a short-lived token to pull a private-Git chart. Token minting happens here,
+	// in ResolveRollout, so the worker (not just serve) must build these. Nil when
+	// no App is configured; a configured-but-unparseable key fails fast.
+	var ghAuth githubinstallations.Authenticator
+	if cfg.GitHubAppEnabled() {
+		auth, err := githubapp.New(cfg.GitHubAppID, cfg.GitHubAppPrivateKey)
+		if err != nil {
+			log.Fatalf("worker: build github app: %v", err)
+		}
+		ghAuth = auth
+	}
+	githubInstallsSvc := githubinstallations.NewService(entClient, ghAuth)
+	applicationsSvc := applications.NewService(entClient, clustersSvc, chartCredsSvc, githubInstallsSvc)
 
 	// Register job workers:
 	//   - invite-email: sends org invitation emails (Sender is SMTP when

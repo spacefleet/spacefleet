@@ -15,6 +15,8 @@ import (
 	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/config"
 	"github.com/spacefleet/spacefleet/lib/db"
+	"github.com/spacefleet/spacefleet/lib/githubapp"
+	"github.com/spacefleet/spacefleet/lib/githubinstallations"
 	"github.com/spacefleet/spacefleet/lib/invitations"
 	"github.com/spacefleet/spacefleet/lib/organizations"
 	"github.com/spacefleet/spacefleet/lib/queue"
@@ -41,11 +43,22 @@ func New(cfg *config.Config) (*http.Server, error) {
 		return nil, fmt.Errorf("build secret sealer: %w", err)
 	}
 
+	// GitHub App authenticator for pulling charts from private Git repositories.
+	// Nil (feature off) when no App is configured; a configured-but-unparseable
+	// key fails boot, since the operator clearly intended the feature.
+	ghAuth, err := buildGitHubAuthenticator(cfg)
+	if err != nil {
+		_ = entClient.Close()
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("build github app: %w", err)
+	}
+
 	usersSvc := users.NewService(entClient)
 	orgsSvc := organizations.NewService(entClient)
 	clustersSvc := clusters.NewService(entClient, sealer)
 	chartCredsSvc := chartcredentials.NewService(entClient, sealer)
-	applicationsSvc := applications.NewService(entClient, clustersSvc, chartCredsSvc)
+	githubInstallsSvc := githubinstallations.NewService(entClient, ghAuth)
+	applicationsSvc := applications.NewService(entClient, clustersSvc, chartCredsSvc, githubInstallsSvc)
 	invitesSvc := invitations.NewService(entClient)
 
 	// Build the request authenticator. Spacefleet always authenticates against
@@ -67,16 +80,19 @@ func New(cfg *config.Config) (*http.Server, error) {
 	jobQueue, closeQueue := buildJobQueue(cfg)
 
 	deps := api.ServerDeps{
-		Users:            usersSvc,
-		Orgs:             orgsSvc,
-		Clusters:         clustersSvc,
-		Applications:     applicationsSvc,
-		ChartCredentials: chartCredsSvc,
-		Invites:          invitesSvc,
-		AllowOrgCreation: cfg.AllowOrgCreation,
-		ExternalURL:      cfg.ExternalURL,
-		EmailEnabled:     cfg.EmailEnabled(),
-		JobQueue:         jobQueue,
+		Users:               usersSvc,
+		Orgs:                orgsSvc,
+		Clusters:            clustersSvc,
+		Applications:        applicationsSvc,
+		ChartCredentials:    chartCredsSvc,
+		GitHubInstallations: githubInstallsSvc,
+		Invites:             invitesSvc,
+		AllowOrgCreation:    cfg.AllowOrgCreation,
+		ExternalURL:         cfg.ExternalURL,
+		EmailEnabled:        cfg.EmailEnabled(),
+		GitHubAppSlug:       cfg.GitHubAppSlug,
+		SecretKey:           cfg.SecretKey,
+		JobQueue:            jobQueue,
 	}
 
 	srv := &http.Server{
@@ -113,6 +129,22 @@ func buildJobQueue(cfg *config.Config) (*queue.Client, func()) {
 		return nil, func() {}
 	}
 	return client, pool.Close
+}
+
+// buildGitHubAuthenticator builds the GitHub App authenticator for pulling
+// charts from private Git repositories, or returns a nil authenticator (typed
+// as the installations service's interface) when no App is configured — the
+// feature is then simply off. A configured-but-unparseable key is a real
+// misconfiguration of an explicitly-enabled feature, so it errors (boot fails).
+func buildGitHubAuthenticator(cfg *config.Config) (githubinstallations.Authenticator, error) {
+	if !cfg.GitHubAppEnabled() {
+		return nil, nil
+	}
+	auth, err := githubapp.New(cfg.GitHubAppID, cfg.GitHubAppPrivateKey)
+	if err != nil {
+		return nil, err
+	}
+	return auth, nil
 }
 
 // buildHandler composes the full HTTP handler tree given pre-built deps.

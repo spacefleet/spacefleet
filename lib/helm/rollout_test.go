@@ -165,6 +165,48 @@ func TestScriptGit(t *testing.T) {
 	}
 }
 
+func TestScriptGitWithToken(t *testing.T) {
+	s := Script(Rollout{
+		Action:      ActionDeploy,
+		ChartSource: SourceGit,
+		Config: map[string]string{
+			ConfigRepoURL: "https://github.com/org/charts.git",
+			ConfigGitPath: "charts/app",
+		},
+		ReleaseName:     "app",
+		TargetNamespace: "ns",
+		WaitTimeout:     30 * time.Minute,
+		HasGitToken:     true,
+	})
+	// The token is read from the mounted file via git's credential helper; it
+	// never appears in the script string or the clone's argv.
+	want := "git config --global credential.helper 'store --file=/workspace/creds/git-credentials'"
+	if !strings.Contains(s, want) {
+		t.Errorf("git script missing credential helper\nwant: %s\n---\n%s", want, s)
+	}
+	// The helper must be configured before the clone so the clone can use it.
+	if strings.Index(s, "credential.helper") > strings.Index(s, "git clone") {
+		t.Errorf("credential helper must precede the clone:\n%s", s)
+	}
+	if strings.Contains(s, "x-access-token") {
+		t.Errorf("token material must not appear in the script string:\n%s", s)
+	}
+}
+
+func TestScriptGitNoTokenOmitsHelper(t *testing.T) {
+	s := Script(Rollout{
+		Action:          ActionDeploy,
+		ChartSource:     SourceGit,
+		Config:          map[string]string{ConfigRepoURL: "https://github.com/org/charts.git"},
+		ReleaseName:     "app",
+		TargetNamespace: "ns",
+		WaitTimeout:     30 * time.Minute,
+	})
+	if strings.Contains(s, "credential.helper") {
+		t.Errorf("public git clone should not configure a credential helper:\n%s", s)
+	}
+}
+
 func TestScriptUninstall(t *testing.T) {
 	s := Script(Rollout{
 		Action:          ActionUninstall,
