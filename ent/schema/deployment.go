@@ -51,6 +51,13 @@ func (Deployment) Fields() []ent.Field {
 		// The captured Helm output, persisted when the run reaches a terminal phase
 		// (the runner pod is then garbage-collected, so this is the durable copy).
 		field.Text("logs").Optional(),
+		// The git commit SHAs this rollout actually resolved, parsed from the run's
+		// logs at terminal. Because git-sourced charts/values are pulled on deploy
+		// from a mutable ref (a branch can move between runs), recording the resolved
+		// SHA makes a run auditable and reproducible. Empty when that source wasn't a
+		// git clone (an http_repo/oci chart, or no values-from-git).
+		field.String("chart_revision").Optional(),
+		field.String("values_revision").Optional(),
 		field.Time("created_at").Default(time.Now).Immutable(),
 		// When the run settled (nil while still running).
 		field.Time("finished_at").Optional().Nillable(),

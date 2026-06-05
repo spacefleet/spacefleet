@@ -35,6 +35,8 @@ type Application struct {
 	Config map[string]string `json:"config,omitempty"`
 	// Values holds the value of the "values" field.
 	Values string `json:"values,omitempty"`
+	// ValuesSources holds the value of the "values_sources" field.
+	ValuesSources []map[string]string `json:"values_sources,omitempty"`
 	// ReleaseName holds the value of the "release_name" field.
 	ReleaseName string `json:"release_name,omitempty"`
 	// TargetNamespace holds the value of the "target_namespace" field.
@@ -142,7 +144,7 @@ func (*Application) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case application.FieldConfig:
+		case application.FieldConfig, application.FieldValuesSources:
 			values[i] = new([]byte)
 		case application.FieldName, application.FieldType, application.FieldChartSource, application.FieldValues, application.FieldReleaseName, application.FieldTargetNamespace, application.FieldStatus, application.FieldStatusMessage, application.FieldJobID, application.FieldLastRunName:
 			values[i] = new(sql.NullString)
@@ -208,6 +210,14 @@ func (_m *Application) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field values", values[i])
 			} else if value.Valid {
 				_m.Values = value.String
+			}
+		case application.FieldValuesSources:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field values_sources", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ValuesSources); err != nil {
+					return fmt.Errorf("unmarshal field values_sources: %w", err)
+				}
 			}
 		case application.FieldReleaseName:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -359,6 +369,9 @@ func (_m *Application) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("values=")
 	builder.WriteString(_m.Values)
+	builder.WriteString(", ")
+	builder.WriteString("values_sources=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ValuesSources))
 	builder.WriteString(", ")
 	builder.WriteString("release_name=")
 	builder.WriteString(_m.ReleaseName)

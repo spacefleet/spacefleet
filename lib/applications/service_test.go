@@ -295,6 +295,49 @@ func TestMarkRolloutUpdatesDeployment(t *testing.T) {
 	}
 }
 
+func TestMarkRolloutCapturesRevisions(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	// Logs carrying the SHA markers the rollout script echoes after each clone: a
+	// chart SHA and a per-source indexed values SHA.
+	svc.captureLogs = func(context.Context, *ent.Application, string) string {
+		return "Cloning into '/src'...\n" +
+			"SPACEFLEET_CHART_REVISION=abc123\n" +
+			"SPACEFLEET_VALUES_REVISION_0=def456\n" +
+			"Release \"web\" has been upgraded.\n"
+	}
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, svc, client, org.ID)
+	// Give the app a values source so the run's values SHA pairs back to its repo.
+	app, err := app.Update().SetValuesSources([]map[string]string{
+		{helm.ValuesSourceRepoURL: "https://github.com/org/config.git", helm.ValuesSourcePath: "values.yaml"},
+	}).Save(ctx)
+	if err != nil {
+		t.Fatalf("set values source: %v", err)
+	}
+	dep, err := svc.RecordDeployment(ctx, org.ID, app.ID, helm.ActionDeploy, "31")
+	if err != nil {
+		t.Fatalf("RecordDeployment: %v", err)
+	}
+
+	// Terminal transition parses the markers out of the captured logs onto the row.
+	if err := svc.MarkRollout(ctx, org.ID, app.ID, "31", helm.StatusDeployed, "release deployed", "helm-web-xyz"); err != nil {
+		t.Fatalf("MarkRollout terminal: %v", err)
+	}
+	got, err := svc.GetDeployment(ctx, org.ID, app.ID, dep.ID)
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	if got.ChartRevision != "abc123" {
+		t.Errorf("chart_revision = %q, want abc123", got.ChartRevision)
+	}
+	if want := "https://github.com/org/config.git@def456"; got.ValuesRevision != want {
+		t.Errorf("values_revision = %q, want %q", got.ValuesRevision, want)
+	}
+}
+
 // newChartCredential creates a chart credential row directly for validation
 // tests (the applications service checks type↔source compatibility by querying
 // the row, so no sealer is needed here).
@@ -431,6 +474,86 @@ func TestCreateInstallationOnlyAllowedForGit(t *testing.T) {
 	p.GitHubInstallationID = &inst.ID
 	if _, err := svc.Create(ctx, org.ID, p); !IsValidation(err) {
 		t.Fatalf("error = %v, want ValidationError for installation on non-git source", err)
+	}
+}
+
+func TestCreateValuesFromGitRequiresPath(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
+	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
+
+	p := httpRepoParams(target.ID, runner.ID)
+	// A values source with a repo but no path is incomplete.
+	p.ValuesSources = []map[string]string{
+		{helm.ValuesSourceRepoURL: "https://github.com/org/config.git"},
+	}
+	if _, err := svc.Create(ctx, org.ID, p); !IsValidation(err) {
+		t.Fatalf("error = %v, want ValidationError for values source without a path", err)
+	}
+}
+
+// An installation is allowed on a non-git chart when the values come from git —
+// the installation authenticates the (private) values clone.
+func TestCreateInstallationAllowedForValuesFromGit(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
+	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
+	inst := newInstallation(t, client, org.ID, 12345)
+
+	p := httpRepoParams(target.ID, runner.ID)
+	p.ValuesSources = []map[string]string{
+		{helm.ValuesSourceRepoURL: "https://github.com/org/config.git", helm.ValuesSourcePath: "envs/prod.yaml"},
+	}
+	p.GitHubInstallationID = &inst.ID
+	app, err := svc.Create(ctx, org.ID, p)
+	if err != nil {
+		t.Fatalf("Create with values-from-git installation: %v", err)
+	}
+	if app.GithubInstallationID != inst.ID {
+		t.Errorf("GithubInstallationID = %v, want %v", app.GithubInstallationID, inst.ID)
+	}
+}
+
+func TestCreateMultipleValuesSources(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
+	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
+
+	// Two ordered sources are accepted and persisted in order.
+	p := httpRepoParams(target.ID, runner.ID)
+	p.ValuesSources = []map[string]string{
+		{helm.ValuesSourceRepoURL: "https://github.com/org/base.git", helm.ValuesSourcePath: "base.yaml"},
+		{helm.ValuesSourceRepoURL: "https://github.com/org/over.git", helm.ValuesSourceGitRef: "rel", helm.ValuesSourcePath: "prod.yaml"},
+	}
+	app, err := svc.Create(ctx, org.ID, p)
+	if err != nil {
+		t.Fatalf("Create with two values sources: %v", err)
+	}
+	if len(app.ValuesSources) != 2 || app.ValuesSources[0][helm.ValuesSourceRepoURL] != "https://github.com/org/base.git" {
+		t.Errorf("values_sources not persisted in order: %v", app.ValuesSources)
+	}
+
+	// A later source missing its path is rejected (and the error points at it).
+	p2 := httpRepoParams(target.ID, runner.ID)
+	p2.Name = "other"
+	p2.ValuesSources = []map[string]string{
+		{helm.ValuesSourceRepoURL: "https://github.com/org/base.git", helm.ValuesSourcePath: "base.yaml"},
+		{helm.ValuesSourceRepoURL: "https://github.com/org/over.git"},
+	}
+	if _, err := svc.Create(ctx, org.ID, p2); !IsValidation(err) {
+		t.Fatalf("error = %v, want ValidationError for a source missing its path", err)
 	}
 }
 

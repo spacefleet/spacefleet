@@ -36,6 +36,10 @@ type Deployment struct {
 	RunName string `json:"run_name,omitempty"`
 	// Logs holds the value of the "logs" field.
 	Logs string `json:"logs,omitempty"`
+	// ChartRevision holds the value of the "chart_revision" field.
+	ChartRevision string `json:"chart_revision,omitempty"`
+	// ValuesRevision holds the value of the "values_revision" field.
+	ValuesRevision string `json:"values_revision,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// FinishedAt holds the value of the "finished_at" field.
@@ -86,7 +90,7 @@ func (*Deployment) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case deployment.FieldAction, deployment.FieldStatus, deployment.FieldMessage, deployment.FieldJobID, deployment.FieldRunName, deployment.FieldLogs:
+		case deployment.FieldAction, deployment.FieldStatus, deployment.FieldMessage, deployment.FieldJobID, deployment.FieldRunName, deployment.FieldLogs, deployment.FieldChartRevision, deployment.FieldValuesRevision:
 			values[i] = new(sql.NullString)
 		case deployment.FieldCreatedAt, deployment.FieldFinishedAt, deployment.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -160,6 +164,18 @@ func (_m *Deployment) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field logs", values[i])
 			} else if value.Valid {
 				_m.Logs = value.String
+			}
+		case deployment.FieldChartRevision:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field chart_revision", values[i])
+			} else if value.Valid {
+				_m.ChartRevision = value.String
+			}
+		case deployment.FieldValuesRevision:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field values_revision", values[i])
+			} else if value.Valid {
+				_m.ValuesRevision = value.String
 			}
 		case deployment.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -249,6 +265,12 @@ func (_m *Deployment) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("logs=")
 	builder.WriteString(_m.Logs)
+	builder.WriteString(", ")
+	builder.WriteString("chart_revision=")
+	builder.WriteString(_m.ChartRevision)
+	builder.WriteString(", ")
+	builder.WriteString("values_revision=")
+	builder.WriteString(_m.ValuesRevision)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

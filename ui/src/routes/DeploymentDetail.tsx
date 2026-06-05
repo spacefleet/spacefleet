@@ -125,6 +125,15 @@ export function DeploymentDetail() {
                 value={formatDuration(dep.created_at, dep.finished_at)}
               />
               {dep.run_name && <Row label="Run" value={dep.run_name} />}
+              {dep.chart_revision && (
+                <Revision label="Chart revision" value={dep.chart_revision} />
+              )}
+              {dep.values_revision && (
+                <Revision
+                  label="Values revisions"
+                  value={dep.values_revision}
+                />
+              )}
             </dl>
           </div>
 
@@ -154,6 +163,20 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex flex-col">
       <dt className="text-xs text-neutral-400">{label}</dt>
       <dd className="break-all capitalize text-neutral-800">{value || "—"}</dd>
+    </div>
+  );
+}
+
+// Revision shows resolved git commit SHA(s) — monospace and un-capitalized
+// (unlike Row), since the full SHA is what someone audits or checks out. The
+// values revision may carry several "<repo>@<sha>" lines (one per source).
+function Revision({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col">
+      <dt className="text-xs text-neutral-400">{label}</dt>
+      <dd className="whitespace-pre-line break-all font-mono text-xs text-neutral-800">
+        {value}
+      </dd>
     </div>
   );
 }

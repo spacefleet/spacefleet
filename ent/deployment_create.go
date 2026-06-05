@@ -114,6 +114,34 @@ func (_c *DeploymentCreate) SetNillableLogs(v *string) *DeploymentCreate {
 	return _c
 }
 
+// SetChartRevision sets the "chart_revision" field.
+func (_c *DeploymentCreate) SetChartRevision(v string) *DeploymentCreate {
+	_c.mutation.SetChartRevision(v)
+	return _c
+}
+
+// SetNillableChartRevision sets the "chart_revision" field if the given value is not nil.
+func (_c *DeploymentCreate) SetNillableChartRevision(v *string) *DeploymentCreate {
+	if v != nil {
+		_c.SetChartRevision(*v)
+	}
+	return _c
+}
+
+// SetValuesRevision sets the "values_revision" field.
+func (_c *DeploymentCreate) SetValuesRevision(v string) *DeploymentCreate {
+	_c.mutation.SetValuesRevision(v)
+	return _c
+}
+
+// SetNillableValuesRevision sets the "values_revision" field if the given value is not nil.
+func (_c *DeploymentCreate) SetNillableValuesRevision(v *string) *DeploymentCreate {
+	if v != nil {
+		_c.SetValuesRevision(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *DeploymentCreate) SetCreatedAt(v time.Time) *DeploymentCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -329,6 +357,14 @@ func (_c *DeploymentCreate) createSpec() (*Deployment, *sqlgraph.CreateSpec) {
 		_spec.SetField(deployment.FieldLogs, field.TypeString, value)
 		_node.Logs = value
 	}
+	if value, ok := _c.mutation.ChartRevision(); ok {
+		_spec.SetField(deployment.FieldChartRevision, field.TypeString, value)
+		_node.ChartRevision = value
+	}
+	if value, ok := _c.mutation.ValuesRevision(); ok {
+		_spec.SetField(deployment.FieldValuesRevision, field.TypeString, value)
+		_node.ValuesRevision = value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(deployment.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -520,6 +556,42 @@ func (u *DeploymentUpsert) UpdateLogs() *DeploymentUpsert {
 // ClearLogs clears the value of the "logs" field.
 func (u *DeploymentUpsert) ClearLogs() *DeploymentUpsert {
 	u.SetNull(deployment.FieldLogs)
+	return u
+}
+
+// SetChartRevision sets the "chart_revision" field.
+func (u *DeploymentUpsert) SetChartRevision(v string) *DeploymentUpsert {
+	u.Set(deployment.FieldChartRevision, v)
+	return u
+}
+
+// UpdateChartRevision sets the "chart_revision" field to the value that was provided on create.
+func (u *DeploymentUpsert) UpdateChartRevision() *DeploymentUpsert {
+	u.SetExcluded(deployment.FieldChartRevision)
+	return u
+}
+
+// ClearChartRevision clears the value of the "chart_revision" field.
+func (u *DeploymentUpsert) ClearChartRevision() *DeploymentUpsert {
+	u.SetNull(deployment.FieldChartRevision)
+	return u
+}
+
+// SetValuesRevision sets the "values_revision" field.
+func (u *DeploymentUpsert) SetValuesRevision(v string) *DeploymentUpsert {
+	u.Set(deployment.FieldValuesRevision, v)
+	return u
+}
+
+// UpdateValuesRevision sets the "values_revision" field to the value that was provided on create.
+func (u *DeploymentUpsert) UpdateValuesRevision() *DeploymentUpsert {
+	u.SetExcluded(deployment.FieldValuesRevision)
+	return u
+}
+
+// ClearValuesRevision clears the value of the "values_revision" field.
+func (u *DeploymentUpsert) ClearValuesRevision() *DeploymentUpsert {
+	u.SetNull(deployment.FieldValuesRevision)
 	return u
 }
 
@@ -719,6 +791,48 @@ func (u *DeploymentUpsertOne) UpdateLogs() *DeploymentUpsertOne {
 func (u *DeploymentUpsertOne) ClearLogs() *DeploymentUpsertOne {
 	return u.Update(func(s *DeploymentUpsert) {
 		s.ClearLogs()
+	})
+}
+
+// SetChartRevision sets the "chart_revision" field.
+func (u *DeploymentUpsertOne) SetChartRevision(v string) *DeploymentUpsertOne {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.SetChartRevision(v)
+	})
+}
+
+// UpdateChartRevision sets the "chart_revision" field to the value that was provided on create.
+func (u *DeploymentUpsertOne) UpdateChartRevision() *DeploymentUpsertOne {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.UpdateChartRevision()
+	})
+}
+
+// ClearChartRevision clears the value of the "chart_revision" field.
+func (u *DeploymentUpsertOne) ClearChartRevision() *DeploymentUpsertOne {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.ClearChartRevision()
+	})
+}
+
+// SetValuesRevision sets the "values_revision" field.
+func (u *DeploymentUpsertOne) SetValuesRevision(v string) *DeploymentUpsertOne {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.SetValuesRevision(v)
+	})
+}
+
+// UpdateValuesRevision sets the "values_revision" field to the value that was provided on create.
+func (u *DeploymentUpsertOne) UpdateValuesRevision() *DeploymentUpsertOne {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.UpdateValuesRevision()
+	})
+}
+
+// ClearValuesRevision clears the value of the "values_revision" field.
+func (u *DeploymentUpsertOne) ClearValuesRevision() *DeploymentUpsertOne {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.ClearValuesRevision()
 	})
 }
 
@@ -1090,6 +1204,48 @@ func (u *DeploymentUpsertBulk) UpdateLogs() *DeploymentUpsertBulk {
 func (u *DeploymentUpsertBulk) ClearLogs() *DeploymentUpsertBulk {
 	return u.Update(func(s *DeploymentUpsert) {
 		s.ClearLogs()
+	})
+}
+
+// SetChartRevision sets the "chart_revision" field.
+func (u *DeploymentUpsertBulk) SetChartRevision(v string) *DeploymentUpsertBulk {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.SetChartRevision(v)
+	})
+}
+
+// UpdateChartRevision sets the "chart_revision" field to the value that was provided on create.
+func (u *DeploymentUpsertBulk) UpdateChartRevision() *DeploymentUpsertBulk {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.UpdateChartRevision()
+	})
+}
+
+// ClearChartRevision clears the value of the "chart_revision" field.
+func (u *DeploymentUpsertBulk) ClearChartRevision() *DeploymentUpsertBulk {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.ClearChartRevision()
+	})
+}
+
+// SetValuesRevision sets the "values_revision" field.
+func (u *DeploymentUpsertBulk) SetValuesRevision(v string) *DeploymentUpsertBulk {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.SetValuesRevision(v)
+	})
+}
+
+// UpdateValuesRevision sets the "values_revision" field to the value that was provided on create.
+func (u *DeploymentUpsertBulk) UpdateValuesRevision() *DeploymentUpsertBulk {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.UpdateValuesRevision()
+	})
+}
+
+// ClearValuesRevision clears the value of the "values_revision" field.
+func (u *DeploymentUpsertBulk) ClearValuesRevision() *DeploymentUpsertBulk {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.ClearValuesRevision()
 	})
 }
 

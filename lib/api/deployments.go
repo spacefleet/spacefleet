@@ -59,14 +59,16 @@ func (s *Server) GetDeployment(ctx context.Context, req GetDeploymentRequestObje
 // toAPIDeployment maps an ent deployment row to the API list type (no logs).
 func toAPIDeployment(d *ent.Deployment) Deployment {
 	out := Deployment{
-		Id:            d.ID,
-		ApplicationId: d.ApplicationID,
-		Action:        DeploymentAction(d.Action),
-		Status:        DeploymentStatus(d.Status),
-		Message:       optStr(d.Message),
-		RunName:       optStr(d.RunName),
-		CreatedAt:     d.CreatedAt,
-		FinishedAt:    d.FinishedAt,
+		Id:             d.ID,
+		ApplicationId:  d.ApplicationID,
+		Action:         DeploymentAction(d.Action),
+		Status:         DeploymentStatus(d.Status),
+		Message:        optStr(d.Message),
+		RunName:        optStr(d.RunName),
+		ChartRevision:  optStr(d.ChartRevision),
+		ValuesRevision: optStr(d.ValuesRevision),
+		CreatedAt:      d.CreatedAt,
+		FinishedAt:     d.FinishedAt,
 	}
 	return out
 }
@@ -75,14 +77,16 @@ func toAPIDeployment(d *ent.Deployment) Deployment {
 func toAPIDeploymentDetail(d *ent.Deployment) DeploymentDetail {
 	b := toAPIDeployment(d)
 	return DeploymentDetail{
-		Id:            b.Id,
-		ApplicationId: b.ApplicationId,
-		Action:        b.Action,
-		Status:        b.Status,
-		Message:       b.Message,
-		RunName:       b.RunName,
-		CreatedAt:     b.CreatedAt,
-		FinishedAt:    b.FinishedAt,
-		Logs:          optStr(d.Logs),
+		Id:             b.Id,
+		ApplicationId:  b.ApplicationId,
+		Action:         b.Action,
+		Status:         b.Status,
+		Message:        b.Message,
+		RunName:        b.RunName,
+		ChartRevision:  b.ChartRevision,
+		ValuesRevision: b.ValuesRevision,
+		CreatedAt:      b.CreatedAt,
+		FinishedAt:     b.FinishedAt,
+		Logs:           optStr(d.Logs),
 	}
 }

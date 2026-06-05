@@ -9,6 +9,7 @@ import { CHART_SOURCES } from "../components/chartSources";
 
 type Application = components["schemas"]["Application"];
 type ChartSource = components["schemas"]["ChartSource"];
+type ValuesSource = components["schemas"]["ValuesSource"];
 type CreateRequest = components["schemas"]["ApplicationCreateRequest"];
 type UpdateRequest = components["schemas"]["ApplicationUpdateRequest"];
 type Cluster = components["schemas"]["Cluster"];
@@ -53,6 +54,10 @@ export function ApplicationForm() {
   const [runnerClusterId, setRunnerClusterId] = useState("");
   const [credentialId, setCredentialId] = useState("");
   const [installationId, setInstallationId] = useState("");
+  // Optional values-from-git sources (orthogonal to the chart source): an ordered
+  // list of repos to pull values files from, layered under the inline values
+  // below — earlier first, inline wins.
+  const [valuesSources, setValuesSources] = useState<ValuesSource[]>([]);
 
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [credentials, setCredentials] = useState<ChartCredential[]>([]);
@@ -114,6 +119,7 @@ export function ApplicationForm() {
     setRunnerClusterId(app.runner_cluster_id);
     setCredentialId(app.chart_credential_id ?? "");
     setInstallationId(app.github_installation_id ?? "");
+    setValuesSources(app.values_sources ?? []);
   }
 
   const selected = CHART_SOURCES.find((s) => s.value === chartSource)!;
@@ -126,9 +132,38 @@ export function ApplicationForm() {
   );
   const clusterName = (id: string) =>
     clusters.find((c) => c.id === id)?.name ?? id;
+  // Values-from-git is in play once any source has a repo URL. The GitHub
+  // installation authenticates a private github.com clone of either the chart
+  // (git source) or a values repo, so it's offered whenever either is git.
+  const valuesFromGit = valuesSources.some((s) => s.repo_url.trim() !== "");
+  const installationApplies =
+    githubEnabled && (chartSource === "git" || valuesFromGit);
 
   function setField(key: string, value: string) {
     setConfig((c) => ({ ...c, [key]: value }));
+  }
+
+  function updateSource(i: number, key: keyof ValuesSource, value: string) {
+    setValuesSources((arr) =>
+      arr.map((s, j) => (j === i ? { ...s, [key]: value } : s)),
+    );
+  }
+  function addSource() {
+    setValuesSources((arr) => [...arr, { repo_url: "", path: "" }]);
+  }
+  function removeSource(i: number) {
+    setValuesSources((arr) => arr.filter((_, j) => j !== i));
+  }
+
+  // The values sources to send: trimmed, repo-less rows dropped, empty ref omitted.
+  function cleanValuesSources(): ValuesSource[] {
+    return valuesSources
+      .filter((s) => s.repo_url.trim() !== "")
+      .map((s) => ({
+        repo_url: s.repo_url.trim(),
+        path: (s.path ?? "").trim(),
+        ...(s.git_ref?.trim() ? { git_ref: s.git_ref.trim() } : {}),
+      }));
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -141,23 +176,27 @@ export function ApplicationForm() {
       const raw = (config[field.key] ?? "").trim();
       if (raw !== "") cfg[field.key] = raw;
     }
+    const sources = cleanValuesSources();
 
     if (editing) {
       const body: UpdateRequest = {
         name: name.trim(),
         config: cfg,
         values,
+        // Sent unconditionally: the form reflects the desired set, so an empty
+        // array clears any previously configured sources.
+        values_sources: sources,
         release_name: releaseName.trim(),
         target_namespace: targetNamespace.trim(),
         // A cleared selector detaches via the nil UUID; an absent selector
-        // (wrong source type / GitHub disabled) leaves the field untouched.
+        // (wrong source type / GitHub disabled / not pulling from git) leaves the
+        // field untouched.
         chart_credential_id: credentialType
           ? credentialId || NIL_UUID
           : undefined,
-        github_installation_id:
-          chartSource === "git" && githubEnabled
-            ? installationId || NIL_UUID
-            : undefined,
+        github_installation_id: installationApplies
+          ? installationId || NIL_UUID
+          : undefined,
       };
       const { error } = await api.PATCH("/api/applications/{id}", {
         params: { path: { id: appId! } },
@@ -181,9 +220,10 @@ export function ApplicationForm() {
       runner_cluster_id: runnerClusterId,
     };
     if (values.trim() !== "") body.values = values;
+    if (sources.length > 0) body.values_sources = sources;
     if (releaseName.trim() !== "") body.release_name = releaseName.trim();
     if (credentialId !== "") body.chart_credential_id = credentialId;
-    if (chartSource === "git" && installationId !== "")
+    if (installationApplies && installationId !== "")
       body.github_installation_id = installationId;
 
     const { data, error } = await api.POST("/api/applications", { body });
@@ -329,29 +369,102 @@ export function ApplicationForm() {
               )}
 
               {chartSource === "git" && githubEnabled && (
-                <Labeled
-                  label="GitHub installation"
-                  help="Optional. Required only if the repository is private. Connect one under Admin › GitHub."
-                >
-                  <select
-                    className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
-                    value={installationId}
-                    onChange={(e) => setInstallationId(e.target.value)}
-                  >
-                    <option value="">None (public repository)</option>
-                    {installations.map((inst) => (
-                      <option key={inst.id} value={inst.id}>
-                        {inst.account_login || inst.installation_id}
-                      </option>
-                    ))}
-                  </select>
-                  {installations.length === 0 && (
-                    <p className="mt-1 text-xs text-neutral-500">
-                      No GitHub installations yet. Connect one under Admin ›
-                      GitHub.
-                    </p>
-                  )}
-                </Labeled>
+                <InstallationSelect
+                  value={installationId}
+                  onChange={setInstallationId}
+                  installations={installations}
+                  help="Optional. Required only if the chart repository is private. Connect one under Admin › GitHub."
+                />
+              )}
+            </Section>
+
+            <Section
+              title="Values from Git"
+              description="Optionally pull values files from one or more Git repositories. They're applied in order — top to bottom — then the inline values below, which wins."
+            >
+              {valuesSources.length === 0 ? (
+                <p className="text-sm text-neutral-500">
+                  No git values sources. The inline values below are used on
+                  their own.
+                </p>
+              ) : (
+                <ol className="space-y-3">
+                  {valuesSources.map((src, i) => (
+                    <li
+                      key={i}
+                      className="border border-neutral-200 bg-neutral-50 p-3"
+                    >
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-xs font-medium text-neutral-500">
+                          Source {i + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeSource(i)}
+                          className="text-xs text-neutral-500 hover:text-red-600"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div className="space-y-3">
+                        <input
+                          type="text"
+                          aria-label={`Source ${i + 1} repository URL`}
+                          className="w-full border border-neutral-300 px-3 py-2 text-sm"
+                          placeholder="https://github.com/org/config.git"
+                          value={src.repo_url}
+                          onChange={(e) =>
+                            updateSource(i, "repo_url", e.target.value)
+                          }
+                          required
+                        />
+                        <div className="flex gap-3">
+                          <input
+                            type="text"
+                            aria-label={`Source ${i + 1} branch or tag`}
+                            className="w-1/3 border border-neutral-300 px-3 py-2 text-sm"
+                            placeholder="branch/tag (optional)"
+                            value={src.git_ref ?? ""}
+                            onChange={(e) =>
+                              updateSource(i, "git_ref", e.target.value)
+                            }
+                          />
+                          <input
+                            type="text"
+                            aria-label={`Source ${i + 1} values file path`}
+                            className="flex-1 border border-neutral-300 px-3 py-2 text-sm"
+                            placeholder="envs/prod/values.yaml"
+                            value={src.path}
+                            onChange={(e) =>
+                              updateSource(i, "path", e.target.value)
+                            }
+                            required
+                          />
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+
+              <button
+                type="button"
+                onClick={addSource}
+                className="text-sm font-medium text-neutral-700 hover:text-black"
+              >
+                + Add values source
+              </button>
+
+              {/* When the chart itself is git, the installation selector in the
+                  Chart source section already covers github.com auth (one
+                  installation serves both chart and values). */}
+              {chartSource !== "git" && githubEnabled && valuesFromGit && (
+                <InstallationSelect
+                  value={installationId}
+                  onChange={setInstallationId}
+                  installations={installations}
+                  help="Optional. Required only if a values repository is private. Connect one under Admin › GitHub."
+                />
               )}
             </Section>
 
@@ -488,6 +601,43 @@ export function ApplicationForm() {
         </>
       )}
     </div>
+  );
+}
+
+// InstallationSelect is the GitHub App installation picker, shared by the chart
+// (git source) and the values-from-git source — one installation authenticates
+// any private github.com clone in the rollout, so both bind the same value.
+function InstallationSelect({
+  value,
+  onChange,
+  installations,
+  help,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  installations: GitHubInstallation[];
+  help: string;
+}) {
+  return (
+    <Labeled label="GitHub installation" help={help}>
+      <select
+        className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">None (public repository)</option>
+        {installations.map((inst) => (
+          <option key={inst.id} value={inst.id}>
+            {inst.account_login || inst.installation_id}
+          </option>
+        ))}
+      </select>
+      {installations.length === 0 && (
+        <p className="mt-1 text-xs text-neutral-500">
+          No GitHub installations yet. Connect one under Admin › GitHub.
+        </p>
+      )}
+    </Labeled>
   );
 }
 

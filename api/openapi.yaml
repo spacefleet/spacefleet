@@ -1805,6 +1805,24 @@ components:
       description: The rollout lifecycle state of the application.
       enum: [pending, deploying, deployed, failed, uninstalling, uninstalled]
 
+    ValuesSource:
+      type: object
+      description: |
+        A git source for a values file, layered beneath the inline values. Used
+        with any chart source. A private github.com source is authenticated by
+        the application's attached GitHub App installation.
+      required: [repo_url, path]
+      properties:
+        repo_url:
+          type: string
+          description: Git repository URL to clone (https). github.com may be private.
+        git_ref:
+          type: string
+          description: Branch or tag to check out (default branch when empty).
+        path:
+          type: string
+          description: Path to the values file within the repository.
+
     Application:
       type: object
       required:
@@ -1833,12 +1851,22 @@ components:
           $ref: "#/components/schemas/ChartSource"
         config:
           type: object
-          description: Non-secret per-source parameters (repo_url, chart, version, …).
+          description: |
+            Non-secret per-source chart coordinates, varying by chart_source
+            (repo_url, chart, version, git_ref, git_path).
           additionalProperties:
             type: string
         values:
           type: string
-          description: Raw values.yaml override.
+          description: Raw values.yaml override (applied last, so it wins over values_sources).
+        values_sources:
+          type: array
+          description: |
+            Ordered git sources to pull values files from (orthogonal to the
+            chart source). Each is cloned and layered with helm -f in order —
+            earlier first — all beneath the inline values above, which wins.
+          items:
+            $ref: "#/components/schemas/ValuesSource"
         release_name:
           type: string
           description: The Helm release name (defaults to the app name when empty).
@@ -1862,8 +1890,10 @@ components:
           type: string
           format: uuid
           description: |
-            GitHub App installation used to pull a private Git chart (absent for
-            public repos). Only valid when chart_source is git.
+            GitHub App installation used to pull a private github.com repo —
+            the chart (git chart source) and/or a git-sourced values file
+            (absent for public repos). Valid when the chart or the values come
+            from git.
         status:
           $ref: "#/components/schemas/ApplicationStatus"
         status_message:
@@ -1886,9 +1916,10 @@ components:
       type: object
       required: [name, chart_source, target_namespace, target_cluster_id, runner_cluster_id]
       description: |
-        A flat object. config carries the source-specific, non-secret chart
-        coordinates (repo_url, chart, version, git_ref, git_path); the server
-        validates which are required per chart_source.
+        config carries the source-specific, non-secret chart coordinates
+        (repo_url, chart, version, git_ref, git_path); the server validates which
+        are required per chart_source. values_sources optionally pulls values
+        files from git, layered (in order) beneath the inline values.
       properties:
         name:
           type: string
@@ -1902,6 +1933,10 @@ components:
             type: string
         values:
           type: string
+        values_sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValuesSource"
         release_name:
           type: string
         target_namespace:
@@ -1923,8 +1958,9 @@ components:
           type: string
           format: uuid
           description: |
-            Optional GitHub App installation to attach for a private Git chart.
-            Only valid when chart_source is git.
+            Optional GitHub App installation to attach for a private github.com
+            repo. Valid when the chart (git chart source) or any values source is
+            pulled from git.
 
     ApplicationUpdateRequest:
       type: object
@@ -1943,6 +1979,13 @@ components:
             type: string
         values:
           type: string
+        values_sources:
+          type: array
+          description: |
+            Replaces the git values sources. Send an empty array to clear them;
+            omit the field to leave them unchanged.
+          items:
+            $ref: "#/components/schemas/ValuesSource"
         release_name:
           type: string
         target_namespace:
@@ -1958,8 +2001,9 @@ components:
           type: string
           format: uuid
           description: |
-            Change the attached GitHub App installation (git charts). Send the
-            nil UUID (00000000-0000-0000-0000-000000000000) to detach.
+            Change the attached GitHub App installation (git chart and/or
+            git-sourced values). Send the nil UUID
+            (00000000-0000-0000-0000-000000000000) to detach.
 
     ApplicationRolloutRequest:
       type: object
@@ -2117,6 +2161,17 @@ components:
         run_name:
           type: string
           description: The TaskRun name on the runner cluster for this run.
+        chart_revision:
+          type: string
+          description: |
+            Git commit SHA the chart was resolved to, for a git chart source
+            (absent for http_repo/oci charts, which pin a chart version instead).
+        values_revision:
+          type: string
+          description: |
+            Git commit SHAs the values sources were resolved to, one
+            "<repo>@<sha>" per line, when values are pulled from git (absent
+            otherwise).
         created_at:
           type: string
           format: date-time

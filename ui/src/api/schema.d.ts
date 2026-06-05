@@ -1312,18 +1312,40 @@ export interface components {
          * @enum {string}
          */
         ApplicationStatus: "pending" | "deploying" | "deployed" | "failed" | "uninstalling" | "uninstalled";
+        /**
+         * @description A git source for a values file, layered beneath the inline values. Used
+         *     with any chart source. A private github.com source is authenticated by
+         *     the application's attached GitHub App installation.
+         */
+        ValuesSource: {
+            /** @description Git repository URL to clone (https). github.com may be private. */
+            repo_url: string;
+            /** @description Branch or tag to check out (default branch when empty). */
+            git_ref?: string;
+            /** @description Path to the values file within the repository. */
+            path: string;
+        };
         Application: {
             /** Format: uuid */
             id: string;
             name: string;
             type: components["schemas"]["ApplicationType"];
             chart_source: components["schemas"]["ChartSource"];
-            /** @description Non-secret per-source parameters (repo_url, chart, version, …). */
+            /**
+             * @description Non-secret per-source chart coordinates, varying by chart_source
+             *     (repo_url, chart, version, git_ref, git_path).
+             */
             config: {
                 [key: string]: string;
             };
-            /** @description Raw values.yaml override. */
+            /** @description Raw values.yaml override (applied last, so it wins over values_sources). */
             values?: string;
+            /**
+             * @description Ordered git sources to pull values files from (orthogonal to the
+             *     chart source). Each is cloned and layered with helm -f in order —
+             *     earlier first — all beneath the inline values above, which wins.
+             */
+            values_sources?: components["schemas"]["ValuesSource"][];
             /** @description The Helm release name (defaults to the app name when empty). */
             release_name?: string;
             /** @description Namespace in the target cluster the release is installed into. */
@@ -1341,8 +1363,10 @@ export interface components {
             chart_credential_id?: string;
             /**
              * Format: uuid
-             * @description GitHub App installation used to pull a private Git chart (absent for
-             *     public repos). Only valid when chart_source is git.
+             * @description GitHub App installation used to pull a private github.com repo —
+             *     the chart (git chart source) and/or a git-sourced values file
+             *     (absent for public repos). Valid when the chart or the values come
+             *     from git.
              */
             github_installation_id?: string;
             status: components["schemas"]["ApplicationStatus"];
@@ -1358,9 +1382,10 @@ export interface components {
             updated_at: string;
         };
         /**
-         * @description A flat object. config carries the source-specific, non-secret chart
-         *     coordinates (repo_url, chart, version, git_ref, git_path); the server
-         *     validates which are required per chart_source.
+         * @description config carries the source-specific, non-secret chart coordinates
+         *     (repo_url, chart, version, git_ref, git_path); the server validates which
+         *     are required per chart_source. values_sources optionally pulls values
+         *     files from git, layered (in order) beneath the inline values.
          */
         ApplicationCreateRequest: {
             name: string;
@@ -1369,6 +1394,7 @@ export interface components {
                 [key: string]: string;
             };
             values?: string;
+            values_sources?: components["schemas"]["ValuesSource"][];
             release_name?: string;
             target_namespace: string;
             /** Format: uuid */
@@ -1383,8 +1409,9 @@ export interface components {
             chart_credential_id?: string;
             /**
              * Format: uuid
-             * @description Optional GitHub App installation to attach for a private Git chart.
-             *     Only valid when chart_source is git.
+             * @description Optional GitHub App installation to attach for a private github.com
+             *     repo. Valid when the chart (git chart source) or any values source is
+             *     pulled from git.
              */
             github_installation_id?: string;
         };
@@ -1399,6 +1426,11 @@ export interface components {
                 [key: string]: string;
             };
             values?: string;
+            /**
+             * @description Replaces the git values sources. Send an empty array to clear them;
+             *     omit the field to leave them unchanged.
+             */
+            values_sources?: components["schemas"]["ValuesSource"][];
             release_name?: string;
             target_namespace?: string;
             /**
@@ -1409,8 +1441,9 @@ export interface components {
             chart_credential_id?: string;
             /**
              * Format: uuid
-             * @description Change the attached GitHub App installation (git charts). Send the
-             *     nil UUID (00000000-0000-0000-0000-000000000000) to detach.
+             * @description Change the attached GitHub App installation (git chart and/or
+             *     git-sourced values). Send the nil UUID
+             *     (00000000-0000-0000-0000-000000000000) to detach.
              */
             github_installation_id?: string;
         };
@@ -1520,6 +1553,17 @@ export interface components {
             message?: string;
             /** @description The TaskRun name on the runner cluster for this run. */
             run_name?: string;
+            /**
+             * @description Git commit SHA the chart was resolved to, for a git chart source
+             *     (absent for http_repo/oci charts, which pin a chart version instead).
+             */
+            chart_revision?: string;
+            /**
+             * @description Git commit SHAs the values sources were resolved to, one
+             *     "<repo>@<sha>" per line, when values are pulled from git (absent
+             *     otherwise).
+             */
+            values_revision?: string;
             /** Format: date-time */
             created_at: string;
             /**

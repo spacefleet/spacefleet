@@ -234,6 +234,7 @@ export function ApplicationDetail() {
                     <th className="px-4 py-2 font-medium">Run</th>
                     <th className="px-4 py-2 font-medium">Action</th>
                     <th className="px-4 py-2 font-medium">Status</th>
+                    <th className="px-4 py-2 font-medium">Revision</th>
                     <th className="px-4 py-2 font-medium">Started</th>
                     <th className="px-4 py-2 font-medium">Duration</th>
                   </tr>
@@ -261,6 +262,12 @@ export function ApplicationDetail() {
                       </td>
                       <td className="px-4 py-3">
                         <DeploymentStatusBadge status={d.status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <RevisionCell
+                          chart={d.chart_revision}
+                          values={d.values_revision}
+                        />
                       </td>
                       <td className="px-4 py-3 text-neutral-600">
                         {new Date(d.created_at).toLocaleString()}
@@ -293,6 +300,45 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex flex-col">
       <dt className="text-xs text-neutral-400">{label}</dt>
       <dd className="break-all text-neutral-800">{value || "—"}</dd>
+    </div>
+  );
+}
+
+// RevisionCell shows the git commit SHAs a run resolved, abbreviated. The chart
+// is a single SHA; values is one "<repo>@<sha>" line per source. Empty for
+// non-git sources (an http_repo/oci chart with no git-sourced values).
+function RevisionCell({
+  chart,
+  values,
+}: {
+  chart?: string;
+  values?: string;
+}) {
+  // Pull the short SHA from each "<repo>@<sha>" values line.
+  const valueShas = (values ?? "")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const at = line.lastIndexOf("@");
+      return (at >= 0 ? line.slice(at + 1) : line).slice(0, 7);
+    });
+  if (!chart && valueShas.length === 0) {
+    return <span className="text-neutral-400">—</span>;
+  }
+  return (
+    <div className="space-y-0.5 font-mono text-xs text-neutral-600">
+      {chart && (
+        <div>
+          <span className="text-neutral-400">chart </span>
+          {chart.slice(0, 7)}
+        </div>
+      )}
+      {valueShas.map((sha, i) => (
+        <div key={i}>
+          <span className="text-neutral-400">values </span>
+          {sha}
+        </div>
+      ))}
     </div>
   );
 }

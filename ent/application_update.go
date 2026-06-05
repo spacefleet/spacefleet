@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/application"
@@ -103,6 +104,24 @@ func (_u *ApplicationUpdate) SetNillableValues(v *string) *ApplicationUpdate {
 // ClearValues clears the value of the "values" field.
 func (_u *ApplicationUpdate) ClearValues() *ApplicationUpdate {
 	_u.mutation.ClearValues()
+	return _u
+}
+
+// SetValuesSources sets the "values_sources" field.
+func (_u *ApplicationUpdate) SetValuesSources(v []map[string]string) *ApplicationUpdate {
+	_u.mutation.SetValuesSources(v)
+	return _u
+}
+
+// AppendValuesSources appends value to the "values_sources" field.
+func (_u *ApplicationUpdate) AppendValuesSources(v []map[string]string) *ApplicationUpdate {
+	_u.mutation.AppendValuesSources(v)
+	return _u
+}
+
+// ClearValuesSources clears the value of the "values_sources" field.
+func (_u *ApplicationUpdate) ClearValuesSources() *ApplicationUpdate {
+	_u.mutation.ClearValuesSources()
 	return _u
 }
 
@@ -445,6 +464,17 @@ func (_u *ApplicationUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if _u.mutation.ValuesCleared() {
 		_spec.ClearField(application.FieldValues, field.TypeString)
 	}
+	if value, ok := _u.mutation.ValuesSources(); ok {
+		_spec.SetField(application.FieldValuesSources, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedValuesSources(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, application.FieldValuesSources, value)
+		})
+	}
+	if _u.mutation.ValuesSourcesCleared() {
+		_spec.ClearField(application.FieldValuesSources, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.ReleaseName(); ok {
 		_spec.SetField(application.FieldReleaseName, field.TypeString, value)
 	}
@@ -685,6 +715,24 @@ func (_u *ApplicationUpdateOne) SetNillableValues(v *string) *ApplicationUpdateO
 // ClearValues clears the value of the "values" field.
 func (_u *ApplicationUpdateOne) ClearValues() *ApplicationUpdateOne {
 	_u.mutation.ClearValues()
+	return _u
+}
+
+// SetValuesSources sets the "values_sources" field.
+func (_u *ApplicationUpdateOne) SetValuesSources(v []map[string]string) *ApplicationUpdateOne {
+	_u.mutation.SetValuesSources(v)
+	return _u
+}
+
+// AppendValuesSources appends value to the "values_sources" field.
+func (_u *ApplicationUpdateOne) AppendValuesSources(v []map[string]string) *ApplicationUpdateOne {
+	_u.mutation.AppendValuesSources(v)
+	return _u
+}
+
+// ClearValuesSources clears the value of the "values_sources" field.
+func (_u *ApplicationUpdateOne) ClearValuesSources() *ApplicationUpdateOne {
+	_u.mutation.ClearValuesSources()
 	return _u
 }
 
@@ -1056,6 +1104,17 @@ func (_u *ApplicationUpdateOne) sqlSave(ctx context.Context) (_node *Application
 	}
 	if _u.mutation.ValuesCleared() {
 		_spec.ClearField(application.FieldValues, field.TypeString)
+	}
+	if value, ok := _u.mutation.ValuesSources(); ok {
+		_spec.SetField(application.FieldValuesSources, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedValuesSources(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, application.FieldValuesSources, value)
+		})
+	}
+	if _u.mutation.ValuesSourcesCleared() {
+		_spec.ClearField(application.FieldValuesSources, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ReleaseName(); ok {
 		_spec.SetField(application.FieldReleaseName, field.TypeString, value)

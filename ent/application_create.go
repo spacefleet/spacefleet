@@ -80,6 +80,12 @@ func (_c *ApplicationCreate) SetNillableValues(v *string) *ApplicationCreate {
 	return _c
 }
 
+// SetValuesSources sets the "values_sources" field.
+func (_c *ApplicationCreate) SetValuesSources(v []map[string]string) *ApplicationCreate {
+	_c.mutation.SetValuesSources(v)
+	return _c
+}
+
 // SetReleaseName sets the "release_name" field.
 func (_c *ApplicationCreate) SetReleaseName(v string) *ApplicationCreate {
 	_c.mutation.SetReleaseName(v)
@@ -442,6 +448,10 @@ func (_c *ApplicationCreate) createSpec() (*Application, *sqlgraph.CreateSpec) {
 		_spec.SetField(application.FieldValues, field.TypeString, value)
 		_node.Values = value
 	}
+	if value, ok := _c.mutation.ValuesSources(); ok {
+		_spec.SetField(application.FieldValuesSources, field.TypeJSON, value)
+		_node.ValuesSources = value
+	}
 	if value, ok := _c.mutation.ReleaseName(); ok {
 		_spec.SetField(application.FieldReleaseName, field.TypeString, value)
 		_node.ReleaseName = value
@@ -680,6 +690,24 @@ func (u *ApplicationUpsert) UpdateValues() *ApplicationUpsert {
 // ClearValues clears the value of the "values" field.
 func (u *ApplicationUpsert) ClearValues() *ApplicationUpsert {
 	u.SetNull(application.FieldValues)
+	return u
+}
+
+// SetValuesSources sets the "values_sources" field.
+func (u *ApplicationUpsert) SetValuesSources(v []map[string]string) *ApplicationUpsert {
+	u.Set(application.FieldValuesSources, v)
+	return u
+}
+
+// UpdateValuesSources sets the "values_sources" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdateValuesSources() *ApplicationUpsert {
+	u.SetExcluded(application.FieldValuesSources)
+	return u
+}
+
+// ClearValuesSources clears the value of the "values_sources" field.
+func (u *ApplicationUpsert) ClearValuesSources() *ApplicationUpsert {
+	u.SetNull(application.FieldValuesSources)
 	return u
 }
 
@@ -986,6 +1014,27 @@ func (u *ApplicationUpsertOne) UpdateValues() *ApplicationUpsertOne {
 func (u *ApplicationUpsertOne) ClearValues() *ApplicationUpsertOne {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.ClearValues()
+	})
+}
+
+// SetValuesSources sets the "values_sources" field.
+func (u *ApplicationUpsertOne) SetValuesSources(v []map[string]string) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetValuesSources(v)
+	})
+}
+
+// UpdateValuesSources sets the "values_sources" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdateValuesSources() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateValuesSources()
+	})
+}
+
+// ClearValuesSources clears the value of the "values_sources" field.
+func (u *ApplicationUpsertOne) ClearValuesSources() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearValuesSources()
 	})
 }
 
@@ -1487,6 +1536,27 @@ func (u *ApplicationUpsertBulk) UpdateValues() *ApplicationUpsertBulk {
 func (u *ApplicationUpsertBulk) ClearValues() *ApplicationUpsertBulk {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.ClearValues()
+	})
+}
+
+// SetValuesSources sets the "values_sources" field.
+func (u *ApplicationUpsertBulk) SetValuesSources(v []map[string]string) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetValuesSources(v)
+	})
+}
+
+// UpdateValuesSources sets the "values_sources" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdateValuesSources() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateValuesSources()
+	})
+}
+
+// ClearValuesSources clears the value of the "values_sources" field.
+func (u *ApplicationUpsertBulk) ClearValuesSources() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearValuesSources()
 	})
 }
 

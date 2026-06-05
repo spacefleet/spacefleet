@@ -136,6 +136,46 @@ func (_u *DeploymentUpdate) ClearLogs() *DeploymentUpdate {
 	return _u
 }
 
+// SetChartRevision sets the "chart_revision" field.
+func (_u *DeploymentUpdate) SetChartRevision(v string) *DeploymentUpdate {
+	_u.mutation.SetChartRevision(v)
+	return _u
+}
+
+// SetNillableChartRevision sets the "chart_revision" field if the given value is not nil.
+func (_u *DeploymentUpdate) SetNillableChartRevision(v *string) *DeploymentUpdate {
+	if v != nil {
+		_u.SetChartRevision(*v)
+	}
+	return _u
+}
+
+// ClearChartRevision clears the value of the "chart_revision" field.
+func (_u *DeploymentUpdate) ClearChartRevision() *DeploymentUpdate {
+	_u.mutation.ClearChartRevision()
+	return _u
+}
+
+// SetValuesRevision sets the "values_revision" field.
+func (_u *DeploymentUpdate) SetValuesRevision(v string) *DeploymentUpdate {
+	_u.mutation.SetValuesRevision(v)
+	return _u
+}
+
+// SetNillableValuesRevision sets the "values_revision" field if the given value is not nil.
+func (_u *DeploymentUpdate) SetNillableValuesRevision(v *string) *DeploymentUpdate {
+	if v != nil {
+		_u.SetValuesRevision(*v)
+	}
+	return _u
+}
+
+// ClearValuesRevision clears the value of the "values_revision" field.
+func (_u *DeploymentUpdate) ClearValuesRevision() *DeploymentUpdate {
+	_u.mutation.ClearValuesRevision()
+	return _u
+}
+
 // SetFinishedAt sets the "finished_at" field.
 func (_u *DeploymentUpdate) SetFinishedAt(v time.Time) *DeploymentUpdate {
 	_u.mutation.SetFinishedAt(v)
@@ -265,6 +305,18 @@ func (_u *DeploymentUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	}
 	if _u.mutation.LogsCleared() {
 		_spec.ClearField(deployment.FieldLogs, field.TypeString)
+	}
+	if value, ok := _u.mutation.ChartRevision(); ok {
+		_spec.SetField(deployment.FieldChartRevision, field.TypeString, value)
+	}
+	if _u.mutation.ChartRevisionCleared() {
+		_spec.ClearField(deployment.FieldChartRevision, field.TypeString)
+	}
+	if value, ok := _u.mutation.ValuesRevision(); ok {
+		_spec.SetField(deployment.FieldValuesRevision, field.TypeString, value)
+	}
+	if _u.mutation.ValuesRevisionCleared() {
+		_spec.ClearField(deployment.FieldValuesRevision, field.TypeString)
 	}
 	if value, ok := _u.mutation.FinishedAt(); ok {
 		_spec.SetField(deployment.FieldFinishedAt, field.TypeTime, value)
@@ -400,6 +452,46 @@ func (_u *DeploymentUpdateOne) SetNillableLogs(v *string) *DeploymentUpdateOne {
 // ClearLogs clears the value of the "logs" field.
 func (_u *DeploymentUpdateOne) ClearLogs() *DeploymentUpdateOne {
 	_u.mutation.ClearLogs()
+	return _u
+}
+
+// SetChartRevision sets the "chart_revision" field.
+func (_u *DeploymentUpdateOne) SetChartRevision(v string) *DeploymentUpdateOne {
+	_u.mutation.SetChartRevision(v)
+	return _u
+}
+
+// SetNillableChartRevision sets the "chart_revision" field if the given value is not nil.
+func (_u *DeploymentUpdateOne) SetNillableChartRevision(v *string) *DeploymentUpdateOne {
+	if v != nil {
+		_u.SetChartRevision(*v)
+	}
+	return _u
+}
+
+// ClearChartRevision clears the value of the "chart_revision" field.
+func (_u *DeploymentUpdateOne) ClearChartRevision() *DeploymentUpdateOne {
+	_u.mutation.ClearChartRevision()
+	return _u
+}
+
+// SetValuesRevision sets the "values_revision" field.
+func (_u *DeploymentUpdateOne) SetValuesRevision(v string) *DeploymentUpdateOne {
+	_u.mutation.SetValuesRevision(v)
+	return _u
+}
+
+// SetNillableValuesRevision sets the "values_revision" field if the given value is not nil.
+func (_u *DeploymentUpdateOne) SetNillableValuesRevision(v *string) *DeploymentUpdateOne {
+	if v != nil {
+		_u.SetValuesRevision(*v)
+	}
+	return _u
+}
+
+// ClearValuesRevision clears the value of the "values_revision" field.
+func (_u *DeploymentUpdateOne) ClearValuesRevision() *DeploymentUpdateOne {
+	_u.mutation.ClearValuesRevision()
 	return _u
 }
 
@@ -562,6 +654,18 @@ func (_u *DeploymentUpdateOne) sqlSave(ctx context.Context) (_node *Deployment, 
 	}
 	if _u.mutation.LogsCleared() {
 		_spec.ClearField(deployment.FieldLogs, field.TypeString)
+	}
+	if value, ok := _u.mutation.ChartRevision(); ok {
+		_spec.SetField(deployment.FieldChartRevision, field.TypeString, value)
+	}
+	if _u.mutation.ChartRevisionCleared() {
+		_spec.ClearField(deployment.FieldChartRevision, field.TypeString)
+	}
+	if value, ok := _u.mutation.ValuesRevision(); ok {
+		_spec.SetField(deployment.FieldValuesRevision, field.TypeString, value)
+	}
+	if _u.mutation.ValuesRevisionCleared() {
+		_spec.ClearField(deployment.FieldValuesRevision, field.TypeString)
 	}
 	if value, ok := _u.mutation.FinishedAt(); ok {
 		_spec.SetField(deployment.FieldFinishedAt, field.TypeTime, value)

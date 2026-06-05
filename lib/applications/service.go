@@ -136,12 +136,16 @@ type CreateParams struct {
 	TargetNamespace string
 	TargetClusterID uuid.UUID
 	RunnerClusterID uuid.UUID
+	// ValuesSources optionally pulls values files from git (orthogonal to the chart
+	// source): an ordered list, each {repo_url, git_ref?, path}, layered in order
+	// beneath the inline Values. Each needs repo_url + path (validated).
+	ValuesSources []map[string]string
 	// ChartCredentialID optionally attaches a private-chart credential. Nil means
 	// public chart. Its type must be compatible with ChartSource (validated).
 	ChartCredentialID *uuid.UUID
 	// GitHubInstallationID optionally attaches a GitHub App installation for a
-	// private-Git chart. Nil means public repo; only valid when ChartSource is
-	// git (validated).
+	// private github.com repo — the chart and/or a values source. Nil means public;
+	// valid only when the chart or a values source is git (validated).
 	GitHubInstallationID *uuid.UUID
 }
 
@@ -154,6 +158,9 @@ type UpdateParams struct {
 	Values          *string
 	ReleaseName     *string
 	TargetNamespace *string
+	// ValuesSources replaces the git values sources. Nil leaves them unchanged; a
+	// non-nil (possibly empty) slice sets them — an empty slice clears all sources.
+	ValuesSources *[]map[string]string
 	// ChartCredentialID changes the attached credential. Nil leaves it unchanged;
 	// a non-nil uuid.Nil detaches it; any other value attaches that credential
 	// (validated against the app's chart source).
@@ -191,6 +198,7 @@ func (s *Service) Create(ctx context.Context, orgID uuid.UUID, p CreateParams) (
 		SetChartSource(application.ChartSource(p.ChartSource)).
 		SetConfig(nonNilConfig(p.Config)).
 		SetValues(p.Values).
+		SetValuesSources(nonNilSources(p.ValuesSources)).
 		SetReleaseName(p.ReleaseName).
 		SetTargetNamespace(p.TargetNamespace).
 		SetTargetClusterID(p.TargetClusterID).
@@ -234,6 +242,13 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, p UpdateParam
 		}
 		upd.SetConfig(cfg)
 	}
+	if p.ValuesSources != nil {
+		sources := nonNilSources(*p.ValuesSources)
+		if err := validateValuesSources(sources); err != nil {
+			return nil, err
+		}
+		upd.SetValuesSources(sources)
+	}
 	if p.ChartCredentialID != nil {
 		if *p.ChartCredentialID == uuid.Nil {
 			upd.ClearChartCredentialID()
@@ -248,7 +263,14 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, p UpdateParam
 		if *p.GitHubInstallationID == uuid.Nil {
 			upd.ClearGithubInstallationID()
 		} else {
-			if err := s.validateInstallation(ctx, orgID, app.ChartSource.String(), *p.GitHubInstallationID); err != nil {
+			// Validate against the values sources as they will be after this update
+			// (the incoming list when it's changing, the stored one otherwise), so a
+			// values-from-git source set in the same call is taken into account.
+			effectiveSources := app.ValuesSources
+			if p.ValuesSources != nil {
+				effectiveSources = *p.ValuesSources
+			}
+			if err := s.validateInstallation(ctx, orgID, app.ChartSource.String(), effectiveSources, *p.GitHubInstallationID); err != nil {
 				return nil, err
 			}
 			upd.SetGithubInstallationID(*p.GitHubInstallationID)
@@ -350,6 +372,12 @@ func (s *Service) markDeployment(ctx context.Context, app *ent.Application, jobI
 		if s.captureLogs != nil {
 			if logs := s.captureLogs(ctx, app, runName); logs != "" {
 				upd.SetLogs(logs)
+				// Record the git commit SHAs this run resolved (echoed into the logs by
+				// the rollout script). Empty — a non-git source — leaves the column at
+				// its default, so a redeploy with a changed source clears it.
+				rev := helm.ParseRevisions(logs)
+				upd.SetChartRevision(rev.Chart)
+				upd.SetValuesRevision(valuesRevision(app.ValuesSources, rev.Values))
 			}
 		}
 	}
@@ -467,6 +495,7 @@ func (s *Service) ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, ac
 		Action:          action,
 		ChartSource:     app.ChartSource.String(),
 		Config:          app.Config,
+		ValuesSources:   app.ValuesSources,
 		ReleaseName:     releaseName(app),
 		TargetNamespace: app.TargetNamespace,
 		WaitTimeout:     helm.WaitTimeout(targetConn.Method),
@@ -523,13 +552,16 @@ func (s *Service) validate(ctx context.Context, orgID uuid.UUID, p CreateParams)
 	if err := validateSourceConfig(p.ChartSource, p.Config); err != nil {
 		return err
 	}
+	if err := validateValuesSources(p.ValuesSources); err != nil {
+		return err
+	}
 	if p.ChartCredentialID != nil && *p.ChartCredentialID != uuid.Nil {
 		if err := s.validateCredential(ctx, orgID, p.ChartSource, *p.ChartCredentialID); err != nil {
 			return err
 		}
 	}
 	if p.GitHubInstallationID != nil && *p.GitHubInstallationID != uuid.Nil {
-		if err := s.validateInstallation(ctx, orgID, p.ChartSource, *p.GitHubInstallationID); err != nil {
+		if err := s.validateInstallation(ctx, orgID, p.ChartSource, p.ValuesSources, *p.GitHubInstallationID); err != nil {
 			return err
 		}
 	}
@@ -537,13 +569,14 @@ func (s *Service) validate(ctx context.Context, orgID uuid.UUID, p CreateParams)
 }
 
 // validateInstallation confirms the GitHub App installation exists in the
-// organization and that the chart source is git (the only source that pulls
-// from a Git repo). The scoping query is the security boundary; the source check
-// prevents attaching an installation to an http_repo/oci app where it would do
-// nothing.
-func (s *Service) validateInstallation(ctx context.Context, orgID uuid.UUID, source string, installID uuid.UUID) error {
-	if source != helm.SourceGit {
-		return validationErr("a github installation can only be attached to a git chart source")
+// organization and that the app actually pulls from git — either a git chart
+// source or a git-sourced values file (the installation authenticates a private
+// github.com clone of either). The scoping query is the security boundary; the
+// source/values check prevents attaching an installation to an app where it
+// would do nothing.
+func (s *Service) validateInstallation(ctx context.Context, orgID uuid.UUID, source string, valuesSources []map[string]string, installID uuid.UUID) error {
+	if source != helm.SourceGit && !valuesFromGit(valuesSources) {
+		return validationErr("a github installation can only be attached to an app that pulls from git (a git chart source or git-sourced values)")
 	}
 	exists, err := s.ent.GitHubInstallation.Query().
 		Where(githubinstallation.OrganizationID(orgID), githubinstallation.ID(installID)).
@@ -594,7 +627,7 @@ func credentialTypeForSource(source string) (chartcredential.Type, bool) {
 	}
 }
 
-// validateSourceConfig checks the per-source required fields are present.
+// validateSourceConfig checks the per-source required chart fields are present.
 func validateSourceConfig(source string, cfg map[string]string) error {
 	switch source {
 	case helm.SourceHTTPRepo:
@@ -606,6 +639,45 @@ func validateSourceConfig(source string, cfg map[string]string) error {
 	default:
 		return validationErr("unknown chart source %q", source)
 	}
+}
+
+// validateValuesSources checks each git values source carries a repo URL and a
+// file path (the ref is optional — default branch). The list order is the helm
+// -f layering order, so an empty list is valid (inline-only values).
+func validateValuesSources(sources []map[string]string) error {
+	for i, src := range sources {
+		if src[helm.ValuesSourceRepoURL] == "" {
+			return validationErr("values source %d: %q is required", i+1, helm.ValuesSourceRepoURL)
+		}
+		if src[helm.ValuesSourcePath] == "" {
+			return validationErr("values source %d: %q is required", i+1, helm.ValuesSourcePath)
+		}
+	}
+	return nil
+}
+
+// valuesFromGit reports whether any values source pulls from a git repo.
+func valuesFromGit(sources []map[string]string) bool {
+	for _, src := range sources {
+		if src[helm.ValuesSourceRepoURL] != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// valuesRevision pairs each values source with the commit SHA it resolved to
+// (parsed from the run logs, keyed by source index) as newline-joined
+// "<repo>@<sha>" lines — the durable record of what a pull-on-deploy run used.
+// Sources with no captured SHA (e.g. a failed clone) are skipped.
+func valuesRevision(sources []map[string]string, shas map[int]string) string {
+	var lines []string
+	for i, src := range sources {
+		if sha := shas[i]; sha != "" {
+			lines = append(lines, src[helm.ValuesSourceRepoURL]+"@"+sha)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func requireFields(cfg map[string]string, keys ...string) error {
@@ -705,4 +777,12 @@ func nonNilConfig(m map[string]string) map[string]string {
 		return map[string]string{}
 	}
 	return m
+}
+
+// nonNilSources guards against a nil slice reaching the JSON column.
+func nonNilSources(s []map[string]string) []map[string]string {
+	if s == nil {
+		return []map[string]string{}
+	}
+	return s
 }

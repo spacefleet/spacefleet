@@ -17,6 +17,7 @@ var (
 		{Name: "chart_source", Type: field.TypeEnum, Enums: []string{"http_repo", "oci", "git"}},
 		{Name: "config", Type: field.TypeJSON, Nullable: true},
 		{Name: "values", Type: field.TypeString, Nullable: true},
+		{Name: "values_sources", Type: field.TypeJSON, Nullable: true},
 		{Name: "release_name", Type: field.TypeString, Nullable: true},
 		{Name: "target_namespace", Type: field.TypeString},
 		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "deploying", "deployed", "failed", "uninstalling", "uninstalled"}, Default: "pending"},
@@ -39,31 +40,31 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "applications_organizations_organization",
-				Columns:    []*schema.Column{ApplicationsColumns[14]},
+				Columns:    []*schema.Column{ApplicationsColumns[15]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "applications_clusters_target_cluster",
-				Columns:    []*schema.Column{ApplicationsColumns[15]},
-				RefColumns: []*schema.Column{ClustersColumns[0]},
-				OnDelete:   schema.NoAction,
-			},
-			{
-				Symbol:     "applications_clusters_runner_cluster",
 				Columns:    []*schema.Column{ApplicationsColumns[16]},
 				RefColumns: []*schema.Column{ClustersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
-				Symbol:     "applications_chart_credentials_chart_credential",
+				Symbol:     "applications_clusters_runner_cluster",
 				Columns:    []*schema.Column{ApplicationsColumns[17]},
+				RefColumns: []*schema.Column{ClustersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "applications_chart_credentials_chart_credential",
+				Columns:    []*schema.Column{ApplicationsColumns[18]},
 				RefColumns: []*schema.Column{ChartCredentialsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "applications_github_installations_github_installation",
-				Columns:    []*schema.Column{ApplicationsColumns[18]},
+				Columns:    []*schema.Column{ApplicationsColumns[19]},
 				RefColumns: []*schema.Column{GithubInstallationsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -72,12 +73,12 @@ var (
 			{
 				Name:    "application_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{ApplicationsColumns[14]},
+				Columns: []*schema.Column{ApplicationsColumns[15]},
 			},
 			{
 				Name:    "application_organization_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{ApplicationsColumns[14], ApplicationsColumns[1]},
+				Columns: []*schema.Column{ApplicationsColumns[15], ApplicationsColumns[1]},
 			},
 		},
 	}
@@ -169,6 +170,8 @@ var (
 		{Name: "job_id", Type: field.TypeString, Nullable: true},
 		{Name: "run_name", Type: field.TypeString, Nullable: true},
 		{Name: "logs", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "chart_revision", Type: field.TypeString, Nullable: true},
+		{Name: "values_revision", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -183,13 +186,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "deployments_organizations_organization",
-				Columns:    []*schema.Column{DeploymentsColumns[10]},
+				Columns:    []*schema.Column{DeploymentsColumns[12]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "deployments_applications_application",
-				Columns:    []*schema.Column{DeploymentsColumns[11]},
+				Columns:    []*schema.Column{DeploymentsColumns[13]},
 				RefColumns: []*schema.Column{ApplicationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -198,17 +201,17 @@ var (
 			{
 				Name:    "deployment_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{DeploymentsColumns[10]},
+				Columns: []*schema.Column{DeploymentsColumns[12]},
 			},
 			{
 				Name:    "deployment_application_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{DeploymentsColumns[11], DeploymentsColumns[7]},
+				Columns: []*schema.Column{DeploymentsColumns[13], DeploymentsColumns[9]},
 			},
 			{
 				Name:    "deployment_organization_id_job_id",
 				Unique:  false,
-				Columns: []*schema.Column{DeploymentsColumns[10], DeploymentsColumns[4]},
+				Columns: []*schema.Column{DeploymentsColumns[12], DeploymentsColumns[4]},
 			},
 		},
 	}

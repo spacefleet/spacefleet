@@ -101,6 +101,7 @@ func (s *Server) CreateApplication(ctx context.Context, req CreateApplicationReq
 		ChartSource:          string(req.Body.ChartSource),
 		Config:               derefMap(req.Body.Config),
 		Values:               deref(req.Body.Values),
+		ValuesSources:        valuesSourcesToMaps(req.Body.ValuesSources),
 		ReleaseName:          deref(req.Body.ReleaseName),
 		TargetNamespace:      strings.TrimSpace(req.Body.TargetNamespace),
 		TargetClusterID:      req.Body.TargetClusterId,
@@ -145,6 +146,10 @@ func (s *Server) UpdateApplication(ctx context.Context, req UpdateApplicationReq
 	}
 	if req.Body.Config != nil {
 		params.Config = req.Body.Config
+	}
+	if req.Body.ValuesSources != nil {
+		sources := valuesSourcesToMaps(req.Body.ValuesSources)
+		params.ValuesSources = &sources
 	}
 	if req.Body.ChartCredentialId != nil {
 		params.ChartCredentialID = req.Body.ChartCredentialId
@@ -299,6 +304,7 @@ func toAPIApplication(a *ent.Application) Application {
 		Status:          ApplicationStatus(a.Status),
 		ReleaseName:     optStr(a.ReleaseName),
 		Values:          optStr(a.Values),
+		ValuesSources:   valuesSourcesFromMaps(a.ValuesSources),
 		StatusMessage:   optStr(a.StatusMessage),
 		JobId:           optStr(a.JobID),
 		LastRunName:     optStr(a.LastRunName),
@@ -325,4 +331,45 @@ func derefMap(p *map[string]string) map[string]string {
 		return nil
 	}
 	return *p
+}
+
+// valuesSourcesToMaps converts API values sources to the storage shape
+// ([]map[string]string keyed by helm.ValuesSource*). A nil input stays nil
+// ("unchanged" / "none"); a non-nil (even empty) input maps element-for-element.
+func valuesSourcesToMaps(in *[]ValuesSource) []map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make([]map[string]string, len(*in))
+	for i, s := range *in {
+		m := map[string]string{
+			helm.ValuesSourceRepoURL: s.RepoUrl,
+			helm.ValuesSourcePath:    s.Path,
+		}
+		if s.GitRef != nil && *s.GitRef != "" {
+			m[helm.ValuesSourceGitRef] = *s.GitRef
+		}
+		out[i] = m
+	}
+	return out
+}
+
+// valuesSourcesFromMaps converts the stored shape back to API values sources for
+// a response. An empty list maps to nil so the field is simply omitted.
+func valuesSourcesFromMaps(in []map[string]string) *[]ValuesSource {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]ValuesSource, len(in))
+	for i, m := range in {
+		vs := ValuesSource{
+			RepoUrl: m[helm.ValuesSourceRepoURL],
+			Path:    m[helm.ValuesSourcePath],
+		}
+		if ref := m[helm.ValuesSourceGitRef]; ref != "" {
+			vs.GitRef = &ref
+		}
+		out[i] = vs
+	}
+	return &out
 }

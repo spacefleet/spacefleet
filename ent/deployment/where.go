@@ -86,6 +86,16 @@ func Logs(v string) predicate.Deployment {
 	return predicate.Deployment(sql.FieldEQ(FieldLogs, v))
 }
 
+// ChartRevision applies equality check predicate on the "chart_revision" field. It's identical to ChartRevisionEQ.
+func ChartRevision(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldEQ(FieldChartRevision, v))
+}
+
+// ValuesRevision applies equality check predicate on the "values_revision" field. It's identical to ValuesRevisionEQ.
+func ValuesRevision(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldEQ(FieldValuesRevision, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Deployment {
 	return predicate.Deployment(sql.FieldEQ(FieldCreatedAt, v))
@@ -479,6 +489,156 @@ func LogsEqualFold(v string) predicate.Deployment {
 // LogsContainsFold applies the ContainsFold predicate on the "logs" field.
 func LogsContainsFold(v string) predicate.Deployment {
 	return predicate.Deployment(sql.FieldContainsFold(FieldLogs, v))
+}
+
+// ChartRevisionEQ applies the EQ predicate on the "chart_revision" field.
+func ChartRevisionEQ(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldEQ(FieldChartRevision, v))
+}
+
+// ChartRevisionNEQ applies the NEQ predicate on the "chart_revision" field.
+func ChartRevisionNEQ(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldNEQ(FieldChartRevision, v))
+}
+
+// ChartRevisionIn applies the In predicate on the "chart_revision" field.
+func ChartRevisionIn(vs ...string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldIn(FieldChartRevision, vs...))
+}
+
+// ChartRevisionNotIn applies the NotIn predicate on the "chart_revision" field.
+func ChartRevisionNotIn(vs ...string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldNotIn(FieldChartRevision, vs...))
+}
+
+// ChartRevisionGT applies the GT predicate on the "chart_revision" field.
+func ChartRevisionGT(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldGT(FieldChartRevision, v))
+}
+
+// ChartRevisionGTE applies the GTE predicate on the "chart_revision" field.
+func ChartRevisionGTE(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldGTE(FieldChartRevision, v))
+}
+
+// ChartRevisionLT applies the LT predicate on the "chart_revision" field.
+func ChartRevisionLT(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldLT(FieldChartRevision, v))
+}
+
+// ChartRevisionLTE applies the LTE predicate on the "chart_revision" field.
+func ChartRevisionLTE(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldLTE(FieldChartRevision, v))
+}
+
+// ChartRevisionContains applies the Contains predicate on the "chart_revision" field.
+func ChartRevisionContains(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldContains(FieldChartRevision, v))
+}
+
+// ChartRevisionHasPrefix applies the HasPrefix predicate on the "chart_revision" field.
+func ChartRevisionHasPrefix(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldHasPrefix(FieldChartRevision, v))
+}
+
+// ChartRevisionHasSuffix applies the HasSuffix predicate on the "chart_revision" field.
+func ChartRevisionHasSuffix(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldHasSuffix(FieldChartRevision, v))
+}
+
+// ChartRevisionIsNil applies the IsNil predicate on the "chart_revision" field.
+func ChartRevisionIsNil() predicate.Deployment {
+	return predicate.Deployment(sql.FieldIsNull(FieldChartRevision))
+}
+
+// ChartRevisionNotNil applies the NotNil predicate on the "chart_revision" field.
+func ChartRevisionNotNil() predicate.Deployment {
+	return predicate.Deployment(sql.FieldNotNull(FieldChartRevision))
+}
+
+// ChartRevisionEqualFold applies the EqualFold predicate on the "chart_revision" field.
+func ChartRevisionEqualFold(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldEqualFold(FieldChartRevision, v))
+}
+
+// ChartRevisionContainsFold applies the ContainsFold predicate on the "chart_revision" field.
+func ChartRevisionContainsFold(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldContainsFold(FieldChartRevision, v))
+}
+
+// ValuesRevisionEQ applies the EQ predicate on the "values_revision" field.
+func ValuesRevisionEQ(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldEQ(FieldValuesRevision, v))
+}
+
+// ValuesRevisionNEQ applies the NEQ predicate on the "values_revision" field.
+func ValuesRevisionNEQ(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldNEQ(FieldValuesRevision, v))
+}
+
+// ValuesRevisionIn applies the In predicate on the "values_revision" field.
+func ValuesRevisionIn(vs ...string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldIn(FieldValuesRevision, vs...))
+}
+
+// ValuesRevisionNotIn applies the NotIn predicate on the "values_revision" field.
+func ValuesRevisionNotIn(vs ...string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldNotIn(FieldValuesRevision, vs...))
+}
+
+// ValuesRevisionGT applies the GT predicate on the "values_revision" field.
+func ValuesRevisionGT(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldGT(FieldValuesRevision, v))
+}
+
+// ValuesRevisionGTE applies the GTE predicate on the "values_revision" field.
+func ValuesRevisionGTE(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldGTE(FieldValuesRevision, v))
+}
+
+// ValuesRevisionLT applies the LT predicate on the "values_revision" field.
+func ValuesRevisionLT(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldLT(FieldValuesRevision, v))
+}
+
+// ValuesRevisionLTE applies the LTE predicate on the "values_revision" field.
+func ValuesRevisionLTE(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldLTE(FieldValuesRevision, v))
+}
+
+// ValuesRevisionContains applies the Contains predicate on the "values_revision" field.
+func ValuesRevisionContains(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldContains(FieldValuesRevision, v))
+}
+
+// ValuesRevisionHasPrefix applies the HasPrefix predicate on the "values_revision" field.
+func ValuesRevisionHasPrefix(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldHasPrefix(FieldValuesRevision, v))
+}
+
+// ValuesRevisionHasSuffix applies the HasSuffix predicate on the "values_revision" field.
+func ValuesRevisionHasSuffix(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldHasSuffix(FieldValuesRevision, v))
+}
+
+// ValuesRevisionIsNil applies the IsNil predicate on the "values_revision" field.
+func ValuesRevisionIsNil() predicate.Deployment {
+	return predicate.Deployment(sql.FieldIsNull(FieldValuesRevision))
+}
+
+// ValuesRevisionNotNil applies the NotNil predicate on the "values_revision" field.
+func ValuesRevisionNotNil() predicate.Deployment {
+	return predicate.Deployment(sql.FieldNotNull(FieldValuesRevision))
+}
+
+// ValuesRevisionEqualFold applies the EqualFold predicate on the "values_revision" field.
+func ValuesRevisionEqualFold(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldEqualFold(FieldValuesRevision, v))
+}
+
+// ValuesRevisionContainsFold applies the ContainsFold predicate on the "values_revision" field.
+func ValuesRevisionContainsFold(v string) predicate.Deployment {
+	return predicate.Deployment(sql.FieldContainsFold(FieldValuesRevision, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

@@ -32,6 +32,10 @@ const (
 	FieldRunName = "run_name"
 	// FieldLogs holds the string denoting the logs field in the database.
 	FieldLogs = "logs"
+	// FieldChartRevision holds the string denoting the chart_revision field in the database.
+	FieldChartRevision = "chart_revision"
+	// FieldValuesRevision holds the string denoting the values_revision field in the database.
+	FieldValuesRevision = "values_revision"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldFinishedAt holds the string denoting the finished_at field in the database.
@@ -71,6 +75,8 @@ var Columns = []string{
 	FieldJobID,
 	FieldRunName,
 	FieldLogs,
+	FieldChartRevision,
+	FieldValuesRevision,
 	FieldCreatedAt,
 	FieldFinishedAt,
 	FieldUpdatedAt,
@@ -194,6 +200,16 @@ func ByRunName(opts ...sql.OrderTermOption) OrderOption {
 // ByLogs orders the results by the logs field.
 func ByLogs(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLogs, opts...).ToFunc()
+}
+
+// ByChartRevision orders the results by the chart_revision field.
+func ByChartRevision(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldChartRevision, opts...).ToFunc()
+}
+
+// ByValuesRevision orders the results by the values_revision field.
+func ByValuesRevision(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldValuesRevision, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

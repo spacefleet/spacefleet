@@ -46,6 +46,13 @@ func (Application) Fields() []ent.Field {
 		field.JSON("config", map[string]string{}).Optional(),
 		// Raw values.yaml override, injected into the rollout as a file.
 		field.String("values").Optional(),
+		// Optional values-from-git sources, orthogonal to the chart source: an
+		// ordered list of git repos to pull values files from, each a flat string
+		// map (repo_url, git_ref, path) — same stringly-typed shape as config, so
+		// the schema stays free of a domain type. At rollout each is cloned and
+		// layered with -f in order (earlier first), all beneath the inline values
+		// above, which wins. Empty for an app whose values are inline-only.
+		field.JSON("values_sources", []map[string]string{}).Optional(),
 		// The Helm release name; defaults to name when empty.
 		field.String("release_name").Optional(),
 		// The namespace in the target cluster the release is installed into.

@@ -28,6 +28,8 @@ const (
 	FieldConfig = "config"
 	// FieldValues holds the string denoting the values field in the database.
 	FieldValues = "values"
+	// FieldValuesSources holds the string denoting the values_sources field in the database.
+	FieldValuesSources = "values_sources"
 	// FieldReleaseName holds the string denoting the release_name field in the database.
 	FieldReleaseName = "release_name"
 	// FieldTargetNamespace holds the string denoting the target_namespace field in the database.
@@ -110,6 +112,7 @@ var Columns = []string{
 	FieldChartSource,
 	FieldConfig,
 	FieldValues,
+	FieldValuesSources,
 	FieldReleaseName,
 	FieldTargetNamespace,
 	FieldTargetClusterID,

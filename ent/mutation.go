@@ -57,6 +57,8 @@ type ApplicationMutation struct {
 	chart_source               *application.ChartSource
 	_config                    *map[string]string
 	values                     *string
+	values_sources             *[]map[string]string
+	appendvalues_sources       []map[string]string
 	release_name               *string
 	target_namespace           *string
 	status                     *application.Status
@@ -425,6 +427,71 @@ func (m *ApplicationMutation) ValuesCleared() bool {
 func (m *ApplicationMutation) ResetValues() {
 	m.values = nil
 	delete(m.clearedFields, application.FieldValues)
+}
+
+// SetValuesSources sets the "values_sources" field.
+func (m *ApplicationMutation) SetValuesSources(value []map[string]string) {
+	m.values_sources = &value
+	m.appendvalues_sources = nil
+}
+
+// ValuesSources returns the value of the "values_sources" field in the mutation.
+func (m *ApplicationMutation) ValuesSources() (r []map[string]string, exists bool) {
+	v := m.values_sources
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValuesSources returns the old "values_sources" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldValuesSources(ctx context.Context) (v []map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValuesSources is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValuesSources requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValuesSources: %w", err)
+	}
+	return oldValue.ValuesSources, nil
+}
+
+// AppendValuesSources adds value to the "values_sources" field.
+func (m *ApplicationMutation) AppendValuesSources(value []map[string]string) {
+	m.appendvalues_sources = append(m.appendvalues_sources, value...)
+}
+
+// AppendedValuesSources returns the list of values that were appended to the "values_sources" field in this mutation.
+func (m *ApplicationMutation) AppendedValuesSources() ([]map[string]string, bool) {
+	if len(m.appendvalues_sources) == 0 {
+		return nil, false
+	}
+	return m.appendvalues_sources, true
+}
+
+// ClearValuesSources clears the value of the "values_sources" field.
+func (m *ApplicationMutation) ClearValuesSources() {
+	m.values_sources = nil
+	m.appendvalues_sources = nil
+	m.clearedFields[application.FieldValuesSources] = struct{}{}
+}
+
+// ValuesSourcesCleared returns if the "values_sources" field was cleared in this mutation.
+func (m *ApplicationMutation) ValuesSourcesCleared() bool {
+	_, ok := m.clearedFields[application.FieldValuesSources]
+	return ok
+}
+
+// ResetValuesSources resets all changes to the "values_sources" field.
+func (m *ApplicationMutation) ResetValuesSources() {
+	m.values_sources = nil
+	m.appendvalues_sources = nil
+	delete(m.clearedFields, application.FieldValuesSources)
 }
 
 // SetReleaseName sets the "release_name" field.
@@ -1106,7 +1173,7 @@ func (m *ApplicationMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ApplicationMutation) Fields() []string {
-	fields := make([]string, 0, 18)
+	fields := make([]string, 0, 19)
 	if m.organization != nil {
 		fields = append(fields, application.FieldOrganizationID)
 	}
@@ -1124,6 +1191,9 @@ func (m *ApplicationMutation) Fields() []string {
 	}
 	if m.values != nil {
 		fields = append(fields, application.FieldValues)
+	}
+	if m.values_sources != nil {
+		fields = append(fields, application.FieldValuesSources)
 	}
 	if m.release_name != nil {
 		fields = append(fields, application.FieldReleaseName)
@@ -1181,6 +1251,8 @@ func (m *ApplicationMutation) Field(name string) (ent.Value, bool) {
 		return m.Config()
 	case application.FieldValues:
 		return m.Values()
+	case application.FieldValuesSources:
+		return m.ValuesSources()
 	case application.FieldReleaseName:
 		return m.ReleaseName()
 	case application.FieldTargetNamespace:
@@ -1226,6 +1298,8 @@ func (m *ApplicationMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldConfig(ctx)
 	case application.FieldValues:
 		return m.OldValues(ctx)
+	case application.FieldValuesSources:
+		return m.OldValuesSources(ctx)
 	case application.FieldReleaseName:
 		return m.OldReleaseName(ctx)
 	case application.FieldTargetNamespace:
@@ -1300,6 +1374,13 @@ func (m *ApplicationMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetValues(v)
+		return nil
+	case application.FieldValuesSources:
+		v, ok := value.([]map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValuesSources(v)
 		return nil
 	case application.FieldReleaseName:
 		v, ok := value.(string)
@@ -1421,6 +1502,9 @@ func (m *ApplicationMutation) ClearedFields() []string {
 	if m.FieldCleared(application.FieldValues) {
 		fields = append(fields, application.FieldValues)
 	}
+	if m.FieldCleared(application.FieldValuesSources) {
+		fields = append(fields, application.FieldValuesSources)
+	}
 	if m.FieldCleared(application.FieldReleaseName) {
 		fields = append(fields, application.FieldReleaseName)
 	}
@@ -1458,6 +1542,9 @@ func (m *ApplicationMutation) ClearField(name string) error {
 		return nil
 	case application.FieldValues:
 		m.ClearValues()
+		return nil
+	case application.FieldValuesSources:
+		m.ClearValuesSources()
 		return nil
 	case application.FieldReleaseName:
 		m.ClearReleaseName()
@@ -1502,6 +1589,9 @@ func (m *ApplicationMutation) ResetField(name string) error {
 		return nil
 	case application.FieldValues:
 		m.ResetValues()
+		return nil
+	case application.FieldValuesSources:
+		m.ResetValuesSources()
 		return nil
 	case application.FieldReleaseName:
 		m.ResetReleaseName()
@@ -3608,6 +3698,8 @@ type DeploymentMutation struct {
 	job_id              *string
 	run_name            *string
 	logs                *string
+	chart_revision      *string
+	values_revision     *string
 	created_at          *time.Time
 	finished_at         *time.Time
 	updated_at          *time.Time
@@ -4065,6 +4157,104 @@ func (m *DeploymentMutation) ResetLogs() {
 	delete(m.clearedFields, deployment.FieldLogs)
 }
 
+// SetChartRevision sets the "chart_revision" field.
+func (m *DeploymentMutation) SetChartRevision(s string) {
+	m.chart_revision = &s
+}
+
+// ChartRevision returns the value of the "chart_revision" field in the mutation.
+func (m *DeploymentMutation) ChartRevision() (r string, exists bool) {
+	v := m.chart_revision
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChartRevision returns the old "chart_revision" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldChartRevision(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChartRevision is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChartRevision requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChartRevision: %w", err)
+	}
+	return oldValue.ChartRevision, nil
+}
+
+// ClearChartRevision clears the value of the "chart_revision" field.
+func (m *DeploymentMutation) ClearChartRevision() {
+	m.chart_revision = nil
+	m.clearedFields[deployment.FieldChartRevision] = struct{}{}
+}
+
+// ChartRevisionCleared returns if the "chart_revision" field was cleared in this mutation.
+func (m *DeploymentMutation) ChartRevisionCleared() bool {
+	_, ok := m.clearedFields[deployment.FieldChartRevision]
+	return ok
+}
+
+// ResetChartRevision resets all changes to the "chart_revision" field.
+func (m *DeploymentMutation) ResetChartRevision() {
+	m.chart_revision = nil
+	delete(m.clearedFields, deployment.FieldChartRevision)
+}
+
+// SetValuesRevision sets the "values_revision" field.
+func (m *DeploymentMutation) SetValuesRevision(s string) {
+	m.values_revision = &s
+}
+
+// ValuesRevision returns the value of the "values_revision" field in the mutation.
+func (m *DeploymentMutation) ValuesRevision() (r string, exists bool) {
+	v := m.values_revision
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValuesRevision returns the old "values_revision" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldValuesRevision(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValuesRevision is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValuesRevision requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValuesRevision: %w", err)
+	}
+	return oldValue.ValuesRevision, nil
+}
+
+// ClearValuesRevision clears the value of the "values_revision" field.
+func (m *DeploymentMutation) ClearValuesRevision() {
+	m.values_revision = nil
+	m.clearedFields[deployment.FieldValuesRevision] = struct{}{}
+}
+
+// ValuesRevisionCleared returns if the "values_revision" field was cleared in this mutation.
+func (m *DeploymentMutation) ValuesRevisionCleared() bool {
+	_, ok := m.clearedFields[deployment.FieldValuesRevision]
+	return ok
+}
+
+// ResetValuesRevision resets all changes to the "values_revision" field.
+func (m *DeploymentMutation) ResetValuesRevision() {
+	m.values_revision = nil
+	delete(m.clearedFields, deployment.FieldValuesRevision)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *DeploymentMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -4274,7 +4464,7 @@ func (m *DeploymentMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DeploymentMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 13)
 	if m.organization != nil {
 		fields = append(fields, deployment.FieldOrganizationID)
 	}
@@ -4298,6 +4488,12 @@ func (m *DeploymentMutation) Fields() []string {
 	}
 	if m.logs != nil {
 		fields = append(fields, deployment.FieldLogs)
+	}
+	if m.chart_revision != nil {
+		fields = append(fields, deployment.FieldChartRevision)
+	}
+	if m.values_revision != nil {
+		fields = append(fields, deployment.FieldValuesRevision)
 	}
 	if m.created_at != nil {
 		fields = append(fields, deployment.FieldCreatedAt)
@@ -4332,6 +4528,10 @@ func (m *DeploymentMutation) Field(name string) (ent.Value, bool) {
 		return m.RunName()
 	case deployment.FieldLogs:
 		return m.Logs()
+	case deployment.FieldChartRevision:
+		return m.ChartRevision()
+	case deployment.FieldValuesRevision:
+		return m.ValuesRevision()
 	case deployment.FieldCreatedAt:
 		return m.CreatedAt()
 	case deployment.FieldFinishedAt:
@@ -4363,6 +4563,10 @@ func (m *DeploymentMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldRunName(ctx)
 	case deployment.FieldLogs:
 		return m.OldLogs(ctx)
+	case deployment.FieldChartRevision:
+		return m.OldChartRevision(ctx)
+	case deployment.FieldValuesRevision:
+		return m.OldValuesRevision(ctx)
 	case deployment.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case deployment.FieldFinishedAt:
@@ -4434,6 +4638,20 @@ func (m *DeploymentMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetLogs(v)
 		return nil
+	case deployment.FieldChartRevision:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChartRevision(v)
+		return nil
+	case deployment.FieldValuesRevision:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValuesRevision(v)
+		return nil
 	case deployment.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -4497,6 +4715,12 @@ func (m *DeploymentMutation) ClearedFields() []string {
 	if m.FieldCleared(deployment.FieldLogs) {
 		fields = append(fields, deployment.FieldLogs)
 	}
+	if m.FieldCleared(deployment.FieldChartRevision) {
+		fields = append(fields, deployment.FieldChartRevision)
+	}
+	if m.FieldCleared(deployment.FieldValuesRevision) {
+		fields = append(fields, deployment.FieldValuesRevision)
+	}
 	if m.FieldCleared(deployment.FieldFinishedAt) {
 		fields = append(fields, deployment.FieldFinishedAt)
 	}
@@ -4525,6 +4749,12 @@ func (m *DeploymentMutation) ClearField(name string) error {
 		return nil
 	case deployment.FieldLogs:
 		m.ClearLogs()
+		return nil
+	case deployment.FieldChartRevision:
+		m.ClearChartRevision()
+		return nil
+	case deployment.FieldValuesRevision:
+		m.ClearValuesRevision()
 		return nil
 	case deployment.FieldFinishedAt:
 		m.ClearFinishedAt()
@@ -4560,6 +4790,12 @@ func (m *DeploymentMutation) ResetField(name string) error {
 		return nil
 	case deployment.FieldLogs:
 		m.ResetLogs()
+		return nil
+	case deployment.FieldChartRevision:
+		m.ResetChartRevision()
+		return nil
+	case deployment.FieldValuesRevision:
+		m.ResetValuesRevision()
 		return nil
 	case deployment.FieldCreatedAt:
 		m.ResetCreatedAt()

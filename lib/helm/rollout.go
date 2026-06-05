@@ -12,6 +12,7 @@ package helm
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -59,6 +60,17 @@ const (
 	ConfigGitPath = "git_path"
 )
 
+// Keys within a values source — one element of Rollout.ValuesSources, a flat
+// string map describing a git repo to pull a values file from. RepoURL and Path
+// are required; GitRef is optional (default branch when empty). A private
+// github.com source is authenticated by the same attached installation as the
+// chart (HasGitToken) — the credential helper is wired once for the step.
+const (
+	ValuesSourceRepoURL = "repo_url"
+	ValuesSourceGitRef  = "git_ref"
+	ValuesSourcePath    = "path"
+)
+
 // File names injected into the rollout step (keys in tekton.RunSpec.Files),
 // mounted under tekton.CredsMountPath. The registry files carry a private-chart
 // credential (when one is attached); the script reads them at runtime so the
@@ -75,6 +87,53 @@ const (
 	// the clone's argv, the TaskRun manifest, or the workspace's .git/config.
 	GitCredentialsFile = "git-credentials"
 )
+
+// Rollout-protocol log markers: after cloning a git source the script echoes the
+// resolved commit SHA on its own line, so the worker can record what a
+// pull-on-deploy rollout actually resolved to (chart/values refs are mutable, so
+// a branch can move between runs). ParseRevisions reads them back out of the
+// captured run logs — the same logs already persisted for the run's history.
+const (
+	revChartPrefix = "SPACEFLEET_CHART_REVISION="
+	// A values marker is per-source: "SPACEFLEET_VALUES_REVISION_<i>=<sha>", where
+	// <i> is the source's index in Rollout.ValuesSources, so the worker can pair
+	// each resolved SHA back to its source.
+	revValuesPrefix = "SPACEFLEET_VALUES_REVISION_"
+)
+
+// Revisions are the git commit SHAs a rollout resolved, parsed from its logs.
+// Chart is empty when the chart was not a git clone (an http_repo/oci chart).
+// Values maps a values-source index to its resolved SHA; empty when an app has
+// no values-from-git sources.
+type Revisions struct {
+	Chart  string
+	Values map[int]string
+}
+
+// ParseRevisions extracts the chart/values commit SHAs the rollout script echoed
+// into its logs. The last occurrence of a given marker wins, so a retried clone
+// within the same captured log reports the latest resolved SHA.
+func ParseRevisions(logs string) Revisions {
+	rev := Revisions{Values: map[int]string{}}
+	for _, line := range strings.Split(logs, "\n") {
+		line = strings.TrimSpace(line)
+		if v, ok := strings.CutPrefix(line, revChartPrefix); ok {
+			rev.Chart = strings.TrimSpace(v)
+			continue
+		}
+		if rest, ok := strings.CutPrefix(line, revValuesPrefix); ok {
+			// rest is "<i>=<sha>".
+			idxStr, sha, ok := strings.Cut(rest, "=")
+			if !ok {
+				continue
+			}
+			if i, err := strconv.Atoi(idxStr); err == nil {
+				rev.Values[i] = strings.TrimSpace(sha)
+			}
+		}
+	}
+	return rev
+}
 
 // DefaultImage is the helm CLI image the rollout step runs in. alpine/k8s
 // bundles helm, kubectl, and git, so the git chart source works without an
@@ -106,6 +165,10 @@ type Rollout struct {
 	ReleaseName     string
 	TargetNamespace string
 	WaitTimeout     time.Duration
+	// ValuesSources are the values-from-git sources (orthogonal to the chart
+	// source), each a flat map keyed by ValuesSource*. They are cloned and layered
+	// with -f in order — earlier first — beneath the inline values, which wins.
+	ValuesSources []map[string]string
 	// HasCredential injects private-chart auth before the pull: for http_repo the
 	// helm repo add gets --username/--password (from the mounted registry files);
 	// for oci a `helm registry login --password-stdin` step runs first. The
@@ -113,11 +176,12 @@ type Rollout struct {
 	// alone selects the injection. The values come from the mounted files, never
 	// this script string.
 	HasCredential bool
-	// HasGitToken authenticates a private-Git (SourceGit) clone: a git credential
-	// helper backed by the mounted GitCredentialsFile is configured before the
-	// clone, so the token is read from the file at runtime rather than appearing
-	// in the script string, the clone's argv, or the workspace .git/config. Set
-	// by the rollout resolver when the app has a GitHub App installation attached.
+	// HasGitToken authenticates a private github.com clone — the chart (SourceGit),
+	// the values-from-git source, or both: a git credential helper backed by the
+	// mounted GitCredentialsFile is configured once before any clone, so the token
+	// is read from the file at runtime rather than appearing in the script string,
+	// the clone's argv, or the workspace .git/config. Set by the rollout resolver
+	// when the app has a GitHub App installation attached.
 	HasGitToken bool
 }
 
@@ -148,6 +212,41 @@ func Script(r Rollout) string {
 	userFile := tekton.CredsMountPath + "/" + RegistryUsernameFile
 	passFile := tekton.CredsMountPath + "/" + RegistryPasswordFile
 
+	// Wire git's credential helper once, before any clone (the chart below, the
+	// values source, or both), so a github.com clone reads the token from the
+	// mounted file at runtime — never the script string, the clone's argv, or the
+	// workspace .git/config. Hoisted out of the git chart case so a values-from-git
+	// clone authenticates even when the chart comes from http_repo/oci.
+	if r.HasGitToken {
+		gitCredsFile := tekton.CredsMountPath + "/" + GitCredentialsFile
+		fmt.Fprintf(&b, "git config --global credential.helper %s\n",
+			shQuote("store --file="+gitCredsFile))
+	}
+
+	// Optional values-from-git sources (orthogonal to the chart source): clone each
+	// to its own /values/<i> and collect a -f flag per source. They layer in order
+	// — earlier first — all beneath the inline values, which wins.
+	var valuesFiles []string
+	for i, src := range r.ValuesSources {
+		repo := src[ValuesSourceRepoURL]
+		if repo == "" {
+			continue
+		}
+		dir := "/values/" + strconv.Itoa(i)
+		if ref := src[ValuesSourceGitRef]; ref != "" {
+			fmt.Fprintf(&b, "git clone --depth 1 --branch %s %s %s\n", shQuote(ref), shQuote(repo), shQuote(dir))
+		} else {
+			fmt.Fprintf(&b, "git clone --depth 1 %s %s\n", shQuote(repo), shQuote(dir))
+		}
+		// Echo this source's resolved SHA (tagged with its index) so the worker can
+		// pair it back to the source. A failed substitution yields an empty marker,
+		// never a step failure under set -e (echo still exits 0).
+		fmt.Fprintf(&b, "echo \"%s%d=$(git -C %s rev-parse HEAD)\"\n", revValuesPrefix, i, shQuote(dir))
+		if p := src[ValuesSourcePath]; p != "" {
+			valuesFiles = append(valuesFiles, dir+"/"+p)
+		}
+	}
+
 	// install is the shared `helm upgrade --install <release> <ref> [flags]` line;
 	// chartRef and any prep differ per source.
 	install := func(chartRef string) {
@@ -155,8 +254,13 @@ func Script(r Rollout) string {
 		if version != "" {
 			fmt.Fprintf(&b, " --version %s", shQuote(version))
 		}
-		fmt.Fprintf(&b, " -n %s --create-namespace --wait --timeout %s -f %s --kubeconfig %s\n",
-			shQuote(ns), shQuote(timeout), shQuote(values), shQuote(kubeconfig))
+		fmt.Fprintf(&b, " -n %s --create-namespace --wait --timeout %s", shQuote(ns), shQuote(timeout))
+		// Git-sourced values are the base layers (in order); the inline values file
+		// is applied last so it overrides them (helm merges -f left to right).
+		for _, vf := range valuesFiles {
+			fmt.Fprintf(&b, " -f %s", shQuote(vf))
+		}
+		fmt.Fprintf(&b, " -f %s --kubeconfig %s\n", shQuote(values), shQuote(kubeconfig))
 	}
 
 	switch r.ChartSource {
@@ -180,20 +284,16 @@ func Script(r Rollout) string {
 		}
 		install(repoURL)
 	case SourceGit:
-		if r.HasGitToken {
-			// Wire git's credential-store helper to the mounted credentials file so
-			// the token is read at clone time without ever appearing in argv or the
-			// workspace .git/config. `helm dependency build` reuses the same helper.
-			gitCredsFile := tekton.CredsMountPath + "/" + GitCredentialsFile
-			fmt.Fprintf(&b, "git config --global credential.helper %s\n",
-				shQuote("store --file="+gitCredsFile))
-		}
+		// The git credential helper (for a private repo) is wired once above, before
+		// any clone, so the chart clone here just reuses it.
 		ref := r.Config[ConfigGitRef]
 		if ref != "" {
 			fmt.Fprintf(&b, "git clone --depth 1 --branch %s %s /src\n", shQuote(ref), shQuote(repoURL))
 		} else {
 			fmt.Fprintf(&b, "git clone --depth 1 %s /src\n", shQuote(repoURL))
 		}
+		// Echo the resolved chart SHA so the worker records what this run pulled.
+		fmt.Fprintf(&b, "echo \"%s$(git -C /src rev-parse HEAD)\"\n", revChartPrefix)
 		chartDir := "/src"
 		if p := r.Config[ConfigGitPath]; p != "" {
 			chartDir = "/src/" + p

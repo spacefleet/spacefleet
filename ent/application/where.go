@@ -336,6 +336,16 @@ func ValuesContainsFold(v string) predicate.Application {
 	return predicate.Application(sql.FieldContainsFold(FieldValues, v))
 }
 
+// ValuesSourcesIsNil applies the IsNil predicate on the "values_sources" field.
+func ValuesSourcesIsNil() predicate.Application {
+	return predicate.Application(sql.FieldIsNull(FieldValuesSources))
+}
+
+// ValuesSourcesNotNil applies the NotNil predicate on the "values_sources" field.
+func ValuesSourcesNotNil() predicate.Application {
+	return predicate.Application(sql.FieldNotNull(FieldValuesSources))
+}
+
 // ReleaseNameEQ applies the EQ predicate on the "release_name" field.
 func ReleaseNameEQ(v string) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldReleaseName, v))
