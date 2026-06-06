@@ -120,7 +120,11 @@ func drainWatch(ctx context.Context, in <-chan watch.Event, out chan<- Event[Nod
 			return true
 		case ev, ok := <-in:
 			if !ok {
-				return false
+				// The watch channel closed. On context cancel the RetryWatcher
+				// closes this channel *and* fires ctx.Done() — racing the case
+				// above — so check ctx here too: a cancel is terminal (return
+				// true), only a genuine RetryWatcher give-up means resync.
+				return ctx.Err() != nil
 			}
 			var t EventType
 			switch ev.Type {
@@ -234,7 +238,9 @@ func drainPodWatch(ctx context.Context, in <-chan watch.Event, out chan<- Event[
 			return true
 		case ev, ok := <-in:
 			if !ok {
-				return false
+				// See drainWatch: a closed channel on context cancel races
+				// ctx.Done(), so a cancel is terminal here too.
+				return ctx.Err() != nil
 			}
 			var t EventType
 			switch ev.Type {
@@ -347,7 +353,9 @@ func drainNamespaceWatch(ctx context.Context, in <-chan watch.Event, out chan<- 
 			return true
 		case ev, ok := <-in:
 			if !ok {
-				return false
+				// See drainWatch: a closed channel on context cancel races
+				// ctx.Done(), so a cancel is terminal here too.
+				return ctx.Err() != nil
 			}
 			var t EventType
 			switch ev.Type {
