@@ -318,6 +318,13 @@ func Script(r Rollout) string {
 		// never a step failure under set -e (echo still exits 0).
 		fmt.Fprintf(&b, "echo \"%s%d=$(git -C %s rev-parse HEAD)\"\n", revValuesPrefix, i, shQuote(dir))
 		if p := src[ValuesSourcePath]; p != "" {
+			// Containment guard: a `..` segment could escape the clone dir and read a
+			// file elsewhere in the step (e.g. the mounted creds). shQuote blocks shell
+			// injection but not traversal, so reject it outright.
+			if hasTraversal(p) {
+				fmt.Fprintf(&b, "echo 'invalid values path (path traversal not allowed): %s' >&2\nexit 1\n", p)
+				return b.String()
+			}
 			valuesFiles = append(valuesFiles, dir+"/"+p)
 		}
 	}
@@ -400,6 +407,12 @@ func Script(r Rollout) string {
 		fmt.Fprintf(&b, "echo \"%s$(git -C /src rev-parse HEAD)\"\n", revChartPrefix)
 		chartDir := "/src"
 		if p := r.Config[ConfigGitPath]; p != "" {
+			// Containment guard: reject a `..` segment so the chart dir can't escape
+			// the clone (shQuote blocks shell injection but not path traversal).
+			if hasTraversal(p) {
+				fmt.Fprintf(&b, "echo 'invalid git_path (path traversal not allowed): %s' >&2\nexit 1\n", p)
+				return b.String()
+			}
 			chartDir = "/src/" + p
 		}
 		fmt.Fprintf(&b, "cd %s\n", shQuote(chartDir))
@@ -418,6 +431,21 @@ func Script(r Rollout) string {
 // escaping any embedded single quotes.
 func shQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// hasTraversal reports whether p contains a ".." path segment, so a chart/values
+// path can't escape its clone directory. It checks segments (not a substring) so
+// a legitimate name like "..foo" or "foo..bar" is allowed; only a bare ".."
+// component is rejected. Backslashes are normalized to forward slashes first
+// since the path is used in a POSIX shell but may arrive Windows-style.
+func hasTraversal(p string) bool {
+	p = strings.ReplaceAll(p, "\\", "/")
+	for _, seg := range strings.Split(p, "/") {
+		if seg == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 // ociRegistryHost extracts the registry host `helm registry login` expects from

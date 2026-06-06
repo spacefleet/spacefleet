@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, useNavigate, useParams } from "react-router";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import { ArrowLeft } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
@@ -12,9 +12,27 @@ type ChartSource = components["schemas"]["ChartSource"];
 type ValuesSource = components["schemas"]["ValuesSource"];
 type CreateRequest = components["schemas"]["ApplicationCreateRequest"];
 type UpdateRequest = components["schemas"]["ApplicationUpdateRequest"];
+type ImportRequest = components["schemas"]["ApplicationImportRequest"];
+type HelmRelease = components["schemas"]["HelmRelease"];
 type Cluster = components["schemas"]["Cluster"];
 type ChartCredential = components["schemas"]["ChartCredential"];
 type GitHubInstallation = components["schemas"]["GitHubInstallation"];
+
+// ImportSeed is handed from the discovery step (ImportApplication) via router
+// state: the cluster the release was found on, and the discovered release whose
+// live state (name, namespace, current values) pre-fills the form.
+export type ImportSeed = { clusterId: string; release: HelmRelease };
+
+// seedConfig pre-fills the chart coordinates we can infer from a discovered
+// release — its chart name and version. The operator still chooses the chart
+// *source* (where to pull it from); these keys are the ones http_repo/oci/git
+// read (chart, version), ignored by sources that don't use them.
+function seedConfig(release: HelmRelease): Record<string, string> {
+  const cfg: Record<string, string> = {};
+  if (release.chart_name) cfg.chart = release.chart_name;
+  if (release.chart_version) cfg.version = release.chart_version;
+  return cfg;
+}
 
 // Which chart sources take a username/password chart credential. git charts use
 // a connected GitHub App instead, so they take no chart credential.
@@ -37,17 +55,32 @@ const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 export function ApplicationForm() {
   const { appId } = useParams();
   const editing = Boolean(appId);
+  const location = useLocation();
+  // The discovery step (ImportApplication) hands a release seed via router state.
+  // Import mode pre-fills the form from the live release and adopts it without a
+  // rollout; it's distinct from create (which deploys) and edit (which loads).
+  const importSeed =
+    (location.state as { importSeed?: ImportSeed } | null)?.importSeed ?? null;
+  const importing = !editing && importSeed !== null;
+  const seedRelease = importSeed?.release;
+
   const { currentOrg, currentRole } = useOrg();
   const navigate = useNavigate();
   const canEdit = currentRole !== "viewer";
 
-  const [name, setName] = useState("");
+  const [name, setName] = useState(seedRelease?.name ?? "");
   const [chartSource, setChartSource] = useState<ChartSource>("http_repo");
-  const [config, setConfig] = useState<Record<string, string>>({});
-  const [values, setValues] = useState("");
-  const [releaseName, setReleaseName] = useState("");
-  const [targetNamespace, setTargetNamespace] = useState("");
-  const [targetClusterId, setTargetClusterId] = useState("");
+  const [config, setConfig] = useState<Record<string, string>>(
+    seedRelease ? seedConfig(seedRelease) : {},
+  );
+  const [values, setValues] = useState(seedRelease?.values ?? "");
+  const [releaseName, setReleaseName] = useState(seedRelease?.name ?? "");
+  const [targetNamespace, setTargetNamespace] = useState(
+    seedRelease?.namespace ?? "",
+  );
+  const [targetClusterId, setTargetClusterId] = useState(
+    importSeed?.clusterId ?? "",
+  );
   const [runnerClusterId, setRunnerClusterId] = useState("");
   const [credentialId, setCredentialId] = useState("");
   const [installationId, setInstallationId] = useState("");
@@ -205,6 +238,37 @@ export function ApplicationForm() {
       return;
     }
 
+    // Import (adopt): the release is already deployed, so this POSTs to /import
+    // (no rollout) and lands on the detail page, where the auto-refresh's diff
+    // shows whether the configured source reproduces the live release.
+    if (importing) {
+      const body: ImportRequest = {
+        name: name.trim(),
+        chart_source: chartSource,
+        config: cfg,
+        target_namespace: targetNamespace.trim(),
+        target_cluster_id: targetClusterId,
+        runner_cluster_id: runnerClusterId,
+      };
+      if (values.trim() !== "") body.values = values;
+      if (sources.length > 0) body.values_sources = sources;
+      if (releaseName.trim() !== "") body.release_name = releaseName.trim();
+      if (credentialId !== "") body.chart_credential_id = credentialId;
+      if (installationApplies && installationId !== "")
+        body.github_installation_id = installationId;
+
+      const { data, error } = await api.POST("/api/applications/import", {
+        body,
+      });
+      setSubmitting(false);
+      if (error || !data) {
+        setError(error?.message ?? "Could not import release");
+        return;
+      }
+      navigate(`/applications/${data.id}`);
+      return;
+    }
+
     const body: CreateRequest = {
       name: name.trim(),
       chart_source: chartSource,
@@ -226,6 +290,11 @@ export function ApplicationForm() {
       setError(error?.message ?? "Could not create application");
       return;
     }
+    // The application exists now; the rollout enqueue below is fire-and-forget
+    // (a failure is non-fatal — the detail page shows it pending with a Deploy
+    // button). Clear the submitting state here so the button doesn't stay stuck
+    // on "Creating…" during the brief window before the navigate lands.
+    setSubmitting(false);
     // Kick off the first rollout, then land on the detail page where its live
     // status + logs stream. A failure to enqueue (e.g. no worker) is non-fatal
     // — the detail page shows the app pending with a Deploy button.
@@ -244,17 +313,27 @@ export function ApplicationForm() {
       targetClusterId !== "" &&
       runnerClusterId !== "";
 
+  const backTarget = editing
+    ? `/applications/${appId}`
+    : importing
+      ? "/applications/import"
+      : "/applications";
+
   if (!canEdit) return <Navigate to="/applications" replace />;
 
   return (
     <div>
       <button
         type="button"
-        onClick={() => navigate(editing ? `/applications/${appId}` : "/applications")}
+        onClick={() => navigate(backTarget)}
         className="inline-flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-900"
       >
         <ArrowLeft className="h-4 w-4" />
-        {editing ? "Back to application" : "Back to applications"}
+        {editing
+          ? "Back to application"
+          : importing
+            ? "Back to discovery"
+            : "Back to applications"}
       </button>
 
       {loading ? (
@@ -268,12 +347,18 @@ export function ApplicationForm() {
               Applications
             </p>
             <h1 className="mt-1 break-all text-2xl font-bold tracking-tight">
-              {editing ? `Edit ${name}` : "New Helm application"}
+              {editing
+                ? `Edit ${name}`
+                : importing
+                  ? "Import Helm release"
+                  : "New Helm application"}
             </h1>
             <p className="mt-1 text-sm text-neutral-600">
               {editing
                 ? "Update this application's chart, values, and settings. Deploy the changes from its page with Upgrade."
-                : "Deploy a Helm release to one of your clusters."}
+                : importing
+                  ? "Adopt this existing release. Confirm where its chart comes from and pick a runner; its current values are pre-filled below. Nothing is redeployed."
+                  : "Deploy a Helm release to one of your clusters."}
             </p>
           </div>
 
@@ -465,7 +550,9 @@ export function ApplicationForm() {
               title="Destination"
               description="The cluster and namespace the release is deployed into, and the runner that performs the rollout."
             >
-              {editing ? (
+              {/* The target cluster is fixed when editing, and for import it's the
+                  cluster the release was discovered on. */}
+              {editing || importing ? (
                 <Readonly
                   label="Target cluster"
                   value={clusterName(targetClusterId)}
@@ -491,15 +578,21 @@ export function ApplicationForm() {
                 </Labeled>
               )}
 
-              <Labeled label="Target namespace">
-                <input
-                  className="w-full border border-neutral-300 px-3 py-2 text-sm"
-                  placeholder="default"
-                  value={targetNamespace}
-                  onChange={(e) => setTargetNamespace(e.target.value)}
-                  required
-                />
-              </Labeled>
+              {/* The namespace describes where the live release is installed, so
+                  import locks it (changing it would target a different release). */}
+              {importing ? (
+                <Readonly label="Target namespace" value={targetNamespace} />
+              ) : (
+                <Labeled label="Target namespace">
+                  <input
+                    className="w-full border border-neutral-300 px-3 py-2 text-sm"
+                    placeholder="default"
+                    value={targetNamespace}
+                    onChange={(e) => setTargetNamespace(e.target.value)}
+                    required
+                  />
+                </Labeled>
+              )}
 
               {editing ? (
                 <Readonly
@@ -538,23 +631,37 @@ export function ApplicationForm() {
               title="Settings"
               description="Optional Helm release tuning."
             >
-              <Labeled
-                label="Release name"
-                help="Helm release name; defaults to the application name."
-              >
-                <input
-                  type="text"
-                  className="w-full border border-neutral-300 px-3 py-2 text-sm"
-                  placeholder="(defaults to name)"
-                  value={releaseName}
-                  onChange={(e) => setReleaseName(e.target.value)}
-                />
-              </Labeled>
+              {/* The release name identifies the live release, so import locks it
+                  to what was discovered. */}
+              {importing ? (
+                <Readonly label="Release name" value={releaseName} />
+              ) : (
+                <Labeled
+                  label="Release name"
+                  help="Helm release name; defaults to the application name."
+                >
+                  <input
+                    type="text"
+                    className="w-full border border-neutral-300 px-3 py-2 text-sm"
+                    placeholder="(defaults to name)"
+                    value={releaseName}
+                    onChange={(e) => setReleaseName(e.target.value)}
+                  />
+                </Labeled>
+              )}
 
               <Labeled
                 label="Values (values.yaml)"
                 help="Optional overrides passed to helm with -f."
               >
+                {importing && (
+                  <p className="mb-2 border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    These are the release's current values, pulled live from the
+                    cluster. They may contain secrets passed at install time —
+                    review before importing, as they're stored with the
+                    application.
+                  </p>
+                )}
                 <textarea
                   className="h-40 w-full border border-neutral-300 px-3 py-2 font-mono text-xs"
                   placeholder={"replicaCount: 2\nservice:\n  type: ClusterIP\n"}
@@ -569,9 +676,7 @@ export function ApplicationForm() {
             <div className="flex items-center justify-end gap-3 border-t border-neutral-200 pt-4">
               <button
                 type="button"
-                onClick={() =>
-                  navigate(editing ? `/applications/${appId}` : "/applications")
-                }
+                onClick={() => navigate(backTarget)}
                 className="text-sm text-neutral-500 hover:text-neutral-900"
               >
                 Cancel
@@ -585,9 +690,13 @@ export function ApplicationForm() {
                   ? submitting
                     ? "Saving…"
                     : "Save changes"
-                  : submitting
-                    ? "Creating…"
-                    : "Create application"}
+                  : importing
+                    ? submitting
+                      ? "Importing…"
+                      : "Import release"
+                    : submitting
+                      ? "Creating…"
+                      : "Create application"}
               </button>
             </div>
           </form>

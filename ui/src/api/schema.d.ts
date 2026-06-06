@@ -355,6 +355,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/clusters/{id}/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the Helm releases installed on a cluster
+         * @description Org-scoped: builds a client from the cluster's stored credentials and
+         *     lists the Helm releases installed on it, decoded from the release Secrets
+         *     Helm writes (the default `secret` storage driver). Only the newest
+         *     revision of each release is returned. This is the discovery step behind
+         *     importing an existing release as an application. The cluster must be
+         *     reachable; an unreachable cluster yields a 502.
+         */
+        get: operations["listClusterReleases"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/clusters/{id}/capabilities": {
         parameters: {
             query?: never;
@@ -587,6 +612,33 @@ export interface paths {
          *     state; it does not start a rollout (POST .../rollout for that).
          */
         post: operations["createApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt an existing Helm release as an application
+         * @description Org-scoped, editor or above. Adopts a release already running on the
+         *     target cluster (discovered via GET /api/clusters/{id}/releases) as a
+         *     managed application, seeded with the release's live values. The release
+         *     is already deployed, so this does NOT run a rollout — the application is
+         *     created in the deployed state. When the background worker is available it
+         *     immediately enqueues a refresh (a `helm diff`) so the sync status shows
+         *     whether the configured chart source reproduces the live release. Returns
+         *     202 (the app, with the refresh in flight when enqueued).
+         */
+        post: operations["importApplication"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1084,6 +1136,32 @@ export interface components {
             /** Format: date-time */
             created_at: string;
         };
+        /**
+         * @description A Helm release discovered on a cluster (the newest revision), decoded
+         *     from its release Secret. The discovery step behind importing an existing
+         *     release as an application; values is what `helm get values` would show.
+         */
+        HelmRelease: {
+            name: string;
+            namespace: string;
+            chart_name: string;
+            chart_version: string;
+            app_version?: string;
+            /** @description The release status (e.g. deployed, failed, pending-upgrade). */
+            status: string;
+            /** @description The release revision number (the newest one discovered). */
+            revision: number;
+            /**
+             * @description The release's user-supplied values rendered as YAML (the overrides
+             *     passed at install/upgrade, not the chart defaults). May be empty.
+             */
+            values?: string;
+            /**
+             * Format: date-time
+             * @description When the discovered revision was last deployed.
+             */
+            updated_at?: string;
+        };
         PodCondition: {
             /** @description e.g. Ready, Initialized, ContainersReady, PodScheduled. */
             type: string;
@@ -1467,6 +1545,13 @@ export interface components {
             last_refreshed_at?: string;
             /** @description TaskRun name of the most recent preview run (for streaming). */
             sync_run_name?: string;
+            /**
+             * @description True when the application was adopted from a release already running
+             *     on the cluster (the import flow) rather than created and deployed by
+             *     Spacefleet. An imported app should be refreshed to confirm the
+             *     configured chart source reproduces the live release.
+             */
+            imported?: boolean;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -1479,6 +1564,42 @@ export interface components {
          *     files from git, layered (in order) beneath the inline values.
          */
         ApplicationCreateRequest: {
+            name: string;
+            chart_source: components["schemas"]["ChartSource"];
+            config?: {
+                [key: string]: string;
+            };
+            values?: string;
+            values_sources?: components["schemas"]["ValuesSource"][];
+            release_name?: string;
+            target_namespace: string;
+            /** Format: uuid */
+            target_cluster_id: string;
+            /** Format: uuid */
+            runner_cluster_id: string;
+            /**
+             * Format: uuid
+             * @description Optional private-chart credential to attach. Valid for http_repo and
+             *     oci chart sources; git charts take none (they use a GitHub App).
+             */
+            chart_credential_id?: string;
+            /**
+             * Format: uuid
+             * @description Optional GitHub App installation to attach for a private github.com
+             *     repo. Valid when the chart (git chart source) or any values source is
+             *     pulled from git.
+             */
+            github_installation_id?: string;
+        };
+        /**
+         * @description Adopt a release already running on the target cluster. The same shape as
+         *     ApplicationCreateRequest: name/target_namespace/release_name and values
+         *     are pre-filled from the discovered release, while chart_source + config
+         *     (where the chart comes from), the runner cluster, values_sources, and any
+         *     credentials are supplied by the operator. Unlike create, no rollout runs —
+         *     the release is already deployed.
+         */
+        ApplicationImportRequest: {
             name: string;
             chart_source: components["schemas"]["ChartSource"];
             config?: {
@@ -2175,6 +2296,35 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    listClusterReleases: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Restrict discovery to one namespace. Omit to list releases across all
+                 *     namespaces.
+                 */
+                namespace?: string;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["ClusterID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cluster's Helm releases */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HelmRelease"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     listClusterCapabilities: {
         parameters: {
             query?: never;
@@ -2428,6 +2578,31 @@ export interface operations {
         responses: {
             /** @description Application registered */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Application"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    importApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Application adopted; a refresh is in progress when enqueued */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -66,6 +66,11 @@ func Name(v string) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldName, v))
 }
 
+// Imported applies equality check predicate on the "imported" field. It's identical to ImportedEQ.
+func Imported(v bool) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldImported, v))
+}
+
 // Values applies equality check predicate on the "values" field. It's identical to ValuesEQ.
 func Values(v string) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldValues, v))
@@ -244,6 +249,16 @@ func NameEqualFold(v string) predicate.Application {
 // NameContainsFold applies the ContainsFold predicate on the "name" field.
 func NameContainsFold(v string) predicate.Application {
 	return predicate.Application(sql.FieldContainsFold(FieldName, v))
+}
+
+// ImportedEQ applies the EQ predicate on the "imported" field.
+func ImportedEQ(v bool) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldImported, v))
+}
+
+// ImportedNEQ applies the NEQ predicate on the "imported" field.
+func ImportedNEQ(v bool) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldImported, v))
 }
 
 // TypeEQ applies the EQ predicate on the "type" field.

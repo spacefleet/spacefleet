@@ -29,16 +29,20 @@ func init() {
 	applicationDescName := applicationFields[2].Descriptor()
 	// application.NameValidator is a validator for the "name" field. It is called by the builders before save.
 	application.NameValidator = applicationDescName.Validators[0].(func(string) error)
+	// applicationDescImported is the schema descriptor for imported field.
+	applicationDescImported := applicationFields[3].Descriptor()
+	// application.DefaultImported holds the default value on creation for the imported field.
+	application.DefaultImported = applicationDescImported.Default.(bool)
 	// applicationDescTargetNamespace is the schema descriptor for target_namespace field.
-	applicationDescTargetNamespace := applicationFields[9].Descriptor()
+	applicationDescTargetNamespace := applicationFields[10].Descriptor()
 	// application.TargetNamespaceValidator is a validator for the "target_namespace" field. It is called by the builders before save.
 	application.TargetNamespaceValidator = applicationDescTargetNamespace.Validators[0].(func(string) error)
 	// applicationDescCreatedAt is the schema descriptor for created_at field.
-	applicationDescCreatedAt := applicationFields[26].Descriptor()
+	applicationDescCreatedAt := applicationFields[27].Descriptor()
 	// application.DefaultCreatedAt holds the default value on creation for the created_at field.
 	application.DefaultCreatedAt = applicationDescCreatedAt.Default.(func() time.Time)
 	// applicationDescUpdatedAt is the schema descriptor for updated_at field.
-	applicationDescUpdatedAt := applicationFields[27].Descriptor()
+	applicationDescUpdatedAt := applicationFields[28].Descriptor()
 	// application.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	application.DefaultUpdatedAt = applicationDescUpdatedAt.Default.(func() time.Time)
 	// application.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

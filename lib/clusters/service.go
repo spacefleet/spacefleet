@@ -233,6 +233,28 @@ func (s *Service) WatchNamespaces(ctx context.Context, orgID, id uuid.UUID) (*k8
 	})
 }
 
+// Releases lists the Helm releases installed on a cluster scoped to the
+// organization, decoded from the cluster's Helm release Secrets. An empty
+// namespace lists across all namespaces. Like Namespaces, a connectivity failure
+// is returned to the caller rather than recorded on the cluster row. This is the
+// discovery read behind importing an existing release as an application.
+func (s *Service) Releases(ctx context.Context, orgID, id uuid.UUID, namespace string) ([]k8s.Release, error) {
+	c, err := s.Get(ctx, orgID, id)
+	if err != nil {
+		return nil, err
+	}
+	creds, err := s.openCreds(c)
+	if err != nil {
+		return nil, err
+	}
+	return k8s.ListReleases(ctx, k8s.Connection{
+		Method:      k8s.Method(c.ConnectionMethod),
+		Endpoint:    c.Endpoint,
+		Config:      c.Config,
+		Credentials: creds,
+	}, namespace)
+}
+
 // Pods lists the live Kubernetes pods of a cluster scoped to the organization,
 // across all namespaces. Like Nodes, a connectivity failure is returned to the
 // caller rather than recorded on the cluster row.

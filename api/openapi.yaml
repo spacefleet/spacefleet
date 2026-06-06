@@ -413,6 +413,39 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/clusters/{id}/releases:
+    get:
+      summary: List the Helm releases installed on a cluster
+      description: |
+        Org-scoped: builds a client from the cluster's stored credentials and
+        lists the Helm releases installed on it, decoded from the release Secrets
+        Helm writes (the default `secret` storage driver). Only the newest
+        revision of each release is returned. This is the discovery step behind
+        importing an existing release as an application. The cluster must be
+        reachable; an unreachable cluster yields a 502.
+      operationId: listClusterReleases
+      parameters:
+        - $ref: "#/components/parameters/ClusterID"
+        - name: namespace
+          in: query
+          required: false
+          description: |
+            Restrict discovery to one namespace. Omit to list releases across all
+            namespaces.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The cluster's Helm releases
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HelmRelease"
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/clusters/{id}/capabilities:
     get:
       summary: Report the cluster credentials' access (capabilities)
@@ -657,6 +690,35 @@ paths:
       responses:
         "201":
           description: Application registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/applications/import:
+    post:
+      summary: Adopt an existing Helm release as an application
+      description: |
+        Org-scoped, editor or above. Adopts a release already running on the
+        target cluster (discovered via GET /api/clusters/{id}/releases) as a
+        managed application, seeded with the release's live values. The release
+        is already deployed, so this does NOT run a rollout — the application is
+        created in the deployed state. When the background worker is available it
+        immediately enqueues a refresh (a `helm diff`) so the sync status shows
+        whether the configured chart source reproduces the live release. Returns
+        202 (the app, with the refresh in flight when enqueued).
+      operationId: importApplication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationImportRequest"
+      responses:
+        "202":
+          description: Application adopted; a refresh is in progress when enqueued
           content:
             application/json:
               schema:
@@ -1380,6 +1442,40 @@ components:
           type: string
           format: date-time
 
+    HelmRelease:
+      type: object
+      description: |
+        A Helm release discovered on a cluster (the newest revision), decoded
+        from its release Secret. The discovery step behind importing an existing
+        release as an application; values is what `helm get values` would show.
+      required: [name, namespace, chart_name, chart_version, status, revision]
+      properties:
+        name:
+          type: string
+        namespace:
+          type: string
+        chart_name:
+          type: string
+        chart_version:
+          type: string
+        app_version:
+          type: string
+        status:
+          type: string
+          description: The release status (e.g. deployed, failed, pending-upgrade).
+        revision:
+          type: integer
+          description: The release revision number (the newest one discovered).
+        values:
+          type: string
+          description: |
+            The release's user-supplied values rendered as YAML (the overrides
+            passed at install/upgrade, not the chart defaults). May be empty.
+        updated_at:
+          type: string
+          format: date-time
+          description: When the discovered revision was last deployed.
+
     PodCondition:
       type: object
       required: [type, status]
@@ -2003,6 +2099,13 @@ components:
         sync_run_name:
           type: string
           description: TaskRun name of the most recent preview run (for streaming).
+        imported:
+          type: boolean
+          description: |
+            True when the application was adopted from a release already running
+            on the cluster (the import flow) rather than created and deployed by
+            Spacefleet. An imported app should be refreshed to confirm the
+            configured chart source reproduces the live release.
         created_at:
           type: string
           format: date-time
@@ -2018,6 +2121,58 @@ components:
         (repo_url, chart, version, git_ref, git_path); the server validates which
         are required per chart_source. values_sources optionally pulls values
         files from git, layered (in order) beneath the inline values.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        chart_source:
+          $ref: "#/components/schemas/ChartSource"
+        config:
+          type: object
+          additionalProperties:
+            type: string
+        values:
+          type: string
+        values_sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValuesSource"
+        release_name:
+          type: string
+        target_namespace:
+          type: string
+          minLength: 1
+        target_cluster_id:
+          type: string
+          format: uuid
+        runner_cluster_id:
+          type: string
+          format: uuid
+        chart_credential_id:
+          type: string
+          format: uuid
+          description: |
+            Optional private-chart credential to attach. Valid for http_repo and
+            oci chart sources; git charts take none (they use a GitHub App).
+        github_installation_id:
+          type: string
+          format: uuid
+          description: |
+            Optional GitHub App installation to attach for a private github.com
+            repo. Valid when the chart (git chart source) or any values source is
+            pulled from git.
+
+    ApplicationImportRequest:
+      type: object
+      required: [name, chart_source, target_namespace, target_cluster_id, runner_cluster_id]
+      description: |
+        Adopt a release already running on the target cluster. The same shape as
+        ApplicationCreateRequest: name/target_namespace/release_name and values
+        are pre-filled from the discovered release, while chart_source + config
+        (where the chart comes from), the runner cluster, values_sources, and any
+        credentials are supplied by the operator. Unlike create, no rollout runs —
+        the release is already deployed.
       properties:
         name:
           type: string

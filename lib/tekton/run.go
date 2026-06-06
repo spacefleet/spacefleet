@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -21,6 +22,18 @@ import (
 	toolswatch "k8s.io/client-go/tools/watch"
 
 	"github.com/spacefleet/spacefleet/lib/k8s"
+)
+
+// Per-run labels stamped on every TaskRun (and its creds Secret) at creation.
+// RunOrgLabel carries the owning organization id so that two organizations
+// registering the same physical runner cluster are scoped apart: a lookup can
+// require a matching org-id label, so one org can't resolve another's run by
+// name and read its status or pod logs. RunJobLabel carries the River job id so
+// a worker can recover a run it already submitted (by listing on this label)
+// when the persisted run name was lost to a crash between submit and the write.
+const (
+	RunOrgLabel = "spacefleet.io/org-id"
+	RunJobLabel = "spacefleet.io/job-id"
 )
 
 // taskRunGVR is the GroupVersionResource for Tekton TaskRuns (tekton.dev/v1).
@@ -52,6 +65,10 @@ type RunSpec struct {
 	// secrets through env. When non-empty, a Secret is created first (and
 	// owner-referenced to the TaskRun for GC).
 	Files map[string]string
+	// Labels are stamped onto the TaskRun (and its creds Secret) at creation.
+	// Optional. Callers use them for per-org scoping (RunOrgLabel) and
+	// crash-safe re-attach (RunJobLabel); see ListRuns.
+	Labels map[string]string
 }
 
 // RunStatus is the storage-agnostic view of a TaskRun's state. Phase is derived
@@ -114,7 +131,13 @@ func submitTaskRun(ctx context.Context, taskruns dynamic.ResourceInterface, secr
 	id := randID()
 	secretName := credsSecretName(id)
 	// Create the Secret first so the volume the TaskRun references already exists.
-	if _, err := secrets.Create(ctx, buildCredsSecret(namespace, secretName, spec.Files), metav1.CreateOptions{}); err != nil {
+	// It carries the same per-org/per-job labels as the TaskRun so it is scoped
+	// and swept alongside it.
+	secret := buildCredsSecret(namespace, secretName, spec.Files)
+	if len(spec.Labels) > 0 {
+		secret.Labels = spec.Labels
+	}
+	if _, err := secrets.Create(ctx, secret, metav1.CreateOptions{}); err != nil {
 		return nil, fmt.Errorf("tekton: create creds secret: %w", err)
 	}
 	created, err := taskruns.Create(ctx, buildTaskRun(namespace, secretName, spec), metav1.CreateOptions{})
@@ -125,9 +148,13 @@ func submitTaskRun(ctx context.Context, taskruns dynamic.ResourceInterface, secr
 	}
 	// Now that the TaskRun has a UID, own the Secret to it so it's GC'd with the
 	// run. A failure here is non-fatal: the run still works, the Secret just
-	// won't be auto-collected (the operator's TaskRun pruner sweeps it).
+	// won't be auto-collected — but if no TaskRun pruner exists the Secret
+	// lingers, so warn rather than swallow silently so it's diagnosable.
 	if patch := ownerRefPatch(created.GetName(), created.GetUID()); patch != nil {
-		_, _ = secrets.Patch(ctx, secretName, types.MergePatchType, patch, metav1.PatchOptions{})
+		if _, perr := secrets.Patch(ctx, secretName, types.MergePatchType, patch, metav1.PatchOptions{}); perr != nil {
+			slog.WarnContext(ctx, "tekton: failed to set ownerReference on creds secret; it will not be auto-collected unless a TaskRun pruner sweeps it",
+				"secret", secretName, "taskrun", created.GetName(), "error", perr)
+		}
 	}
 	return toRunStatus(created), nil
 }
@@ -161,15 +188,29 @@ func buildTaskRun(namespace, secretName string, spec RunSpec) *unstructured.Unst
 			"secret": map[string]any{"secretName": secretName},
 		}}
 	}
+	metadata := map[string]any{
+		"generateName": generateName,
+		"namespace":    namespace,
+	}
+	if len(spec.Labels) > 0 {
+		metadata["labels"] = labelsToAny(spec.Labels)
+	}
 	return &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": TektonGroup + "/v1",
 		"kind":       "TaskRun",
-		"metadata": map[string]any{
-			"generateName": generateName,
-			"namespace":    namespace,
-		},
-		"spec": map[string]any{"taskSpec": taskSpec},
+		"metadata":   metadata,
+		"spec":       map[string]any{"taskSpec": taskSpec},
 	}}
+}
+
+// labelsToAny copies a label map into the map[string]any shape an unstructured
+// object's metadata.labels expects.
+func labelsToAny(labels map[string]string) map[string]any {
+	out := make(map[string]any, len(labels))
+	for k, v := range labels {
+		out[k] = v
+	}
+	return out
 }
 
 // buildCredsSecret builds the Opaque Secret carrying the run's Files (keyed by
@@ -216,6 +257,12 @@ func randID() string {
 	return hex.EncodeToString(b)
 }
 
+// ErrRunForbidden is returned by the org-scoped lookups when a run exists by
+// name but does not carry the caller's org-id label — i.e. it belongs to a
+// different organization on a shared runner cluster. Callers map it to a 404 so
+// the existence of another org's run isn't disclosed.
+var ErrRunForbidden = fmt.Errorf("tekton: run not owned by this organization")
+
 // GetRun fetches one TaskRun's current status.
 func GetRun(ctx context.Context, conn k8s.Connection, namespace, name string) (*RunStatus, error) {
 	ri, err := taskRuns(ctx, conn, namespace)
@@ -227,6 +274,53 @@ func GetRun(ctx context.Context, conn k8s.Connection, namespace, name string) (*
 		return nil, fmt.Errorf("tekton: get taskrun: %w", err)
 	}
 	return toRunStatus(u), nil
+}
+
+// GetRunScoped is GetRun with a per-org guard: it fetches the named run and
+// returns ErrRunForbidden unless the run carries RunOrgLabel=orgLabel. An empty
+// orgLabel disables the guard (behaves like GetRun) for callers that don't scope.
+func GetRunScoped(ctx context.Context, conn k8s.Connection, namespace, name, orgLabel string) (*RunStatus, error) {
+	ri, err := taskRuns(ctx, conn, namespace)
+	if err != nil {
+		return nil, err
+	}
+	u, err := ri.Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("tekton: get taskrun: %w", err)
+	}
+	if !ownsRun(u, orgLabel) {
+		return nil, ErrRunForbidden
+	}
+	return toRunStatus(u), nil
+}
+
+// ListRuns returns the status of every TaskRun in namespace matching the label
+// selector (e.g. RunJobLabel=<jobID>). It is how a worker recovers a run it
+// already submitted when the persisted run name was lost between submit and the
+// write: the run carries the job-id label, so it can be found without a name.
+func ListRuns(ctx context.Context, conn k8s.Connection, namespace, labelSelector string) ([]*RunStatus, error) {
+	ri, err := taskRuns(ctx, conn, namespace)
+	if err != nil {
+		return nil, err
+	}
+	list, err := ri.List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
+	if err != nil {
+		return nil, fmt.Errorf("tekton: list taskruns: %w", err)
+	}
+	out := make([]*RunStatus, 0, len(list.Items))
+	for i := range list.Items {
+		out = append(out, toRunStatus(&list.Items[i]))
+	}
+	return out, nil
+}
+
+// ownsRun reports whether u carries RunOrgLabel=orgLabel. An empty orgLabel
+// matches anything (guard disabled).
+func ownsRun(u *unstructured.Unstructured, orgLabel string) bool {
+	if orgLabel == "" {
+		return true
+	}
+	return u.GetLabels()[RunOrgLabel] == orgLabel
 }
 
 // RunStream is an open watch on a single TaskRun: the initial Snapshot plus a
@@ -244,6 +338,13 @@ type RunStream struct {
 // stream. Resilience comes from a RetryWatcher scoped to the single object by
 // name.
 func WatchRun(ctx context.Context, conn k8s.Connection, namespace, name string) (*RunStream, error) {
+	return WatchRunScoped(ctx, conn, namespace, name, "")
+}
+
+// WatchRunScoped is WatchRun with a per-org guard: the initial Get returns
+// ErrRunForbidden unless the run carries RunOrgLabel=orgLabel. An empty orgLabel
+// disables the guard (behaves like WatchRun).
+func WatchRunScoped(ctx context.Context, conn k8s.Connection, namespace, name, orgLabel string) (*RunStream, error) {
 	ri, err := taskRuns(ctx, conn, namespace)
 	if err != nil {
 		return nil, err
@@ -251,6 +352,9 @@ func WatchRun(ctx context.Context, conn k8s.Connection, namespace, name string) 
 	u, err := ri.Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("tekton: get taskrun: %w", err)
+	}
+	if !ownsRun(u, orgLabel) {
+		return nil, ErrRunForbidden
 	}
 	initial := toRunStatus(u)
 
@@ -265,6 +369,12 @@ func WatchRun(ctx context.Context, conn k8s.Connection, namespace, name string) 
 		}
 		rw, err := toolswatch.NewRetryWatcherWithContext(ctx, u.GetResourceVersion(), lw)
 		if err != nil {
+			// Surface the init failure instead of closing silently: a bare close looks
+			// like a clean end, so a caller that reconnects on close would spin
+			// reconnecting immediately with no signal as to why. Log the error so the
+			// failure is diagnosable before the channel closes.
+			slog.ErrorContext(ctx, "tekton: failed to start run watcher; stream will close",
+				"run", name, "namespace", namespace, "error", err)
 			return
 		}
 		defer rw.Stop()

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import {
   AlertTriangle,
@@ -46,15 +46,27 @@ export function ClusterDetail() {
   const [checking, setChecking] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // probing guards against overlapping /test calls: the endpoint mutates remote
+  // state (a live connectivity probe), so a slow probe must not have another
+  // fired on top of it by the interval or a concurrent load.
+  const probing = useRef(false);
+
   // test re-probes connectivity and folds the refreshed row back into state. It
-  // runs automatically on load and then on an interval (see below).
+  // runs automatically on load and then on an interval (see below). It no-ops
+  // while a probe is already in flight so the two callers can't overlap.
   const test = useCallback(async () => {
+    if (probing.current) return;
+    probing.current = true;
     setChecking(true);
-    const { data } = await api.POST("/api/clusters/{id}/test", {
-      params: { path: { id: clusterId } },
-    });
-    if (data) setCluster(data);
-    setChecking(false);
+    try {
+      const { data } = await api.POST("/api/clusters/{id}/test", {
+        params: { path: { id: clusterId } },
+      });
+      if (data) setCluster(data);
+    } finally {
+      probing.current = false;
+      setChecking(false);
+    }
   }, [clusterId]);
 
   const load = useCallback(async () => {
@@ -81,9 +93,16 @@ export function ClusterDetail() {
 
   // Keep the connection status current while the page is open by re-probing on
   // an interval, so the badge reflects live reachability without a manual step.
+  // Skip the tick while the tab is backgrounded — there's no one watching the
+  // badge, and /test is a live remote probe we don't want firing unattended.
+  // test() itself no-ops if a probe is still in flight, so the interval can't
+  // pile probes on top of the on-load one.
   useEffect(() => {
     if (!clusterId) return;
-    const id = setInterval(() => void test(), CONNECTIVITY_REFRESH_MS);
+    const id = setInterval(() => {
+      if (document.hidden) return;
+      void test();
+    }, CONNECTIVITY_REFRESH_MS);
     return () => clearInterval(id);
   }, [clusterId, test]);
 

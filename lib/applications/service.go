@@ -100,12 +100,24 @@ func (s *Service) fetchRunLogs(ctx context.Context, app *ent.Application, runNam
 		return ""
 	}
 	defer func() { _ = rc.Close() }()
-	b, err := io.ReadAll(rc)
+	// Cap the read so a pathological run (a huge chart, a runaway log) can't load
+	// an unbounded blob into memory or the unbounded logs TEXT column — mirroring
+	// the maxDiffBytes cap on last_diff. Read one byte past the cap so we can tell
+	// truncation happened and annotate it.
+	b, err := io.ReadAll(io.LimitReader(rc, maxLogBytes+1))
 	if err != nil {
 		return ""
 	}
+	if len(b) > maxLogBytes {
+		return string(b[:maxLogBytes]) + "\n... logs truncated ..."
+	}
 	return string(b)
 }
+
+// maxLogBytes caps a captured run's stored logs so a pathological run can't bloat
+// the row or memory. Mirrors maxDiffBytes; larger because full run output (setup
+// chatter + the diff/rollout body) is bigger than the diff body alone.
+const maxLogBytes = 1024 * 1024
 
 // The rollout worker drives the service through the helm.Store seam, and the
 // preview worker through helm.PreviewStore.
@@ -190,12 +202,42 @@ func (s *Service) Get(ctx context.Context, orgID, id uuid.UUID) (*ent.Applicatio
 		Only(ctx)
 }
 
+// ImportParams describes a release to adopt as an application. It takes the same
+// inputs as a create — the values/name/namespace are pre-filled from the
+// discovered release, while the chart source, runner, and any credentials are
+// supplied by the operator.
+type ImportParams = CreateParams
+
 // Create validates the cluster pairing and chart-source fields, then registers
 // the application in the pending state (no rollout is started here).
 func (s *Service) Create(ctx context.Context, orgID uuid.UUID, p CreateParams) (*ent.Application, error) {
 	if err := s.validate(ctx, orgID, p); err != nil {
 		return nil, err
 	}
+	return s.newCreate(orgID, p).Save(ctx)
+}
+
+// Adopt registers an application from a release already running on the target
+// cluster (the import flow). It validates the same fields as Create, then creates
+// the application directly in the deployed state — the release is already live,
+// so no rollout runs. sync_status stays unknown until a refresh confirms the
+// configured chart source reproduces the live release.
+func (s *Service) Adopt(ctx context.Context, orgID uuid.UUID, p ImportParams) (*ent.Application, error) {
+	if err := s.validate(ctx, orgID, p); err != nil {
+		return nil, err
+	}
+	return s.newCreate(orgID, p).
+		SetImported(true).
+		SetStatus(application.StatusDeployed).
+		SetStatusMessage("adopted from an existing release").
+		SetSyncStatus(application.SyncStatusUnknown).
+		Save(ctx)
+}
+
+// newCreate builds the ent create shared by Create and Adopt from the validated
+// params: every column except the rollout lifecycle (which the default leaves at
+// pending for Create and Adopt overrides to deployed).
+func (s *Service) newCreate(orgID uuid.UUID, p CreateParams) *ent.ApplicationCreate {
 	create := s.ent.Application.Create().
 		SetOrganizationID(orgID).
 		SetName(p.Name).
@@ -213,7 +255,7 @@ func (s *Service) Create(ctx context.Context, orgID uuid.UUID, p CreateParams) (
 	if p.GitHubInstallationID != nil && *p.GitHubInstallationID != uuid.Nil {
 		create.SetGithubInstallationID(*p.GitHubInstallationID)
 	}
-	return create.Save(ctx)
+	return create
 }
 
 // Update changes mutable fields of an application scoped to the organization,
@@ -296,11 +338,14 @@ func (s *Service) Delete(ctx context.Context, orgID, id uuid.UUID) error {
 // action so the handler can enqueue the rollout job. deploy/upgrade go to
 // deploying; uninstall to uninstalling. Returns a ValidationError for an unknown
 // action.
+//
+// It refuses while a rollout is already in flight (deploying / uninstalling) and
+// returns that as a ValidationError the handler maps to 409 — two concurrent
+// rollouts would each enqueue a job and race the helm release lock, flapping
+// status (last-writer-wins). The transition is a conditional update gated on the
+// status being settled, so the guard is atomic rather than read-then-write: a
+// concurrent caller that lost the race finds zero rows updated.
 func (s *Service) BeginRollout(ctx context.Context, orgID, id uuid.UUID, action string) (*ent.Application, error) {
-	app, err := s.Get(ctx, orgID, id)
-	if err != nil {
-		return nil, err
-	}
 	var status application.Status
 	msg := "queued for rollout"
 	switch action {
@@ -312,7 +357,30 @@ func (s *Service) BeginRollout(ctx context.Context, orgID, id uuid.UUID, action 
 	default:
 		return nil, validationErr("unknown rollout action %q", action)
 	}
-	return app.Update().SetStatus(status).SetStatusMessage(msg).Save(ctx)
+	// Atomically transition only when no rollout is in flight. The settled set is
+	// everything but the two in-flight states; predicating on it means a second
+	// concurrent BeginRollout updates zero rows and we report 409.
+	affected, err := s.ent.Application.Update().
+		Where(
+			application.OrganizationID(orgID),
+			application.ID(id),
+			application.StatusNotIn(application.StatusDeploying, application.StatusUninstalling),
+		).
+		SetStatus(status).
+		SetStatusMessage(msg).
+		Save(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if affected == 0 {
+		// Either the app doesn't exist (scoped query) or a rollout is in flight.
+		// Disambiguate with a scoped fetch so a missing app still maps to 404.
+		if _, err := s.Get(ctx, orgID, id); err != nil {
+			return nil, err
+		}
+		return nil, validationErr("a rollout is already in progress; wait for it to settle")
+	}
+	return s.Get(ctx, orgID, id)
 }
 
 // BeginPreview moves an application into the refreshing state so the handler can
@@ -380,11 +448,24 @@ func (s *Service) CompletePreview(ctx context.Context, orgID, appID uuid.UUID, j
 	diff := helm.ParseDiff(logs)
 	rev := helm.ParseRevisions(logs)
 
-	status := application.SyncStatusSynced
-	msg := "in sync"
-	if diff.HasChanges {
+	// ParseDiff returns HasChanges=false both for a genuine no-changes run and for
+	// logs it couldn't read (missing the begin/end markers — e.g. capture failed,
+	// or the run died before the diff). Without the markers we can't tell "in sync"
+	// from "couldn't read the diff", so report an error status rather than silently
+	// claiming the app is in sync. The markers' presence is the proxy for a
+	// readable diff (the changes verdict rides between them).
+	var status application.SyncStatus
+	var msg string
+	switch {
+	case !hasDiffMarkers(logs):
+		status = application.SyncStatusError
+		msg = "diff run completed but output could not be read"
+	case diff.HasChanges:
 		status = application.SyncStatusOutOfSync
 		msg = "out of sync"
+	default:
+		status = application.SyncStatusSynced
+		msg = "in sync"
 	}
 	body := diff.Body
 	if len(body) > maxDiffBytes {
@@ -405,6 +486,22 @@ func (s *Service) CompletePreview(ctx context.Context, orgID, appID uuid.UUID, j
 	}
 	_, err = upd.Save(ctx)
 	return err
+}
+
+// Preview-protocol log markers, mirrored from lib/helm (where they're
+// unexported): the diff body — and the changes verdict that rides with it — is
+// bracketed by these sentinels. Their presence in the captured logs is the proxy
+// for a readable diff; their absence means we couldn't read the diff, not that
+// the app is in sync.
+const (
+	diffBeginMarker = "SPACEFLEET_DIFF_BEGIN"
+	diffEndMarker   = "SPACEFLEET_DIFF_END"
+)
+
+// hasDiffMarkers reports whether the captured preview logs contain both diff
+// sentinels, i.e. the diff output was actually captured and is parseable.
+func hasDiffMarkers(logs string) bool {
+	return strings.Contains(logs, diffBeginMarker) && strings.Contains(logs, diffEndMarker)
 }
 
 // MarkRollout persists a rollout-lifecycle transition reported by the worker (it

@@ -27,6 +27,8 @@ type Application struct {
 	OrganizationID uuid.UUID `json:"organization_id,omitempty"`
 	// Name holds the value of the "name" field.
 	Name string `json:"name,omitempty"`
+	// Imported holds the value of the "imported" field.
+	Imported bool `json:"imported,omitempty"`
 	// Type holds the value of the "type" field.
 	Type application.Type `json:"type,omitempty"`
 	// ChartSource holds the value of the "chart_source" field.
@@ -162,6 +164,8 @@ func (*Application) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case application.FieldConfig, application.FieldValuesSources:
 			values[i] = new([]byte)
+		case application.FieldImported:
+			values[i] = new(sql.NullBool)
 		case application.FieldName, application.FieldType, application.FieldChartSource, application.FieldValues, application.FieldReleaseName, application.FieldTargetNamespace, application.FieldStatus, application.FieldStatusMessage, application.FieldJobID, application.FieldLastRunName, application.FieldSyncStatus, application.FieldSyncMessage, application.FieldLastDiff, application.FieldDesiredChartRevision, application.FieldDesiredValuesRevision, application.FieldSyncJobID, application.FieldSyncRunName:
 			values[i] = new(sql.NullString)
 		case application.FieldLastRefreshedAt, application.FieldCreatedAt, application.FieldUpdatedAt:
@@ -200,6 +204,12 @@ func (_m *Application) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field name", values[i])
 			} else if value.Valid {
 				_m.Name = value.String
+			}
+		case application.FieldImported:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field imported", values[i])
+			} else if value.Valid {
+				_m.Imported = value.Bool
 			}
 		case application.FieldType:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -421,6 +431,9 @@ func (_m *Application) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("name=")
 	builder.WriteString(_m.Name)
+	builder.WriteString(", ")
+	builder.WriteString("imported=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Imported))
 	builder.WriteString(", ")
 	builder.WriteString("type=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Type))

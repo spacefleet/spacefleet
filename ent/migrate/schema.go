@@ -13,6 +13,7 @@ var (
 	ApplicationsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "name", Type: field.TypeString},
+		{Name: "imported", Type: field.TypeBool, Default: false},
 		{Name: "type", Type: field.TypeEnum, Enums: []string{"helm"}, Default: "helm"},
 		{Name: "chart_source", Type: field.TypeEnum, Enums: []string{"http_repo", "oci", "git"}},
 		{Name: "config", Type: field.TypeJSON, Nullable: true},
@@ -48,31 +49,31 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "applications_organizations_organization",
-				Columns:    []*schema.Column{ApplicationsColumns[23]},
+				Columns:    []*schema.Column{ApplicationsColumns[24]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "applications_clusters_target_cluster",
-				Columns:    []*schema.Column{ApplicationsColumns[24]},
-				RefColumns: []*schema.Column{ClustersColumns[0]},
-				OnDelete:   schema.NoAction,
-			},
-			{
-				Symbol:     "applications_clusters_runner_cluster",
 				Columns:    []*schema.Column{ApplicationsColumns[25]},
 				RefColumns: []*schema.Column{ClustersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
-				Symbol:     "applications_chart_credentials_chart_credential",
+				Symbol:     "applications_clusters_runner_cluster",
 				Columns:    []*schema.Column{ApplicationsColumns[26]},
+				RefColumns: []*schema.Column{ClustersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "applications_chart_credentials_chart_credential",
+				Columns:    []*schema.Column{ApplicationsColumns[27]},
 				RefColumns: []*schema.Column{ChartCredentialsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "applications_github_installations_github_installation",
-				Columns:    []*schema.Column{ApplicationsColumns[27]},
+				Columns:    []*schema.Column{ApplicationsColumns[28]},
 				RefColumns: []*schema.Column{GithubInstallationsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -81,12 +82,12 @@ var (
 			{
 				Name:    "application_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{ApplicationsColumns[23]},
+				Columns: []*schema.Column{ApplicationsColumns[24]},
 			},
 			{
 				Name:    "application_organization_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{ApplicationsColumns[23], ApplicationsColumns[1]},
+				Columns: []*schema.Column{ApplicationsColumns[24], ApplicationsColumns[1]},
 			},
 		},
 	}

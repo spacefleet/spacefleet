@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -284,7 +285,7 @@ func (s *Server) StreamClusterTektonRun(w http.ResponseWriter, r *http.Request) 
 func (s *Server) StreamApplication(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	orgID, aerr, err := s.resolveApp(ctx)
+	orgID, canSeeSecrets, aerr, err := s.resolveAppRead(ctx)
 	if err != nil {
 		writeStreamError(w, http.StatusInternalServerError, "internal", "internal error")
 		return
@@ -348,7 +349,7 @@ func (s *Server) StreamApplication(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			prev = key
-			if err := sse.event("status", toAPIApplication(app)); err != nil {
+			if err := sse.event("status", redactAppSecrets(toAPIApplication(app), canSeeSecrets)); err != nil {
 				return
 			}
 			if appTerminal(app) {
@@ -376,6 +377,13 @@ func (s *Server) StreamApplicationLogs(w http.ResponseWriter, r *http.Request) {
 	app, aerr := s.appForStream(ctx, orgID, r)
 	if aerr != nil {
 		writeStreamError(w, aerr.status, aerr.code, aerr.msg)
+		return
+	}
+
+	// Streaming logs reaches the runner cluster via the clusters service; like
+	// any nil-service handler, return a clear 503 rather than panicking.
+	if s.clusters == nil {
+		writeStreamError(w, http.StatusServiceUnavailable, "unavailable", "clusters service not configured")
 		return
 	}
 
@@ -424,6 +432,10 @@ func (s *Server) StreamApplicationLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	lines := make(chan string)
+	// scanErr is written by the scanner goroutine before it closes lines, and
+	// read by the consumer only after lines is closed — that ordering makes the
+	// access race-free without a lock.
+	var scanErr error
 	go func() {
 		defer close(lines)
 		sc := bufio.NewScanner(rc)
@@ -435,6 +447,10 @@ func (s *Server) StreamApplicationLogs(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		// A line over the cap (bufio.ErrTooLong) or a read failure ends the loop
+		// with a non-nil error; capture it so the consumer can report a real
+		// error instead of a clean eof.
+		scanErr = sc.Err()
 	}()
 
 	heartbeat := time.NewTicker(streamHeartbeat)
@@ -449,7 +465,11 @@ func (s *Server) StreamApplicationLogs(w http.ResponseWriter, r *http.Request) {
 			}
 		case line, ok := <-lines:
 			if !ok {
-				_ = sse.event("eof", struct{}{})
+				if scanErr != nil {
+					_ = sse.event("error", Error{Code: "log_stream_error", Message: "log stream ended unexpectedly"})
+				} else {
+					_ = sse.event("eof", struct{}{})
+				}
 				return
 			}
 			if err := sse.event("log", logLine{Line: line}); err != nil {
@@ -545,5 +565,11 @@ func toAPINodes(nodes []k8s.Node) []Node {
 func writeStreamError(w http.ResponseWriter, status int, code, msg string) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_, _ = w.Write([]byte(`{"code":"` + code + `","message":"` + msg + `"}`))
+	// Marshal the proper Error struct so a message carrying a quote or backslash
+	// (e.g. a raw k8s error) still produces valid JSON.
+	body, err := json.Marshal(Error{Code: code, Message: msg})
+	if err != nil {
+		return
+	}
+	_, _ = w.Write(body)
 }

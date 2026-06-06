@@ -45,6 +45,11 @@ export function TektonPanel({
 }: Props) {
   const [status, setStatus] = useState<TektonStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Action errors (enable/disable/upgrade/uninstall) are kept separate from the
+  // load error: a failed action shows inline and is retryable, whereas a load
+  // error blanks the panel (there's nothing to show). Cleared at the start of
+  // each action and on a successful load.
+  const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -57,7 +62,10 @@ export function TektonPanel({
       setLoadError(error.message ?? "Could not load Tekton status");
       return;
     }
-    if (data) setStatus(data);
+    if (data) {
+      setStatus(data);
+      setActionError(null);
+    }
   }, [clusterId]);
 
   useEffect(() => {
@@ -107,46 +115,53 @@ export function TektonPanel({
 
   async function onEnable() {
     setBusy(true);
+    setActionError(null);
     const { data, error } = await api.POST(
       "/api/clusters/{id}/tekton/enable",
       { params: { path: { id: clusterId } } },
     );
     setBusy(false);
     if (!error && data) settle(data);
-    else if (error) setLoadError(error.message ?? "Could not enable job running");
+    else if (error)
+      setActionError(error.message ?? "Could not enable job running");
   }
 
   async function onDisable() {
     setBusy(true);
+    setActionError(null);
     const { data, error } = await api.POST(
       "/api/clusters/{id}/tekton/disable",
       { params: { path: { id: clusterId } } },
     );
     setBusy(false);
     if (!error && data) settle(data);
+    else if (error)
+      setActionError(error.message ?? "Could not turn off job running");
   }
 
   async function onUpgrade() {
     setBusy(true);
+    setActionError(null);
     const { data, error } = await api.POST(
       "/api/clusters/{id}/tekton/upgrade",
       { params: { path: { id: clusterId } } },
     );
     setBusy(false);
     if (!error && data) settle(data);
-    else if (error) setLoadError(error.message ?? "Could not upgrade Tekton");
+    else if (error) setActionError(error.message ?? "Could not upgrade Tekton");
   }
 
   async function onUninstall() {
     setConfirmingDelete(false);
     setBusy(true);
+    setActionError(null);
     const { data, error } = await api.POST(
       "/api/clusters/{id}/tekton/uninstall",
       { params: { path: { id: clusterId } } },
     );
     setBusy(false);
     if (!error && data) settle(data);
-    else if (error) setLoadError(error.message ?? "Could not remove Tekton");
+    else if (error) setActionError(error.message ?? "Could not remove Tekton");
   }
 
   if (loadError) {
@@ -174,6 +189,13 @@ export function TektonPanel({
           progress) or after a failure (the error). */}
       {(inFlight || status.status === "failed") && (
         <StatusLine status={status} />
+      )}
+
+      {/* Action errors render inline and leave the controls in place so the
+          operator can read the message and retry — distinct from a load error,
+          which blanks the panel. */}
+      {actionError && (
+        <p className="p-4 text-sm text-red-600">{actionError}</p>
       )}
 
       {/* Primary control: the single switch that turns this cluster into a job

@@ -32,9 +32,8 @@ func (s *Server) resolveGitHubInstallationsRead(ctx context.Context) (uuid.UUID,
 // resolveGitHubInstallationsWrite is the read preamble plus an editor-or-above
 // gate, for the connect/create/delete handlers that change state.
 func (s *Server) resolveGitHubInstallationsWrite(ctx context.Context) (uuid.UUID, *apiError, error) {
-	orgID, aerr, err := s.resolveGitHubInstallationsRead(ctx)
-	if err != nil || aerr != nil {
-		return uuid.Nil, aerr, err
+	if s.githubInstallations == nil {
+		return uuid.Nil, &apiError{http.StatusServiceUnavailable, "unavailable", "github installations service not configured"}, nil
 	}
 	m, aerr, err := s.resolveMembership(ctx)
 	if err != nil || aerr != nil {
@@ -43,7 +42,7 @@ func (s *Server) resolveGitHubInstallationsWrite(ctx context.Context) (uuid.UUID
 	if aerr := requireRole(m, membership.RoleEditor); aerr != nil {
 		return uuid.Nil, aerr, nil
 	}
-	return orgID, nil, nil
+	return m.OrganizationID, nil, nil
 }
 
 func (s *Server) ListGitHubInstallations(ctx context.Context, _ ListGitHubInstallationsRequestObject) (ListGitHubInstallationsResponseObject, error) {
@@ -85,6 +84,9 @@ func (s *Server) GetGitHubConnectUrl(ctx context.Context, _ GetGitHubConnectUrlR
 	if err != nil {
 		return nil, err
 	}
+	// Known limitation: the github.com base URL is hardcoded — GitHub Enterprise
+	// Server (GHES) installs at a self-hosted host and is not yet supported. The
+	// GHES base URL is not configurable here.
 	installURL := fmt.Sprintf("https://github.com/apps/%s/installations/new?state=%s",
 		url.PathEscape(s.githubAppSlug), url.QueryEscape(state))
 	return GetGitHubConnectUrl200JSONResponse{Url: installURL}, nil

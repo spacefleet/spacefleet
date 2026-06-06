@@ -229,41 +229,65 @@ func (s *Service) MarkTekton(ctx context.Context, orgID, clusterID uuid.UUID, jo
 }
 
 // SubmitRun submits a minimal TaskRun to an org-scoped cluster and returns its
-// initial status.
+// initial status. The run is stamped with the owning org's id label so that two
+// organizations sharing the same physical runner cluster are scoped apart: the
+// Get/Watch lookups below require a matching label, so one org can't resolve
+// another's run by name and read its status or pod logs.
 func (s *Service) SubmitRun(ctx context.Context, orgID, id uuid.UUID, namespace string, spec tekton.RunSpec) (*tekton.RunStatus, error) {
 	conn, err := s.ConnForTekton(ctx, orgID, id)
 	if err != nil {
 		return nil, err
 	}
+	spec.Labels = withOrgLabel(spec.Labels, orgID)
 	return tekton.SubmitTaskRun(ctx, conn, namespace, spec)
 }
 
-// GetRun fetches one TaskRun's status for an org-scoped cluster.
+// GetRun fetches one TaskRun's status for an org-scoped cluster. The lookup is
+// gated on the run's org-id label, so a run another org submitted on the same
+// physical runner is not disclosed (tekton.ErrRunForbidden).
 func (s *Service) GetRun(ctx context.Context, orgID, id uuid.UUID, namespace, name string) (*tekton.RunStatus, error) {
 	conn, err := s.ConnForTekton(ctx, orgID, id)
 	if err != nil {
 		return nil, err
 	}
-	return tekton.GetRun(ctx, conn, namespace, name)
+	return tekton.GetRunScoped(ctx, conn, namespace, name, orgID.String())
 }
 
-// WatchRun opens a live watch on a TaskRun for an org-scoped cluster.
+// WatchRun opens a live watch on a TaskRun for an org-scoped cluster. Like
+// GetRun, the initial lookup is gated on the run's org-id label.
 func (s *Service) WatchRun(ctx context.Context, orgID, id uuid.UUID, namespace, name string) (*tekton.RunStream, error) {
 	conn, err := s.ConnForTekton(ctx, orgID, id)
 	if err != nil {
 		return nil, err
 	}
-	return tekton.WatchRun(ctx, conn, namespace, name)
+	return tekton.WatchRunScoped(ctx, conn, namespace, name, orgID.String())
 }
 
 // RunLogs streams a run's pod logs for an org-scoped cluster, delegating to the
 // shared pod-log streamer.
+//
+// NOTE (follow-up): this lookup is keyed by pod name, not run name, so it can't
+// reuse the org-id label predicate the Get/Watch lookups above use without first
+// resolving the pod back to its owning TaskRun. The labeling is in place (every
+// run and its pod carry the org-id label); threading a pod->run org check here
+// is left as a follow-up to avoid a broad change to the pod-log seam.
 func (s *Service) RunLogs(ctx context.Context, orgID, id uuid.UUID, namespace, podName string, opts k8s.LogOptions) (io.ReadCloser, error) {
 	conn, err := s.ConnForTekton(ctx, orgID, id)
 	if err != nil {
 		return nil, err
 	}
 	return k8s.StreamPodLogs(ctx, conn, namespace, podName, opts)
+}
+
+// withOrgLabel returns labels with RunOrgLabel set to the org id, allocating a
+// new map when needed so the caller's spec.Labels isn't mutated underneath it.
+func withOrgLabel(labels map[string]string, orgID uuid.UUID) map[string]string {
+	out := make(map[string]string, len(labels)+1)
+	for k, v := range labels {
+		out[k] = v
+	}
+	out[tekton.RunOrgLabel] = orgID.String()
+	return out
 }
 
 // ensureTektonRow returns the cluster's installation row, creating a default

@@ -47,6 +47,20 @@ func (_u *ApplicationUpdate) SetNillableName(v *string) *ApplicationUpdate {
 	return _u
 }
 
+// SetImported sets the "imported" field.
+func (_u *ApplicationUpdate) SetImported(v bool) *ApplicationUpdate {
+	_u.mutation.SetImported(v)
+	return _u
+}
+
+// SetNillableImported sets the "imported" field if the given value is not nil.
+func (_u *ApplicationUpdate) SetNillableImported(v *bool) *ApplicationUpdate {
+	if v != nil {
+		_u.SetImported(*v)
+	}
+	return _u
+}
+
 // SetType sets the "type" field.
 func (_u *ApplicationUpdate) SetType(v application.Type) *ApplicationUpdate {
 	_u.mutation.SetType(v)
@@ -605,6 +619,9 @@ func (_u *ApplicationUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(application.FieldName, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.Imported(); ok {
+		_spec.SetField(application.FieldImported, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.GetType(); ok {
 		_spec.SetField(application.FieldType, field.TypeEnum, value)
 	}
@@ -858,6 +875,20 @@ func (_u *ApplicationUpdateOne) SetName(v string) *ApplicationUpdateOne {
 func (_u *ApplicationUpdateOne) SetNillableName(v *string) *ApplicationUpdateOne {
 	if v != nil {
 		_u.SetName(*v)
+	}
+	return _u
+}
+
+// SetImported sets the "imported" field.
+func (_u *ApplicationUpdateOne) SetImported(v bool) *ApplicationUpdateOne {
+	_u.mutation.SetImported(v)
+	return _u
+}
+
+// SetNillableImported sets the "imported" field if the given value is not nil.
+func (_u *ApplicationUpdateOne) SetNillableImported(v *bool) *ApplicationUpdateOne {
+	if v != nil {
+		_u.SetImported(*v)
 	}
 	return _u
 }
@@ -1449,6 +1480,9 @@ func (_u *ApplicationUpdateOne) sqlSave(ctx context.Context) (_node *Application
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(application.FieldName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Imported(); ok {
+		_spec.SetField(application.FieldImported, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.GetType(); ok {
 		_spec.SetField(application.FieldType, field.TypeEnum, value)

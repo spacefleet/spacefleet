@@ -40,6 +40,20 @@ func (_c *ApplicationCreate) SetName(v string) *ApplicationCreate {
 	return _c
 }
 
+// SetImported sets the "imported" field.
+func (_c *ApplicationCreate) SetImported(v bool) *ApplicationCreate {
+	_c.mutation.SetImported(v)
+	return _c
+}
+
+// SetNillableImported sets the "imported" field if the given value is not nil.
+func (_c *ApplicationCreate) SetNillableImported(v *bool) *ApplicationCreate {
+	if v != nil {
+		_c.SetImported(*v)
+	}
+	return _c
+}
+
 // SetType sets the "type" field.
 func (_c *ApplicationCreate) SetType(v application.Type) *ApplicationCreate {
 	_c.mutation.SetType(v)
@@ -416,6 +430,10 @@ func (_c *ApplicationCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *ApplicationCreate) defaults() {
+	if _, ok := _c.mutation.Imported(); !ok {
+		v := application.DefaultImported
+		_c.mutation.SetImported(v)
+	}
 	if _, ok := _c.mutation.GetType(); !ok {
 		v := application.DefaultType
 		_c.mutation.SetType(v)
@@ -454,6 +472,9 @@ func (_c *ApplicationCreate) check() error {
 		if err := application.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Application.name": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.Imported(); !ok {
+		return &ValidationError{Name: "imported", err: errors.New(`ent: missing required field "Application.imported"`)}
 	}
 	if _, ok := _c.mutation.GetType(); !ok {
 		return &ValidationError{Name: "type", err: errors.New(`ent: missing required field "Application.type"`)}
@@ -555,6 +576,10 @@ func (_c *ApplicationCreate) createSpec() (*Application, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(application.FieldName, field.TypeString, value)
 		_node.Name = value
+	}
+	if value, ok := _c.mutation.Imported(); ok {
+		_spec.SetField(application.FieldImported, field.TypeBool, value)
+		_node.Imported = value
 	}
 	if value, ok := _c.mutation.GetType(); ok {
 		_spec.SetField(application.FieldType, field.TypeEnum, value)
@@ -786,6 +811,18 @@ func (u *ApplicationUpsert) SetName(v string) *ApplicationUpsert {
 // UpdateName sets the "name" field to the value that was provided on create.
 func (u *ApplicationUpsert) UpdateName() *ApplicationUpsert {
 	u.SetExcluded(application.FieldName)
+	return u
+}
+
+// SetImported sets the "imported" field.
+func (u *ApplicationUpsert) SetImported(v bool) *ApplicationUpsert {
+	u.Set(application.FieldImported, v)
+	return u
+}
+
+// UpdateImported sets the "imported" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdateImported() *ApplicationUpsert {
+	u.SetExcluded(application.FieldImported)
 	return u
 }
 
@@ -1238,6 +1275,20 @@ func (u *ApplicationUpsertOne) SetName(v string) *ApplicationUpsertOne {
 func (u *ApplicationUpsertOne) UpdateName() *ApplicationUpsertOne {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.UpdateName()
+	})
+}
+
+// SetImported sets the "imported" field.
+func (u *ApplicationUpsertOne) SetImported(v bool) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetImported(v)
+	})
+}
+
+// UpdateImported sets the "imported" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdateImported() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateImported()
 	})
 }
 
@@ -1921,6 +1972,20 @@ func (u *ApplicationUpsertBulk) SetName(v string) *ApplicationUpsertBulk {
 func (u *ApplicationUpsertBulk) UpdateName() *ApplicationUpsertBulk {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.UpdateName()
+	})
+}
+
+// SetImported sets the "imported" field.
+func (u *ApplicationUpsertBulk) SetImported(v bool) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetImported(v)
+	})
+}
+
+// UpdateImported sets the "imported" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdateImported() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateImported()
 	})
 }
 

@@ -442,6 +442,118 @@ func TestCompletePreviewSynced(t *testing.T) {
 	}
 }
 
+// TestCompletePreviewErrorWhenLogsUnreadable covers the M4 fix: a diff run that
+// "succeeded" but whose logs are missing the begin/end markers (capture failed,
+// or the run died before the diff) must report an error status rather than
+// silently claiming the app is in sync — ParseDiff returns HasChanges=false for
+// both a genuine no-changes run and unreadable logs, so the markers' presence is
+// the proxy for a readable diff.
+func TestCompletePreviewErrorWhenLogsUnreadable(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	// Empty logs: no diff markers at all (capture returned "").
+	svc.captureLogs = func(context.Context, *ent.Application, string) string { return "" }
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, svc, client, org.ID)
+
+	if err := svc.CompletePreview(ctx, org.ID, app.ID, "44", "helm-web-diff"); err != nil {
+		t.Fatalf("CompletePreview: %v", err)
+	}
+	got, err := svc.Get(ctx, org.ID, app.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.SyncStatus != application.SyncStatusError {
+		t.Errorf("sync_status = %q, want error (unreadable diff must not claim synced)", got.SyncStatus)
+	}
+	if got.LastDiff != "" {
+		t.Errorf("last_diff = %q, want empty when the diff couldn't be read", got.LastDiff)
+	}
+}
+
+// TestCompletePreviewErrorWhenMarkersMissing is the same M4 path but with
+// non-empty logs that nonetheless lack the diff sentinels — e.g. setup chatter
+// before the run died. Still an error status, never a false "synced".
+func TestCompletePreviewErrorWhenMarkersMissing(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	svc.captureLogs = func(context.Context, *ent.Application, string) string {
+		return "installing helm-diff...\nerror: failed to download chart\n"
+	}
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, svc, client, org.ID)
+
+	if err := svc.CompletePreview(ctx, org.ID, app.ID, "45", "helm-web-diff"); err != nil {
+		t.Fatalf("CompletePreview: %v", err)
+	}
+	got, err := svc.Get(ctx, org.ID, app.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.SyncStatus != application.SyncStatusError {
+		t.Errorf("sync_status = %q, want error when the diff markers are absent", got.SyncStatus)
+	}
+}
+
+// TestBeginRolloutRejectsWhileInFlight covers the M2 fix: BeginRollout refuses
+// to start a second rollout while one is already in flight (deploying /
+// uninstalling), so two jobs don't race the helm release lock. The guard is a
+// conditional update gated on the status being settled.
+func TestBeginRolloutRejectsWhileInFlight(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, svc, client, org.ID)
+
+	// A pending app accepts the first rollout, moving it to deploying.
+	first, err := svc.BeginRollout(ctx, org.ID, app.ID, helm.ActionDeploy)
+	if err != nil {
+		t.Fatalf("first BeginRollout: %v", err)
+	}
+	if first.Status != application.StatusDeploying {
+		t.Fatalf("status = %q, want deploying", first.Status)
+	}
+
+	// A second rollout while deploying is in flight is rejected (handler → 409).
+	if _, err := svc.BeginRollout(ctx, org.ID, app.ID, helm.ActionUpgrade); !IsValidation(err) {
+		t.Fatalf("second BeginRollout in-flight: got %v, want ValidationError", err)
+	}
+	// Likewise an uninstall while deploying.
+	if _, err := svc.BeginRollout(ctx, org.ID, app.ID, helm.ActionUninstall); !IsValidation(err) {
+		t.Fatalf("uninstall while deploying: got %v, want ValidationError", err)
+	}
+
+	// The in-flight state is unchanged by the rejected attempts.
+	got, err := svc.Get(ctx, org.ID, app.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != application.StatusDeploying {
+		t.Errorf("status = %q, want still deploying after rejected rollouts", got.Status)
+	}
+}
+
+// TestBeginRolloutUnknownActionRejected confirms an unknown action is a
+// ValidationError before any status write.
+func TestBeginRolloutUnknownActionRejected(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, svc, client, org.ID)
+
+	if _, err := svc.BeginRollout(ctx, org.ID, app.ID, "frobnicate"); !IsValidation(err) {
+		t.Fatalf("unknown action: got %v, want ValidationError", err)
+	}
+}
+
 // newChartCredential creates a chart credential row directly for validation
 // tests (the applications service confirms the row exists in the org, so no
 // sealer is needed here).
@@ -675,5 +787,61 @@ func TestCreateGitWithInstallationFromAnotherOrgRejected(t *testing.T) {
 	p.GitHubInstallationID = &foreign.ID
 	if _, err := svc.Create(ctx, org.ID, p); !IsValidation(err) {
 		t.Fatalf("error = %v, want ValidationError for cross-org installation", err)
+	}
+}
+
+func TestAdoptCreatesDeployedImported(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
+	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
+
+	p := httpRepoParams(target.ID, runner.ID)
+	p.Name = "adopted"
+	p.Values = "replicas: 3\n"
+	app, err := svc.Adopt(ctx, org.ID, p)
+	if err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+	// An adopted app is already live: deployed (not pending) and flagged imported,
+	// with its sync status unknown until a refresh confirms the source.
+	if app.Status != application.StatusDeployed {
+		t.Errorf("status = %q, want deployed", app.Status)
+	}
+	if !app.Imported {
+		t.Error("Imported = false, want true")
+	}
+	if app.SyncStatus != application.SyncStatusUnknown {
+		t.Errorf("sync_status = %q, want unknown", app.SyncStatus)
+	}
+	if app.Values != "replicas: 3\n" {
+		t.Errorf("values = %q, want the seeded live values", app.Values)
+	}
+
+	// Adopt runs no rollout, so there is no deployment history record.
+	deps, err := svc.ListDeployments(ctx, org.ID, app.ID)
+	if err != nil {
+		t.Fatalf("ListDeployments: %v", err)
+	}
+	if len(deps) != 0 {
+		t.Errorf("got %d deployments, want 0 (adopt runs no rollout)", len(deps))
+	}
+}
+
+func TestAdoptRejectsInvalidLikeCreate(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
+	// Runner is not a job-runner — the same validation create enforces.
+	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, false)
+
+	if _, err := svc.Adopt(ctx, org.ID, httpRepoParams(target.ID, runner.ID)); !IsValidation(err) {
+		t.Fatalf("error = %v, want ValidationError for non-runner cluster", err)
 	}
 }

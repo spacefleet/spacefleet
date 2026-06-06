@@ -228,6 +228,17 @@ export function ApplicationDetail() {
             <p className="mt-3 text-sm text-neutral-500">{app.status_message}</p>
           )}
 
+          {/* Imported apps haven't yet had their configured chart source verified
+              against the live release — prompt a refresh (the import auto-runs
+              one, so this typically shows only if that didn't settle). */}
+          {app.imported && app.sync_status === "unknown" && (
+            <p className="mt-3 border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Imported from an existing release. Refresh to confirm the chart
+              source you configured reproduces what's running on the cluster
+              before your first upgrade.
+            </p>
+          )}
+
           {/* Configuration */}
           <div className="mt-6 border border-neutral-200 bg-white p-4">
             <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">

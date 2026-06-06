@@ -28,6 +28,12 @@ func (Application) Fields() []ent.Field {
 		// explicit and matches the hand-written migration.
 		field.UUID("organization_id", uuid.UUID{}).Immutable(),
 		field.String("name").NotEmpty(),
+		// True when the application was adopted from a release already running on
+		// the cluster (the import flow) rather than created and deployed by
+		// Spacefleet. An imported app starts deployed without a rollout; the flag
+		// lets the UI prompt a refresh to confirm the configured chart source
+		// reproduces the live release. Defaults false (created, not imported).
+		field.Bool("imported").Default(false),
 		// Application type. Only "helm" today; the enum lets the create dropdown
 		// grow later without a migration churn for the common case.
 		field.Enum("type").

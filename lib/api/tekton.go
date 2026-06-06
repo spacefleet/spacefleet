@@ -2,14 +2,16 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/spacefleet/spacefleet/ent"
-	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/lib/clusters"
+	"github.com/spacefleet/spacefleet/lib/secrets"
 	"github.com/spacefleet/spacefleet/lib/tekton"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 // runNamespace is where minimal TaskRuns are submitted. The default namespace
@@ -49,14 +51,18 @@ func (s *Server) EnableClusterTekton(ctx context.Context, req EnableClusterTekto
 		return errResp[EnableClusterTektondefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
 	}
 
-	current, err := s.clusters.TektonRow(ctx, orgID, req.Id)
+	// Decide whether an install is needed from a *live* detection, not the stored
+	// row: Tekton may have been removed out-of-band while the row still reads
+	// "installed", so a stale row is not proof of presence. We (re-)assert the
+	// enable flag and enqueue an idempotent install whenever the controller isn't
+	// confirmed live; a cluster whose controller is ready is left untouched, so
+	// re-asserting enable on a truly-installed cluster stays a cheap no-op.
+	_, presence, err := s.clusters.TektonStatus(ctx, orgID, req.Id)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return errResp[EnableClusterTektondefaultJSONResponse](http.StatusNotFound, "not_found", "cluster not found"), nil
-		}
-		return nil, err
+		status, code, msg := nodesFetchError(err)
+		return errResp[EnableClusterTektondefaultJSONResponse](status, code, msg), nil
 	}
-	needsInstall := current.Status != tektoninstallation.StatusInstalled
+	needsInstall := presence == nil || !presence.ControllerReady
 	if needsInstall && s.jobQueue == nil {
 		return errResp[EnableClusterTektondefaultJSONResponse](http.StatusServiceUnavailable, "unavailable", "background job worker not configured; cannot install Tekton"), nil
 	}
@@ -229,10 +235,30 @@ func (s *Server) GetClusterTektonRun(ctx context.Context, req GetClusterTektonRu
 	}
 	run, err := s.clusters.GetRun(ctx, orgID, req.Id, runNamespace, req.Name)
 	if err != nil {
-		status, code, msg := nodesFetchError(err)
+		status, code, msg := tektonRunFetchError(err)
 		return errResp[GetClusterTektonRundefaultJSONResponse](status, code, msg), nil
 	}
 	return GetClusterTektonRun200JSONResponse(toAPITektonRun(run)), nil
+}
+
+// tektonRunFetchError classifies a single-run lookup failure for the client. It
+// adds the case nodesFetchError lacks — a missing TaskRun (apierrors.IsNotFound)
+// is a 404, not a 502 cluster_unreachable — and never echoes the raw upstream
+// error back to the caller (the "tekton: get taskrun: ..." detail is for logs,
+// not the API response). A truly unreachable cluster still reads as 502.
+func tektonRunFetchError(err error) (status int, code, msg string) {
+	switch {
+	case ent.IsNotFound(err):
+		return http.StatusNotFound, "not_found", "cluster not found"
+	case apierrors.IsNotFound(err):
+		return http.StatusNotFound, "not_found", "run not found"
+	case errors.Is(err, secrets.ErrDisabled):
+		return http.StatusBadRequest, "encryption_unavailable", "this cluster has credentials but no encryption key is configured — set SPACEFLEET_SECRET_KEY"
+	case apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err):
+		return http.StatusForbidden, "cluster_forbidden", "the cluster's credentials are not authorized to read this run"
+	default:
+		return http.StatusBadGateway, "cluster_unreachable", "the cluster is currently unreachable"
+	}
 }
 
 // toAPITektonStatus maps the installation row (and an optional live presence) to

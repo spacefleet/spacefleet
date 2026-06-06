@@ -115,6 +115,7 @@ type RolloutWorker struct {
 	submitFn func(ctx context.Context, conn k8s.Connection, namespace string, spec tekton.RunSpec) (*tekton.RunStatus, error)
 	getFn    func(ctx context.Context, conn k8s.Connection, namespace, name string) (*tekton.RunStatus, error)
 	watchFn  func(ctx context.Context, conn k8s.Connection, namespace, name string) (*tekton.RunStream, error)
+	listFn   func(ctx context.Context, conn k8s.Connection, namespace, selector string) ([]*tekton.RunStatus, error)
 }
 
 // Timeout lets a rollout watch outlive River's default job timeout.
@@ -143,6 +144,13 @@ func (w *RolloutWorker) watch(ctx context.Context, conn k8s.Connection, ns, name
 	return tekton.WatchRun(ctx, conn, ns, name)
 }
 
+func (w *RolloutWorker) list(ctx context.Context, conn k8s.Connection, ns, selector string) ([]*tekton.RunStatus, error) {
+	if w.listFn != nil {
+		return w.listFn(ctx, conn, ns, selector)
+	}
+	return tekton.ListRuns(ctx, conn, ns, selector)
+}
+
 // Work runs one rollout: mark in-flight → resolve the plan → submit (or
 // re-attach to an existing run on retry) → watch to a terminal phase → record
 // the terminal app status. Returning a non-nil error lets River retry; the helm
@@ -169,9 +177,20 @@ func (w *RolloutWorker) Work(ctx context.Context, job *river.Job[RolloutArgs]) e
 	// reached a terminal phase (e.g. the prior failed attempt) must not be
 	// re-attached — that would just replay the old outcome — so a fresh rollout
 	// submits a new run.
+	//
+	// The persisted ExistingRun is only written *after* submit creates the run,
+	// so a crash (or MarkRollout failure) in that window would lose the name and,
+	// because the TaskRun uses generateName, leave nothing to recover by — River
+	// would retry with ExistingRun="" and submit a SECOND run. To close that
+	// window, the run is labelled with this job's id at creation, so a lost name
+	// is recoverable by listing on the label before submitting.
 	runName := plan.ExistingRun
+	if runName == "" {
+		runName = w.recoverRun(ctx, plan.RunnerConn, jobID)
+	}
 	if runName == "" || !w.runActive(ctx, plan.RunnerConn, runName) {
-		run, serr := w.submit(ctx, plan.RunnerConn, RunNamespace, plan.RunSpec)
+		spec := withRunLabels(plan.RunSpec, a.OrgID, jobID)
+		run, serr := w.submit(ctx, plan.RunnerConn, RunNamespace, spec)
 		if serr != nil {
 			_ = w.Store.MarkRollout(ctx, a.OrgID, a.ApplicationID, jobID, StatusFailed, serr.Error(), "")
 			return serr
@@ -204,6 +223,19 @@ func (w *RolloutWorker) Work(ctx context.Context, job *river.Job[RolloutArgs]) e
 func (w *RolloutWorker) runActive(ctx context.Context, conn k8s.Connection, name string) bool {
 	st, err := w.getRun(ctx, conn, RunNamespace, name)
 	return err == nil && !st.Terminal()
+}
+
+// recoverRun finds a run a prior attempt of this job already submitted but whose
+// name was never persisted (a crash between submit and the MarkRollout write).
+// The run carries this job's id label, so it is recoverable by listing on it; an
+// empty result (the common, first-attempt case) or any list error yields "",
+// falling through to a fresh submit.
+func (w *RolloutWorker) recoverRun(ctx context.Context, conn k8s.Connection, jobID string) string {
+	runs, err := w.list(ctx, conn, RunNamespace, tekton.RunJobLabel+"="+jobID)
+	if err != nil {
+		return ""
+	}
+	return latestActiveRun(runs)
 }
 
 // awaitRun watches the run until it reaches a terminal phase and returns its
@@ -240,6 +272,57 @@ func (w *RolloutWorker) awaitRun(ctx context.Context, conn k8s.Connection, name 
 	}
 }
 
+// withRunLabels returns spec with the per-org and per-job labels stamped at
+// creation: RunOrgLabel scopes the run to the owning organization (so a shared
+// runner cluster can't leak runs across orgs); RunJobLabel ties the run to this
+// River job so a lost run name is recoverable by listing on the label. The
+// spec's existing Labels (if any) are preserved; a new map is allocated so the
+// caller's RunSpec isn't mutated underneath it.
+func withRunLabels(spec tekton.RunSpec, orgID uuid.UUID, jobID string) tekton.RunSpec {
+	labels := make(map[string]string, len(spec.Labels)+2)
+	for k, v := range spec.Labels {
+		labels[k] = v
+	}
+	labels[tekton.RunOrgLabel] = orgID.String()
+	labels[tekton.RunJobLabel] = jobID
+	spec.Labels = labels
+	return spec
+}
+
+// latestActiveRun picks the run to re-attach to from a job-label list: the most
+// recently started run that has not reached a terminal phase. A duplicate from a
+// crashed attempt is normally a single in-flight run; if more than one matches,
+// the newest active one wins and the others are left for the operator's pruner.
+// Returns "" when none are still active (all terminal, or the list is empty), so
+// the caller submits a fresh run.
+func latestActiveRun(runs []*tekton.RunStatus) string {
+	var best *tekton.RunStatus
+	for _, r := range runs {
+		if r == nil || r.Terminal() {
+			continue
+		}
+		if best == nil || startedAfter(r, best) {
+			best = r
+		}
+	}
+	if best == nil {
+		return ""
+	}
+	return best.Name
+}
+
+// startedAfter reports whether a started later than b, treating a nil StartedAt
+// (not yet scheduled) as the earliest so a started run is preferred.
+func startedAfter(a, b *tekton.RunStatus) bool {
+	if a.StartedAt == nil {
+		return false
+	}
+	if b.StartedAt == nil {
+		return true
+	}
+	return a.StartedAt.After(*b.StartedAt)
+}
+
 // PreviewWorker runs a `helm diff` as a TaskRun on the app's runner cluster and
 // records the resulting sync status (synced/out_of_sync) + diff. It mirrors
 // RolloutWorker but writes the sync_* columns through a PreviewStore, leaving the
@@ -252,6 +335,7 @@ type PreviewWorker struct {
 	submitFn func(ctx context.Context, conn k8s.Connection, namespace string, spec tekton.RunSpec) (*tekton.RunStatus, error)
 	getFn    func(ctx context.Context, conn k8s.Connection, namespace, name string) (*tekton.RunStatus, error)
 	watchFn  func(ctx context.Context, conn k8s.Connection, namespace, name string) (*tekton.RunStream, error)
+	listFn   func(ctx context.Context, conn k8s.Connection, namespace, selector string) ([]*tekton.RunStatus, error)
 }
 
 // Timeout bounds the preview watch (shorter than a rollout's — no helm --wait).
@@ -280,6 +364,13 @@ func (w *PreviewWorker) watch(ctx context.Context, conn k8s.Connection, ns, name
 	return tekton.WatchRun(ctx, conn, ns, name)
 }
 
+func (w *PreviewWorker) list(ctx context.Context, conn k8s.Connection, ns, selector string) ([]*tekton.RunStatus, error) {
+	if w.listFn != nil {
+		return w.listFn(ctx, conn, ns, selector)
+	}
+	return tekton.ListRuns(ctx, conn, ns, selector)
+}
+
 // Work runs one preview: mark refreshing → resolve the plan → submit (or
 // re-attach on retry) → watch to terminal → on success record the diff (the
 // PreviewStore captures logs and derives synced/out_of_sync), on failure record
@@ -297,9 +388,17 @@ func (w *PreviewWorker) Work(ctx context.Context, job *river.Job[PreviewArgs]) e
 		return err
 	}
 
+	// Same duplicate-run window as RolloutWorker: ExistingRun (sync_run_name) is
+	// persisted only after submit, so a crash in that window would lose the name
+	// and, with generateName, leave nothing to recover by — recover by listing on
+	// this job's id label before submitting a fresh run.
 	runName := plan.ExistingRun
+	if runName == "" {
+		runName = w.recoverRun(ctx, plan.RunnerConn, jobID)
+	}
 	if runName == "" || !w.runActive(ctx, plan.RunnerConn, runName) {
-		run, serr := w.submit(ctx, plan.RunnerConn, RunNamespace, plan.RunSpec)
+		spec := withRunLabels(plan.RunSpec, a.OrgID, jobID)
+		run, serr := w.submit(ctx, plan.RunnerConn, RunNamespace, spec)
 		if serr != nil {
 			_ = w.Store.MarkPreview(ctx, a.OrgID, a.ApplicationID, jobID, SyncError, serr.Error(), "")
 			return serr
@@ -329,6 +428,16 @@ func (w *PreviewWorker) Work(ctx context.Context, job *river.Job[PreviewArgs]) e
 func (w *PreviewWorker) runActive(ctx context.Context, conn k8s.Connection, name string) bool {
 	st, err := w.getRun(ctx, conn, RunNamespace, name)
 	return err == nil && !st.Terminal()
+}
+
+// recoverRun mirrors RolloutWorker.recoverRun: it finds a preview run a prior
+// attempt of this job already submitted but whose name was never persisted.
+func (w *PreviewWorker) recoverRun(ctx context.Context, conn k8s.Connection, jobID string) string {
+	runs, err := w.list(ctx, conn, RunNamespace, tekton.RunJobLabel+"="+jobID)
+	if err != nil {
+		return ""
+	}
+	return latestActiveRun(runs)
 }
 
 func (w *PreviewWorker) awaitRun(ctx context.Context, conn k8s.Connection, name string) (*tekton.RunStatus, error) {

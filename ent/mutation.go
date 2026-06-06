@@ -53,6 +53,7 @@ type ApplicationMutation struct {
 	typ                        string
 	id                         *uuid.UUID
 	name                       *string
+	imported                   *bool
 	_type                      *application.Type
 	chart_source               *application.ChartSource
 	_config                    *map[string]string
@@ -265,6 +266,42 @@ func (m *ApplicationMutation) OldName(ctx context.Context) (v string, err error)
 // ResetName resets all changes to the "name" field.
 func (m *ApplicationMutation) ResetName() {
 	m.name = nil
+}
+
+// SetImported sets the "imported" field.
+func (m *ApplicationMutation) SetImported(b bool) {
+	m.imported = &b
+}
+
+// Imported returns the value of the "imported" field in the mutation.
+func (m *ApplicationMutation) Imported() (r bool, exists bool) {
+	v := m.imported
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImported returns the old "imported" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldImported(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImported is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImported requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImported: %w", err)
+	}
+	return oldValue.Imported, nil
+}
+
+// ResetImported resets all changes to the "imported" field.
+func (m *ApplicationMutation) ResetImported() {
+	m.imported = nil
 }
 
 // SetType sets the "type" field.
@@ -1560,12 +1597,15 @@ func (m *ApplicationMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ApplicationMutation) Fields() []string {
-	fields := make([]string, 0, 27)
+	fields := make([]string, 0, 28)
 	if m.organization != nil {
 		fields = append(fields, application.FieldOrganizationID)
 	}
 	if m.name != nil {
 		fields = append(fields, application.FieldName)
+	}
+	if m.imported != nil {
+		fields = append(fields, application.FieldImported)
 	}
 	if m._type != nil {
 		fields = append(fields, application.FieldType)
@@ -1654,6 +1694,8 @@ func (m *ApplicationMutation) Field(name string) (ent.Value, bool) {
 		return m.OrganizationID()
 	case application.FieldName:
 		return m.Name()
+	case application.FieldImported:
+		return m.Imported()
 	case application.FieldType:
 		return m.GetType()
 	case application.FieldChartSource:
@@ -1717,6 +1759,8 @@ func (m *ApplicationMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldOrganizationID(ctx)
 	case application.FieldName:
 		return m.OldName(ctx)
+	case application.FieldImported:
+		return m.OldImported(ctx)
 	case application.FieldType:
 		return m.OldType(ctx)
 	case application.FieldChartSource:
@@ -1789,6 +1833,13 @@ func (m *ApplicationMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetName(v)
+		return nil
+	case application.FieldImported:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImported(v)
 		return nil
 	case application.FieldType:
 		v, ok := value.(application.Type)
@@ -2118,6 +2169,9 @@ func (m *ApplicationMutation) ResetField(name string) error {
 		return nil
 	case application.FieldName:
 		m.ResetName()
+		return nil
+	case application.FieldImported:
+		m.ResetImported()
 		return nil
 	case application.FieldType:
 		m.ResetType()

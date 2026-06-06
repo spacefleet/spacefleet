@@ -54,7 +54,10 @@ export function Applications() {
           </p>
         </div>
         {canEdit && (
-          <CreateAppButton onHelm={() => navigate("/applications/new")} />
+          <CreateAppButton
+            onHelm={() => navigate("/applications/new")}
+            onImport={() => navigate("/applications/import")}
+          />
         )}
       </div>
 
@@ -115,7 +118,13 @@ export function Applications() {
 // CreateAppButton is a split dropdown: the primary action creates a Helm app;
 // the menu lists other (not-yet-available) application types so the surface is
 // ready to grow.
-function CreateAppButton({ onHelm }: { onHelm: () => void }) {
+function CreateAppButton({
+  onHelm,
+  onImport,
+}: {
+  onHelm: () => void;
+  onImport: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -156,6 +165,16 @@ function CreateAppButton({ onHelm }: { onHelm: () => void }) {
             className="block w-full px-3 py-2 text-left text-sm hover:bg-neutral-50"
           >
             Helm release
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onImport();
+            }}
+            className="block w-full px-3 py-2 text-left text-sm hover:bg-neutral-50"
+          >
+            Import existing release
           </button>
           <span className="block w-full cursor-not-allowed px-3 py-2 text-left text-sm text-neutral-400">
             Container image (coming soon)

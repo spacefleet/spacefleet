@@ -9,6 +9,7 @@ import { AcceptInvite } from "./routes/AcceptInvite";
 import { AuthCallback } from "./routes/AuthCallback";
 import { Applications } from "./routes/Applications";
 import { ApplicationForm } from "./routes/ApplicationForm";
+import { ImportApplication } from "./routes/ImportApplication";
 import { ApplicationDetail } from "./routes/ApplicationDetail";
 import { DeploymentDetail } from "./routes/DeploymentDetail";
 import { Clusters } from "./routes/Clusters";
@@ -94,6 +95,13 @@ export function App() {
                     "Edit" button. "/new" is listed before the ":appId" detail
                     route below so it isn't captured as an app id. */}
                 <Route path="/applications/new" element={<ApplicationForm />} />
+                {/* Import: the discovery step (pick a cluster, list its Helm
+                    releases) hands off to ApplicationForm in import mode via
+                    router state. Listed before ":appId" so it isn't an app id. */}
+                <Route
+                  path="/applications/import"
+                  element={<ImportApplication />}
+                />
                 <Route
                   path="/applications/:appId/edit"
                   element={<ApplicationForm />}

@@ -20,6 +20,8 @@ const (
 	FieldOrganizationID = "organization_id"
 	// FieldName holds the string denoting the name field in the database.
 	FieldName = "name"
+	// FieldImported holds the string denoting the imported field in the database.
+	FieldImported = "imported"
 	// FieldType holds the string denoting the type field in the database.
 	FieldType = "type"
 	// FieldChartSource holds the string denoting the chart_source field in the database.
@@ -124,6 +126,7 @@ var Columns = []string{
 	FieldID,
 	FieldOrganizationID,
 	FieldName,
+	FieldImported,
 	FieldType,
 	FieldChartSource,
 	FieldConfig,
@@ -164,6 +167,8 @@ func ValidColumn(column string) bool {
 var (
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
+	// DefaultImported holds the default value on creation for the "imported" field.
+	DefaultImported bool
 	// TargetNamespaceValidator is a validator for the "target_namespace" field. It is called by the builders before save.
 	TargetNamespaceValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
@@ -300,6 +305,11 @@ func ByOrganizationID(opts ...sql.OrderTermOption) OrderOption {
 // ByName orders the results by the name field.
 func ByName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldName, opts...).ToFunc()
+}
+
+// ByImported orders the results by the imported field.
+func ByImported(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImported, opts...).ToFunc()
 }
 
 // ByType orders the results by the type field.

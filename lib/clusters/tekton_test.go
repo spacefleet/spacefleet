@@ -173,6 +173,137 @@ func TestMarkTektonPersists(t *testing.T) {
 	}
 }
 
+// newTektonRowAt creates a fresh cluster and its persisted installation row at
+// the given status/version, returning the service, org id and the row, so
+// reconcileTekton can be exercised directly against a real ent client (the
+// reconcile writes through row.Update().Save).
+func newTektonRowAt(t *testing.T, status tektoninstallation.Status, version string) (*Service, *ent.TektonInstallation) {
+	t.Helper()
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, newSealer(t))
+	ctx := context.Background()
+	org := newOrg(t, client, "Acme")
+	c, err := svc.Create(ctx, org.ID, CreateParams{Name: "host", Method: k8s.MethodInCluster})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	row, err := svc.ensureTektonRow(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("ensure row: %v", err)
+	}
+	upd := row.Update().SetStatus(status)
+	if version != "" {
+		upd.SetInstalledVersion(version)
+	}
+	row, err = upd.Save(ctx)
+	if err != nil {
+		t.Fatalf("seed row at %q: %v", status, err)
+	}
+	return svc, row
+}
+
+// TestReconcileTektonPromotesToInstalled: a live detection that finds Tekton
+// present and the controller ready promotes a not_installed row to installed,
+// recording the detected version and bumping last_checked_at.
+func TestReconcileTektonPromotesToInstalled(t *testing.T) {
+	svc, row := newTektonRowAt(t, tektoninstallation.StatusNotInstalled, "")
+	ctx := context.Background()
+
+	got, err := svc.reconcileTekton(ctx, row, &tekton.Presence{
+		Installed: true, ControllerReady: true, Version: "v0.68.0",
+	})
+	if err != nil {
+		t.Fatalf("reconcileTekton: %v", err)
+	}
+	if got.Status != tektoninstallation.StatusInstalled {
+		t.Errorf("status = %q, want installed", got.Status)
+	}
+	if got.InstalledVersion != "v0.68.0" {
+		t.Errorf("installed_version = %q, want v0.68.0", got.InstalledVersion)
+	}
+	if got.StatusMessage != "" {
+		t.Errorf("status_message = %q, want cleared on promotion", got.StatusMessage)
+	}
+	if got.LastCheckedAt.IsZero() {
+		t.Error("last_checked_at should be set")
+	}
+}
+
+// TestReconcileTektonDriftDemotes: a row we believed installed, found absent by
+// a live detection, drifts back to not_installed and its recorded version is
+// cleared (it was uninstalled or never finished out-of-band).
+func TestReconcileTektonDriftDemotes(t *testing.T) {
+	svc, row := newTektonRowAt(t, tektoninstallation.StatusInstalled, "v0.68.0")
+	ctx := context.Background()
+
+	got, err := svc.reconcileTekton(ctx, row, &tekton.Presence{Installed: false})
+	if err != nil {
+		t.Fatalf("reconcileTekton: %v", err)
+	}
+	if got.Status != tektoninstallation.StatusNotInstalled {
+		t.Errorf("status = %q, want not_installed (drift)", got.Status)
+	}
+	if got.InstalledVersion != "" {
+		t.Errorf("installed_version = %q, want cleared on drift", got.InstalledVersion)
+	}
+}
+
+// TestReconcileTektonNoClobberMidInstall: while a job is mid-install
+// (installing) and the cluster doesn't yet report Tekton present, reconcile must
+// leave the installing status alone — the install is in flight, not drifted.
+func TestReconcileTektonNoClobberMidInstall(t *testing.T) {
+	svc, row := newTektonRowAt(t, tektoninstallation.StatusInstalling, "")
+	ctx := context.Background()
+
+	got, err := svc.reconcileTekton(ctx, row, &tekton.Presence{Installed: false})
+	if err != nil {
+		t.Fatalf("reconcileTekton: %v", err)
+	}
+	if got.Status != tektoninstallation.StatusInstalling {
+		t.Errorf("status = %q, want installing left intact (no clobber)", got.Status)
+	}
+	if got.LastCheckedAt.IsZero() {
+		t.Error("last_checked_at should still be bumped while installing")
+	}
+}
+
+// TestReconcileTektonVersionBump: an already-installed row stays installed but
+// records a newer detected controller version (an out-of-band upgrade).
+func TestReconcileTektonVersionBump(t *testing.T) {
+	svc, row := newTektonRowAt(t, tektoninstallation.StatusInstalled, "v0.68.0")
+	ctx := context.Background()
+
+	got, err := svc.reconcileTekton(ctx, row, &tekton.Presence{
+		Installed: true, ControllerReady: true, Version: "v0.69.0",
+	})
+	if err != nil {
+		t.Fatalf("reconcileTekton: %v", err)
+	}
+	if got.Status != tektoninstallation.StatusInstalled {
+		t.Errorf("status = %q, want still installed", got.Status)
+	}
+	if got.InstalledVersion != "v0.69.0" {
+		t.Errorf("installed_version = %q, want bumped to v0.69.0", got.InstalledVersion)
+	}
+}
+
+// TestReconcileTektonReadyNoVersionFallsBackToPinned: present+ready with no
+// version label reported records the pinned version Spacefleet installs.
+func TestReconcileTektonReadyNoVersionFallsBackToPinned(t *testing.T) {
+	svc, row := newTektonRowAt(t, tektoninstallation.StatusNotInstalled, "")
+	ctx := context.Background()
+
+	got, err := svc.reconcileTekton(ctx, row, &tekton.Presence{
+		Installed: true, ControllerReady: true,
+	})
+	if err != nil {
+		t.Fatalf("reconcileTekton: %v", err)
+	}
+	if got.InstalledVersion != tekton.PinnedVersion {
+		t.Errorf("installed_version = %q, want pinned %q", got.InstalledVersion, tekton.PinnedVersion)
+	}
+}
+
 // TestTektonCascadeDelete confirms deleting a cluster removes its Tekton row via
 // the ON DELETE CASCADE foreign key in the migration.
 func TestTektonCascadeDelete(t *testing.T) {

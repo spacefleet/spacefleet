@@ -28,6 +28,24 @@ func (s *Server) resolveApp(ctx context.Context) (uuid.UUID, *apiError, error) {
 	return m.OrganizationID, nil, nil
 }
 
+// resolveAppRead is the read preamble plus the caller's "can see secret-bearing
+// free-text" capability: the stored Helm `values` is not sealed at rest (see the
+// deferred-sealing note on redactAppSecrets) and "may contain secrets passed at
+// install time", so it is only returned to editor-or-above callers. Read handlers
+// that map an application row use this and pass the bool to redactAppSecrets;
+// resolveApp stays as the plain membership preamble for callers that don't map a
+// row (e.g. deployment history).
+func (s *Server) resolveAppRead(ctx context.Context) (uuid.UUID, bool, *apiError, error) {
+	if s.applications == nil {
+		return uuid.Nil, false, &apiError{http.StatusServiceUnavailable, "unavailable", "applications service not configured"}, nil
+	}
+	m, aerr, err := s.resolveMembership(ctx)
+	if err != nil || aerr != nil {
+		return uuid.Nil, false, aerr, err
+	}
+	return m.OrganizationID, atLeast(m.Role, membership.RoleEditor), nil, nil
+}
+
 // resolveAppWrite is resolveApp plus an editor-or-above gate, for the handlers
 // that change state (create, update, delete, rollout, uninstall).
 func (s *Server) resolveAppWrite(ctx context.Context) (uuid.UUID, *apiError, error) {
@@ -45,7 +63,7 @@ func (s *Server) resolveAppWrite(ctx context.Context) (uuid.UUID, *apiError, err
 }
 
 func (s *Server) ListApplications(ctx context.Context, _ ListApplicationsRequestObject) (ListApplicationsResponseObject, error) {
-	orgID, aerr, err := s.resolveApp(ctx)
+	orgID, canSeeSecrets, aerr, err := s.resolveAppRead(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -58,13 +76,13 @@ func (s *Server) ListApplications(ctx context.Context, _ ListApplicationsRequest
 	}
 	out := make([]Application, len(list))
 	for i, a := range list {
-		out[i] = toAPIApplication(a)
+		out[i] = redactAppSecrets(toAPIApplication(a), canSeeSecrets)
 	}
 	return ListApplications200JSONResponse(out), nil
 }
 
 func (s *Server) GetApplication(ctx context.Context, req GetApplicationRequestObject) (GetApplicationResponseObject, error) {
-	orgID, aerr, err := s.resolveApp(ctx)
+	orgID, canSeeSecrets, aerr, err := s.resolveAppRead(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +96,7 @@ func (s *Server) GetApplication(ctx context.Context, req GetApplicationRequestOb
 		}
 		return nil, err
 	}
-	return GetApplication200JSONResponse(toAPIApplication(a)), nil
+	return GetApplication200JSONResponse(redactAppSecrets(toAPIApplication(a), canSeeSecrets)), nil
 }
 
 func (s *Server) CreateApplication(ctx context.Context, req CreateApplicationRequestObject) (CreateApplicationResponseObject, error) {
@@ -116,6 +134,64 @@ func (s *Server) CreateApplication(ctx context.Context, req CreateApplicationReq
 		return nil, err
 	}
 	return CreateApplication201JSONResponse(toAPIApplication(a)), nil
+}
+
+// ImportApplication adopts a release already running on the target cluster as a
+// managed application (the import flow). It does NOT run a rollout — the release
+// is already live, so the app is created in the deployed state — but, when the
+// background worker is available, it enqueues a refresh so the sync status shows
+// whether the configured chart source reproduces the live release. Editor or
+// above.
+func (s *Server) ImportApplication(ctx context.Context, req ImportApplicationRequestObject) (ImportApplicationResponseObject, error) {
+	orgID, aerr, err := s.resolveAppWrite(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[ImportApplicationdefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	if req.Body == nil {
+		return errResp[ImportApplicationdefaultJSONResponse](http.StatusBadRequest, "bad_request", "request body is required"), nil
+	}
+	name := strings.TrimSpace(req.Body.Name)
+	if name == "" {
+		return errResp[ImportApplicationdefaultJSONResponse](http.StatusBadRequest, "bad_request", "name is required"), nil
+	}
+	a, err := s.applications.Adopt(ctx, orgID, applications.ImportParams{
+		Name:                 name,
+		ChartSource:          string(req.Body.ChartSource),
+		Config:               derefMap(req.Body.Config),
+		Values:               deref(req.Body.Values),
+		ValuesSources:        valuesSourcesToMaps(req.Body.ValuesSources),
+		ReleaseName:          deref(req.Body.ReleaseName),
+		TargetNamespace:      strings.TrimSpace(req.Body.TargetNamespace),
+		TargetClusterID:      req.Body.TargetClusterId,
+		RunnerClusterID:      req.Body.RunnerClusterId,
+		ChartCredentialID:    req.Body.ChartCredentialId,
+		GitHubInstallationID: req.Body.GithubInstallationId,
+	})
+	if err != nil {
+		if resp, ok := appWriteError[ImportApplicationdefaultJSONResponse](err); ok {
+			return resp, nil
+		}
+		return nil, err
+	}
+	// Auto-refresh: kick off a `helm diff` so the operator immediately sees whether
+	// the configured chart source reproduces the live release. Best-effort — an
+	// adopt with no worker still succeeds (the app is already deployed); the user
+	// can refresh later. Mirrors RefreshApplication's enqueue.
+	if s.jobQueue != nil {
+		if _, err := s.applications.BeginPreview(ctx, orgID, a.ID); err == nil {
+			if res, err := s.jobQueue.Insert(ctx, helm.PreviewArgs{ApplicationID: a.ID, OrgID: orgID}); err == nil {
+				jobID := strconv.FormatInt(res.Job.ID, 10)
+				if err := s.applications.MarkPreview(ctx, orgID, a.ID, jobID, helm.SyncRefreshing, "queued for refresh", ""); err == nil {
+					a.SyncJobID = jobID
+					a.SyncStatus = "refreshing"
+				}
+			}
+		}
+	}
+	return ImportApplication202JSONResponse(toAPIApplication(a)), nil
 }
 
 func (s *Server) UpdateApplication(ctx context.Context, req UpdateApplicationRequestObject) (UpdateApplicationResponseObject, error) {
@@ -317,6 +393,14 @@ func (s *Server) beginRollout(ctx context.Context, orgID, id uuid.UUID, action s
 		}
 		return nil, nil, err
 	}
+	// Best-effort, non-atomic by design: the queue Insert and the two DB writes
+	// below (RecordDeployment, MarkRollout) are not in one transaction, so a
+	// failure after the job is queued returns 500 with the job already enqueued.
+	// We don't compensate (no dequeue/rollback) — the worker self-heals: it
+	// reconciles desired vs. live state from the row by job id, so a job that runs
+	// against a half-written row still converges, and a stuck in-flight status is
+	// recoverable by re-issuing the rollout. Don't restructure into a transaction
+	// (the queue isn't part of the ent tx) without that being the explicit goal.
 	res, err := s.jobQueue.Insert(ctx, helm.RolloutArgs{ApplicationID: id, OrgID: orgID, Action: action})
 	if err != nil {
 		return nil, nil, err
@@ -380,6 +464,7 @@ func toAPIApplication(a *ent.Application) Application {
 		DesiredValuesRevision: optStr(a.DesiredValuesRevision),
 		LastRefreshedAt:       optTime(a.LastRefreshedAt),
 		SyncRunName:           optStr(a.SyncRunName),
+		Imported:              &a.Imported,
 		CreatedAt:             a.CreatedAt,
 		UpdatedAt:             a.UpdatedAt,
 	}
@@ -395,6 +480,21 @@ func toAPIApplication(a *ent.Application) Application {
 	if a.GithubInstallationID != uuid.Nil {
 		id := a.GithubInstallationID
 		out.GithubInstallationId = &id
+	}
+	return out
+}
+
+// redactAppSecrets strips secret-bearing free-text from a mapped application
+// before it is returned to a caller who isn't editor-or-above. Today that's the
+// raw Helm `values` override, which "may contain secrets passed at install time"
+// and is NOT sealed at rest (sealing it would need a data migration — deferred,
+// out of scope here), so the read path must withhold it from viewers. Editors and
+// above still receive it (canSee=true) so the edit-form prefill keeps working;
+// write handlers map the row directly and are already editor-gated. If more
+// secret-bearing columns are added, strip them here too.
+func redactAppSecrets(out Application, canSee bool) Application {
+	if !canSee {
+		out.Values = nil
 	}
 	return out
 }
