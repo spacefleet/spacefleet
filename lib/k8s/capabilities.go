@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"golang.org/x/sync/errgroup"
 	authnv1 "k8s.io/api/authentication/v1"
 	authzv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -249,6 +250,14 @@ func Inspect(ctx context.Context, conn Connection) (*CapabilityReport, error) {
 		return nil, err
 	}
 	cfg.Timeout = listTimeout
+	// The catalog now issues ~100+ SelfSubjectAccessReviews (one per rule/verb).
+	// client-go's default client-side rate limiter (QPS 5 / Burst 10) would
+	// throttle that to ~5/sec — ~20s, past the server's write timeout — so raise
+	// it well above inspectConcurrency. The reviews are cheap, read-only checks
+	// against the API server's authorizer, so a higher ceiling is safe; actual
+	// in-flight concurrency is still bounded by inspect() below.
+	cfg.QPS = 50
+	cfg.Burst = 100
 	cs, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("k8s: client: %w", err)
@@ -276,30 +285,81 @@ func ResolveIdentity(ctx context.Context, conn Connection) (Identity, error) {
 	return resolveIdentity(ctx, cs), nil
 }
 
+// inspectConcurrency bounds how many access reviews are in flight at once. The
+// catalog issues ~100+ reviews; running them serially exceeded the server's
+// write timeout, so they fan out — but a bound keeps a single inspect from
+// opening an unreasonable number of connections to the target API server.
+const inspectConcurrency = 16
+
 // inspect runs the identity resolution and access reviews against an already
 // built clientset. It is split out from Inspect so tests can drive it with a
 // fake clientset.
+//
+// The (capability, rule, verb) reviews are independent, so they run concurrently
+// (bounded by inspectConcurrency) rather than serially — the catalog grew past
+// ~100 reviews, and a serial sweep timed out. Results are written into
+// pre-indexed slots and aggregated in catalog order afterward, so the report
+// (and each capability's Failed list) stays deterministic regardless of the
+// order the reviews actually complete in. A transport error on any review aborts
+// the whole inspect (the errgroup cancels the rest and returns the first error),
+// matching the prior serial behavior; an authorizer denial is a normal result.
 func inspect(ctx context.Context, cs kubernetes.Interface, caps []Capability) (*CapabilityReport, error) {
 	report := &CapabilityReport{Identity: resolveIdentity(ctx, cs)}
 
+	// The non-future capabilities, in catalog order — the report mirrors this.
+	included := make([]Capability, 0, len(caps))
 	for _, cap := range caps {
-		if cap.Future {
-			continue
+		if !cap.Future {
+			included = append(included, cap)
 		}
-		result := CapabilityResult{Key: cap.Key, Name: cap.Name, Allowed: true}
+	}
+
+	// Flatten every (capability, rule, verb) into an ordered task list so the
+	// reviews can run concurrently while their results stay addressable by index.
+	type task struct {
+		capIdx int
+		rule   Rule
+		verb   string
+	}
+	var tasks []task
+	for ci, cap := range included {
 		for _, rule := range cap.Rules {
 			for _, verb := range rule.Verbs {
-				rr, err := reviewAccess(ctx, cs, rule, verb)
-				if err != nil {
-					return nil, err
-				}
-				if !rr.Allowed {
-					result.Allowed = false
-					result.Failed = append(result.Failed, rr)
-				}
+				tasks = append(tasks, task{capIdx: ci, rule: rule, verb: verb})
 			}
 		}
-		report.Capabilities = append(report.Capabilities, result)
+	}
+
+	results := make([]RuleResult, len(tasks))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(inspectConcurrency)
+	for i, t := range tasks {
+		g.Go(func() error {
+			rr, err := reviewAccess(gctx, cs, t.rule, t.verb)
+			if err != nil {
+				return err
+			}
+			results[i] = rr
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	// Aggregate in catalog order: a capability is allowed only when every one of
+	// its rule/verb reviews was allowed; denials are collected in task order.
+	report.Capabilities = make([]CapabilityResult, len(included))
+	for ci, cap := range included {
+		report.Capabilities[ci] = CapabilityResult{Key: cap.Key, Name: cap.Name, Allowed: true}
+	}
+	for i, t := range tasks {
+		rr := results[i]
+		cr := &report.Capabilities[t.capIdx]
+		if !rr.Allowed {
+			cr.Allowed = false
+			cr.Failed = append(cr.Failed, rr)
+		}
 	}
 	return report, nil
 }
