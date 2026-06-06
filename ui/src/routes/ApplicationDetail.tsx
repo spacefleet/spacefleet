@@ -306,6 +306,14 @@ export function ApplicationDetail() {
                       </td>
                       <td className="px-4 py-3 capitalize text-neutral-600">
                         {d.action}
+                        {d.forced && (
+                          <span
+                            title="Forced: the release's workloads were restarted even with no change"
+                            className="ml-2 border border-neutral-300 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-neutral-500"
+                          >
+                            forced
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <DeploymentStatusBadge status={d.status} />

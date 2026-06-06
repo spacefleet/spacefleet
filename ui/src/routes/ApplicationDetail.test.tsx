@@ -136,11 +136,37 @@ describe("ApplicationDetail deployment history", () => {
     expect(await screen.findByText(/has changed/)).toBeInTheDocument();
     expect(mockApi.POST).not.toHaveBeenCalled();
 
-    // Confirming fires the rollout.
+    // Confirming fires the rollout (force defaults off, so an ordinary deploy).
     await userEvent.click(screen.getByRole("button", { name: /confirm upgrade/i }));
     expect(mockApi.POST).toHaveBeenCalledWith(
       "/api/applications/{id}/rollout",
-      expect.objectContaining({ body: { action: "upgrade" } }),
+      expect.objectContaining({ body: { action: "upgrade", force: false } }),
+    );
+  });
+
+  it("sends force when the force-roll checkbox is ticked", async () => {
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}")
+        return Promise.resolve({ data: app, error: undefined });
+      if (path === "/api/applications/{id}/deployments")
+        return Promise.resolve({ data: deployments, error: undefined });
+      if (path === "/api/clusters")
+        return Promise.resolve({ data: [{ id: "c1", name: "prod" }], error: undefined });
+      if (path === "/api/applications/{id}/diff")
+        // In sync — exactly the case where forcing a roll is wanted.
+        return Promise.resolve({ data: { sync_status: "synced" }, error: undefined });
+      return Promise.resolve({ data: undefined, error: undefined });
+    });
+    mockApi.POST.mockResolvedValue({ data: { ...app, status: "deploying" }, error: undefined });
+
+    renderDetail();
+
+    await userEvent.click(await screen.findByRole("button", { name: /upgrade/i }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: /force roll resources/i }));
+    await userEvent.click(screen.getByRole("button", { name: /confirm upgrade/i }));
+    expect(mockApi.POST).toHaveBeenCalledWith(
+      "/api/applications/{id}/rollout",
+      expect.objectContaining({ body: { action: "upgrade", force: true } }),
     );
   });
 

@@ -28,6 +28,8 @@ type Deployment struct {
 	Action deployment.Action `json:"action,omitempty"`
 	// Status holds the value of the "status" field.
 	Status deployment.Status `json:"status,omitempty"`
+	// Forced holds the value of the "forced" field.
+	Forced bool `json:"forced,omitempty"`
 	// Message holds the value of the "message" field.
 	Message string `json:"message,omitempty"`
 	// JobID holds the value of the "job_id" field.
@@ -90,6 +92,8 @@ func (*Deployment) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case deployment.FieldForced:
+			values[i] = new(sql.NullBool)
 		case deployment.FieldAction, deployment.FieldStatus, deployment.FieldMessage, deployment.FieldJobID, deployment.FieldRunName, deployment.FieldLogs, deployment.FieldChartRevision, deployment.FieldValuesRevision:
 			values[i] = new(sql.NullString)
 		case deployment.FieldCreatedAt, deployment.FieldFinishedAt, deployment.FieldUpdatedAt:
@@ -140,6 +144,12 @@ func (_m *Deployment) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = deployment.Status(value.String)
+			}
+		case deployment.FieldForced:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field forced", values[i])
+			} else if value.Valid {
+				_m.Forced = value.Bool
 			}
 		case deployment.FieldMessage:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -253,6 +263,9 @@ func (_m *Deployment) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Status))
+	builder.WriteString(", ")
+	builder.WriteString("forced=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Forced))
 	builder.WriteString(", ")
 	builder.WriteString("message=")
 	builder.WriteString(_m.Message)

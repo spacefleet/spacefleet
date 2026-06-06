@@ -119,6 +119,9 @@ export function DeploymentDetail() {
             <dl className="grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
               <Row label="Action" value={dep.action} />
               <Row label="Status" value={dep.status} />
+              {dep.forced && (
+                <Row label="Forced" value="workloads rolled regardless of changes" />
+              )}
               <Row label="Started" value={new Date(dep.created_at).toLocaleString()} />
               <Row
                 label="Duration"

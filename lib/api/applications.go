@@ -280,7 +280,8 @@ func (s *Server) RolloutApplication(ctx context.Context, req RolloutApplicationR
 	if action != helm.ActionDeploy && action != helm.ActionUpgrade {
 		return errResp[RolloutApplicationdefaultJSONResponse](http.StatusBadRequest, "bad_request", "action must be deploy or upgrade"), nil
 	}
-	a, aerr, err := s.beginRollout(ctx, orgID, req.Id, action)
+	force := req.Body.Force != nil && *req.Body.Force
+	a, aerr, err := s.beginRollout(ctx, orgID, req.Id, action, force)
 	if err != nil {
 		return nil, err
 	}
@@ -300,7 +301,7 @@ func (s *Server) UninstallApplication(ctx context.Context, req UninstallApplicat
 	if aerr != nil {
 		return errResp[UninstallApplicationdefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
 	}
-	a, aerr, err := s.beginRollout(ctx, orgID, req.Id, helm.ActionUninstall)
+	a, aerr, err := s.beginRollout(ctx, orgID, req.Id, helm.ActionUninstall, false)
 	if err != nil {
 		return nil, err
 	}
@@ -379,7 +380,7 @@ func (s *Server) GetApplicationDiff(ctx context.Context, req GetApplicationDiffR
 // flip the app to the in-flight status, enqueue the job, and record the job id.
 // It returns (app, nil, nil) on success, (_, *apiError, nil) for a client error
 // to render, or (_, nil, err) for an internal error to bubble up.
-func (s *Server) beginRollout(ctx context.Context, orgID, id uuid.UUID, action string) (*ent.Application, *apiError, error) {
+func (s *Server) beginRollout(ctx context.Context, orgID, id uuid.UUID, action string, force bool) (*ent.Application, *apiError, error) {
 	if s.jobQueue == nil {
 		return nil, &apiError{http.StatusServiceUnavailable, "unavailable", "background job worker not configured; cannot run a rollout"}, nil
 	}
@@ -401,14 +402,14 @@ func (s *Server) beginRollout(ctx context.Context, orgID, id uuid.UUID, action s
 	// against a half-written row still converges, and a stuck in-flight status is
 	// recoverable by re-issuing the rollout. Don't restructure into a transaction
 	// (the queue isn't part of the ent tx) without that being the explicit goal.
-	res, err := s.jobQueue.Insert(ctx, helm.RolloutArgs{ApplicationID: id, OrgID: orgID, Action: action})
+	res, err := s.jobQueue.Insert(ctx, helm.RolloutArgs{ApplicationID: id, OrgID: orgID, Action: action, Force: force})
 	if err != nil {
 		return nil, nil, err
 	}
 	jobID := strconv.FormatInt(res.Job.ID, 10)
 	// Open this rollout's history record before the status flip below, so the
 	// MarkRollout transitions (here and from the worker) find it by job id.
-	if _, err := s.applications.RecordDeployment(ctx, orgID, id, action, jobID); err != nil {
+	if _, err := s.applications.RecordDeployment(ctx, orgID, id, action, jobID, force); err != nil {
 		return nil, nil, err
 	}
 	if err := s.applications.MarkRollout(ctx, orgID, id, jobID, statusForAction(action), "queued", ""); err != nil {

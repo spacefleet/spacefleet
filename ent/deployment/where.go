@@ -66,6 +66,11 @@ func ApplicationID(v uuid.UUID) predicate.Deployment {
 	return predicate.Deployment(sql.FieldEQ(FieldApplicationID, v))
 }
 
+// Forced applies equality check predicate on the "forced" field. It's identical to ForcedEQ.
+func Forced(v bool) predicate.Deployment {
+	return predicate.Deployment(sql.FieldEQ(FieldForced, v))
+}
+
 // Message applies equality check predicate on the "message" field. It's identical to MessageEQ.
 func Message(v string) predicate.Deployment {
 	return predicate.Deployment(sql.FieldEQ(FieldMessage, v))
@@ -189,6 +194,16 @@ func StatusIn(vs ...Status) predicate.Deployment {
 // StatusNotIn applies the NotIn predicate on the "status" field.
 func StatusNotIn(vs ...Status) predicate.Deployment {
 	return predicate.Deployment(sql.FieldNotIn(FieldStatus, vs...))
+}
+
+// ForcedEQ applies the EQ predicate on the "forced" field.
+func ForcedEQ(v bool) predicate.Deployment {
+	return predicate.Deployment(sql.FieldEQ(FieldForced, v))
+}
+
+// ForcedNEQ applies the NEQ predicate on the "forced" field.
+func ForcedNEQ(v bool) predicate.Deployment {
+	return predicate.Deployment(sql.FieldNEQ(FieldForced, v))
 }
 
 // MessageEQ applies the EQ predicate on the "message" field.

@@ -579,8 +579,10 @@ func (s *Service) markDeployment(ctx context.Context, app *ent.Application, jobI
 
 // RecordDeployment creates the history record for a rollout the API is about to
 // enqueue, in the running state, keyed by the River job id so the worker's
-// MarkRollout transitions find it. Returns a ValidationError for an unknown action.
-func (s *Service) RecordDeployment(ctx context.Context, orgID, appID uuid.UUID, action, jobID string) (*ent.Deployment, error) {
+// MarkRollout transitions find it. forced records whether this run rolls the
+// release's workloads even with no chart change. Returns a ValidationError for an
+// unknown action.
+func (s *Service) RecordDeployment(ctx context.Context, orgID, appID uuid.UUID, action, jobID string, forced bool) (*ent.Deployment, error) {
 	act, err := deploymentActionEnum(action)
 	if err != nil {
 		return nil, err
@@ -590,6 +592,7 @@ func (s *Service) RecordDeployment(ctx context.Context, orgID, appID uuid.UUID, 
 		SetApplicationID(appID).
 		SetAction(act).
 		SetJobID(jobID).
+		SetForced(forced).
 		Save(ctx)
 }
 
@@ -706,7 +709,7 @@ func (s *Service) resolveRunInputs(ctx context.Context, orgID, appID uuid.UUID, 
 // ResolveRollout satisfies helm.Store: it resolves the shared run inputs and
 // assembles the RunSpec (script + injected Files) for the action. The wait
 // timeout is tiered by the target's connection method (its credential longevity).
-func (s *Service) ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, action string) (helm.RolloutPlan, error) {
+func (s *Service) ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, action string, force bool) (helm.RolloutPlan, error) {
 	in, err := s.resolveRunInputs(ctx, orgID, appID, action != helm.ActionUninstall)
 	if err != nil {
 		return helm.RolloutPlan{}, err
@@ -721,6 +724,8 @@ func (s *Service) ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, ac
 		WaitTimeout:     helm.WaitTimeout(in.targetMethod),
 		HasCredential:   in.hasCredential,
 		HasGitToken:     in.hasGitToken,
+		// Force only applies to a deploy/upgrade; uninstall pulls/rolls nothing.
+		Force: force && action != helm.ActionUninstall,
 	})
 	return helm.RolloutPlan{
 		RunnerConn:  in.runnerConn,

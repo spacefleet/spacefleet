@@ -1665,6 +1665,16 @@ export interface components {
              * @enum {string}
              */
             action: "deploy" | "upgrade";
+            /**
+             * @description Force a roll of the release's workloads even when the chart renders
+             *     no change. After the normal `helm upgrade --install`, the release's
+             *     Deployments, StatefulSets, and DaemonSets (selected by the standard
+             *     `app.kubernetes.io/instance` label) are restarted — the equivalent
+             *     of `kubectl rollout restart` — so pods cycle as if there had been a
+             *     diff. Workloads that don't carry the standard instance label are not
+             *     matched. Defaults to false.
+             */
+            force?: boolean;
         };
         /**
          * @description A named credential set for pulling private Helm charts ("Private
@@ -1753,6 +1763,12 @@ export interface components {
             application_id: string;
             action: components["schemas"]["DeploymentAction"];
             status: components["schemas"]["DeploymentStatus"];
+            /**
+             * @description Whether this run was a forced deploy — the release's workloads were
+             *     restarted even if the chart rendered no change. Only meaningful for
+             *     deploy/upgrade runs.
+             */
+            forced?: boolean;
             /** @description Human-readable detail (last progress line, or the error). */
             message?: string;
             /** @description The TaskRun name on the runner cluster for this run. */

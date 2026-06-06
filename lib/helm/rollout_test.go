@@ -523,6 +523,67 @@ func TestScriptUninstall(t *testing.T) {
 	}
 }
 
+func TestScriptForce(t *testing.T) {
+	s := Script(Rollout{
+		Action:      ActionDeploy,
+		ChartSource: SourceHTTPRepo,
+		Config:      map[string]string{ConfigRepoURL: "https://c", ConfigChart: "nginx"},
+		ReleaseName: "web",
+		// A namespace with a shell metacharacter shouldn't be possible, but confirm
+		// the selector/namespace are quoted, not interpolated raw.
+		TargetNamespace: "apps",
+		WaitTimeout:     10 * time.Minute,
+		Force:           true,
+	})
+	for _, w := range []string{
+		// The workloads are resolved by the standard instance label…
+		"kubectl get deployment,statefulset,daemonset -n 'apps' -l 'app.kubernetes.io/instance=web' -o name --kubeconfig '/workspace/creds/kubeconfig'",
+		// …each is restarted…
+		`kubectl rollout restart "$t" -n 'apps' --kubeconfig '/workspace/creds/kubeconfig'`,
+		// …and waited on under the same timeout the upgrade used.
+		`kubectl rollout status "$t" -n 'apps' --timeout '10m0s' --kubeconfig '/workspace/creds/kubeconfig'`,
+	} {
+		if !strings.Contains(s, w) {
+			t.Errorf("force script missing %q\n---\n%s", w, s)
+		}
+	}
+	// The restart must come after the upgrade, never before.
+	if strings.Index(s, "rollout restart") < strings.Index(s, "helm upgrade --install") {
+		t.Errorf("force restart must follow the helm upgrade:\n%s", s)
+	}
+}
+
+func TestScriptForceOmittedWhenUnset(t *testing.T) {
+	// A normal (non-forced) deploy must not restart anything.
+	s := Script(Rollout{
+		Action:          ActionDeploy,
+		ChartSource:     SourceHTTPRepo,
+		Config:          map[string]string{ConfigRepoURL: "https://c", ConfigChart: "x"},
+		ReleaseName:     "web",
+		TargetNamespace: "apps",
+		WaitTimeout:     time.Minute,
+	})
+	if strings.Contains(s, "rollout restart") {
+		t.Errorf("non-forced deploy should not roll workloads:\n%s", s)
+	}
+}
+
+func TestScriptForceIgnoredByPreview(t *testing.T) {
+	// A preview must never mutate the cluster, even with Force set.
+	s := Script(Rollout{
+		Action:          ActionPreview,
+		ChartSource:     SourceHTTPRepo,
+		Config:          map[string]string{ConfigRepoURL: "https://c", ConfigChart: "x"},
+		ReleaseName:     "web",
+		TargetNamespace: "apps",
+		WaitTimeout:     time.Minute,
+		Force:           true,
+	})
+	if strings.Contains(s, "rollout restart") {
+		t.Errorf("preview must not roll workloads even when forced:\n%s", s)
+	}
+}
+
 func TestScriptAlwaysWaits(t *testing.T) {
 	for _, src := range []string{SourceHTTPRepo, SourceOCI, SourceGit} {
 		s := Script(Rollout{Action: ActionDeploy, ChartSource: src, Config: map[string]string{}, ReleaseName: "r", TargetNamespace: "n", WaitTimeout: time.Minute})

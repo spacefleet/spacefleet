@@ -24,6 +24,8 @@ const (
 	FieldAction = "action"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldForced holds the string denoting the forced field in the database.
+	FieldForced = "forced"
 	// FieldMessage holds the string denoting the message field in the database.
 	FieldMessage = "message"
 	// FieldJobID holds the string denoting the job_id field in the database.
@@ -71,6 +73,7 @@ var Columns = []string{
 	FieldApplicationID,
 	FieldAction,
 	FieldStatus,
+	FieldForced,
 	FieldMessage,
 	FieldJobID,
 	FieldRunName,
@@ -93,6 +96,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultForced holds the default value on creation for the "forced" field.
+	DefaultForced bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -180,6 +185,11 @@ func ByAction(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByForced orders the results by the forced field.
+func ByForced(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldForced, opts...).ToFunc()
 }
 
 // ByMessage orders the results by the message field.

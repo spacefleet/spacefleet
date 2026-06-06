@@ -56,6 +56,20 @@ func (_u *DeploymentUpdate) SetNillableStatus(v *deployment.Status) *DeploymentU
 	return _u
 }
 
+// SetForced sets the "forced" field.
+func (_u *DeploymentUpdate) SetForced(v bool) *DeploymentUpdate {
+	_u.mutation.SetForced(v)
+	return _u
+}
+
+// SetNillableForced sets the "forced" field if the given value is not nil.
+func (_u *DeploymentUpdate) SetNillableForced(v *bool) *DeploymentUpdate {
+	if v != nil {
+		_u.SetForced(*v)
+	}
+	return _u
+}
+
 // SetMessage sets the "message" field.
 func (_u *DeploymentUpdate) SetMessage(v string) *DeploymentUpdate {
 	_u.mutation.SetMessage(v)
@@ -282,6 +296,9 @@ func (_u *DeploymentUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(deployment.FieldStatus, field.TypeEnum, value)
 	}
+	if value, ok := _u.mutation.Forced(); ok {
+		_spec.SetField(deployment.FieldForced, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.Message(); ok {
 		_spec.SetField(deployment.FieldMessage, field.TypeString, value)
 	}
@@ -371,6 +388,20 @@ func (_u *DeploymentUpdateOne) SetStatus(v deployment.Status) *DeploymentUpdateO
 func (_u *DeploymentUpdateOne) SetNillableStatus(v *deployment.Status) *DeploymentUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
+	}
+	return _u
+}
+
+// SetForced sets the "forced" field.
+func (_u *DeploymentUpdateOne) SetForced(v bool) *DeploymentUpdateOne {
+	_u.mutation.SetForced(v)
+	return _u
+}
+
+// SetNillableForced sets the "forced" field if the given value is not nil.
+func (_u *DeploymentUpdateOne) SetNillableForced(v *bool) *DeploymentUpdateOne {
+	if v != nil {
+		_u.SetForced(*v)
 	}
 	return _u
 }
@@ -630,6 +661,9 @@ func (_u *DeploymentUpdateOne) sqlSave(ctx context.Context) (_node *Deployment, 
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(deployment.FieldStatus, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.Forced(); ok {
+		_spec.SetField(deployment.FieldForced, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Message(); ok {
 		_spec.SetField(deployment.FieldMessage, field.TypeString, value)

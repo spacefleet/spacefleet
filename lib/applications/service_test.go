@@ -187,17 +187,20 @@ func TestRecordAndListDeployments(t *testing.T) {
 	org := newOrg(t, client, "Acme")
 	app := newApp(t, svc, client, org.ID)
 
-	first, err := svc.RecordDeployment(ctx, org.ID, app.ID, helm.ActionDeploy, "10")
+	first, err := svc.RecordDeployment(ctx, org.ID, app.ID, helm.ActionDeploy, "10", true)
 	if err != nil {
 		t.Fatalf("RecordDeployment: %v", err)
 	}
 	if first.Status != deployment.StatusRunning || first.Action != deployment.ActionDeploy {
 		t.Errorf("new run = (%q,%q), want (running,deploy)", first.Status, first.Action)
 	}
+	if !first.Forced {
+		t.Errorf("new run forced = false, want true (forced deploy)")
+	}
 	if first.FinishedAt != nil {
 		t.Errorf("new run finished_at = %v, want nil", first.FinishedAt)
 	}
-	if _, err := svc.RecordDeployment(ctx, org.ID, app.ID, helm.ActionUpgrade, "11"); err != nil {
+	if _, err := svc.RecordDeployment(ctx, org.ID, app.ID, helm.ActionUpgrade, "11", false); err != nil {
 		t.Fatalf("RecordDeployment 2: %v", err)
 	}
 
@@ -214,7 +217,7 @@ func TestRecordAndListDeployments(t *testing.T) {
 	}
 
 	// Unknown action is rejected before a row is written.
-	if _, err := svc.RecordDeployment(ctx, org.ID, app.ID, "frobnicate", "12"); !IsValidation(err) {
+	if _, err := svc.RecordDeployment(ctx, org.ID, app.ID, "frobnicate", "12", false); !IsValidation(err) {
 		t.Errorf("RecordDeployment bad action error = %v, want ValidationError", err)
 	}
 }
@@ -226,7 +229,7 @@ func TestGetDeploymentOrgScoped(t *testing.T) {
 
 	org := newOrg(t, client, "Acme")
 	app := newApp(t, svc, client, org.ID)
-	dep, err := svc.RecordDeployment(ctx, org.ID, app.ID, helm.ActionDeploy, "20")
+	dep, err := svc.RecordDeployment(ctx, org.ID, app.ID, helm.ActionDeploy, "20", false)
 	if err != nil {
 		t.Fatalf("RecordDeployment: %v", err)
 	}
@@ -252,7 +255,7 @@ func TestMarkRolloutUpdatesDeployment(t *testing.T) {
 
 	org := newOrg(t, client, "Acme")
 	app := newApp(t, svc, client, org.ID)
-	dep, err := svc.RecordDeployment(ctx, org.ID, app.ID, helm.ActionDeploy, "30")
+	dep, err := svc.RecordDeployment(ctx, org.ID, app.ID, helm.ActionDeploy, "30", false)
 	if err != nil {
 		t.Fatalf("RecordDeployment: %v", err)
 	}
@@ -316,7 +319,7 @@ func TestMarkRolloutCapturesRevisions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("set values source: %v", err)
 	}
-	dep, err := svc.RecordDeployment(ctx, org.ID, app.ID, helm.ActionDeploy, "31")
+	dep, err := svc.RecordDeployment(ctx, org.ID, app.ID, helm.ActionDeploy, "31", false)
 	if err != nil {
 		t.Fatalf("RecordDeployment: %v", err)
 	}

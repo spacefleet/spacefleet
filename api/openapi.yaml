@@ -2266,6 +2266,16 @@ components:
           type: string
           description: deploy and upgrade both run `helm upgrade --install`.
           enum: [deploy, upgrade]
+        force:
+          type: boolean
+          description: |
+            Force a roll of the release's workloads even when the chart renders
+            no change. After the normal `helm upgrade --install`, the release's
+            Deployments, StatefulSets, and DaemonSets (selected by the standard
+            `app.kubernetes.io/instance` label) are restarted — the equivalent
+            of `kubectl rollout restart` — so pods cycle as if there had been a
+            diff. Workloads that don't carry the standard instance label are not
+            matched. Defaults to false.
 
     ChartCredential:
       type: object
@@ -2397,6 +2407,12 @@ components:
           $ref: "#/components/schemas/DeploymentAction"
         status:
           $ref: "#/components/schemas/DeploymentStatus"
+        forced:
+          type: boolean
+          description: |
+            Whether this run was a forced deploy — the release's workloads were
+            restarted even if the chart rendered no change. Only meaningful for
+            deploy/upgrade runs.
         message:
           type: string
           description: Human-readable detail (last progress line, or the error).

@@ -28,6 +28,7 @@ export function DeployConfirmDialog({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [force, setForce] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadDiff = useCallback(async () => {
@@ -74,7 +75,7 @@ export function DeployConfirmDialog({
     setError(null);
     const { data, error } = await api.POST("/api/applications/{id}/rollout", {
       params: { path: { id: app.id } },
-      body: { action },
+      body: { action, force },
     });
     setConfirming(false);
     if (error || !data) {
@@ -154,6 +155,23 @@ export function DeployConfirmDialog({
 
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
+
+        <label className="flex cursor-pointer items-start gap-2 border-t border-neutral-200 px-5 py-3 text-sm">
+          <input
+            type="checkbox"
+            checked={force}
+            onChange={(e) => setForce(e.target.checked)}
+            disabled={busy}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-black disabled:opacity-50"
+          />
+          <span className="text-neutral-700">
+            Force roll resources
+            <span className="block text-xs text-neutral-500">
+              Restart the release's workloads even if nothing changed, so pods
+              cycle as if there were a diff.
+            </span>
+          </span>
+        </label>
 
         <div className="flex items-center justify-end gap-3 border-t border-neutral-200 px-5 py-4">
           <button

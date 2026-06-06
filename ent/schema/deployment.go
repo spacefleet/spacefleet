@@ -41,6 +41,11 @@ func (Deployment) Fields() []ent.Field {
 		field.Enum("status").
 			Values("running", "succeeded", "failed").
 			Default("running"),
+		// Whether this run was a forced deploy: after the normal `helm upgrade
+		// --install`, the release's workloads were restarted (a `kubectl rollout
+		// restart`) so pods cycle even when the chart rendered no change. Recorded
+		// for the run history; only meaningful for deploy/upgrade.
+		field.Bool("forced").Default(false),
 		// Human-readable detail: the last rollout-progress line, or the error.
 		field.String("message").Optional(),
 		// River job id of the rollout that drives this run, used to correlate the

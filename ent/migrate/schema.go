@@ -174,6 +174,7 @@ var (
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "action", Type: field.TypeEnum, Enums: []string{"deploy", "upgrade", "uninstall"}},
 		{Name: "status", Type: field.TypeEnum, Enums: []string{"running", "succeeded", "failed"}, Default: "running"},
+		{Name: "forced", Type: field.TypeBool, Default: false},
 		{Name: "message", Type: field.TypeString, Nullable: true},
 		{Name: "job_id", Type: field.TypeString, Nullable: true},
 		{Name: "run_name", Type: field.TypeString, Nullable: true},
@@ -194,13 +195,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "deployments_organizations_organization",
-				Columns:    []*schema.Column{DeploymentsColumns[12]},
+				Columns:    []*schema.Column{DeploymentsColumns[13]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "deployments_applications_application",
-				Columns:    []*schema.Column{DeploymentsColumns[13]},
+				Columns:    []*schema.Column{DeploymentsColumns[14]},
 				RefColumns: []*schema.Column{ApplicationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -209,17 +210,17 @@ var (
 			{
 				Name:    "deployment_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{DeploymentsColumns[12]},
+				Columns: []*schema.Column{DeploymentsColumns[13]},
 			},
 			{
 				Name:    "deployment_application_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{DeploymentsColumns[13], DeploymentsColumns[9]},
+				Columns: []*schema.Column{DeploymentsColumns[14], DeploymentsColumns[10]},
 			},
 			{
 				Name:    "deployment_organization_id_job_id",
 				Unique:  false,
-				Columns: []*schema.Column{DeploymentsColumns[12], DeploymentsColumns[4]},
+				Columns: []*schema.Column{DeploymentsColumns[13], DeploymentsColumns[5]},
 			},
 		},
 	}

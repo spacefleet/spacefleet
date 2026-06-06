@@ -47,8 +47,9 @@ type Store interface {
 	// ResolveRollout resolves the runner connection, builds the target kubeconfig
 	// (minting any cloud token late, per attempt), and assembles the RunSpec for
 	// the given action (deploy/upgrade build `helm upgrade --install`; uninstall
-	// builds `helm uninstall`).
-	ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, action string) (RolloutPlan, error)
+	// builds `helm uninstall`). force adds a post-upgrade roll of the release's
+	// workloads (ignored for uninstall).
+	ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, action string, force bool) (RolloutPlan, error)
 	// MarkRollout persists a rollout-lifecycle transition: status is one of the
 	// Status* constants; message/runName are set when non-empty (jobID likewise).
 	MarkRollout(ctx context.Context, orgID, appID uuid.UUID, jobID, status, message, runName string) error
@@ -78,6 +79,10 @@ type RolloutArgs struct {
 	ApplicationID uuid.UUID `json:"application_id"`
 	OrgID         uuid.UUID `json:"org_id"`
 	Action        string    `json:"action"`
+	// Force rolls the release's workloads after the upgrade even when the chart
+	// renders no change. Ignored for uninstall. Omitted from old jobs (defaults
+	// to false).
+	Force bool `json:"force,omitempty"`
 }
 
 // Kind is the stable River job identifier.
@@ -166,7 +171,7 @@ func (w *RolloutWorker) Work(ctx context.Context, job *river.Job[RolloutArgs]) e
 	}
 	_ = w.Store.MarkRollout(ctx, a.OrgID, a.ApplicationID, jobID, inFlight, "starting "+a.Action, "")
 
-	plan, err := w.Store.ResolveRollout(ctx, a.OrgID, a.ApplicationID, a.Action)
+	plan, err := w.Store.ResolveRollout(ctx, a.OrgID, a.ApplicationID, a.Action, a.Force)
 	if err != nil {
 		_ = w.Store.MarkRollout(ctx, a.OrgID, a.ApplicationID, jobID, StatusFailed, err.Error(), "")
 		return err

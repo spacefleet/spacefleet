@@ -4259,6 +4259,7 @@ type DeploymentMutation struct {
 	id                  *uuid.UUID
 	action              *deployment.Action
 	status              *deployment.Status
+	forced              *bool
 	message             *string
 	job_id              *string
 	run_name            *string
@@ -4524,6 +4525,42 @@ func (m *DeploymentMutation) OldStatus(ctx context.Context) (v deployment.Status
 // ResetStatus resets all changes to the "status" field.
 func (m *DeploymentMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetForced sets the "forced" field.
+func (m *DeploymentMutation) SetForced(b bool) {
+	m.forced = &b
+}
+
+// Forced returns the value of the "forced" field in the mutation.
+func (m *DeploymentMutation) Forced() (r bool, exists bool) {
+	v := m.forced
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldForced returns the old "forced" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldForced(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldForced is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldForced requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldForced: %w", err)
+	}
+	return oldValue.Forced, nil
+}
+
+// ResetForced resets all changes to the "forced" field.
+func (m *DeploymentMutation) ResetForced() {
+	m.forced = nil
 }
 
 // SetMessage sets the "message" field.
@@ -5029,7 +5066,7 @@ func (m *DeploymentMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DeploymentMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 14)
 	if m.organization != nil {
 		fields = append(fields, deployment.FieldOrganizationID)
 	}
@@ -5041,6 +5078,9 @@ func (m *DeploymentMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, deployment.FieldStatus)
+	}
+	if m.forced != nil {
+		fields = append(fields, deployment.FieldForced)
 	}
 	if m.message != nil {
 		fields = append(fields, deployment.FieldMessage)
@@ -5085,6 +5125,8 @@ func (m *DeploymentMutation) Field(name string) (ent.Value, bool) {
 		return m.Action()
 	case deployment.FieldStatus:
 		return m.Status()
+	case deployment.FieldForced:
+		return m.Forced()
 	case deployment.FieldMessage:
 		return m.Message()
 	case deployment.FieldJobID:
@@ -5120,6 +5162,8 @@ func (m *DeploymentMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldAction(ctx)
 	case deployment.FieldStatus:
 		return m.OldStatus(ctx)
+	case deployment.FieldForced:
+		return m.OldForced(ctx)
 	case deployment.FieldMessage:
 		return m.OldMessage(ctx)
 	case deployment.FieldJobID:
@@ -5174,6 +5218,13 @@ func (m *DeploymentMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case deployment.FieldForced:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetForced(v)
 		return nil
 	case deployment.FieldMessage:
 		v, ok := value.(string)
@@ -5343,6 +5394,9 @@ func (m *DeploymentMutation) ResetField(name string) error {
 		return nil
 	case deployment.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case deployment.FieldForced:
+		m.ResetForced()
 		return nil
 	case deployment.FieldMessage:
 		m.ResetMessage()

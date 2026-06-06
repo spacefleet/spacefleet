@@ -249,6 +249,13 @@ type Rollout struct {
 	// the clone's argv, or the workspace .git/config. Set by the rollout resolver
 	// when the app has a GitHub App installation attached.
 	HasGitToken bool
+	// Force rolls the release's workloads even when the chart renders no change.
+	// After the `helm upgrade --install` completes, the release's Deployments,
+	// StatefulSets, and DaemonSets (selected by the standard
+	// `app.kubernetes.io/instance` label) are restarted — the equivalent of
+	// `kubectl rollout restart` — so pods cycle as if there had been a diff.
+	// Ignored for uninstall (nothing to roll) and preview (it must not mutate).
+	Force bool
 }
 
 // Script renders the shell script the rollout step runs. A deploy/upgrade
@@ -424,7 +431,38 @@ func Script(r Rollout) string {
 		// is defensive.
 		fmt.Fprintf(&b, "echo 'unknown chart source: %s' >&2\nexit 1\n", r.ChartSource)
 	}
+
+	// Force: roll the release's workloads after the upgrade, so pods cycle even
+	// when the chart rendered no change (a no-op `helm upgrade` leaves the live
+	// objects untouched). A preview must not mutate the cluster, so it is never
+	// forced even if the flag is set; an unknown source has already exited above.
+	if r.Force && !preview {
+		writeForceRestart(&b, release, ns, kubeconfig, timeout)
+	}
 	return b.String()
+}
+
+// writeForceRestart appends the force-deploy roll: it resolves the release's
+// workloads by the standard `app.kubernetes.io/instance` label, restarts each
+// (patching the pod-template restart annotation, exactly as `kubectl rollout
+// restart` does), then waits for each to become ready under the same timeout the
+// helm --wait used. Restarts are issued for all targets first, so they roll
+// concurrently, before waiting. A release whose chart doesn't carry the standard
+// instance label matches nothing — the script notes that on stderr and exits 0
+// rather than failing, since the upgrade itself already succeeded.
+func writeForceRestart(b *strings.Builder, release, ns, kubeconfig, timeout string) {
+	sel := "app.kubernetes.io/instance=" + release
+	fmt.Fprintf(b, "echo 'forcing rollout restart of workloads for release %s'\n", release)
+	fmt.Fprintf(b, "force_targets=$(kubectl get deployment,statefulset,daemonset -n %s -l %s -o name --kubeconfig %s)\n",
+		shQuote(ns), shQuote(sel), shQuote(kubeconfig))
+	b.WriteString("if [ -n \"$force_targets\" ]; then\n")
+	fmt.Fprintf(b, "  for t in $force_targets; do kubectl rollout restart \"$t\" -n %s --kubeconfig %s; done\n",
+		shQuote(ns), shQuote(kubeconfig))
+	fmt.Fprintf(b, "  for t in $force_targets; do kubectl rollout status \"$t\" -n %s --timeout %s --kubeconfig %s; done\n",
+		shQuote(ns), shQuote(timeout), shQuote(kubeconfig))
+	b.WriteString("else\n")
+	fmt.Fprintf(b, "  echo 'force: no workloads matched %s; nothing to restart' >&2\n", sel)
+	b.WriteString("fi\n")
 }
 
 // shQuote single-quotes a value for safe interpolation into the /bin/sh script,

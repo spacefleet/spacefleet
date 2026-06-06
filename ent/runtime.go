@@ -93,12 +93,16 @@ func init() {
 	cluster.DefaultID = clusterDescID.Default.(func() uuid.UUID)
 	deploymentFields := schema.Deployment{}.Fields()
 	_ = deploymentFields
+	// deploymentDescForced is the schema descriptor for forced field.
+	deploymentDescForced := deploymentFields[5].Descriptor()
+	// deployment.DefaultForced holds the default value on creation for the forced field.
+	deployment.DefaultForced = deploymentDescForced.Default.(bool)
 	// deploymentDescCreatedAt is the schema descriptor for created_at field.
-	deploymentDescCreatedAt := deploymentFields[11].Descriptor()
+	deploymentDescCreatedAt := deploymentFields[12].Descriptor()
 	// deployment.DefaultCreatedAt holds the default value on creation for the created_at field.
 	deployment.DefaultCreatedAt = deploymentDescCreatedAt.Default.(func() time.Time)
 	// deploymentDescUpdatedAt is the schema descriptor for updated_at field.
-	deploymentDescUpdatedAt := deploymentFields[13].Descriptor()
+	deploymentDescUpdatedAt := deploymentFields[14].Descriptor()
 	// deployment.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	deployment.DefaultUpdatedAt = deploymentDescUpdatedAt.Default.(func() time.Time)
 	// deployment.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

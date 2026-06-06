@@ -21,7 +21,7 @@ type fakeStore struct {
 	lastRun    string   // last non-empty runName recorded
 }
 
-func (f *fakeStore) ResolveRollout(context.Context, uuid.UUID, uuid.UUID, string) (RolloutPlan, error) {
+func (f *fakeStore) ResolveRollout(context.Context, uuid.UUID, uuid.UUID, string, bool) (RolloutPlan, error) {
 	return f.plan, f.resolveErr
 }
 

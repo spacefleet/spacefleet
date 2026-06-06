@@ -58,6 +58,20 @@ func (_c *DeploymentCreate) SetNillableStatus(v *deployment.Status) *DeploymentC
 	return _c
 }
 
+// SetForced sets the "forced" field.
+func (_c *DeploymentCreate) SetForced(v bool) *DeploymentCreate {
+	_c.mutation.SetForced(v)
+	return _c
+}
+
+// SetNillableForced sets the "forced" field if the given value is not nil.
+func (_c *DeploymentCreate) SetNillableForced(v *bool) *DeploymentCreate {
+	if v != nil {
+		_c.SetForced(*v)
+	}
+	return _c
+}
+
 // SetMessage sets the "message" field.
 func (_c *DeploymentCreate) SetMessage(v string) *DeploymentCreate {
 	_c.mutation.SetMessage(v)
@@ -247,6 +261,10 @@ func (_c *DeploymentCreate) defaults() {
 		v := deployment.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.Forced(); !ok {
+		v := deployment.DefaultForced
+		_c.mutation.SetForced(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := deployment.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -284,6 +302,9 @@ func (_c *DeploymentCreate) check() error {
 		if err := deployment.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Deployment.status": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.Forced(); !ok {
+		return &ValidationError{Name: "forced", err: errors.New(`ent: missing required field "Deployment.forced"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Deployment.created_at"`)}
@@ -340,6 +361,10 @@ func (_c *DeploymentCreate) createSpec() (*Deployment, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(deployment.FieldStatus, field.TypeEnum, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.Forced(); ok {
+		_spec.SetField(deployment.FieldForced, field.TypeBool, value)
+		_node.Forced = value
 	}
 	if value, ok := _c.mutation.Message(); ok {
 		_spec.SetField(deployment.FieldMessage, field.TypeString, value)
@@ -484,6 +509,18 @@ func (u *DeploymentUpsert) SetStatus(v deployment.Status) *DeploymentUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *DeploymentUpsert) UpdateStatus() *DeploymentUpsert {
 	u.SetExcluded(deployment.FieldStatus)
+	return u
+}
+
+// SetForced sets the "forced" field.
+func (u *DeploymentUpsert) SetForced(v bool) *DeploymentUpsert {
+	u.Set(deployment.FieldForced, v)
+	return u
+}
+
+// UpdateForced sets the "forced" field to the value that was provided on create.
+func (u *DeploymentUpsert) UpdateForced() *DeploymentUpsert {
+	u.SetExcluded(deployment.FieldForced)
 	return u
 }
 
@@ -707,6 +744,20 @@ func (u *DeploymentUpsertOne) SetStatus(v deployment.Status) *DeploymentUpsertOn
 func (u *DeploymentUpsertOne) UpdateStatus() *DeploymentUpsertOne {
 	return u.Update(func(s *DeploymentUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetForced sets the "forced" field.
+func (u *DeploymentUpsertOne) SetForced(v bool) *DeploymentUpsertOne {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.SetForced(v)
+	})
+}
+
+// UpdateForced sets the "forced" field to the value that was provided on create.
+func (u *DeploymentUpsertOne) UpdateForced() *DeploymentUpsertOne {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.UpdateForced()
 	})
 }
 
@@ -1120,6 +1171,20 @@ func (u *DeploymentUpsertBulk) SetStatus(v deployment.Status) *DeploymentUpsertB
 func (u *DeploymentUpsertBulk) UpdateStatus() *DeploymentUpsertBulk {
 	return u.Update(func(s *DeploymentUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetForced sets the "forced" field.
+func (u *DeploymentUpsertBulk) SetForced(v bool) *DeploymentUpsertBulk {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.SetForced(v)
+	})
+}
+
+// UpdateForced sets the "forced" field to the value that was provided on create.
+func (u *DeploymentUpsertBulk) UpdateForced() *DeploymentUpsertBulk {
+	return u.Update(func(s *DeploymentUpsert) {
+		s.UpdateForced()
 	})
 }
 
