@@ -86,7 +86,7 @@ func TestInspectAllAllowed(t *testing.T) {
 
 	want := []string{
 		"view_nodes", "view_namespaces", "view_pods", "view_pod_logs",
-		"restart_workloads", "scale_workloads", "manage_helm_releases", "run_jobs",
+		"restart_workloads", "scale_workloads", "manage_helm_releases", "install_tekton", "run_jobs",
 	}
 	if len(report.Capabilities) != len(want) {
 		t.Fatalf("got %d capabilities, want %d: %+v", len(report.Capabilities), len(want), report.Capabilities)
@@ -193,6 +193,37 @@ func TestInspectRunJobsDenied(t *testing.T) {
 	}
 	if len(runJobs.Failed) != 1 || runJobs.Failed[0].Rule.Resource != "taskruns" || runJobs.Failed[0].Verb != "create" {
 		t.Errorf("run_jobs Failed = %+v, want exactly taskruns/create", runJobs.Failed)
+	}
+}
+
+// TestInspectInstallTektonDenied confirms the install_tekton capability is
+// denied when the credentials can't patch namespaces — the exact production
+// failure (server-side apply of the tekton-pipelines Namespace is forbidden) —
+// and records the missing namespaces/patch rule. run_jobs (the run-only path)
+// stays allowed, since it does not depend on install permissions.
+func TestInspectInstallTektonDenied(t *testing.T) {
+	// Deny patch on core namespaces; everything else allowed.
+	allow := func(a authzv1.ResourceAttributes) bool {
+		return a.Group != "" || a.Resource != "namespaces" || a.Verb != "patch"
+	}
+	cs := fakeClientset(authnv1.UserInfo{Username: "system:serviceaccount:spacefleet:spacefleet"}, allow)
+
+	report, err := inspect(context.Background(), cs, catalog)
+	if err != nil {
+		t.Fatalf("inspect: %v", err)
+	}
+	install, ok := findCap(report, "install_tekton")
+	if !ok {
+		t.Fatal("missing install_tekton")
+	}
+	if install.Allowed {
+		t.Error("install_tekton should be denied when namespaces/patch is denied")
+	}
+	if len(install.Failed) != 1 || install.Failed[0].Rule.Resource != "namespaces" || install.Failed[0].Verb != "patch" {
+		t.Errorf("install_tekton Failed = %+v, want exactly namespaces/patch", install.Failed)
+	}
+	if runJobs, _ := findCap(report, "run_jobs"); !runJobs.Allowed {
+		t.Errorf("run_jobs should stay allowed (it is the run-only path), failed=%+v", runJobs.Failed)
 	}
 }
 
@@ -320,7 +351,7 @@ func TestCatalogShape(t *testing.T) {
 
 	want := []string{
 		"view_nodes", "view_namespaces", "view_pods", "view_pod_logs",
-		"restart_workloads", "scale_workloads", "manage_helm_releases", "run_jobs",
+		"restart_workloads", "scale_workloads", "manage_helm_releases", "install_tekton", "run_jobs",
 	}
 	for _, key := range want {
 		found := false

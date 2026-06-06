@@ -365,6 +365,7 @@ var capabilityAreas = map[string]string{
 	"restart_workloads":    "Operate",
 	"scale_workloads":      "Operate",
 	"manage_helm_releases": "Deploy",
+	"install_tekton":       "Run",
 	"run_jobs":             "Run",
 }
 

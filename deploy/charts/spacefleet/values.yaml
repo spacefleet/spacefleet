@@ -65,6 +65,11 @@ config:
   # can word itself correctly. The password is a secret: set it inline here (it
   # lands in the chart's managed env Secret as SMTP_PASSWORD) or, for GitOps,
   # leave it empty and supply SMTP_PASSWORD via config.secrets.envFrom.
+  #
+  # To keep ALL of these out of values (e.g. a single Secret you manage), the
+  # app reads them as env, so any can be supplied via config.secrets.envFrom
+  # instead of inline here. The keys it looks for:
+  #   SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM, SMTP_STARTTLS
   smtp:
     # -- SMTP server hostname. Empty disables email.
     host: ""
@@ -74,8 +79,9 @@ config:
     username: ""
     # -- Inline SMTP password. Prefer config.secrets.envFrom for GitOps.
     password: ""
-    # -- Envelope From address, e.g. "Spacefleet <no-reply@example.com>".
-    # Empty disables email.
+    # -- From address — used for both the SMTP envelope (MAIL FROM) and the
+    # message From: header, so it must be a bare address with no display name,
+    # e.g. "no-reply@example.com". Empty disables email.
     from: ""
     # -- Upgrade the connection with STARTTLS after connecting.
     startTLS: true

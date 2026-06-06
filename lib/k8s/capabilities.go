@@ -126,15 +126,29 @@ var catalog = []Capability{
 		},
 	},
 	{
+		Key:  "install_tekton",
+		Name: "Install Tekton",
+		// Installing Tekton applies the vendored, pinned release manifest via
+		// server-side apply, then tears it down on uninstall. This models exactly
+		// the resource types that manifest contains (see lib/tekton/release) — it
+		// is NOT "*/*": the manifest is fixed and enumerable, so the grant is too.
+		// Verbs cover the full lifecycle: server-side apply needs create+patch
+		// (and get); upgrade re-applies (patch); uninstall sweeps with list+delete.
+		// All checks are cluster-wide to mirror the cluster-wide grant the
+		// remediation produces, matching the rest of the catalog. Without this, the
+		// install worker hits a forbidden error on the first object it can't apply
+		// (in production: patch on namespaces); modeling it lets the report and the
+		// generated RBAC cover the whole install up front. The verb set is the same
+		// full lifecycle on every type, so it is named once here.
+		Rules: tektonInstallRules,
+	},
+	{
 		Key:  "run_jobs",
 		Name: "Run jobs (Tekton)",
 		// The RUN path only: submit TaskRuns/PipelineRuns and read their pod logs.
-		// Installing Tekton itself needs cluster-admin-equivalent rights (CRDs,
-		// cluster RBAC, webhooks) and is NOT modeled as a least-privilege
-		// capability — it would just be "*/*". The install worker surfaces a
-		// forbidden error directly if the credentials can't install; this
-		// capability reports whether, once Tekton is present, the credentials can
-		// actually drive it.
+		// Installing Tekton is modeled separately (see "install_tekton" above);
+		// this capability reports whether, once Tekton is present, the credentials
+		// can actually drive it.
 		Rules: []Rule{
 			{APIGroup: "tekton.dev", Resource: "taskruns", Verbs: []string{"create", "get", "list", "watch"}, ClusterScoped: true},
 			{APIGroup: "tekton.dev", Resource: "pipelineruns", Verbs: []string{"create", "get", "list", "watch"}, ClusterScoped: true},
@@ -143,6 +157,37 @@ var catalog = []Capability{
 		},
 	},
 }
+
+// tektonInstallRules is the rule set the install_tekton capability requires: the
+// full create/read/update/delete lifecycle on every resource type the vendored
+// Tekton release manifest contains (see lib/tekton/release). The verbs are
+// identical on every type — server-side apply (install + upgrade) needs
+// get+create+patch, the uninstall sweep needs list+delete — so they are declared
+// once and fanned out across the resource list rather than repeated per row.
+var tektonInstallRules = func() []Rule {
+	lifecycle := []string{"get", "list", "create", "patch", "delete"}
+	resources := []struct{ group, resource string }{
+		{"", "namespaces"},
+		{"", "configmaps"},
+		{"", "services"},
+		{"", "serviceaccounts"},
+		{"", "secrets"},
+		{"apps", "deployments"},
+		{"autoscaling", "horizontalpodautoscalers"},
+		{"apiextensions.k8s.io", "customresourcedefinitions"},
+		{"rbac.authorization.k8s.io", "clusterroles"},
+		{"rbac.authorization.k8s.io", "clusterrolebindings"},
+		{"rbac.authorization.k8s.io", "roles"},
+		{"rbac.authorization.k8s.io", "rolebindings"},
+		{"admissionregistration.k8s.io", "validatingwebhookconfigurations"},
+		{"admissionregistration.k8s.io", "mutatingwebhookconfigurations"},
+	}
+	rules := make([]Rule, len(resources))
+	for i, r := range resources {
+		rules[i] = Rule{APIGroup: r.group, Resource: r.resource, Verbs: lifecycle, ClusterScoped: true}
+	}
+	return rules
+}()
 
 // Catalog returns the declarative capability catalog (current features first,
 // then future placeholders). The returned slice shares backing storage with the
