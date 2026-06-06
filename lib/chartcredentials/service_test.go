@@ -47,7 +47,6 @@ func TestCreateSealsAndResolveRoundTrips(t *testing.T) {
 	org := newOrg(t, client, "Acme")
 	c, err := svc.Create(ctx, org.ID, CreateParams{
 		Name:     "registry",
-		Type:     "basic_auth",
 		Username: "deploy",
 		Password: "s3cret",
 	})
@@ -64,8 +63,8 @@ func TestCreateSealsAndResolveRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if got.Username != "deploy" || got.Password != "s3cret" || got.Type != "basic_auth" {
-		t.Errorf("Resolve = %+v, want deploy/s3cret/basic_auth", got)
+	if got.Username != "deploy" || got.Password != "s3cret" {
+		t.Errorf("Resolve = %+v, want deploy/s3cret", got)
 	}
 
 	// A different org cannot see it.
@@ -84,23 +83,20 @@ func TestCreateWithoutKeyDisabled(t *testing.T) {
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
-	_, err := svc.Create(ctx, org.ID, CreateParams{Name: "r", Type: "oci", Password: "p"})
+	_, err := svc.Create(ctx, org.ID, CreateParams{Name: "r", Password: "p"})
 	if !errors.Is(err, secrets.ErrDisabled) {
 		t.Fatalf("Create error = %v, want ErrDisabled", err)
 	}
 }
 
-// TestCreateRejectsUnknownType and missing password are client-input errors.
+// TestCreateRejectsBadInput confirms a missing password is a client-input error.
 func TestCreateRejectsBadInput(t *testing.T) {
 	client := testsupport.NewEntClient(t)
 	svc := NewService(client, newSealer(t))
 	ctx := context.Background()
 	org := newOrg(t, client, "Acme")
 
-	if _, err := svc.Create(ctx, org.ID, CreateParams{Name: "r", Type: "nope", Password: "p"}); !IsValidation(err) {
-		t.Errorf("unknown type error = %v, want ValidationError", err)
-	}
-	if _, err := svc.Create(ctx, org.ID, CreateParams{Name: "r", Type: "oci"}); !IsValidation(err) {
+	if _, err := svc.Create(ctx, org.ID, CreateParams{Name: "r"}); !IsValidation(err) {
 		t.Errorf("missing password error = %v, want ValidationError", err)
 	}
 }
@@ -113,7 +109,7 @@ func TestDeleteInUseRejected(t *testing.T) {
 	ctx := context.Background()
 	org := newOrg(t, client, "Acme")
 
-	cred, err := svc.Create(ctx, org.ID, CreateParams{Name: "registry", Type: "basic_auth", Password: "p"})
+	cred, err := svc.Create(ctx, org.ID, CreateParams{Name: "registry", Password: "p"})
 	if err != nil {
 		t.Fatalf("Create credential: %v", err)
 	}
@@ -147,7 +143,7 @@ func TestUpdateRotatesPassword(t *testing.T) {
 	ctx := context.Background()
 	org := newOrg(t, client, "Acme")
 
-	cred, err := svc.Create(ctx, org.ID, CreateParams{Name: "registry", Type: "oci", Username: "u", Password: "old"})
+	cred, err := svc.Create(ctx, org.ID, CreateParams{Name: "registry", Username: "u", Password: "old"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

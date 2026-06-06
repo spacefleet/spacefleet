@@ -94,7 +94,6 @@ var (
 	ChartCredentialsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "name", Type: field.TypeString},
-		{Name: "type", Type: field.TypeEnum, Enums: []string{"basic_auth", "oci"}},
 		{Name: "username", Type: field.TypeString, Nullable: true},
 		{Name: "encrypted_password", Type: field.TypeBytes, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
@@ -109,7 +108,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "chart_credentials_organizations_organization",
-				Columns:    []*schema.Column{ChartCredentialsColumns[7]},
+				Columns:    []*schema.Column{ChartCredentialsColumns[6]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -118,12 +117,12 @@ var (
 			{
 				Name:    "chartcredential_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{ChartCredentialsColumns[7]},
+				Columns: []*schema.Column{ChartCredentialsColumns[6]},
 			},
 			{
 				Name:    "chartcredential_organization_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{ChartCredentialsColumns[7], ChartCredentialsColumns[1]},
+				Columns: []*schema.Column{ChartCredentialsColumns[6], ChartCredentialsColumns[1]},
 			},
 		},
 	}

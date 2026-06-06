@@ -98,7 +98,6 @@ func (s *Server) CreateChartCredential(ctx context.Context, req CreateChartCrede
 	}
 	c, err := s.chartCredentials.Create(ctx, orgID, chartcredentials.CreateParams{
 		Name:     name,
-		Type:     string(req.Body.Type),
 		Username: deref(req.Body.Username),
 		Password: req.Body.Password,
 	})
@@ -185,12 +184,11 @@ func chartCredentialWriteError[T defaultResp](err error) (T, bool) {
 }
 
 // toAPIChartCredential maps an ent row to the API type. It never exposes the
-// sealed password — only the non-secret name, type, and username.
+// sealed password — only the non-secret name and username.
 func toAPIChartCredential(c *ent.ChartCredential) ChartCredential {
 	out := ChartCredential{
 		Id:        c.ID,
 		Name:      c.Name,
-		Type:      ChartCredentialType(c.Type),
 		Username:  optStr(c.Username),
 		CreatedAt: c.CreatedAt,
 		UpdatedAt: c.UpdatedAt,

@@ -5,34 +5,16 @@ import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 
 type ChartCredential = components["schemas"]["ChartCredential"];
-type ChartCredentialType = components["schemas"]["ChartCredentialType"];
 type CreateRequest = components["schemas"]["ChartCredentialCreateRequest"];
-
-// Credential types and how they read in the UI. The type matches the chart
-// source it authenticates (basic_auth → HTTP repo, oci → OCI registry).
-const CREDENTIAL_TYPES: { value: ChartCredentialType; label: string; help: string }[] = [
-  {
-    value: "basic_auth",
-    label: "Basic auth (HTTP repo)",
-    help: "Username/password for an HTTP Helm repository (helm repo add).",
-  },
-  {
-    value: "oci",
-    label: "OCI registry",
-    help: "Username/password for an OCI registry (helm registry login).",
-  },
-];
-
-function typeLabel(t: ChartCredentialType): string {
-  return CREDENTIAL_TYPES.find((c) => c.value === t)?.label ?? t;
-}
 
 // PrivateCharts is the Admin › Private Charts page: it lists the credential sets
 // used to pull private Helm charts in the current organization, and opens a
-// dialog to add more. Passwords are sealed server-side and never returned — the
-// list shows only name, type, and username. A credential attached to an
-// application can't be deleted (the API returns 409). Org-scoped: the
-// X-Organization-ID header is attached automatically (see api/client.ts).
+// dialog to add more. A credential is a basic-auth username/password that works
+// for both HTTP Helm repositories and OCI registries. Passwords are sealed
+// server-side and never returned — the list shows only name and username. A
+// credential attached to an application can't be deleted (the API returns 409).
+// Org-scoped: the X-Organization-ID header is attached automatically (see
+// api/client.ts).
 export function PrivateCharts() {
   const { currentOrg, currentRole } = useOrg();
   const canEdit = currentRole !== "viewer";
@@ -113,7 +95,6 @@ export function PrivateCharts() {
             <thead>
               <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
                 <th className="px-4 py-2 font-medium">Name</th>
-                <th className="px-4 py-2 font-medium">Type</th>
                 <th className="px-4 py-2 font-medium">Username</th>
                 {canEdit && <th className="px-4 py-2" />}
               </tr>
@@ -126,9 +107,6 @@ export function PrivateCharts() {
                 >
                   <td className="px-4 py-3 font-medium text-neutral-900">
                     {c.name}
-                  </td>
-                  <td className="px-4 py-3 text-neutral-600">
-                    {typeLabel(c.type)}
                   </td>
                   <td className="px-4 py-3 text-neutral-600">
                     {c.username || "—"}
@@ -165,9 +143,9 @@ export function PrivateCharts() {
   );
 }
 
-// AddCredentialDialog is the modal that registers a chart credential: a name, a
-// type, and the username/password. The password is sent once and sealed
-// server-side; it's never read back.
+// AddCredentialDialog is the modal that registers a chart credential: a name and
+// the username/password. The password is sent once and sealed server-side; it's
+// never read back.
 function AddCredentialDialog({
   onClose,
   onCreated,
@@ -176,13 +154,10 @@ function AddCredentialDialog({
   onCreated: (c: ChartCredential) => void;
 }) {
   const [name, setName] = useState("");
-  const [type, setType] = useState<ChartCredentialType>("basic_auth");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-
-  const selected = CREDENTIAL_TYPES.find((t) => t.value === type)!;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -190,7 +165,6 @@ function AddCredentialDialog({
     setSubmitting(true);
     const body: CreateRequest = {
       name: name.trim(),
-      type,
       password,
     };
     if (username.trim() !== "") body.username = username.trim();
@@ -235,22 +209,10 @@ function AddCredentialDialog({
             />
           </Labeled>
 
-          <Labeled label="Type">
-            <select
-              className="w-full border border-gray-300 bg-white px-3 py-2 text-sm"
-              value={type}
-              onChange={(e) => setType(e.target.value as ChartCredentialType)}
-            >
-              {CREDENTIAL_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-gray-500">{selected.help}</p>
-          </Labeled>
-
-          <Labeled label="Username">
+          <Labeled
+            label="Username"
+            help="Used for both HTTP Helm repositories and OCI registries."
+          >
             <input
               className="w-full border border-gray-300 px-3 py-2 text-sm"
               placeholder="username"

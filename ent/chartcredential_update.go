@@ -42,20 +42,6 @@ func (_u *ChartCredentialUpdate) SetNillableName(v *string) *ChartCredentialUpda
 	return _u
 }
 
-// SetType sets the "type" field.
-func (_u *ChartCredentialUpdate) SetType(v chartcredential.Type) *ChartCredentialUpdate {
-	_u.mutation.SetType(v)
-	return _u
-}
-
-// SetNillableType sets the "type" field if the given value is not nil.
-func (_u *ChartCredentialUpdate) SetNillableType(v *chartcredential.Type) *ChartCredentialUpdate {
-	if v != nil {
-		_u.SetType(*v)
-	}
-	return _u
-}
-
 // SetUsername sets the "username" field.
 func (_u *ChartCredentialUpdate) SetUsername(v string) *ChartCredentialUpdate {
 	_u.mutation.SetUsername(v)
@@ -142,11 +128,6 @@ func (_u *ChartCredentialUpdate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "ChartCredential.name": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.GetType(); ok {
-		if err := chartcredential.TypeValidator(v); err != nil {
-			return &ValidationError{Name: "type", err: fmt.Errorf(`ent: validator failed for field "ChartCredential.type": %w`, err)}
-		}
-	}
 	if _u.mutation.OrganizationCleared() && len(_u.mutation.OrganizationIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "ChartCredential.organization"`)
 	}
@@ -167,9 +148,6 @@ func (_u *ChartCredentialUpdate) sqlSave(ctx context.Context) (_node int, err er
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(chartcredential.FieldName, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.GetType(); ok {
-		_spec.SetField(chartcredential.FieldType, field.TypeEnum, value)
 	}
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(chartcredential.FieldUsername, field.TypeString, value)
@@ -216,20 +194,6 @@ func (_u *ChartCredentialUpdateOne) SetName(v string) *ChartCredentialUpdateOne 
 func (_u *ChartCredentialUpdateOne) SetNillableName(v *string) *ChartCredentialUpdateOne {
 	if v != nil {
 		_u.SetName(*v)
-	}
-	return _u
-}
-
-// SetType sets the "type" field.
-func (_u *ChartCredentialUpdateOne) SetType(v chartcredential.Type) *ChartCredentialUpdateOne {
-	_u.mutation.SetType(v)
-	return _u
-}
-
-// SetNillableType sets the "type" field if the given value is not nil.
-func (_u *ChartCredentialUpdateOne) SetNillableType(v *chartcredential.Type) *ChartCredentialUpdateOne {
-	if v != nil {
-		_u.SetType(*v)
 	}
 	return _u
 }
@@ -333,11 +297,6 @@ func (_u *ChartCredentialUpdateOne) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "ChartCredential.name": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.GetType(); ok {
-		if err := chartcredential.TypeValidator(v); err != nil {
-			return &ValidationError{Name: "type", err: fmt.Errorf(`ent: validator failed for field "ChartCredential.type": %w`, err)}
-		}
-	}
 	if _u.mutation.OrganizationCleared() && len(_u.mutation.OrganizationIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "ChartCredential.organization"`)
 	}
@@ -375,9 +334,6 @@ func (_u *ChartCredentialUpdateOne) sqlSave(ctx context.Context) (_node *ChartCr
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(chartcredential.FieldName, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.GetType(); ok {
-		_spec.SetField(chartcredential.FieldType, field.TypeEnum, value)
 	}
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(chartcredential.FieldUsername, field.TypeString, value)

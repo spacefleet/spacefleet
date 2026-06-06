@@ -1429,8 +1429,7 @@ export interface components {
             /**
              * Format: uuid
              * @description Private-chart credential used to pull the chart (absent for public
-             *     charts). Its type matches chart_source (basic_auth → http_repo,
-             *     oci → oci).
+             *     charts, and for git charts, which authenticate via a GitHub App).
              */
             chart_credential_id?: string;
             /**
@@ -1495,8 +1494,8 @@ export interface components {
             runner_cluster_id: string;
             /**
              * Format: uuid
-             * @description Optional private-chart credential to attach. Its type must match
-             *     chart_source (basic_auth → http_repo, oci → oci); git charts take none.
+             * @description Optional private-chart credential to attach. Valid for http_repo and
+             *     oci chart sources; git charts take none (they use a GitHub App).
              */
             chart_credential_id?: string;
             /**
@@ -1547,22 +1546,15 @@ export interface components {
             action: "deploy" | "upgrade";
         };
         /**
-         * @description The auth scheme of a chart credential, fixed at registration. Matches the
-         *     chart source it authenticates:
-         *       - basic_auth: HTTP Helm repository (helm repo add --username/--password).
-         *       - oci: OCI registry (helm registry login).
-         * @enum {string}
-         */
-        ChartCredentialType: "basic_auth" | "oci";
-        /**
          * @description A named credential set for pulling private Helm charts ("Private
-         *     Charts"). The password is sealed at rest and never returned.
+         *     Charts"). A basic-auth username/password pair that works for both HTTP
+         *     Helm repositories and OCI registries. The password is sealed at rest and
+         *     never returned.
          */
         ChartCredential: {
             /** Format: uuid */
             id: string;
             name: string;
-            type: components["schemas"]["ChartCredentialType"];
             /** @description Registry/repo username (non-secret). */
             username?: string;
             /** Format: date-time */
@@ -1572,13 +1564,12 @@ export interface components {
         };
         ChartCredentialCreateRequest: {
             name: string;
-            type: components["schemas"]["ChartCredentialType"];
             username?: string;
             password: string;
         };
         /**
-         * @description All fields optional. The type is fixed at registration. Supplying a
-         *     password rotates it; an empty password is rejected.
+         * @description All fields optional. Supplying a password rotates it; an empty password
+         *     is rejected.
          */
         ChartCredentialUpdateRequest: {
             name?: string;

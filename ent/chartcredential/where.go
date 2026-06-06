@@ -171,26 +171,6 @@ func NameContainsFold(v string) predicate.ChartCredential {
 	return predicate.ChartCredential(sql.FieldContainsFold(FieldName, v))
 }
 
-// TypeEQ applies the EQ predicate on the "type" field.
-func TypeEQ(v Type) predicate.ChartCredential {
-	return predicate.ChartCredential(sql.FieldEQ(FieldType, v))
-}
-
-// TypeNEQ applies the NEQ predicate on the "type" field.
-func TypeNEQ(v Type) predicate.ChartCredential {
-	return predicate.ChartCredential(sql.FieldNEQ(FieldType, v))
-}
-
-// TypeIn applies the In predicate on the "type" field.
-func TypeIn(vs ...Type) predicate.ChartCredential {
-	return predicate.ChartCredential(sql.FieldIn(FieldType, vs...))
-}
-
-// TypeNotIn applies the NotIn predicate on the "type" field.
-func TypeNotIn(vs ...Type) predicate.ChartCredential {
-	return predicate.ChartCredential(sql.FieldNotIn(FieldType, vs...))
-}
-
 // UsernameEQ applies the EQ predicate on the "username" field.
 func UsernameEQ(v string) predicate.ChartCredential {
 	return predicate.ChartCredential(sql.FieldEQ(FieldUsername, v))

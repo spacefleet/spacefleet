@@ -10,7 +10,6 @@ import (
 
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/ent/application"
-	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/deployment"
 	"github.com/spacefleet/spacefleet/lib/helm"
@@ -444,14 +443,13 @@ func TestCompletePreviewSynced(t *testing.T) {
 }
 
 // newChartCredential creates a chart credential row directly for validation
-// tests (the applications service checks type↔source compatibility by querying
-// the row, so no sealer is needed here).
-func newChartCredential(t *testing.T, client *ent.Client, orgID uuid.UUID, name string, typ chartcredential.Type) *ent.ChartCredential {
+// tests (the applications service confirms the row exists in the org, so no
+// sealer is needed here).
+func newChartCredential(t *testing.T, client *ent.Client, orgID uuid.UUID, name string) *ent.ChartCredential {
 	t.Helper()
 	c, err := client.ChartCredential.Create().
 		SetOrganizationID(orgID).
 		SetName(name).
-		SetType(typ).
 		SetUsername("user").
 		Save(context.Background())
 	if err != nil {
@@ -460,7 +458,7 @@ func newChartCredential(t *testing.T, client *ent.Client, orgID uuid.UUID, name 
 	return c
 }
 
-func TestCreateWithCompatibleCredential(t *testing.T) {
+func TestCreateWithCredential(t *testing.T) {
 	client := testsupport.NewEntClient(t)
 	svc := NewService(client, stubConns{}, nil, nil)
 	ctx := context.Background()
@@ -468,20 +466,20 @@ func TestCreateWithCompatibleCredential(t *testing.T) {
 	org := newOrg(t, client, "Acme")
 	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
 	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
-	cred := newChartCredential(t, client, org.ID, "registry", chartcredential.TypeBasicAuth)
+	cred := newChartCredential(t, client, org.ID, "registry")
 
 	p := httpRepoParams(target.ID, runner.ID)
 	p.ChartCredentialID = &cred.ID
 	app, err := svc.Create(ctx, org.ID, p)
 	if err != nil {
-		t.Fatalf("Create with compatible (basic_auth ↔ http_repo) credential: %v", err)
+		t.Fatalf("Create with credential: %v", err)
 	}
 	if app.ChartCredentialID != cred.ID {
 		t.Errorf("ChartCredentialID = %v, want %v", app.ChartCredentialID, cred.ID)
 	}
 }
 
-func TestCreateWithIncompatibleCredentialRejected(t *testing.T) {
+func TestCreateWithCredentialOnGitSourceRejected(t *testing.T) {
 	client := testsupport.NewEntClient(t)
 	svc := NewService(client, stubConns{}, nil, nil)
 	ctx := context.Background()
@@ -489,13 +487,13 @@ func TestCreateWithIncompatibleCredentialRejected(t *testing.T) {
 	org := newOrg(t, client, "Acme")
 	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
 	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
-	// An OCI credential attached to an http_repo app is a type mismatch.
-	cred := newChartCredential(t, client, org.ID, "registry", chartcredential.TypeOci)
+	// git charts authenticate via a GitHub App, not a chart credential.
+	cred := newChartCredential(t, client, org.ID, "registry")
 
-	p := httpRepoParams(target.ID, runner.ID)
+	p := gitParams(target.ID, runner.ID)
 	p.ChartCredentialID = &cred.ID
 	if _, err := svc.Create(ctx, org.ID, p); !IsValidation(err) {
-		t.Fatalf("error = %v, want ValidationError for incompatible credential type", err)
+		t.Fatalf("error = %v, want ValidationError attaching a credential to a git chart", err)
 	}
 }
 
@@ -508,7 +506,7 @@ func TestCreateWithCredentialFromAnotherOrgRejected(t *testing.T) {
 	other := newOrg(t, client, "Other")
 	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
 	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
-	foreignCred := newChartCredential(t, client, other.ID, "foreign", chartcredential.TypeBasicAuth)
+	foreignCred := newChartCredential(t, client, other.ID, "foreign")
 
 	p := httpRepoParams(target.ID, runner.ID)
 	p.ChartCredentialID = &foreignCred.ID

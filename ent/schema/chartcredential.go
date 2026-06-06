@@ -11,15 +11,15 @@ import (
 )
 
 // ChartCredential is a named credential set, registered to an organization, for
-// pulling private Helm charts. The credential's type matches the chart source it
-// authenticates: basic_auth for an HTTP Helm repository (helm repo add
-// --username/--password) and oci for an OCI registry (helm registry login). Both
-// carry a username and a password; the password is envelope-encrypted into
-// encrypted_password (see lib/secrets) and is never returned to the browser. The
-// username is non-secret display detail, like a cluster endpoint.
+// pulling private Helm charts. It is a basic-auth username/password pair that
+// works for both an HTTP Helm repository (helm repo add --username/--password)
+// and an OCI registry (helm registry login) — the chart pull picks the mechanism
+// from the application's chart_source, so the credential itself needs no type.
+// The password is envelope-encrypted into encrypted_password (see lib/secrets)
+// and is never returned to the browser; the username is non-secret display
+// detail, like a cluster endpoint.
 //
-// Surfaced in the UI as "Private Charts". A future "ecr" type will carry the
-// dedicated AWS token flow rather than a static password.
+// Surfaced in the UI as "Private Charts".
 type ChartCredential struct {
 	ent.Schema
 }
@@ -31,10 +31,6 @@ func (ChartCredential) Fields() []ent.Field {
 		// explicit and matches the hand-written migration.
 		field.UUID("organization_id", uuid.UUID{}).Immutable(),
 		field.String("name").NotEmpty(),
-		// The auth scheme, fixed at registration. Matches the application
-		// chart_source it can be attached to: basic_auth → http_repo, oci → oci.
-		field.Enum("type").
-			Values("basic_auth", "oci"),
 		// Non-secret registry/repo username.
 		field.String("username").Optional(),
 		// Envelope-encrypted password blob (see lib/secrets). Nillable so a NULL

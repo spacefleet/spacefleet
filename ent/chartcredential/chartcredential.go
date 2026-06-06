@@ -3,7 +3,6 @@
 package chartcredential
 
 import (
-	"fmt"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -20,8 +19,6 @@ const (
 	FieldOrganizationID = "organization_id"
 	// FieldName holds the string denoting the name field in the database.
 	FieldName = "name"
-	// FieldType holds the string denoting the type field in the database.
-	FieldType = "type"
 	// FieldUsername holds the string denoting the username field in the database.
 	FieldUsername = "username"
 	// FieldEncryptedPassword holds the string denoting the encrypted_password field in the database.
@@ -48,7 +45,6 @@ var Columns = []string{
 	FieldID,
 	FieldOrganizationID,
 	FieldName,
-	FieldType,
 	FieldUsername,
 	FieldEncryptedPassword,
 	FieldCreatedAt,
@@ -78,29 +74,6 @@ var (
 	DefaultID func() uuid.UUID
 )
 
-// Type defines the type for the "type" enum field.
-type Type string
-
-// Type values.
-const (
-	TypeBasicAuth Type = "basic_auth"
-	TypeOci       Type = "oci"
-)
-
-func (_type Type) String() string {
-	return string(_type)
-}
-
-// TypeValidator is a validator for the "type" field enum values. It is called by the builders before save.
-func TypeValidator(_type Type) error {
-	switch _type {
-	case TypeBasicAuth, TypeOci:
-		return nil
-	default:
-		return fmt.Errorf("chartcredential: invalid enum value for type field: %q", _type)
-	}
-}
-
 // OrderOption defines the ordering options for the ChartCredential queries.
 type OrderOption func(*sql.Selector)
 
@@ -117,11 +90,6 @@ func ByOrganizationID(opts ...sql.OrderTermOption) OrderOption {
 // ByName orders the results by the name field.
 func ByName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldName, opts...).ToFunc()
-}
-
-// ByType orders the results by the type field.
-func ByType(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldType, opts...).ToFunc()
 }
 
 // ByUsername orders the results by the username field.

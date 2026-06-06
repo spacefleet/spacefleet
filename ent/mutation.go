@@ -2351,7 +2351,6 @@ type ChartCredentialMutation struct {
 	typ                 string
 	id                  *uuid.UUID
 	name                *string
-	_type               *chartcredential.Type
 	username            *string
 	encrypted_password  *[]byte
 	created_at          *time.Time
@@ -2538,42 +2537,6 @@ func (m *ChartCredentialMutation) OldName(ctx context.Context) (v string, err er
 // ResetName resets all changes to the "name" field.
 func (m *ChartCredentialMutation) ResetName() {
 	m.name = nil
-}
-
-// SetType sets the "type" field.
-func (m *ChartCredentialMutation) SetType(c chartcredential.Type) {
-	m._type = &c
-}
-
-// GetType returns the value of the "type" field in the mutation.
-func (m *ChartCredentialMutation) GetType() (r chartcredential.Type, exists bool) {
-	v := m._type
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldType returns the old "type" field's value of the ChartCredential entity.
-// If the ChartCredential object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ChartCredentialMutation) OldType(ctx context.Context) (v chartcredential.Type, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldType is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldType requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldType: %w", err)
-	}
-	return oldValue.Type, nil
-}
-
-// ResetType resets all changes to the "type" field.
-func (m *ChartCredentialMutation) ResetType() {
-	m._type = nil
 }
 
 // SetUsername sets the "username" field.
@@ -2807,15 +2770,12 @@ func (m *ChartCredentialMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChartCredentialMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 6)
 	if m.organization != nil {
 		fields = append(fields, chartcredential.FieldOrganizationID)
 	}
 	if m.name != nil {
 		fields = append(fields, chartcredential.FieldName)
-	}
-	if m._type != nil {
-		fields = append(fields, chartcredential.FieldType)
 	}
 	if m.username != nil {
 		fields = append(fields, chartcredential.FieldUsername)
@@ -2841,8 +2801,6 @@ func (m *ChartCredentialMutation) Field(name string) (ent.Value, bool) {
 		return m.OrganizationID()
 	case chartcredential.FieldName:
 		return m.Name()
-	case chartcredential.FieldType:
-		return m.GetType()
 	case chartcredential.FieldUsername:
 		return m.Username()
 	case chartcredential.FieldEncryptedPassword:
@@ -2864,8 +2822,6 @@ func (m *ChartCredentialMutation) OldField(ctx context.Context, name string) (en
 		return m.OldOrganizationID(ctx)
 	case chartcredential.FieldName:
 		return m.OldName(ctx)
-	case chartcredential.FieldType:
-		return m.OldType(ctx)
 	case chartcredential.FieldUsername:
 		return m.OldUsername(ctx)
 	case chartcredential.FieldEncryptedPassword:
@@ -2896,13 +2852,6 @@ func (m *ChartCredentialMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetName(v)
-		return nil
-	case chartcredential.FieldType:
-		v, ok := value.(chartcredential.Type)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetType(v)
 		return nil
 	case chartcredential.FieldUsername:
 		v, ok := value.(string)
@@ -3001,9 +2950,6 @@ func (m *ChartCredentialMutation) ResetField(name string) error {
 		return nil
 	case chartcredential.FieldName:
 		m.ResetName()
-		return nil
-	case chartcredential.FieldType:
-		m.ResetType()
 		return nil
 	case chartcredential.FieldUsername:
 		m.ResetUsername()

@@ -56,18 +56,16 @@ func validationErr(format string, args ...any) error {
 	return &ValidationError{msg: fmt.Sprintf(format, args...)}
 }
 
-// CreateParams describes a chart credential to register. Type is one of the
-// chartcredential.Type values (basic_auth, oci).
+// CreateParams describes a chart credential to register.
 type CreateParams struct {
 	Name     string
-	Type     string
 	Username string
 	Password string
 }
 
 // UpdateParams describes a change to a chart credential. A nil field is left
-// unchanged; the type is fixed at registration. A non-nil empty Password is
-// rejected (a credential always needs one); to rotate, pass the new value.
+// unchanged. A non-nil empty Password is rejected (a credential always needs
+// one); to rotate, pass the new value.
 type UpdateParams struct {
 	Name     *string
 	Username *string
@@ -77,7 +75,6 @@ type UpdateParams struct {
 // Resolved is a decrypted chart credential, returned only to the rollout (via
 // the applications service's resolver seam) — never to an API caller.
 type Resolved struct {
-	Type     string
 	Username string
 	Password string
 }
@@ -100,17 +97,12 @@ func (s *Service) Get(ctx context.Context, orgID, id uuid.UUID) (*ent.ChartCrede
 
 // Create registers a chart credential, sealing the password.
 func (s *Service) Create(ctx context.Context, orgID uuid.UUID, p CreateParams) (*ent.ChartCredential, error) {
-	typ, err := credentialType(p.Type)
-	if err != nil {
-		return nil, err
-	}
 	if p.Password == "" {
 		return nil, validationErr("password is required")
 	}
 	create := s.ent.ChartCredential.Create().
 		SetOrganizationID(orgID).
 		SetName(p.Name).
-		SetType(typ).
 		SetUsername(p.Username)
 	sealed, err := s.sealer.Seal([]byte(p.Password))
 	if err != nil {
@@ -192,7 +184,6 @@ func (s *Service) Resolve(ctx context.Context, orgID, id uuid.UUID) (Resolved, e
 		return Resolved{}, err
 	}
 	return Resolved{
-		Type:     c.Type.String(),
 		Username: c.Username,
 		Password: password,
 	}, nil
@@ -210,15 +201,4 @@ func (s *Service) openPassword(c *ent.ChartCredential) (string, error) {
 		return "", err
 	}
 	return string(plain), nil
-}
-
-// credentialType validates a type string and converts it to the ent enum.
-func credentialType(s string) (chartcredential.Type, error) {
-	t := chartcredential.Type(s)
-	switch t {
-	case chartcredential.TypeBasicAuth, chartcredential.TypeOci:
-		return t, nil
-	default:
-		return "", validationErr("unknown credential type %q (must be basic_auth or oci)", s)
-	}
 }

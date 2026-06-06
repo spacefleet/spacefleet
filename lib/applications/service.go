@@ -743,41 +743,32 @@ func (s *Service) validateInstallation(ctx context.Context, orgID uuid.UUID, sou
 	return nil
 }
 
-// validateCredential confirms the chart credential exists in the organization
-// and its type is compatible with the chart source (the scoping query is the
-// security boundary; the type match prevents attaching, say, OCI creds to an
-// HTTP-repo app or any credential to a git chart).
+// validateCredential confirms the chart source supports a credential and the
+// credential exists in the organization (the scoping query is the security
+// boundary). A chart credential is a basic-auth username/password pair that
+// works for both http_repo and oci charts; git charts take none (they
+// authenticate via a GitHub App, not a static credential).
 func (s *Service) validateCredential(ctx context.Context, orgID uuid.UUID, source string, credID uuid.UUID) error {
-	want, ok := credentialTypeForSource(source)
-	if !ok {
+	if !sourceSupportsCredential(source) {
 		return validationErr("chart source %q does not support credentials", source)
 	}
-	cred, err := s.ent.ChartCredential.Query().
+	exists, err := s.ent.ChartCredential.Query().
 		Where(chartcredential.OrganizationID(orgID), chartcredential.ID(credID)).
-		Only(ctx)
+		Exist(ctx)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return validationErr("chart credential not found in this organization")
-		}
 		return err
 	}
-	if cred.Type != want {
-		return validationErr("credential type %q is not compatible with chart source %q (expected %q)", cred.Type, source, want)
+	if !exists {
+		return validationErr("chart credential not found in this organization")
 	}
 	return nil
 }
 
-// credentialTypeForSource maps a chart source to the credential type that
-// authenticates it. git charts take no credential (use the git repo's own auth).
-func credentialTypeForSource(source string) (chartcredential.Type, bool) {
-	switch source {
-	case helm.SourceHTTPRepo:
-		return chartcredential.TypeBasicAuth, true
-	case helm.SourceOCI:
-		return chartcredential.TypeOci, true
-	default:
-		return "", false
-	}
+// sourceSupportsCredential reports whether a chart source pulls from a registry
+// that takes a username/password credential. git charts take none (use a GitHub
+// App).
+func sourceSupportsCredential(source string) bool {
+	return source == helm.SourceHTTPRepo || source == helm.SourceOCI
 }
 
 // validateSourceConfig checks the per-source required chart fields are present.

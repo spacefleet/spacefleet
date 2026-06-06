@@ -16,14 +16,11 @@ type Cluster = components["schemas"]["Cluster"];
 type ChartCredential = components["schemas"]["ChartCredential"];
 type GitHubInstallation = components["schemas"]["GitHubInstallation"];
 
-// The credential type compatible with each chart source. git charts use the git
-// repo's own auth, so they take no chart credential.
-const CREDENTIAL_TYPE_FOR_SOURCE: Partial<
-  Record<ChartSource, ChartCredential["type"]>
-> = {
-  http_repo: "basic_auth",
-  oci: "oci",
-};
+// Which chart sources take a username/password chart credential. git charts use
+// a connected GitHub App instead, so they take no chart credential.
+function sourceSupportsCredential(source: ChartSource): boolean {
+  return source === "http_repo" || source === "oci";
+}
 
 // The nil UUID detaches an optional credential/installation on PATCH (see the
 // ApplicationUpdateRequest schema); omitting a field instead means "no change",
@@ -125,11 +122,8 @@ export function ApplicationForm() {
   const selected = CHART_SOURCES.find((s) => s.value === chartSource)!;
   // Only job-running clusters can host a rollout's TaskRun.
   const runnerClusters = clusters.filter((c) => c.runs_jobs);
-  // Credentials compatible with the selected source (none for git).
-  const credentialType = CREDENTIAL_TYPE_FOR_SOURCE[chartSource];
-  const compatibleCredentials = credentials.filter(
-    (c) => c.type === credentialType,
-  );
+  // Whether the selected source takes a chart credential (none for git).
+  const credentialApplies = sourceSupportsCredential(chartSource);
   const clusterName = (id: string) =>
     clusters.find((c) => c.id === id)?.name ?? id;
   // Values-from-git is in play once any source has a repo URL. The GitHub
@@ -191,7 +185,7 @@ export function ApplicationForm() {
         // A cleared selector detaches via the nil UUID; an absent selector
         // (wrong source type / GitHub disabled / not pulling from git) leaves the
         // field untouched.
-        chart_credential_id: credentialType
+        chart_credential_id: credentialApplies
           ? credentialId || NIL_UUID
           : undefined,
         github_installation_id: installationApplies
@@ -342,7 +336,7 @@ export function ApplicationForm() {
                 </Labeled>
               ))}
 
-              {credentialType && (
+              {credentialApplies && (
                 <Labeled
                   label="Chart credential"
                   help="Optional. Required only if the chart is in a private repo or registry. Manage these under Admin › Private Charts."
@@ -353,16 +347,15 @@ export function ApplicationForm() {
                     onChange={(e) => setCredentialId(e.target.value)}
                   >
                     <option value="">None (public chart)</option>
-                    {compatibleCredentials.map((c) => (
+                    {credentials.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
                       </option>
                     ))}
                   </select>
-                  {compatibleCredentials.length === 0 && (
+                  {credentials.length === 0 && (
                     <p className="mt-1 text-xs text-neutral-500">
-                      No matching credentials yet. Add one under Admin › Private
-                      Charts.
+                      No credentials yet. Add one under Admin › Private Charts.
                     </p>
                   )}
                 </Labeled>

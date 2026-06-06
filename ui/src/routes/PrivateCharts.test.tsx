@@ -25,7 +25,6 @@ const mockApi = api as unknown as {
 const oneCredential = {
   id: "cred-1",
   name: "docker-hub",
-  type: "oci",
   username: "robot",
   created_at: "2026-06-03T00:00:00Z",
   updated_at: "2026-06-03T00:00:00Z",
@@ -54,18 +53,17 @@ describe("PrivateCharts", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders credentials with their type label and username", async () => {
+  it("renders credentials with their name and username", async () => {
     mockApi.GET.mockResolvedValue({ data: [oneCredential], error: undefined });
     renderPage();
     expect(await screen.findByText("docker-hub")).toBeInTheDocument();
-    expect(screen.getByText("OCI registry")).toBeInTheDocument();
     expect(screen.getByText("robot")).toBeInTheDocument();
   });
 
   it("creates a credential through the dialog and appends it to the list", async () => {
     mockApi.GET.mockResolvedValue({ data: [], error: undefined });
     mockApi.POST.mockResolvedValue({
-      data: { ...oneCredential, name: "ghcr", type: "basic_auth" },
+      data: { ...oneCredential, name: "ghcr" },
       error: undefined,
     });
     renderPage();

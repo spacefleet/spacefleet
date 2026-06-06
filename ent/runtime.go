@@ -54,11 +54,11 @@ func init() {
 	// chartcredential.NameValidator is a validator for the "name" field. It is called by the builders before save.
 	chartcredential.NameValidator = chartcredentialDescName.Validators[0].(func(string) error)
 	// chartcredentialDescCreatedAt is the schema descriptor for created_at field.
-	chartcredentialDescCreatedAt := chartcredentialFields[6].Descriptor()
+	chartcredentialDescCreatedAt := chartcredentialFields[5].Descriptor()
 	// chartcredential.DefaultCreatedAt holds the default value on creation for the created_at field.
 	chartcredential.DefaultCreatedAt = chartcredentialDescCreatedAt.Default.(func() time.Time)
 	// chartcredentialDescUpdatedAt is the schema descriptor for updated_at field.
-	chartcredentialDescUpdatedAt := chartcredentialFields[7].Descriptor()
+	chartcredentialDescUpdatedAt := chartcredentialFields[6].Descriptor()
 	// chartcredential.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	chartcredential.DefaultUpdatedAt = chartcredentialDescUpdatedAt.Default.(func() time.Time)
 	// chartcredential.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

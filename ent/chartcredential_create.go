@@ -37,12 +37,6 @@ func (_c *ChartCredentialCreate) SetName(v string) *ChartCredentialCreate {
 	return _c
 }
 
-// SetType sets the "type" field.
-func (_c *ChartCredentialCreate) SetType(v chartcredential.Type) *ChartCredentialCreate {
-	_c.mutation.SetType(v)
-	return _c
-}
-
 // SetUsername sets the "username" field.
 func (_c *ChartCredentialCreate) SetUsername(v string) *ChartCredentialCreate {
 	_c.mutation.SetUsername(v)
@@ -172,14 +166,6 @@ func (_c *ChartCredentialCreate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "ChartCredential.name": %w`, err)}
 		}
 	}
-	if _, ok := _c.mutation.GetType(); !ok {
-		return &ValidationError{Name: "type", err: errors.New(`ent: missing required field "ChartCredential.type"`)}
-	}
-	if v, ok := _c.mutation.GetType(); ok {
-		if err := chartcredential.TypeValidator(v); err != nil {
-			return &ValidationError{Name: "type", err: fmt.Errorf(`ent: validator failed for field "ChartCredential.type": %w`, err)}
-		}
-	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "ChartCredential.created_at"`)}
 	}
@@ -228,10 +214,6 @@ func (_c *ChartCredentialCreate) createSpec() (*ChartCredential, *sqlgraph.Creat
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(chartcredential.FieldName, field.TypeString, value)
 		_node.Name = value
-	}
-	if value, ok := _c.mutation.GetType(); ok {
-		_spec.SetField(chartcredential.FieldType, field.TypeEnum, value)
-		_node.Type = value
 	}
 	if value, ok := _c.mutation.Username(); ok {
 		_spec.SetField(chartcredential.FieldUsername, field.TypeString, value)
@@ -327,18 +309,6 @@ func (u *ChartCredentialUpsert) SetName(v string) *ChartCredentialUpsert {
 // UpdateName sets the "name" field to the value that was provided on create.
 func (u *ChartCredentialUpsert) UpdateName() *ChartCredentialUpsert {
 	u.SetExcluded(chartcredential.FieldName)
-	return u
-}
-
-// SetType sets the "type" field.
-func (u *ChartCredentialUpsert) SetType(v chartcredential.Type) *ChartCredentialUpsert {
-	u.Set(chartcredential.FieldType, v)
-	return u
-}
-
-// UpdateType sets the "type" field to the value that was provided on create.
-func (u *ChartCredentialUpsert) UpdateType() *ChartCredentialUpsert {
-	u.SetExcluded(chartcredential.FieldType)
 	return u
 }
 
@@ -455,20 +425,6 @@ func (u *ChartCredentialUpsertOne) SetName(v string) *ChartCredentialUpsertOne {
 func (u *ChartCredentialUpsertOne) UpdateName() *ChartCredentialUpsertOne {
 	return u.Update(func(s *ChartCredentialUpsert) {
 		s.UpdateName()
-	})
-}
-
-// SetType sets the "type" field.
-func (u *ChartCredentialUpsertOne) SetType(v chartcredential.Type) *ChartCredentialUpsertOne {
-	return u.Update(func(s *ChartCredentialUpsert) {
-		s.SetType(v)
-	})
-}
-
-// UpdateType sets the "type" field to the value that was provided on create.
-func (u *ChartCredentialUpsertOne) UpdateType() *ChartCredentialUpsertOne {
-	return u.Update(func(s *ChartCredentialUpsert) {
-		s.UpdateType()
 	})
 }
 
@@ -760,20 +716,6 @@ func (u *ChartCredentialUpsertBulk) SetName(v string) *ChartCredentialUpsertBulk
 func (u *ChartCredentialUpsertBulk) UpdateName() *ChartCredentialUpsertBulk {
 	return u.Update(func(s *ChartCredentialUpsert) {
 		s.UpdateName()
-	})
-}
-
-// SetType sets the "type" field.
-func (u *ChartCredentialUpsertBulk) SetType(v chartcredential.Type) *ChartCredentialUpsertBulk {
-	return u.Update(func(s *ChartCredentialUpsert) {
-		s.SetType(v)
-	})
-}
-
-// UpdateType sets the "type" field to the value that was provided on create.
-func (u *ChartCredentialUpsertBulk) UpdateType() *ChartCredentialUpsertBulk {
-	return u.Update(func(s *ChartCredentialUpsert) {
-		s.UpdateType()
 	})
 }
 

@@ -23,8 +23,6 @@ type ChartCredential struct {
 	OrganizationID uuid.UUID `json:"organization_id,omitempty"`
 	// Name holds the value of the "name" field.
 	Name string `json:"name,omitempty"`
-	// Type holds the value of the "type" field.
-	Type chartcredential.Type `json:"type,omitempty"`
 	// Username holds the value of the "username" field.
 	Username string `json:"username,omitempty"`
 	// EncryptedPassword holds the value of the "encrypted_password" field.
@@ -66,7 +64,7 @@ func (*ChartCredential) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case chartcredential.FieldEncryptedPassword:
 			values[i] = new([]byte)
-		case chartcredential.FieldName, chartcredential.FieldType, chartcredential.FieldUsername:
+		case chartcredential.FieldName, chartcredential.FieldUsername:
 			values[i] = new(sql.NullString)
 		case chartcredential.FieldCreatedAt, chartcredential.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -104,12 +102,6 @@ func (_m *ChartCredential) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field name", values[i])
 			} else if value.Valid {
 				_m.Name = value.String
-			}
-		case chartcredential.FieldType:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field type", values[i])
-			} else if value.Valid {
-				_m.Type = chartcredential.Type(value.String)
 			}
 		case chartcredential.FieldUsername:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -181,9 +173,6 @@ func (_m *ChartCredential) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("name=")
 	builder.WriteString(_m.Name)
-	builder.WriteString(", ")
-	builder.WriteString("type=")
-	builder.WriteString(fmt.Sprintf("%v", _m.Type))
 	builder.WriteString(", ")
 	builder.WriteString("username=")
 	builder.WriteString(_m.Username)
