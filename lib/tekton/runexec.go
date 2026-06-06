@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
 	"github.com/spacefleet/spacefleet/lib/k8s"
 )
 
@@ -67,7 +69,21 @@ func (f RunFuncs) Execute(ctx context.Context, r RunRequest) (runName string, fi
 	if runName == "" && r.RecoverSelector != "" {
 		runName = f.recover(ctx, r.Conn, r.Namespace, r.RecoverSelector)
 	}
-	if runName == "" || !f.runActive(ctx, r.Conn, r.Namespace, runName) {
+	// Decide whether a candidate run name (persisted or recovered) is one we can
+	// re-attach to. With no candidate, submit straight away. With a candidate, a
+	// not-found means it's gone and a fresh submit is correct; a transient Get
+	// failure must NOT resubmit (that risks a duplicate TaskRun) — it returns a
+	// retryable error so the job retries and re-attaches via the recovery selector.
+	if runName != "" {
+		active, aerr := f.runActive(ctx, r.Conn, r.Namespace, runName)
+		if aerr != nil {
+			return runName, nil, aerr
+		}
+		if !active {
+			runName = ""
+		}
+	}
+	if runName == "" {
 		run, serr := f.Submit(ctx, r.Conn, r.Namespace, stampLabels(r.Spec, r.Labels))
 		if serr != nil {
 			return "", nil, serr

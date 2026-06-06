@@ -142,16 +142,44 @@ func validateHelmConfig(n ComponentInput) error {
 	source := n.Config[helmConfigChartSource]
 	switch source {
 	case helm.SourceHTTPRepo:
-		return requireConfig(n, helm.ConfigRepoURL, helm.ConfigChart)
+		if err := requireConfig(n, helm.ConfigRepoURL, helm.ConfigChart); err != nil {
+			return err
+		}
 	case helm.SourceOCI:
-		return requireConfig(n, helm.ConfigRepoURL)
+		if err := requireConfig(n, helm.ConfigRepoURL); err != nil {
+			return err
+		}
 	case helm.SourceGit:
-		return requireConfig(n, helm.ConfigRepoURL)
+		if err := requireConfig(n, helm.ConfigRepoURL); err != nil {
+			return err
+		}
 	case "":
 		return fmt.Errorf("%w: node %q (helm) requires %q", ErrInvalidConfig, n.Name, helmConfigChartSource)
 	default:
 		return fmt.Errorf("%w: node %q (helm) has unknown %s %q", ErrInvalidConfig, n.Name, helmConfigChartSource, source)
 	}
+	return validateValuesSources(n)
+}
+
+// validateValuesSources rejects a malformed values_sources at write time (F9) so a
+// bad value can't slip through to the worker (where decodeValuesSources would only
+// fail mid-run). It reuses the planner's decode and then checks each source carries
+// the keys helm.Script requires (repo_url + path); git_ref is optional. An absent
+// or empty value is fine (inline-only values). Failures wrap ErrInvalidConfig so a
+// handler maps them to a 400.
+func validateValuesSources(n ComponentInput) error {
+	sources, err := decodeValuesSources(n.Config[helmConfigValuesSources])
+	if err != nil {
+		return fmt.Errorf("%w: node %q (helm): %v", ErrInvalidConfig, n.Name, err)
+	}
+	for i, src := range sources {
+		for _, k := range []string{helm.ValuesSourceRepoURL, helm.ValuesSourcePath} {
+			if src[k] == "" {
+				return fmt.Errorf("%w: node %q (helm) %s[%d] requires %q", ErrInvalidConfig, n.Name, helmConfigValuesSources, i, k)
+			}
+		}
+	}
+	return nil
 }
 
 // manifestConfigPath is the config key for the path (file or directory) of

@@ -12,6 +12,13 @@ type WorkflowRunArgs struct {
 	OrgID         uuid.UUID `json:"org_id"`
 	ApplicationID uuid.UUID `json:"application_id"`
 	Action        string    `json:"action"`
+	// Force is the per-run "force a workload roll" opt-in for a deploy: it makes the
+	// helm step a forced `helm upgrade --install --force` so pods churn even when the
+	// rendered manifests are unchanged. It applies only to the deploy action (the
+	// planner ignores it for uninstall/preview). Carried on the job args — not just
+	// the start request — so it survives River retries: a retried attempt re-plans
+	// from these args and forces identically, never silently dropping the toggle.
+	Force bool `json:"force,omitempty"`
 }
 
 // Kind is the stable River job identifier.

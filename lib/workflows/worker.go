@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -78,8 +79,21 @@ func (w *WorkflowRunWorker) Timeout(*river.Job[WorkflowRunArgs]) time.Duration {
 // succeeded/partial and an error for failed so River retries the job — retries are
 // safe because already-terminal components short-circuit and in-flight TaskRuns
 // re-attach (never double-submit) via the per-component label.
-func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRunArgs]) error {
+func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRunArgs]) (err error) {
 	a := job.Args
+
+	// Crash safety (F5): a panic anywhere below would otherwise unwind Work without
+	// ever marking the run terminal, leaving it stuck "running" forever (River sees a
+	// panicking job as an error and may retry, but each retry would re-panic and the
+	// run row would never settle). Recover, mark the run failed, and re-surface the
+	// panic as a returned error so River records the failure. A hard kill (SIGKILL,
+	// node loss) can't run this defer — the periodic reaper settles those runs.
+	defer func() {
+		if r := recover(); r != nil {
+			_ = w.svc.MarkRun(ctx, a.OrgID, a.WorkflowRunID, "failed", fmt.Sprintf("workflow run panicked: %v", r))
+			err = fmt.Errorf("workflows: run %s panicked: %v", a.WorkflowRunID, r)
+		}
+	}()
 
 	run, comps, err := w.svc.GetRun(ctx, a.OrgID, a.ApplicationID, a.WorkflowRunID)
 	if err != nil {
@@ -141,7 +155,22 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 		concurrency = maxComponentConcurrency
 	}
 
+	// ran records the node ids runFn actually executed (and thus already persisted a
+	// terminal component_run for). The scheduler also settles nodes it never runs —
+	// "skipped" dependents, and "failed" for a node referencing an unknown dependency
+	// id (F1) — and onState persists those; ran lets onState tell a scheduler-settled
+	// "failed" apart from a runFn failure so it doesn't double-mark. Guarded by ranMu
+	// since runFn runs concurrently across nodes.
+	var (
+		ranMu        sync.Mutex
+		ran          = make(map[uuid.UUID]struct{}, len(snapshot.Nodes))
+		retryable    bool // set if any component failed for a transient/infra reason (F4)
+		retryableErr error
+	)
 	runFn := func(ctx context.Context, sn schedNode) nodeResult {
+		ranMu.Lock()
+		ran[sn.ID] = struct{}{}
+		ranMu.Unlock()
 		node, ok := nodeByID[sn.ID]
 		if !ok {
 			return nodeResult{Status: statusFailed, Err: fmt.Errorf("workflows: node %s missing from snapshot", sn.ID)}
@@ -150,18 +179,42 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 		if !ok {
 			return nodeResult{Status: statusFailed, Err: fmt.Errorf("workflows: component run for node %s missing", sn.ID)}
 		}
-		return w.runComponent(ctx, a, app, node, cr)
+		res := w.runComponent(ctx, a, app, node, cr)
+		if res.Status == statusFailed && res.Retryable {
+			ranMu.Lock()
+			retryable = true
+			if retryableErr == nil {
+				retryableErr = res.Err
+			}
+			ranMu.Unlock()
+		}
+		return res
 	}
 
 	onState := func(id uuid.UUID, status string) {
-		// The scheduler emits "skipped" for nodes it never runs (a dep hard-failed or
-		// was skipped); runFn already persists running/succeeded/failed itself, so we
-		// only need to persist skips here. "running" is also driven inside runComponent.
-		if status != statusSkipped {
+		// runFn persists running/succeeded/failed itself for every node it actually
+		// runs, so we only persist the transitions the scheduler drives without
+		// invoking runFn: "skipped" (a dep hard-failed or was skipped) and the
+		// "failed" it settles directly when a node references an unknown dependency id
+		// (F1) — that node never reaches runFn, so without persisting here its
+		// component_run would be left pending while the run reports failed.
+		cr, ok := crByComponent[id]
+		if !ok {
 			return
 		}
-		if cr, ok := crByComponent[id]; ok {
+		switch status {
+		case statusSkipped:
 			_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "skipped", "skipped (an upstream component did not pass)", "")
+		case statusFailed:
+			// runFn persists its own "failed" (with the real error). A "failed" the
+			// scheduler emitted for a node it never ran is the unknown-dependency case
+			// (F1); persist it so the component_run reflects the failed run.
+			ranMu.Lock()
+			_, executed := ran[id]
+			ranMu.Unlock()
+			if !executed {
+				_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "failed", "unresolved dependency: a referenced component is not part of this run", "")
+			}
 		}
 	}
 
@@ -170,9 +223,24 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 	msg := "workflow " + final
 	_ = w.svc.MarkRun(ctx, a.OrgID, a.WorkflowRunID, final, msg)
 	if final == runFailed {
-		// Return an error so River retries the whole job; the retry is idempotent
-		// (terminal components short-circuit, in-flight ones re-attach).
-		return fmt.Errorf("workflows: run %s failed", a.WorkflowRunID)
+		// F4: only return an error (so River retries the whole job) when at least one
+		// component failed for a genuinely retryable reason — a transient/infra
+		// condition where re-running can change the outcome (e.g. the TaskRun couldn't
+		// be submitted or watched), or a context cancellation/timeout. The retry is
+		// idempotent: already-terminal components short-circuit and in-flight ones
+		// re-attach via the per-component label, so only the unsettled work re-runs.
+		//
+		// When the failure is fully attributable to settled component results that
+		// won't change on retry — a component's TaskRun ran to a terminal Failed phase,
+		// or a deterministic plan/config error — return nil. The run is already marked
+		// failed; retrying would only re-run the same failing scripts ~25 times.
+		if ctx.Err() != nil {
+			return fmt.Errorf("workflows: run %s aborted: %w", a.WorkflowRunID, ctx.Err())
+		}
+		if retryable {
+			return fmt.Errorf("workflows: run %s failed (retryable): %w", a.WorkflowRunID, retryableErr)
+		}
+		return nil
 	}
 	return nil
 }
@@ -197,7 +265,7 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 
 	_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "running", "starting "+a.Action, "")
 
-	req, err := w.planComponent(ctx, app, node, a.Action, cr.RunName)
+	req, err := w.planComponent(ctx, app, node, a.Action, a.Force, cr.RunName)
 	if err != nil {
 		_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "failed", err.Error(), "")
 		return nodeResult{Status: statusFailed, Err: err}
@@ -220,8 +288,12 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 	runnerConn := req.Conn
 	runName, finalStatus, err := w.funcs.Execute(ctx, req)
 	if err != nil {
+		// The executor failed to submit or watch the TaskRun to terminal — an
+		// infra/transient condition (cluster unreachable, API error), not a settled
+		// component result. Mark it retryable so the run's River job retries (F4): the
+		// next attempt re-attaches to any in-flight TaskRun via the per-component label.
 		_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "failed", err.Error(), runName)
-		return nodeResult{Status: statusFailed, Err: err}
+		return nodeResult{Status: statusFailed, Err: err, Retryable: true}
 	}
 
 	// Terminal: capture logs + resolved revisions best-effort before settling.
@@ -231,7 +303,7 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 	}
 	if logs != "" {
 		rev := helm.ParseRevisions(logs)
-		_ = w.svc.SetComponentRunLogs(ctx, a.OrgID, cr.ID, logs, rev.Chart, "")
+		_ = w.svc.SetComponentRunLogs(ctx, a.OrgID, cr.ID, logs, rev.Chart, encodeValuesRevision(rev.Values))
 	}
 
 	if finalStatus.Phase == "Failed" {
@@ -244,6 +316,26 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 	}
 	_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "succeeded", finalStatus.Message, runName)
 	return nodeResult{Status: statusSucceeded}
+}
+
+// encodeValuesRevision serializes the resolved values-source revisions (the
+// index→SHA map helm.ParseRevisions extracts from the run logs) into the string
+// stored on component_runs.values_revision (F15). It's a JSON object keyed by the
+// values-source index so a viewer can line each resolved commit up with its
+// ordered source. An empty map yields "" so SetComponentRunLogs leaves the column
+// untouched (no values-from-git sources resolved). encoding/json sorts integer-ish
+// map keys, so the output is deterministic across attempts.
+func encodeValuesRevision(values map[int]string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(values)
+	if err != nil {
+		// map[int]string always marshals; treat an impossible error as "no revision"
+		// rather than failing the run (revision capture is best-effort).
+		return ""
+	}
+	return string(b)
 }
 
 // defaultCaptureLogs reads a terminal run's full pod logs from the runner

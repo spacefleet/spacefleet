@@ -28,19 +28,25 @@ const (
 
 // planComponent builds the run plan for one workflow node, given the application
 // (for the app-level runner cluster + default target cluster/namespace), the
-// snapshot node (its as-run config + per-component overrides), the run action,
-// and the persisted run name to re-attach to. It is the workflow analogue of
-// applications.ResolveRollout, sharing the exact same resolution layer
-// (lib/deploy) so the credential/kubeconfig/token handling is not duplicated.
+// snapshot node (its as-run config + per-component overrides), the run action, the
+// per-run force flag (a deploy-only "roll the workload" opt-in, threaded from the
+// River job args so it survives retries), and the persisted run name to re-attach
+// to. It is the workflow analogue of applications.ResolveRollout, sharing the exact
+// same resolution layer (lib/deploy) so the credential/kubeconfig/token handling is
+// not duplicated.
 //
-// The planner switches on the component type so adding a new type (manifest,
-// later) is a new case, not a rewrite. preview is intentionally not supported in
-// this phase: it returns a clear "not yet supported" error rather than panicking.
-func (w *WorkflowRunWorker) planComponent(ctx context.Context, app *ent.Application, node GraphNode, action, existingRun string) (tekton.RunRequest, error) {
+// The planner switches on the component type so adding a new type is a new case,
+// not a rewrite. preview is a real action: each component is planned as its own
+// per-component dry-run (helm diff / kubectl diff), and the worker clears the
+// scheduler deps for a preview run so every component's dry-run is independently
+// runnable and they preview concurrently rather than gating on upstream "passes".
+func (w *WorkflowRunWorker) planComponent(ctx context.Context, app *ent.Application, node GraphNode, action string, force bool, existingRun string) (tekton.RunRequest, error) {
 	switch node.Type {
 	case TypeHelm:
-		return w.planHelm(ctx, app, node, action, existingRun)
+		return w.planHelm(ctx, app, node, action, force, existingRun)
 	case TypeManifest:
+		// force is a helm-only "roll the workload" opt-in; a manifest apply has no
+		// equivalent, so it's intentionally not threaded into planManifest.
 		return w.planManifest(ctx, app, node, action, existingRun)
 	default:
 		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q has unsupported type %q for execution", node.Name, node.Type)
@@ -141,8 +147,9 @@ func manifestRunPrefix(node GraphNode) string {
 // planHelm builds the helm RunSpec + runner connection for a helm component. It
 // resolves the runner/target clusters (honoring the per-component target
 // override), decodes the component's helm config, calls the shared resolver for
-// the injected Files + auth flags, and renders the script via helm.Script.
-func (w *WorkflowRunWorker) planHelm(ctx context.Context, app *ent.Application, node GraphNode, action, existingRun string) (tekton.RunRequest, error) {
+// the injected Files + auth flags, and renders the script via helm.Script. force
+// is honored only for a deploy (it's meaningless for uninstall/preview).
+func (w *WorkflowRunWorker) planHelm(ctx context.Context, app *ent.Application, node GraphNode, action string, force bool, existingRun string) (tekton.RunRequest, error) {
 	helmAction, err := helmActionFor(action)
 	if err != nil {
 		return tekton.RunRequest{}, err
@@ -189,11 +196,12 @@ func (w *WorkflowRunWorker) planHelm(ctx context.Context, app *ent.Application, 
 		WaitTimeout:     helm.WaitTimeout(resolved.TargetMethod),
 		HasCredential:   resolved.HasCredential,
 		HasGitToken:     resolved.HasGitToken,
-		// A workflow deploy is a plain idempotent `helm upgrade --install` — no forced
-		// workload roll. The legacy single-helm path made force an explicit per-deploy
-		// opt-in; the workflow builder has no such toggle yet, so defaulting it on would
-		// churn pods on every run. Add a per-run force option later if needed.
-		Force: false,
+		// Force a workload roll only when the run opted in (the per-run Force toggle,
+		// carried on the River job args so it survives retries) and only for a deploy:
+		// an uninstall has no upgrade and a preview is a dry-run, so force is moot for
+		// both. Off by default keeps a plain deploy an idempotent `helm upgrade
+		// --install` that doesn't churn pods when the rendered manifests are unchanged.
+		Force: force && helmAction == helm.ActionDeploy,
 	})
 
 	return tekton.RunRequest{

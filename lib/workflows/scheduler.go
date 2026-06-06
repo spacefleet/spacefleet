@@ -36,10 +36,17 @@ type schedNode struct {
 
 // nodeResult is the outcome of running one node to terminal. Status is one of
 // statusSucceeded / statusFailed / statusSkipped; Err carries the failure detail
-// (for the caller's logging) and is otherwise nil.
+// (for the caller's logging) and is otherwise nil. Retryable distinguishes a
+// failure the caller can usefully retry (an infra/transient condition — e.g. the
+// TaskRun couldn't be submitted or watched) from a permanent one (the component
+// ran to a terminal Failed phase, so retrying re-runs the same failing script).
+// The scheduler itself ignores Retryable; it's consumed by the worker to decide
+// whether to return an error from Work (retry the River job) or nil (settle the
+// run failed without burning retries — F4).
 type nodeResult struct {
-	Status string
-	Err    error
+	Status    string
+	Err       error
+	Retryable bool
 }
 
 // schedule runs a DAG of nodes to completion and returns the run's terminal
@@ -76,8 +83,10 @@ func schedule(
 	}
 
 	contOnFail := make(map[uuid.UUID]bool, len(nodes))
+	known := make(map[uuid.UUID]struct{}, len(nodes))
 	for _, n := range nodes {
 		contOnFail[n.ID] = n.ContinueOnFailure
+		known[n.ID] = struct{}{}
 	}
 
 	var (
@@ -170,7 +179,18 @@ func schedule(
 				}
 				blocked := false
 				ready := true
+				unknownDep := false
 				for _, dep := range n.DependsOn {
+					if _, ok := known[dep]; !ok {
+						// A dep id not present in the node set can never settle, so the
+						// dependent would otherwise hang forever (and the run could report
+						// succeeded while this component stays pending). Treat it as a hard
+						// error: fail the dependent now. validateDAG rejects unknown deps at
+						// write time, so this only fires on a corrupt/edited snapshot — but
+						// the scheduler must not strand a node on it.
+						unknownDep = true
+						break
+					}
 					if _, settled := results[dep]; !settled {
 						ready = false // a dep not yet settled neither blocks nor passes
 						continue
@@ -182,6 +202,11 @@ func schedule(
 					if !depPassed(dep) {
 						ready = false
 					}
+				}
+				if unknownDep {
+					markSettled(n.ID, statusFailed)
+					progressed = true
+					continue
 				}
 				if blocked {
 					markSettled(n.ID, statusSkipped)
