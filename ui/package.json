@@ -16,6 +16,7 @@
   "dependencies": {
     "@microsoft/fetch-event-source": "^2.0.1",
     "@tailwindcss/vite": "^4.2.4",
+    "@xyflow/react": "^12.11.0",
     "clsx": "^2.1.1",
     "lucide-react": "^1.11.0",
     "oidc-client-ts": "^3.5.0",

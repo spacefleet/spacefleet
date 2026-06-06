@@ -12,6 +12,9 @@ import { ApplicationForm } from "./routes/ApplicationForm";
 import { ImportApplication } from "./routes/ImportApplication";
 import { ApplicationDetail } from "./routes/ApplicationDetail";
 import { DeploymentDetail } from "./routes/DeploymentDetail";
+import { WorkflowBuilder } from "./routes/WorkflowBuilder";
+import { WorkflowRuns } from "./routes/WorkflowRuns";
+import { WorkflowRunView } from "./routes/WorkflowRunView";
 import { Clusters } from "./routes/Clusters";
 import { ClusterDetail } from "./routes/ClusterDetail";
 import { CreateOrganization } from "./routes/CreateOrganization";
@@ -105,6 +108,26 @@ export function App() {
                 <Route
                   path="/applications/:appId/edit"
                   element={<ApplicationForm />}
+                />
+                {/* Workflow canvas: the interactive DAG builder for an app's
+                    deploy workflow. Listed before the ":appId" detail route so
+                    the "/workflow" segment isn't swallowed (it can't be — the
+                    detail route has no trailing segment — but kept adjacent for
+                    clarity). */}
+                <Route
+                  path="/applications/:appId/workflow"
+                  element={<WorkflowBuilder />}
+                />
+                {/* Workflow run history (a CI-like list of runs). */}
+                <Route
+                  path="/applications/:appId/runs"
+                  element={<WorkflowRuns />}
+                />
+                {/* One workflow run's live DAG view (status-colored nodes +
+                    per-component logs/diff). */}
+                <Route
+                  path="/applications/:appId/runs/:runId"
+                  element={<WorkflowRunView />}
                 />
                 {/* Application drill-down: the per-app management page, reached
                     by clicking a row on the Applications leaf (not a nav entry

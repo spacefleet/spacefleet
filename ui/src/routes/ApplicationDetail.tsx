@@ -11,6 +11,7 @@ import {
   Play,
   RefreshCw,
   Trash2,
+  Workflow,
 } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
@@ -164,8 +165,18 @@ export function ApplicationDetail() {
                 )}
               </div>
             </div>
-            {canEdit && (
-              <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => navigate(`/applications/${appId}/workflow`)}
+                title="Open the deploy workflow canvas"
+                className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+              >
+                <Workflow className="h-3.5 w-3.5" />
+                Workflow
+              </button>
+              {canEdit && (
+                <>
                 <button
                   type="button"
                   onClick={() => void refresh()}
@@ -217,8 +228,9 @@ export function ApplicationDetail() {
                   <Trash2 className="h-3.5 w-3.5" />
                   Delete
                 </button>
-              </div>
-            )}
+                </>
+              )}
+            </div>
           </div>
 
           {actionError && (
