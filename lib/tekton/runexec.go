@@ -112,9 +112,22 @@ func (f RunFuncs) recover(ctx context.Context, conn k8s.Connection, namespace, s
 
 // runActive reports whether the named run is present and not yet terminal — the
 // only state in which re-attaching (rather than resubmitting) is correct.
-func (f RunFuncs) runActive(ctx context.Context, conn k8s.Connection, namespace, name string) bool {
+//
+// It separates the two Get failure modes the caller must treat differently: a
+// not-found (the run is genuinely gone) returns (false, nil) so a fresh run is
+// submitted, but a transient error (API unreachable, RBAC blip) returns it
+// unwrapped so Execute surfaces a retryable error instead of resubmitting —
+// resubmitting on a blind "couldn't tell" would risk a duplicate TaskRun for a
+// run that is in fact still in flight.
+func (f RunFuncs) runActive(ctx context.Context, conn k8s.Connection, namespace, name string) (bool, error) {
 	st, err := f.Get(ctx, conn, namespace, name)
-	return err == nil && !st.Terminal()
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return !st.Terminal(), nil
 }
 
 // await watches the run to a terminal phase and returns its final status. If the

@@ -321,6 +321,12 @@ func Script(r Rollout) string {
 	for i, src := range r.ValuesSources {
 		repo := src[ValuesSourceRepoURL]
 		if repo == "" {
+			// Defense-in-depth: write-time validation (lib/workflows) rejects a values
+			// source with a blank repo_url, so this should be unreachable. If one slips
+			// through, don't drop it silently — emit a visible stderr warning so the
+			// dropped source is observable in the run logs (echo exits 0, so this never
+			// trips set -e or fails the step).
+			fmt.Fprintf(&b, "echo 'warning: skipping values source %d: missing repo_url' >&2\n", i)
 			continue
 		}
 		dir := "/values/" + strconv.Itoa(i)
