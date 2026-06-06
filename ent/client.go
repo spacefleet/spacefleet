@@ -21,7 +21,6 @@ import (
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
-	"github.com/spacefleet/spacefleet/ent/deployment"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
@@ -46,8 +45,6 @@ type Client struct {
 	Component *ComponentClient
 	// ComponentRun is the client for interacting with the ComponentRun builders.
 	ComponentRun *ComponentRunClient
-	// Deployment is the client for interacting with the Deployment builders.
-	Deployment *DeploymentClient
 	// GitHubInstallation is the client for interacting with the GitHubInstallation builders.
 	GitHubInstallation *GitHubInstallationClient
 	// Invitation is the client for interacting with the Invitation builders.
@@ -78,7 +75,6 @@ func (c *Client) init() {
 	c.Cluster = NewClusterClient(c.config)
 	c.Component = NewComponentClient(c.config)
 	c.ComponentRun = NewComponentRunClient(c.config)
-	c.Deployment = NewDeploymentClient(c.config)
 	c.GitHubInstallation = NewGitHubInstallationClient(c.config)
 	c.Invitation = NewInvitationClient(c.config)
 	c.Membership = NewMembershipClient(c.config)
@@ -183,7 +179,6 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Cluster:            NewClusterClient(cfg),
 		Component:          NewComponentClient(cfg),
 		ComponentRun:       NewComponentRunClient(cfg),
-		Deployment:         NewDeploymentClient(cfg),
 		GitHubInstallation: NewGitHubInstallationClient(cfg),
 		Invitation:         NewInvitationClient(cfg),
 		Membership:         NewMembershipClient(cfg),
@@ -215,7 +210,6 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Cluster:            NewClusterClient(cfg),
 		Component:          NewComponentClient(cfg),
 		ComponentRun:       NewComponentRunClient(cfg),
-		Deployment:         NewDeploymentClient(cfg),
 		GitHubInstallation: NewGitHubInstallationClient(cfg),
 		Invitation:         NewInvitationClient(cfg),
 		Membership:         NewMembershipClient(cfg),
@@ -253,7 +247,7 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Application, c.ChartCredential, c.Cluster, c.Component, c.ComponentRun,
-		c.Deployment, c.GitHubInstallation, c.Invitation, c.Membership, c.Organization,
+		c.GitHubInstallation, c.Invitation, c.Membership, c.Organization,
 		c.TektonInstallation, c.User, c.WorkflowRun,
 	} {
 		n.Use(hooks...)
@@ -265,7 +259,7 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Application, c.ChartCredential, c.Cluster, c.Component, c.ComponentRun,
-		c.Deployment, c.GitHubInstallation, c.Invitation, c.Membership, c.Organization,
+		c.GitHubInstallation, c.Invitation, c.Membership, c.Organization,
 		c.TektonInstallation, c.User, c.WorkflowRun,
 	} {
 		n.Intercept(interceptors...)
@@ -285,8 +279,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Component.mutate(ctx, m)
 	case *ComponentRunMutation:
 		return c.ComponentRun.mutate(ctx, m)
-	case *DeploymentMutation:
-		return c.Deployment.mutate(ctx, m)
 	case *GitHubInstallationMutation:
 		return c.GitHubInstallation.mutate(ctx, m)
 	case *InvitationMutation:
@@ -455,38 +447,6 @@ func (c *ApplicationClient) QueryRunnerCluster(_m *Application) *ClusterQuery {
 			sqlgraph.From(application.Table, application.FieldID, id),
 			sqlgraph.To(cluster.Table, cluster.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, false, application.RunnerClusterTable, application.RunnerClusterColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// QueryChartCredential queries the chart_credential edge of a Application.
-func (c *ApplicationClient) QueryChartCredential(_m *Application) *ChartCredentialQuery {
-	query := (&ChartCredentialClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(application.Table, application.FieldID, id),
-			sqlgraph.To(chartcredential.Table, chartcredential.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, application.ChartCredentialTable, application.ChartCredentialColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// QueryGithubInstallation queries the github_installation edge of a Application.
-func (c *ApplicationClient) QueryGithubInstallation(_m *Application) *GitHubInstallationQuery {
-	query := (&GitHubInstallationClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(application.Table, application.FieldID, id),
-			sqlgraph.To(githubinstallation.Table, githubinstallation.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, application.GithubInstallationTable, application.GithubInstallationColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -1208,171 +1168,6 @@ func (c *ComponentRunClient) mutate(ctx context.Context, m *ComponentRunMutation
 		return (&ComponentRunDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ComponentRun mutation op: %q", m.Op())
-	}
-}
-
-// DeploymentClient is a client for the Deployment schema.
-type DeploymentClient struct {
-	config
-}
-
-// NewDeploymentClient returns a client for the Deployment from the given config.
-func NewDeploymentClient(c config) *DeploymentClient {
-	return &DeploymentClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `deployment.Hooks(f(g(h())))`.
-func (c *DeploymentClient) Use(hooks ...Hook) {
-	c.hooks.Deployment = append(c.hooks.Deployment, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `deployment.Intercept(f(g(h())))`.
-func (c *DeploymentClient) Intercept(interceptors ...Interceptor) {
-	c.inters.Deployment = append(c.inters.Deployment, interceptors...)
-}
-
-// Create returns a builder for creating a Deployment entity.
-func (c *DeploymentClient) Create() *DeploymentCreate {
-	mutation := newDeploymentMutation(c.config, OpCreate)
-	return &DeploymentCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of Deployment entities.
-func (c *DeploymentClient) CreateBulk(builders ...*DeploymentCreate) *DeploymentCreateBulk {
-	return &DeploymentCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *DeploymentClient) MapCreateBulk(slice any, setFunc func(*DeploymentCreate, int)) *DeploymentCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &DeploymentCreateBulk{err: fmt.Errorf("calling to DeploymentClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*DeploymentCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &DeploymentCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for Deployment.
-func (c *DeploymentClient) Update() *DeploymentUpdate {
-	mutation := newDeploymentMutation(c.config, OpUpdate)
-	return &DeploymentUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *DeploymentClient) UpdateOne(_m *Deployment) *DeploymentUpdateOne {
-	mutation := newDeploymentMutation(c.config, OpUpdateOne, withDeployment(_m))
-	return &DeploymentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *DeploymentClient) UpdateOneID(id uuid.UUID) *DeploymentUpdateOne {
-	mutation := newDeploymentMutation(c.config, OpUpdateOne, withDeploymentID(id))
-	return &DeploymentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for Deployment.
-func (c *DeploymentClient) Delete() *DeploymentDelete {
-	mutation := newDeploymentMutation(c.config, OpDelete)
-	return &DeploymentDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *DeploymentClient) DeleteOne(_m *Deployment) *DeploymentDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *DeploymentClient) DeleteOneID(id uuid.UUID) *DeploymentDeleteOne {
-	builder := c.Delete().Where(deployment.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &DeploymentDeleteOne{builder}
-}
-
-// Query returns a query builder for Deployment.
-func (c *DeploymentClient) Query() *DeploymentQuery {
-	return &DeploymentQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeDeployment},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a Deployment entity by its id.
-func (c *DeploymentClient) Get(ctx context.Context, id uuid.UUID) (*Deployment, error) {
-	return c.Query().Where(deployment.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *DeploymentClient) GetX(ctx context.Context, id uuid.UUID) *Deployment {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// QueryOrganization queries the organization edge of a Deployment.
-func (c *DeploymentClient) QueryOrganization(_m *Deployment) *OrganizationQuery {
-	query := (&OrganizationClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(deployment.Table, deployment.FieldID, id),
-			sqlgraph.To(organization.Table, organization.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, deployment.OrganizationTable, deployment.OrganizationColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// QueryApplication queries the application edge of a Deployment.
-func (c *DeploymentClient) QueryApplication(_m *Deployment) *ApplicationQuery {
-	query := (&ApplicationClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(deployment.Table, deployment.FieldID, id),
-			sqlgraph.To(application.Table, application.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, deployment.ApplicationTable, deployment.ApplicationColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// Hooks returns the client hooks.
-func (c *DeploymentClient) Hooks() []Hook {
-	return c.hooks.Deployment
-}
-
-// Interceptors returns the client interceptors.
-func (c *DeploymentClient) Interceptors() []Interceptor {
-	return c.inters.Deployment
-}
-
-func (c *DeploymentClient) mutate(ctx context.Context, m *DeploymentMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&DeploymentCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&DeploymentUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&DeploymentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&DeploymentDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown Deployment mutation op: %q", m.Op())
 	}
 }
 
@@ -2486,12 +2281,12 @@ func (c *WorkflowRunClient) mutate(ctx context.Context, m *WorkflowRunMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Application, ChartCredential, Cluster, Component, ComponentRun, Deployment,
+		Application, ChartCredential, Cluster, Component, ComponentRun,
 		GitHubInstallation, Invitation, Membership, Organization, TektonInstallation,
 		User, WorkflowRun []ent.Hook
 	}
 	inters struct {
-		Application, ChartCredential, Cluster, Component, ComponentRun, Deployment,
+		Application, ChartCredential, Cluster, Component, ComponentRun,
 		GitHubInstallation, Invitation, Membership, Organization, TektonInstallation,
 		User, WorkflowRun []ent.Interceptor
 	}

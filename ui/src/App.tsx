@@ -11,7 +11,6 @@ import { Applications } from "./routes/Applications";
 import { ApplicationForm } from "./routes/ApplicationForm";
 import { ImportApplication } from "./routes/ImportApplication";
 import { ApplicationDetail } from "./routes/ApplicationDetail";
-import { DeploymentDetail } from "./routes/DeploymentDetail";
 import { WorkflowBuilder } from "./routes/WorkflowBuilder";
 import { WorkflowRuns } from "./routes/WorkflowRuns";
 import { WorkflowRunView } from "./routes/WorkflowRunView";
@@ -135,12 +134,6 @@ export function App() {
                 <Route
                   path="/applications/:appId"
                   element={<ApplicationDetail />}
-                />
-                {/* One rollout run's page (its status + Helm logs), reached by
-                    clicking a row in the application's deployment history. */}
-                <Route
-                  path="/applications/:appId/deployments/:deploymentId"
-                  element={<DeploymentDetail />}
                 />
                 {/* Cluster drill-down: the per-cluster management page, reached
                     by clicking a row on the Clusters leaf (not a nav entry of

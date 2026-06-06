@@ -21,9 +21,6 @@ type Component func(*sql.Selector)
 // ComponentRun is the predicate function for componentrun builders.
 type ComponentRun func(*sql.Selector)
 
-// Deployment is the predicate function for deployment builders.
-type Deployment func(*sql.Selector)
-
 // GitHubInstallation is the predicate function for githubinstallation builders.
 type GitHubInstallation func(*sql.Selector)
 

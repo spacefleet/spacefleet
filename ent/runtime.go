@@ -11,7 +11,6 @@ import (
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
-	"github.com/spacefleet/spacefleet/ent/deployment"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
@@ -37,15 +36,15 @@ func init() {
 	// application.DefaultImported holds the default value on creation for the imported field.
 	application.DefaultImported = applicationDescImported.Default.(bool)
 	// applicationDescTargetNamespace is the schema descriptor for target_namespace field.
-	applicationDescTargetNamespace := applicationFields[10].Descriptor()
+	applicationDescTargetNamespace := applicationFields[4].Descriptor()
 	// application.TargetNamespaceValidator is a validator for the "target_namespace" field. It is called by the builders before save.
 	application.TargetNamespaceValidator = applicationDescTargetNamespace.Validators[0].(func(string) error)
 	// applicationDescCreatedAt is the schema descriptor for created_at field.
-	applicationDescCreatedAt := applicationFields[27].Descriptor()
+	applicationDescCreatedAt := applicationFields[7].Descriptor()
 	// application.DefaultCreatedAt holds the default value on creation for the created_at field.
 	application.DefaultCreatedAt = applicationDescCreatedAt.Default.(func() time.Time)
 	// applicationDescUpdatedAt is the schema descriptor for updated_at field.
-	applicationDescUpdatedAt := applicationFields[28].Descriptor()
+	applicationDescUpdatedAt := applicationFields[8].Descriptor()
 	// application.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	application.DefaultUpdatedAt = applicationDescUpdatedAt.Default.(func() time.Time)
 	// application.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -134,26 +133,6 @@ func init() {
 	componentrunDescID := componentrunFields[0].Descriptor()
 	// componentrun.DefaultID holds the default value on creation for the id field.
 	componentrun.DefaultID = componentrunDescID.Default.(func() uuid.UUID)
-	deploymentFields := schema.Deployment{}.Fields()
-	_ = deploymentFields
-	// deploymentDescForced is the schema descriptor for forced field.
-	deploymentDescForced := deploymentFields[5].Descriptor()
-	// deployment.DefaultForced holds the default value on creation for the forced field.
-	deployment.DefaultForced = deploymentDescForced.Default.(bool)
-	// deploymentDescCreatedAt is the schema descriptor for created_at field.
-	deploymentDescCreatedAt := deploymentFields[12].Descriptor()
-	// deployment.DefaultCreatedAt holds the default value on creation for the created_at field.
-	deployment.DefaultCreatedAt = deploymentDescCreatedAt.Default.(func() time.Time)
-	// deploymentDescUpdatedAt is the schema descriptor for updated_at field.
-	deploymentDescUpdatedAt := deploymentFields[14].Descriptor()
-	// deployment.DefaultUpdatedAt holds the default value on creation for the updated_at field.
-	deployment.DefaultUpdatedAt = deploymentDescUpdatedAt.Default.(func() time.Time)
-	// deployment.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
-	deployment.UpdateDefaultUpdatedAt = deploymentDescUpdatedAt.UpdateDefault.(func() time.Time)
-	// deploymentDescID is the schema descriptor for id field.
-	deploymentDescID := deploymentFields[0].Descriptor()
-	// deployment.DefaultID holds the default value on creation for the id field.
-	deployment.DefaultID = deploymentDescID.Default.(func() uuid.UUID)
 	githubinstallationFields := schema.GitHubInstallation{}.Fields()
 	_ = githubinstallationFields
 	// githubinstallationDescCreatedAt is the schema descriptor for created_at field.

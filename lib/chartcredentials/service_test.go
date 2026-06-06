@@ -101,8 +101,8 @@ func TestCreateRejectsBadInput(t *testing.T) {
 	}
 }
 
-// TestDeleteInUseRejected confirms a credential attached to an application can't
-// be deleted (the FK is ON DELETE RESTRICT → an ent constraint error).
+// TestDeleteInUseRejected confirms a credential attached to a workflow component
+// can't be deleted (the FK is ON DELETE RESTRICT → an ent constraint error).
 func TestDeleteInUseRejected(t *testing.T) {
 	client := testsupport.NewEntClient(t)
 	svc := NewService(client, newSealer(t))
@@ -113,21 +113,30 @@ func TestDeleteInUseRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create credential: %v", err)
 	}
-	// Minimal clusters + an application referencing the credential.
+	// Minimal clusters + an application that owns a component referencing the
+	// credential (the FK now lives on the component, not the application).
 	target, err := client.Cluster.Create().SetOrganizationID(org.ID).SetName("t").SetConnectionMethod("token").Save(ctx)
 	if err != nil {
 		t.Fatalf("create target cluster: %v", err)
 	}
-	if _, err := client.Application.Create().
+	app, err := client.Application.Create().
 		SetOrganizationID(org.ID).
 		SetName("web").
-		SetChartSource("http_repo").
 		SetTargetNamespace("apps").
 		SetTargetClusterID(target.ID).
 		SetRunnerClusterID(target.ID).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("create application: %v", err)
+	}
+	if _, err := client.Component.Create().
+		SetOrganizationID(org.ID).
+		SetApplicationID(app.ID).
+		SetName("chart").
+		SetType("helm").
 		SetChartCredentialID(cred.ID).
 		Save(ctx); err != nil {
-		t.Fatalf("create application: %v", err)
+		t.Fatalf("create component: %v", err)
 	}
 
 	if err := svc.Delete(ctx, org.ID, cred.ID); !errors.Is(err, ErrInUse) {

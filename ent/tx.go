@@ -22,8 +22,6 @@ type Tx struct {
 	Component *ComponentClient
 	// ComponentRun is the client for interacting with the ComponentRun builders.
 	ComponentRun *ComponentRunClient
-	// Deployment is the client for interacting with the Deployment builders.
-	Deployment *DeploymentClient
 	// GitHubInstallation is the client for interacting with the GitHubInstallation builders.
 	GitHubInstallation *GitHubInstallationClient
 	// Invitation is the client for interacting with the Invitation builders.
@@ -174,7 +172,6 @@ func (tx *Tx) init() {
 	tx.Cluster = NewClusterClient(tx.config)
 	tx.Component = NewComponentClient(tx.config)
 	tx.ComponentRun = NewComponentRunClient(tx.config)
-	tx.Deployment = NewDeploymentClient(tx.config)
 	tx.GitHubInstallation = NewGitHubInstallationClient(tx.config)
 	tx.Invitation = NewInvitationClient(tx.config)
 	tx.Membership = NewMembershipClient(tx.config)

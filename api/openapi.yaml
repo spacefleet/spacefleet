@@ -776,136 +776,6 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
-  /api/applications/{id}/rollout:
-    post:
-      summary: Deploy or upgrade an application (run the Helm rollout)
-      description: |
-        Org-scoped, editor or above. Enqueues a background job that runs
-        `helm upgrade --install` against the target cluster as a TaskRun on the
-        runner cluster, waiting for the release's resources to become Ready.
-        Returns immediately (202); follow progress via the application stream
-        and the run/log streams. Requires the background worker (503 otherwise).
-      operationId: rolloutApplication
-      parameters:
-        - $ref: "#/components/parameters/ApplicationID"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ApplicationRolloutRequest"
-      responses:
-        "202":
-          description: Rollout accepted; the job is in progress
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Application"
-        default:
-          $ref: "#/components/responses/Error"
-
-  /api/applications/{id}/uninstall:
-    post:
-      summary: Uninstall an application's Helm release
-      description: |
-        Org-scoped, editor or above. Enqueues a background job that runs
-        `helm uninstall` against the target cluster as a TaskRun on the runner.
-        Returns immediately (202). Requires the background worker (503 otherwise).
-      operationId: uninstallApplication
-      parameters:
-        - $ref: "#/components/parameters/ApplicationID"
-      responses:
-        "202":
-          description: Uninstall accepted; the job is in progress
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Application"
-        default:
-          $ref: "#/components/responses/Error"
-
-  /api/applications/{id}/refresh:
-    post:
-      summary: Refresh an application's sync status (preview the diff)
-      description: |
-        Org-scoped, editor or above. Enqueues a background job that re-resolves
-        the desired state (latest git SHA / chart version / values) and runs
-        `helm diff` against the live target cluster as a TaskRun on the runner —
-        changing nothing. Returns immediately (202); follow progress via the
-        application stream, then read the result from GET .../diff. Requires the
-        background worker (503 otherwise). Returns 409 while a rollout is in
-        flight (the cluster is mid-change).
-      operationId: refreshApplication
-      parameters:
-        - $ref: "#/components/parameters/ApplicationID"
-      responses:
-        "202":
-          description: Refresh accepted; the preview job is in progress
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Application"
-        default:
-          $ref: "#/components/responses/Error"
-
-  /api/applications/{id}/diff:
-    get:
-      summary: Get the cached diff from the application's most recent refresh
-      description: |
-        Org-scoped. Returns the `helm diff` output captured by the last refresh,
-        the sync status, and the desired revisions a deploy would pull.
-      operationId: getApplicationDiff
-      parameters:
-        - $ref: "#/components/parameters/ApplicationID"
-      responses:
-        "200":
-          description: The cached diff and sync status
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApplicationDiff"
-        default:
-          $ref: "#/components/responses/Error"
-
-  /api/applications/{id}/deployments:
-    get:
-      summary: List an application's deployment history
-      description: |
-        Org-scoped. Returns the application's rollout runs newest-first — one per
-        deploy/upgrade/uninstall — for a CI-like history. Logs are not included
-        here (they can be large); fetch a single deployment for its logs.
-      operationId: listDeployments
-      parameters:
-        - $ref: "#/components/parameters/ApplicationID"
-      responses:
-        "200":
-          description: The application's deployment runs, newest first
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Deployment"
-        default:
-          $ref: "#/components/responses/Error"
-
-  /api/applications/{id}/deployments/{deploymentId}:
-    get:
-      summary: Get one deployment run, with its captured logs
-      operationId: getDeployment
-      parameters:
-        - $ref: "#/components/parameters/ApplicationID"
-        - $ref: "#/components/parameters/DeploymentID"
-      responses:
-        "200":
-          description: The deployment run, including its captured Helm output
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeploymentDetail"
-        default:
-          $ref: "#/components/responses/Error"
-
   /api/applications/{id}/workflow:
     get:
       summary: Get an application's deploy workflow (its component graph)
@@ -2053,90 +1923,19 @@ components:
         azure_client_secret:
           type: string
 
-    ApplicationType:
-      type: string
-      description: The kind of application. Only "helm" today.
-      enum: [helm]
-
-    ChartSource:
-      type: string
-      description: |
-        Where the Helm chart comes from.
-          - http_repo: an HTTP Helm repository (repo_url + chart [+ version]).
-          - oci: an OCI registry reference (repo_url [+ version]).
-          - git: a chart in a Git repo (repo_url [+ git_ref] [+ git_path]).
-      enum: [http_repo, oci, git]
-
-    ApplicationStatus:
-      type: string
-      description: The rollout lifecycle state of the application.
-      enum: [pending, deploying, deployed, failed, uninstalling, uninstalled]
-
-    SyncStatus:
-      type: string
-      description: |
-        Whether the application's desired state (latest chart/values, re-resolved
-        on refresh) matches the live cluster.
-          - unknown: never refreshed.
-          - refreshing: a refresh (preview/diff) is in flight.
-          - synced: deploying would change nothing.
-          - out_of_sync: deploying would change the live cluster (see the diff).
-          - error: the last refresh failed (see sync_message).
-      enum: [unknown, refreshing, synced, out_of_sync, error]
-
-    ApplicationDiff:
-      type: object
-      required: [sync_status]
-      description: |
-        The cached result of the most recent refresh: the `helm diff` output
-        against the live cluster plus the desired revisions a deploy would pull.
-      properties:
-        sync_status:
-          $ref: "#/components/schemas/SyncStatus"
-        sync_message:
-          type: string
-        diff:
-          type: string
-          description: The captured `helm diff` output (empty when synced or never refreshed).
-        desired_chart_revision:
-          type: string
-        desired_values_revision:
-          type: string
-        last_refreshed_at:
-          type: string
-          format: date-time
-
-    ValuesSource:
-      type: object
-      description: |
-        A git source for a values file, layered beneath the inline values. Used
-        with any chart source. A private github.com source is authenticated by
-        the application's attached GitHub App installation.
-      required: [repo_url, path]
-      properties:
-        repo_url:
-          type: string
-          description: Git repository URL to clone (https). github.com may be private.
-        git_ref:
-          type: string
-          description: Branch or tag to check out (default branch when empty).
-        path:
-          type: string
-          description: Path to the values file within the repository.
-
     Application:
       type: object
+      description: |
+        A deployable workload that owns a deploy workflow (a DAG of components).
+        The application holds only the workflow-owner fields; all chart-specific
+        config lives on its components, and run/sync state lives on its runs.
       required:
         [
           id,
           name,
-          type,
-          chart_source,
-          config,
           target_namespace,
           target_cluster_id,
           runner_cluster_id,
-          status,
           created_at,
           updated_at,
         ]
@@ -2146,94 +1945,22 @@ components:
           format: uuid
         name:
           type: string
-        type:
-          $ref: "#/components/schemas/ApplicationType"
-        chart_source:
-          $ref: "#/components/schemas/ChartSource"
-        config:
-          type: object
-          description: |
-            Non-secret per-source chart coordinates, varying by chart_source
-            (repo_url, chart, version, git_ref, git_path).
-          additionalProperties:
-            type: string
-        values:
-          type: string
-          description: Raw values.yaml override (applied last, so it wins over values_sources).
-        values_sources:
-          type: array
-          description: |
-            Ordered git sources to pull values files from (orthogonal to the
-            chart source). Each is cloned and layered with helm -f in order —
-            earlier first — all beneath the inline values above, which wins.
-          items:
-            $ref: "#/components/schemas/ValuesSource"
-        release_name:
-          type: string
-          description: The Helm release name (defaults to the app name when empty).
         target_namespace:
           type: string
-          description: Namespace in the target cluster the release is installed into.
+          description: App-level default namespace components deploy into (overridable per component).
         target_cluster_id:
           type: string
           format: uuid
+          description: App-level default target cluster (overridable per component).
         runner_cluster_id:
           type: string
           format: uuid
-        chart_credential_id:
-          type: string
-          format: uuid
-          description: |
-            Private-chart credential used to pull the chart (absent for public
-            charts, and for git charts, which authenticate via a GitHub App).
-        github_installation_id:
-          type: string
-          format: uuid
-          description: |
-            GitHub App installation used to pull a private github.com repo —
-            the chart (git chart source) and/or a git-sourced values file
-            (absent for public repos). Valid when the chart or the values come
-            from git.
-        status:
-          $ref: "#/components/schemas/ApplicationStatus"
-        status_message:
-          type: string
-          description: Human-readable detail (last rollout-progress line, or error).
-        job_id:
-          type: string
-          description: Id of the in-flight rollout job, for correlation.
-        last_run_name:
-          type: string
-          description: TaskRun name of the most recent rollout (for streaming).
-        sync_status:
-          $ref: "#/components/schemas/SyncStatus"
-        sync_message:
-          type: string
-          description: Human-readable detail of the last refresh (progress line, or error).
-        desired_chart_revision:
-          type: string
-          description: |
-            Git commit SHA the chart resolved to at the last refresh (empty for a
-            non-git chart) — the revision a deploy would pull right now.
-        desired_values_revision:
-          type: string
-          description: |
-            Newline-joined "<repo>@<sha>" lines each values source resolved to at
-            the last refresh — the values revisions a deploy would pull right now.
-        last_refreshed_at:
-          type: string
-          format: date-time
-          description: When the last refresh (preview/diff) completed.
-        sync_run_name:
-          type: string
-          description: TaskRun name of the most recent preview run (for streaming).
+          description: The Tekton-enabled cluster the management jobs run on.
         imported:
           type: boolean
           description: |
             True when the application was adopted from a release already running
-            on the cluster (the import flow) rather than created and deployed by
-            Spacefleet. An imported app should be refreshed to confirm the
-            configured chart source reproduces the live release.
+            on the cluster (the import flow) rather than created from scratch.
         created_at:
           type: string
           format: date-time
@@ -2243,31 +1970,16 @@ components:
 
     ApplicationCreateRequest:
       type: object
-      required: [name, chart_source, target_namespace, target_cluster_id, runner_cluster_id]
+      required: [name, target_namespace, target_cluster_id, runner_cluster_id]
       description: |
-        config carries the source-specific, non-secret chart coordinates
-        (repo_url, chart, version, git_ref, git_path); the server validates which
-        are required per chart_source. values_sources optionally pulls values
-        files from git, layered (in order) beneath the inline values.
+        Register an application (the workflow owner). The deploy steps are added
+        afterwards as components via the workflow builder; create only sets the
+        name, the app-level default target cluster + namespace, and the runner.
       properties:
         name:
           type: string
           minLength: 1
           maxLength: 200
-        chart_source:
-          $ref: "#/components/schemas/ChartSource"
-        config:
-          type: object
-          additionalProperties:
-            type: string
-        values:
-          type: string
-        values_sources:
-          type: array
-          items:
-            $ref: "#/components/schemas/ValuesSource"
-        release_name:
-          type: string
         target_namespace:
           type: string
           minLength: 1
@@ -2277,49 +1989,19 @@ components:
         runner_cluster_id:
           type: string
           format: uuid
-        chart_credential_id:
-          type: string
-          format: uuid
-          description: |
-            Optional private-chart credential to attach. Valid for http_repo and
-            oci chart sources; git charts take none (they use a GitHub App).
-        github_installation_id:
-          type: string
-          format: uuid
-          description: |
-            Optional GitHub App installation to attach for a private github.com
-            repo. Valid when the chart (git chart source) or any values source is
-            pulled from git.
 
     ApplicationImportRequest:
       type: object
-      required: [name, chart_source, target_namespace, target_cluster_id, runner_cluster_id]
+      required: [name, target_namespace, target_cluster_id, runner_cluster_id]
       description: |
-        Adopt a release already running on the target cluster. The same shape as
-        ApplicationCreateRequest: name/target_namespace/release_name and values
-        are pre-filled from the discovered release, while chart_source + config
-        (where the chart comes from), the runner cluster, values_sources, and any
-        credentials are supplied by the operator. Unlike create, no rollout runs —
-        the release is already deployed.
+        Adopt an existing workload as an application. Creates the application in
+        the imported state (the workflow owner only); the user then builds the
+        deploy workflow from components. Same shape as ApplicationCreateRequest.
       properties:
         name:
           type: string
           minLength: 1
           maxLength: 200
-        chart_source:
-          $ref: "#/components/schemas/ChartSource"
-        config:
-          type: object
-          additionalProperties:
-            type: string
-        values:
-          type: string
-        values_sources:
-          type: array
-          items:
-            $ref: "#/components/schemas/ValuesSource"
-        release_name:
-          type: string
         target_namespace:
           type: string
           minLength: 1
@@ -2329,81 +2011,30 @@ components:
         runner_cluster_id:
           type: string
           format: uuid
-        chart_credential_id:
-          type: string
-          format: uuid
-          description: |
-            Optional private-chart credential to attach. Valid for http_repo and
-            oci chart sources; git charts take none (they use a GitHub App).
-        github_installation_id:
-          type: string
-          format: uuid
-          description: |
-            Optional GitHub App installation to attach for a private github.com
-            repo. Valid when the chart (git chart source) or any values source is
-            pulled from git.
 
     ApplicationUpdateRequest:
       type: object
       description: |
-        All fields optional. The clusters and chart source are fixed at
-        registration; the chart coordinates (config), values, release name,
-        target namespace, and name can change.
+        All fields optional. The clusters and name can change; the deploy steps
+        live on the components (edit them via the workflow builder).
       properties:
         name:
           type: string
           minLength: 1
           maxLength: 200
-        config:
-          type: object
-          additionalProperties:
-            type: string
-        values:
-          type: string
-        values_sources:
-          type: array
-          description: |
-            Replaces the git values sources. Send an empty array to clear them;
-            omit the field to leave them unchanged.
-          items:
-            $ref: "#/components/schemas/ValuesSource"
-        release_name:
-          type: string
         target_namespace:
           type: string
           minLength: 1
-        chart_credential_id:
-          type: string
-          format: uuid
-          description: |
-            Change the attached credential. Send the nil UUID
-            (00000000-0000-0000-0000-000000000000) to detach.
-        github_installation_id:
-          type: string
-          format: uuid
-          description: |
-            Change the attached GitHub App installation (git chart and/or
-            git-sourced values). Send the nil UUID
-            (00000000-0000-0000-0000-000000000000) to detach.
 
-    ApplicationRolloutRequest:
-      type: object
-      required: [action]
-      properties:
-        action:
-          type: string
-          description: deploy and upgrade both run `helm upgrade --install`.
-          enum: [deploy, upgrade]
-        force:
-          type: boolean
-          description: |
-            Force a roll of the release's workloads even when the chart renders
-            no change. After the normal `helm upgrade --install`, the release's
-            Deployments, StatefulSets, and DaemonSets (selected by the standard
-            `app.kubernetes.io/instance` label) are restarted — the equivalent
-            of `kubectl rollout restart` — so pods cycle as if there had been a
-            diff. Workloads that don't carry the standard instance label are not
-            matched. Defaults to false.
+    ChartSource:
+      type: string
+      description: |
+        Where a Helm component's chart comes from (a value of the component's
+        `config.chart_source`).
+          - http_repo: an HTTP Helm repository (repo_url + chart [+ version]).
+          - oci: an OCI registry reference (repo_url [+ version]).
+          - git: a chart in a Git repo (repo_url [+ git_ref] [+ git_path]).
+      enum: [http_repo, oci, git]
 
     ChartCredential:
       type: object
@@ -2508,75 +2139,6 @@ components:
         url:
           type: string
           description: The GitHub App install URL to redirect the browser to.
-
-    DeploymentAction:
-      type: string
-      description: The rollout action a deployment run performed.
-      enum: [deploy, upgrade, uninstall]
-
-    DeploymentStatus:
-      type: string
-      description: |
-        The run's lifecycle: running, then a terminal succeeded/failed.
-      enum: [running, succeeded, failed]
-
-    Deployment:
-      type: object
-      description: One rollout run of an application (a history entry).
-      required: [id, application_id, action, status, created_at]
-      properties:
-        id:
-          type: string
-          format: uuid
-        application_id:
-          type: string
-          format: uuid
-        action:
-          $ref: "#/components/schemas/DeploymentAction"
-        status:
-          $ref: "#/components/schemas/DeploymentStatus"
-        forced:
-          type: boolean
-          description: |
-            Whether this run was a forced deploy — the release's workloads were
-            restarted even if the chart rendered no change. Only meaningful for
-            deploy/upgrade runs.
-        message:
-          type: string
-          description: Human-readable detail (last progress line, or the error).
-        run_name:
-          type: string
-          description: The TaskRun name on the runner cluster for this run.
-        chart_revision:
-          type: string
-          description: |
-            Git commit SHA the chart was resolved to, for a git chart source
-            (absent for http_repo/oci charts, which pin a chart version instead).
-        values_revision:
-          type: string
-          description: |
-            Git commit SHAs the values sources were resolved to, one
-            "<repo>@<sha>" per line, when values are pulled from git (absent
-            otherwise).
-        created_at:
-          type: string
-          format: date-time
-        finished_at:
-          type: string
-          format: date-time
-          nullable: true
-          description: When the run settled; absent while still running.
-
-    DeploymentDetail:
-      allOf:
-        - $ref: "#/components/schemas/Deployment"
-        - type: object
-          properties:
-            logs:
-              type: string
-              description: |
-                The captured Helm output, persisted when the run settled. Empty
-                while a run is still in flight (follow it live via the log stream).
 
     ComponentType:
       type: string
@@ -2897,14 +2459,6 @@ components:
     GitHubInstallationID:
       in: path
       name: id
-      required: true
-      schema:
-        type: string
-        format: uuid
-
-    DeploymentID:
-      in: path
-      name: deploymentId
       required: true
       schema:
         type: string

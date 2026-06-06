@@ -3,7 +3,6 @@
 package application
 
 import (
-	"fmt"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -22,52 +21,12 @@ const (
 	FieldName = "name"
 	// FieldImported holds the string denoting the imported field in the database.
 	FieldImported = "imported"
-	// FieldType holds the string denoting the type field in the database.
-	FieldType = "type"
-	// FieldChartSource holds the string denoting the chart_source field in the database.
-	FieldChartSource = "chart_source"
-	// FieldConfig holds the string denoting the config field in the database.
-	FieldConfig = "config"
-	// FieldValues holds the string denoting the values field in the database.
-	FieldValues = "values"
-	// FieldValuesSources holds the string denoting the values_sources field in the database.
-	FieldValuesSources = "values_sources"
-	// FieldReleaseName holds the string denoting the release_name field in the database.
-	FieldReleaseName = "release_name"
 	// FieldTargetNamespace holds the string denoting the target_namespace field in the database.
 	FieldTargetNamespace = "target_namespace"
 	// FieldTargetClusterID holds the string denoting the target_cluster_id field in the database.
 	FieldTargetClusterID = "target_cluster_id"
 	// FieldRunnerClusterID holds the string denoting the runner_cluster_id field in the database.
 	FieldRunnerClusterID = "runner_cluster_id"
-	// FieldChartCredentialID holds the string denoting the chart_credential_id field in the database.
-	FieldChartCredentialID = "chart_credential_id"
-	// FieldGithubInstallationID holds the string denoting the github_installation_id field in the database.
-	FieldGithubInstallationID = "github_installation_id"
-	// FieldStatus holds the string denoting the status field in the database.
-	FieldStatus = "status"
-	// FieldStatusMessage holds the string denoting the status_message field in the database.
-	FieldStatusMessage = "status_message"
-	// FieldJobID holds the string denoting the job_id field in the database.
-	FieldJobID = "job_id"
-	// FieldLastRunName holds the string denoting the last_run_name field in the database.
-	FieldLastRunName = "last_run_name"
-	// FieldSyncStatus holds the string denoting the sync_status field in the database.
-	FieldSyncStatus = "sync_status"
-	// FieldSyncMessage holds the string denoting the sync_message field in the database.
-	FieldSyncMessage = "sync_message"
-	// FieldLastDiff holds the string denoting the last_diff field in the database.
-	FieldLastDiff = "last_diff"
-	// FieldDesiredChartRevision holds the string denoting the desired_chart_revision field in the database.
-	FieldDesiredChartRevision = "desired_chart_revision"
-	// FieldDesiredValuesRevision holds the string denoting the desired_values_revision field in the database.
-	FieldDesiredValuesRevision = "desired_values_revision"
-	// FieldLastRefreshedAt holds the string denoting the last_refreshed_at field in the database.
-	FieldLastRefreshedAt = "last_refreshed_at"
-	// FieldSyncJobID holds the string denoting the sync_job_id field in the database.
-	FieldSyncJobID = "sync_job_id"
-	// FieldSyncRunName holds the string denoting the sync_run_name field in the database.
-	FieldSyncRunName = "sync_run_name"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -78,10 +37,6 @@ const (
 	EdgeTargetCluster = "target_cluster"
 	// EdgeRunnerCluster holds the string denoting the runner_cluster edge name in mutations.
 	EdgeRunnerCluster = "runner_cluster"
-	// EdgeChartCredential holds the string denoting the chart_credential edge name in mutations.
-	EdgeChartCredential = "chart_credential"
-	// EdgeGithubInstallation holds the string denoting the github_installation edge name in mutations.
-	EdgeGithubInstallation = "github_installation"
 	// Table holds the table name of the application in the database.
 	Table = "applications"
 	// OrganizationTable is the table that holds the organization relation/edge.
@@ -105,20 +60,6 @@ const (
 	RunnerClusterInverseTable = "clusters"
 	// RunnerClusterColumn is the table column denoting the runner_cluster relation/edge.
 	RunnerClusterColumn = "runner_cluster_id"
-	// ChartCredentialTable is the table that holds the chart_credential relation/edge.
-	ChartCredentialTable = "applications"
-	// ChartCredentialInverseTable is the table name for the ChartCredential entity.
-	// It exists in this package in order to avoid circular dependency with the "chartcredential" package.
-	ChartCredentialInverseTable = "chart_credentials"
-	// ChartCredentialColumn is the table column denoting the chart_credential relation/edge.
-	ChartCredentialColumn = "chart_credential_id"
-	// GithubInstallationTable is the table that holds the github_installation relation/edge.
-	GithubInstallationTable = "applications"
-	// GithubInstallationInverseTable is the table name for the GitHubInstallation entity.
-	// It exists in this package in order to avoid circular dependency with the "githubinstallation" package.
-	GithubInstallationInverseTable = "github_installations"
-	// GithubInstallationColumn is the table column denoting the github_installation relation/edge.
-	GithubInstallationColumn = "github_installation_id"
 )
 
 // Columns holds all SQL columns for application fields.
@@ -127,29 +68,9 @@ var Columns = []string{
 	FieldOrganizationID,
 	FieldName,
 	FieldImported,
-	FieldType,
-	FieldChartSource,
-	FieldConfig,
-	FieldValues,
-	FieldValuesSources,
-	FieldReleaseName,
 	FieldTargetNamespace,
 	FieldTargetClusterID,
 	FieldRunnerClusterID,
-	FieldChartCredentialID,
-	FieldGithubInstallationID,
-	FieldStatus,
-	FieldStatusMessage,
-	FieldJobID,
-	FieldLastRunName,
-	FieldSyncStatus,
-	FieldSyncMessage,
-	FieldLastDiff,
-	FieldDesiredChartRevision,
-	FieldDesiredValuesRevision,
-	FieldLastRefreshedAt,
-	FieldSyncJobID,
-	FieldSyncRunName,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -181,114 +102,6 @@ var (
 	DefaultID func() uuid.UUID
 )
 
-// Type defines the type for the "type" enum field.
-type Type string
-
-// TypeHelm is the default value of the Type enum.
-const DefaultType = TypeHelm
-
-// Type values.
-const (
-	TypeHelm Type = "helm"
-)
-
-func (_type Type) String() string {
-	return string(_type)
-}
-
-// TypeValidator is a validator for the "type" field enum values. It is called by the builders before save.
-func TypeValidator(_type Type) error {
-	switch _type {
-	case TypeHelm:
-		return nil
-	default:
-		return fmt.Errorf("application: invalid enum value for type field: %q", _type)
-	}
-}
-
-// ChartSource defines the type for the "chart_source" enum field.
-type ChartSource string
-
-// ChartSource values.
-const (
-	ChartSourceHTTPRepo ChartSource = "http_repo"
-	ChartSourceOci      ChartSource = "oci"
-	ChartSourceGit      ChartSource = "git"
-)
-
-func (cs ChartSource) String() string {
-	return string(cs)
-}
-
-// ChartSourceValidator is a validator for the "chart_source" field enum values. It is called by the builders before save.
-func ChartSourceValidator(cs ChartSource) error {
-	switch cs {
-	case ChartSourceHTTPRepo, ChartSourceOci, ChartSourceGit:
-		return nil
-	default:
-		return fmt.Errorf("application: invalid enum value for chart_source field: %q", cs)
-	}
-}
-
-// Status defines the type for the "status" enum field.
-type Status string
-
-// StatusPending is the default value of the Status enum.
-const DefaultStatus = StatusPending
-
-// Status values.
-const (
-	StatusPending      Status = "pending"
-	StatusDeploying    Status = "deploying"
-	StatusDeployed     Status = "deployed"
-	StatusFailed       Status = "failed"
-	StatusUninstalling Status = "uninstalling"
-	StatusUninstalled  Status = "uninstalled"
-)
-
-func (s Status) String() string {
-	return string(s)
-}
-
-// StatusValidator is a validator for the "status" field enum values. It is called by the builders before save.
-func StatusValidator(s Status) error {
-	switch s {
-	case StatusPending, StatusDeploying, StatusDeployed, StatusFailed, StatusUninstalling, StatusUninstalled:
-		return nil
-	default:
-		return fmt.Errorf("application: invalid enum value for status field: %q", s)
-	}
-}
-
-// SyncStatus defines the type for the "sync_status" enum field.
-type SyncStatus string
-
-// SyncStatusUnknown is the default value of the SyncStatus enum.
-const DefaultSyncStatus = SyncStatusUnknown
-
-// SyncStatus values.
-const (
-	SyncStatusUnknown    SyncStatus = "unknown"
-	SyncStatusRefreshing SyncStatus = "refreshing"
-	SyncStatusSynced     SyncStatus = "synced"
-	SyncStatusOutOfSync  SyncStatus = "out_of_sync"
-	SyncStatusError      SyncStatus = "error"
-)
-
-func (ss SyncStatus) String() string {
-	return string(ss)
-}
-
-// SyncStatusValidator is a validator for the "sync_status" field enum values. It is called by the builders before save.
-func SyncStatusValidator(ss SyncStatus) error {
-	switch ss {
-	case SyncStatusUnknown, SyncStatusRefreshing, SyncStatusSynced, SyncStatusOutOfSync, SyncStatusError:
-		return nil
-	default:
-		return fmt.Errorf("application: invalid enum value for sync_status field: %q", ss)
-	}
-}
-
 // OrderOption defines the ordering options for the Application queries.
 type OrderOption func(*sql.Selector)
 
@@ -312,26 +125,6 @@ func ByImported(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImported, opts...).ToFunc()
 }
 
-// ByType orders the results by the type field.
-func ByType(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldType, opts...).ToFunc()
-}
-
-// ByChartSource orders the results by the chart_source field.
-func ByChartSource(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldChartSource, opts...).ToFunc()
-}
-
-// ByValues orders the results by the values field.
-func ByValues(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldValues, opts...).ToFunc()
-}
-
-// ByReleaseName orders the results by the release_name field.
-func ByReleaseName(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldReleaseName, opts...).ToFunc()
-}
-
 // ByTargetNamespace orders the results by the target_namespace field.
 func ByTargetNamespace(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTargetNamespace, opts...).ToFunc()
@@ -345,76 +138,6 @@ func ByTargetClusterID(opts ...sql.OrderTermOption) OrderOption {
 // ByRunnerClusterID orders the results by the runner_cluster_id field.
 func ByRunnerClusterID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRunnerClusterID, opts...).ToFunc()
-}
-
-// ByChartCredentialID orders the results by the chart_credential_id field.
-func ByChartCredentialID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldChartCredentialID, opts...).ToFunc()
-}
-
-// ByGithubInstallationID orders the results by the github_installation_id field.
-func ByGithubInstallationID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldGithubInstallationID, opts...).ToFunc()
-}
-
-// ByStatus orders the results by the status field.
-func ByStatus(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldStatus, opts...).ToFunc()
-}
-
-// ByStatusMessage orders the results by the status_message field.
-func ByStatusMessage(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldStatusMessage, opts...).ToFunc()
-}
-
-// ByJobID orders the results by the job_id field.
-func ByJobID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldJobID, opts...).ToFunc()
-}
-
-// ByLastRunName orders the results by the last_run_name field.
-func ByLastRunName(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldLastRunName, opts...).ToFunc()
-}
-
-// BySyncStatus orders the results by the sync_status field.
-func BySyncStatus(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldSyncStatus, opts...).ToFunc()
-}
-
-// BySyncMessage orders the results by the sync_message field.
-func BySyncMessage(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldSyncMessage, opts...).ToFunc()
-}
-
-// ByLastDiff orders the results by the last_diff field.
-func ByLastDiff(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldLastDiff, opts...).ToFunc()
-}
-
-// ByDesiredChartRevision orders the results by the desired_chart_revision field.
-func ByDesiredChartRevision(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldDesiredChartRevision, opts...).ToFunc()
-}
-
-// ByDesiredValuesRevision orders the results by the desired_values_revision field.
-func ByDesiredValuesRevision(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldDesiredValuesRevision, opts...).ToFunc()
-}
-
-// ByLastRefreshedAt orders the results by the last_refreshed_at field.
-func ByLastRefreshedAt(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldLastRefreshedAt, opts...).ToFunc()
-}
-
-// BySyncJobID orders the results by the sync_job_id field.
-func BySyncJobID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldSyncJobID, opts...).ToFunc()
-}
-
-// BySyncRunName orders the results by the sync_run_name field.
-func BySyncRunName(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldSyncRunName, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.
@@ -447,20 +170,6 @@ func ByRunnerClusterField(field string, opts ...sql.OrderTermOption) OrderOption
 		sqlgraph.OrderByNeighborTerms(s, newRunnerClusterStep(), sql.OrderByField(field, opts...))
 	}
 }
-
-// ByChartCredentialField orders the results by chart_credential field.
-func ByChartCredentialField(field string, opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newChartCredentialStep(), sql.OrderByField(field, opts...))
-	}
-}
-
-// ByGithubInstallationField orders the results by github_installation field.
-func ByGithubInstallationField(field string, opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newGithubInstallationStep(), sql.OrderByField(field, opts...))
-	}
-}
 func newOrganizationStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -480,19 +189,5 @@ func newRunnerClusterStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(RunnerClusterInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, false, RunnerClusterTable, RunnerClusterColumn),
-	)
-}
-func newChartCredentialStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(ChartCredentialInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.M2O, false, ChartCredentialTable, ChartCredentialColumn),
-	)
-}
-func newGithubInstallationStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(GithubInstallationInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.M2O, false, GithubInstallationTable, GithubInstallationColumn),
 	)
 }

@@ -1,13 +1,11 @@
-// Package helm drives Helm-release rollouts. A rollout runs as a single-step
-// Tekton TaskRun on a chosen runner cluster (via lib/tekton): the step is a
-// helm CLI container whose script targets the destination cluster through an
-// injected kubeconfig. Go never runs helm itself — it only emits the shell
-// script and hands lib/tekton the files to inject.
-//
-// The RolloutWorker (a River job) owns credential access through a Store
-// (satisfied by lib/applications), exactly as lib/tekton's InstallWorker does:
-// job args carry only ids, and the worker re-opens sealed credentials and mints
-// any cloud token per attempt so retries self-heal.
+// Package helm renders the shell script a Helm-release deploy step runs and
+// parses its output. A deploy/upgrade/uninstall/diff runs as a single-step
+// Tekton TaskRun on a runner cluster (via lib/tekton): the step is a helm CLI
+// container whose script (Script) targets the destination cluster through an
+// injected kubeconfig. Go never runs helm itself — it only emits the script and
+// hands lib/tekton the files to inject; the workflow executor (lib/workflows)
+// drives the run and reports status. ParseRevisions/ParseDiff read the resolved
+// git SHAs and the diff verdict back out of the captured run logs.
 package helm
 
 import (
@@ -199,6 +197,13 @@ func ParseDiff(logs string) Diff {
 	}
 	return d
 }
+
+// RunNamespace is the namespace on the runner cluster a rollout/diff TaskRun is
+// submitted to. The default namespace always exists; it matches the namespace
+// lib/api uses for cluster TaskRuns so the live-run/log streams resolve there.
+// Used by the workflow executor (lib/workflows) to submit and watch component
+// runs.
+const RunNamespace = "default"
 
 // DefaultImage is the helm CLI image the rollout step runs in. alpine/k8s
 // bundles helm, kubectl, and git, so the git chart source works without an

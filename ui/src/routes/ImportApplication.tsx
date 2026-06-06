@@ -12,8 +12,9 @@ type HelmRelease = components["schemas"]["HelmRelease"];
 // ImportApplication is the discovery step of importing an existing Helm release:
 // pick a cluster (and optionally a namespace), list the releases already running
 // on it, and hand a chosen release off to ApplicationForm in import mode (via
-// router state) to configure the chart source and adopt it. The adopt itself
-// runs no rollout — the release is already deployed.
+// router state) to adopt it as an application. The adopt creates the application
+// (its name + clusters pre-filled from the release); the user then builds the
+// deploy workflow from components on the canvas.
 export function ImportApplication() {
   const { currentOrg, currentRole } = useOrg();
   const navigate = useNavigate();
@@ -97,8 +98,8 @@ export function ImportApplication() {
         </h1>
         <p className="mt-1 text-sm text-neutral-600">
           Find a Helm release already running on one of your clusters and adopt
-          it as a managed application. Its current values are pre-filled; you
-          supply where the chart comes from. Nothing is redeployed.
+          it as a managed application. You then build its deploy workflow on the
+          canvas. Nothing is redeployed.
         </p>
       </div>
 

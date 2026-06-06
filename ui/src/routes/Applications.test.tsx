@@ -33,12 +33,10 @@ function renderApps() {
 const oneApp = {
   id: "app-1",
   name: "web",
-  chart_source: "http_repo",
-  status: "deployed",
+  imported: false,
   target_namespace: "apps",
   target_cluster_id: "c1",
   runner_cluster_id: "c1",
-  config: {},
   created_at: "2026-06-03T09:00:00Z",
   updated_at: "2026-06-03T10:00:00Z",
 };
@@ -71,14 +69,13 @@ describe("Applications list", () => {
     expect(await screen.findByText("boom")).toBeInTheDocument();
   });
 
-  it("renders registered applications with source, namespace and status", async () => {
+  it("renders registered applications with namespace and origin", async () => {
     mockApi.GET.mockResolvedValue({ data: [oneApp], error: undefined });
     renderApps();
     expect(await screen.findByText("web")).toBeInTheDocument();
-    expect(screen.getByText("HTTP Helm repository")).toBeInTheDocument();
     expect(screen.getByText("apps")).toBeInTheDocument();
-    // The status badge text reflects the app status.
-    expect(screen.getByText("deployed")).toBeInTheDocument();
+    // The origin column reflects whether the app was created or imported.
+    expect(screen.getByText("Created")).toBeInTheDocument();
   });
 
   it("navigates to the detail page when a row is clicked", async () => {

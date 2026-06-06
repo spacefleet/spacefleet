@@ -187,6 +187,14 @@ func redactConfig(in map[string]string, canSee bool) map[string]string {
 	return out
 }
 
+// derefMap returns the pointed-to map, or nil.
+func derefMap(p *map[string]string) map[string]string {
+	if p == nil {
+		return nil
+	}
+	return *p
+}
+
 // nonNilUUIDs returns the slice or an empty (non-nil) slice, so the required
 // `depends_on` array serializes as [] rather than null.
 func nonNilUUIDs(in []uuid.UUID) []uuid.UUID {

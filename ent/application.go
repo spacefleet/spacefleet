@@ -3,7 +3,6 @@
 package ent
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -12,9 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/application"
-	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
-	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/organization"
 )
 
@@ -29,52 +26,12 @@ type Application struct {
 	Name string `json:"name,omitempty"`
 	// Imported holds the value of the "imported" field.
 	Imported bool `json:"imported,omitempty"`
-	// Type holds the value of the "type" field.
-	Type application.Type `json:"type,omitempty"`
-	// ChartSource holds the value of the "chart_source" field.
-	ChartSource application.ChartSource `json:"chart_source,omitempty"`
-	// Config holds the value of the "config" field.
-	Config map[string]string `json:"config,omitempty"`
-	// Values holds the value of the "values" field.
-	Values string `json:"values,omitempty"`
-	// ValuesSources holds the value of the "values_sources" field.
-	ValuesSources []map[string]string `json:"values_sources,omitempty"`
-	// ReleaseName holds the value of the "release_name" field.
-	ReleaseName string `json:"release_name,omitempty"`
 	// TargetNamespace holds the value of the "target_namespace" field.
 	TargetNamespace string `json:"target_namespace,omitempty"`
 	// TargetClusterID holds the value of the "target_cluster_id" field.
 	TargetClusterID uuid.UUID `json:"target_cluster_id,omitempty"`
 	// RunnerClusterID holds the value of the "runner_cluster_id" field.
 	RunnerClusterID uuid.UUID `json:"runner_cluster_id,omitempty"`
-	// ChartCredentialID holds the value of the "chart_credential_id" field.
-	ChartCredentialID uuid.UUID `json:"chart_credential_id,omitempty"`
-	// GithubInstallationID holds the value of the "github_installation_id" field.
-	GithubInstallationID uuid.UUID `json:"github_installation_id,omitempty"`
-	// Status holds the value of the "status" field.
-	Status application.Status `json:"status,omitempty"`
-	// StatusMessage holds the value of the "status_message" field.
-	StatusMessage string `json:"status_message,omitempty"`
-	// JobID holds the value of the "job_id" field.
-	JobID string `json:"job_id,omitempty"`
-	// LastRunName holds the value of the "last_run_name" field.
-	LastRunName string `json:"last_run_name,omitempty"`
-	// SyncStatus holds the value of the "sync_status" field.
-	SyncStatus application.SyncStatus `json:"sync_status,omitempty"`
-	// SyncMessage holds the value of the "sync_message" field.
-	SyncMessage string `json:"sync_message,omitempty"`
-	// LastDiff holds the value of the "last_diff" field.
-	LastDiff string `json:"last_diff,omitempty"`
-	// DesiredChartRevision holds the value of the "desired_chart_revision" field.
-	DesiredChartRevision string `json:"desired_chart_revision,omitempty"`
-	// DesiredValuesRevision holds the value of the "desired_values_revision" field.
-	DesiredValuesRevision string `json:"desired_values_revision,omitempty"`
-	// LastRefreshedAt holds the value of the "last_refreshed_at" field.
-	LastRefreshedAt time.Time `json:"last_refreshed_at,omitempty"`
-	// SyncJobID holds the value of the "sync_job_id" field.
-	SyncJobID string `json:"sync_job_id,omitempty"`
-	// SyncRunName holds the value of the "sync_run_name" field.
-	SyncRunName string `json:"sync_run_name,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -93,13 +50,9 @@ type ApplicationEdges struct {
 	TargetCluster *Cluster `json:"target_cluster,omitempty"`
 	// RunnerCluster holds the value of the runner_cluster edge.
 	RunnerCluster *Cluster `json:"runner_cluster,omitempty"`
-	// ChartCredential holds the value of the chart_credential edge.
-	ChartCredential *ChartCredential `json:"chart_credential,omitempty"`
-	// GithubInstallation holds the value of the github_installation edge.
-	GithubInstallation *GitHubInstallation `json:"github_installation,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [5]bool
+	loadedTypes [3]bool
 }
 
 // OrganizationOrErr returns the Organization value or an error if the edge
@@ -135,42 +88,18 @@ func (e ApplicationEdges) RunnerClusterOrErr() (*Cluster, error) {
 	return nil, &NotLoadedError{edge: "runner_cluster"}
 }
 
-// ChartCredentialOrErr returns the ChartCredential value or an error if the edge
-// was not loaded in eager-loading, or loaded but was not found.
-func (e ApplicationEdges) ChartCredentialOrErr() (*ChartCredential, error) {
-	if e.ChartCredential != nil {
-		return e.ChartCredential, nil
-	} else if e.loadedTypes[3] {
-		return nil, &NotFoundError{label: chartcredential.Label}
-	}
-	return nil, &NotLoadedError{edge: "chart_credential"}
-}
-
-// GithubInstallationOrErr returns the GithubInstallation value or an error if the edge
-// was not loaded in eager-loading, or loaded but was not found.
-func (e ApplicationEdges) GithubInstallationOrErr() (*GitHubInstallation, error) {
-	if e.GithubInstallation != nil {
-		return e.GithubInstallation, nil
-	} else if e.loadedTypes[4] {
-		return nil, &NotFoundError{label: githubinstallation.Label}
-	}
-	return nil, &NotLoadedError{edge: "github_installation"}
-}
-
 // scanValues returns the types for scanning values from sql.Rows.
 func (*Application) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case application.FieldConfig, application.FieldValuesSources:
-			values[i] = new([]byte)
 		case application.FieldImported:
 			values[i] = new(sql.NullBool)
-		case application.FieldName, application.FieldType, application.FieldChartSource, application.FieldValues, application.FieldReleaseName, application.FieldTargetNamespace, application.FieldStatus, application.FieldStatusMessage, application.FieldJobID, application.FieldLastRunName, application.FieldSyncStatus, application.FieldSyncMessage, application.FieldLastDiff, application.FieldDesiredChartRevision, application.FieldDesiredValuesRevision, application.FieldSyncJobID, application.FieldSyncRunName:
+		case application.FieldName, application.FieldTargetNamespace:
 			values[i] = new(sql.NullString)
-		case application.FieldLastRefreshedAt, application.FieldCreatedAt, application.FieldUpdatedAt:
+		case application.FieldCreatedAt, application.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
-		case application.FieldID, application.FieldOrganizationID, application.FieldTargetClusterID, application.FieldRunnerClusterID, application.FieldChartCredentialID, application.FieldGithubInstallationID:
+		case application.FieldID, application.FieldOrganizationID, application.FieldTargetClusterID, application.FieldRunnerClusterID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -211,46 +140,6 @@ func (_m *Application) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Imported = value.Bool
 			}
-		case application.FieldType:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field type", values[i])
-			} else if value.Valid {
-				_m.Type = application.Type(value.String)
-			}
-		case application.FieldChartSource:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field chart_source", values[i])
-			} else if value.Valid {
-				_m.ChartSource = application.ChartSource(value.String)
-			}
-		case application.FieldConfig:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field config", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &_m.Config); err != nil {
-					return fmt.Errorf("unmarshal field config: %w", err)
-				}
-			}
-		case application.FieldValues:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field values", values[i])
-			} else if value.Valid {
-				_m.Values = value.String
-			}
-		case application.FieldValuesSources:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field values_sources", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &_m.ValuesSources); err != nil {
-					return fmt.Errorf("unmarshal field values_sources: %w", err)
-				}
-			}
-		case application.FieldReleaseName:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field release_name", values[i])
-			} else if value.Valid {
-				_m.ReleaseName = value.String
-			}
 		case application.FieldTargetNamespace:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field target_namespace", values[i])
@@ -268,90 +157,6 @@ func (_m *Application) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field runner_cluster_id", values[i])
 			} else if value != nil {
 				_m.RunnerClusterID = *value
-			}
-		case application.FieldChartCredentialID:
-			if value, ok := values[i].(*uuid.UUID); !ok {
-				return fmt.Errorf("unexpected type %T for field chart_credential_id", values[i])
-			} else if value != nil {
-				_m.ChartCredentialID = *value
-			}
-		case application.FieldGithubInstallationID:
-			if value, ok := values[i].(*uuid.UUID); !ok {
-				return fmt.Errorf("unexpected type %T for field github_installation_id", values[i])
-			} else if value != nil {
-				_m.GithubInstallationID = *value
-			}
-		case application.FieldStatus:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field status", values[i])
-			} else if value.Valid {
-				_m.Status = application.Status(value.String)
-			}
-		case application.FieldStatusMessage:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field status_message", values[i])
-			} else if value.Valid {
-				_m.StatusMessage = value.String
-			}
-		case application.FieldJobID:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field job_id", values[i])
-			} else if value.Valid {
-				_m.JobID = value.String
-			}
-		case application.FieldLastRunName:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field last_run_name", values[i])
-			} else if value.Valid {
-				_m.LastRunName = value.String
-			}
-		case application.FieldSyncStatus:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field sync_status", values[i])
-			} else if value.Valid {
-				_m.SyncStatus = application.SyncStatus(value.String)
-			}
-		case application.FieldSyncMessage:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field sync_message", values[i])
-			} else if value.Valid {
-				_m.SyncMessage = value.String
-			}
-		case application.FieldLastDiff:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field last_diff", values[i])
-			} else if value.Valid {
-				_m.LastDiff = value.String
-			}
-		case application.FieldDesiredChartRevision:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field desired_chart_revision", values[i])
-			} else if value.Valid {
-				_m.DesiredChartRevision = value.String
-			}
-		case application.FieldDesiredValuesRevision:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field desired_values_revision", values[i])
-			} else if value.Valid {
-				_m.DesiredValuesRevision = value.String
-			}
-		case application.FieldLastRefreshedAt:
-			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field last_refreshed_at", values[i])
-			} else if value.Valid {
-				_m.LastRefreshedAt = value.Time
-			}
-		case application.FieldSyncJobID:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field sync_job_id", values[i])
-			} else if value.Valid {
-				_m.SyncJobID = value.String
-			}
-		case application.FieldSyncRunName:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field sync_run_name", values[i])
-			} else if value.Valid {
-				_m.SyncRunName = value.String
 			}
 		case application.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -393,16 +198,6 @@ func (_m *Application) QueryRunnerCluster() *ClusterQuery {
 	return NewApplicationClient(_m.config).QueryRunnerCluster(_m)
 }
 
-// QueryChartCredential queries the "chart_credential" edge of the Application entity.
-func (_m *Application) QueryChartCredential() *ChartCredentialQuery {
-	return NewApplicationClient(_m.config).QueryChartCredential(_m)
-}
-
-// QueryGithubInstallation queries the "github_installation" edge of the Application entity.
-func (_m *Application) QueryGithubInstallation() *GitHubInstallationQuery {
-	return NewApplicationClient(_m.config).QueryGithubInstallation(_m)
-}
-
 // Update returns a builder for updating this Application.
 // Note that you need to call Application.Unwrap() before calling this method if this Application
 // was returned from a transaction, and the transaction was committed or rolled back.
@@ -435,24 +230,6 @@ func (_m *Application) String() string {
 	builder.WriteString("imported=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Imported))
 	builder.WriteString(", ")
-	builder.WriteString("type=")
-	builder.WriteString(fmt.Sprintf("%v", _m.Type))
-	builder.WriteString(", ")
-	builder.WriteString("chart_source=")
-	builder.WriteString(fmt.Sprintf("%v", _m.ChartSource))
-	builder.WriteString(", ")
-	builder.WriteString("config=")
-	builder.WriteString(fmt.Sprintf("%v", _m.Config))
-	builder.WriteString(", ")
-	builder.WriteString("values=")
-	builder.WriteString(_m.Values)
-	builder.WriteString(", ")
-	builder.WriteString("values_sources=")
-	builder.WriteString(fmt.Sprintf("%v", _m.ValuesSources))
-	builder.WriteString(", ")
-	builder.WriteString("release_name=")
-	builder.WriteString(_m.ReleaseName)
-	builder.WriteString(", ")
 	builder.WriteString("target_namespace=")
 	builder.WriteString(_m.TargetNamespace)
 	builder.WriteString(", ")
@@ -461,48 +238,6 @@ func (_m *Application) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("runner_cluster_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RunnerClusterID))
-	builder.WriteString(", ")
-	builder.WriteString("chart_credential_id=")
-	builder.WriteString(fmt.Sprintf("%v", _m.ChartCredentialID))
-	builder.WriteString(", ")
-	builder.WriteString("github_installation_id=")
-	builder.WriteString(fmt.Sprintf("%v", _m.GithubInstallationID))
-	builder.WriteString(", ")
-	builder.WriteString("status=")
-	builder.WriteString(fmt.Sprintf("%v", _m.Status))
-	builder.WriteString(", ")
-	builder.WriteString("status_message=")
-	builder.WriteString(_m.StatusMessage)
-	builder.WriteString(", ")
-	builder.WriteString("job_id=")
-	builder.WriteString(_m.JobID)
-	builder.WriteString(", ")
-	builder.WriteString("last_run_name=")
-	builder.WriteString(_m.LastRunName)
-	builder.WriteString(", ")
-	builder.WriteString("sync_status=")
-	builder.WriteString(fmt.Sprintf("%v", _m.SyncStatus))
-	builder.WriteString(", ")
-	builder.WriteString("sync_message=")
-	builder.WriteString(_m.SyncMessage)
-	builder.WriteString(", ")
-	builder.WriteString("last_diff=")
-	builder.WriteString(_m.LastDiff)
-	builder.WriteString(", ")
-	builder.WriteString("desired_chart_revision=")
-	builder.WriteString(_m.DesiredChartRevision)
-	builder.WriteString(", ")
-	builder.WriteString("desired_values_revision=")
-	builder.WriteString(_m.DesiredValuesRevision)
-	builder.WriteString(", ")
-	builder.WriteString("last_refreshed_at=")
-	builder.WriteString(_m.LastRefreshedAt.Format(time.ANSIC))
-	builder.WriteString(", ")
-	builder.WriteString("sync_job_id=")
-	builder.WriteString(_m.SyncJobID)
-	builder.WriteString(", ")
-	builder.WriteString("sync_run_name=")
-	builder.WriteString(_m.SyncRunName)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

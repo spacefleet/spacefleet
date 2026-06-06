@@ -157,10 +157,10 @@ func (s *Server) DeleteChartCredential(ctx context.Context, req DeleteChartCrede
 		if ent.IsNotFound(err) {
 			return errResp[DeleteChartCredentialdefaultJSONResponse](http.StatusNotFound, "not_found", "chart credential not found"), nil
 		}
-		// The FK from applications is ON DELETE RESTRICT: a credential in use can't
+		// The FK from components is ON DELETE RESTRICT: a credential in use can't
 		// be deleted (the service classifies the DB violation as ErrInUse).
 		if errors.Is(err, chartcredentials.ErrInUse) {
-			return errResp[DeleteChartCredentialdefaultJSONResponse](http.StatusConflict, "conflict", "this credential is attached to an application; detach it first"), nil
+			return errResp[DeleteChartCredentialdefaultJSONResponse](http.StatusConflict, "conflict", "this credential is attached to a workflow component; detach it first"), nil
 		}
 		return nil, err
 	}

@@ -28,8 +28,7 @@ func TestStreamNilServiceReturns503(t *testing.T) {
 		{"cluster nodes (nil clusters)", "/api/clusters/" + zeroUUID + "/nodes/stream"},
 		{"cluster tekton (nil clusters)", "/api/clusters/" + zeroUUID + "/tekton/stream"},
 		{"tekton run (nil clusters)", "/api/clusters/" + zeroUUID + "/tekton/runs/build/stream"},
-		{"application status (nil applications)", "/api/applications/" + zeroUUID + "/stream"},
-		{"application logs (nil applications)", "/api/applications/" + zeroUUID + "/logs"},
+		{"application run (nil workflows)", "/api/applications/" + zeroUUID + "/runs/" + zeroUUID + "/stream"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

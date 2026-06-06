@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/spacefleet/spacefleet/lib/applications"
 	"github.com/spacefleet/spacefleet/lib/chartcredentials"
 	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/config"
@@ -19,7 +18,6 @@ import (
 	"github.com/spacefleet/spacefleet/lib/email"
 	"github.com/spacefleet/spacefleet/lib/githubapp"
 	"github.com/spacefleet/spacefleet/lib/githubinstallations"
-	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/k8s"
 	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/secrets"
@@ -97,12 +95,11 @@ func runWorker(_ []string) {
 		ghAuth = auth
 	}
 	githubInstallsSvc := githubinstallations.NewService(entClient, ghAuth)
-	applicationsSvc := applications.NewService(entClient, clustersSvc, chartCredsSvc, githubInstallsSvc)
 
-	// The workflow run worker shares the same run-input resolution as the
-	// single-helm rollout (one implementation in lib/deploy), built over the same
-	// three deps: the clusters connection resolver, the chart-credentials resolver,
-	// and the GitHub installations token minter.
+	// The workflow run worker resolves each component's run inputs through the
+	// shared lib/deploy resolver, built over three deps: the clusters connection
+	// resolver, the chart-credentials resolver, and the GitHub installations token
+	// minter.
 	workflowsSvc := workflows.NewService(entClient)
 	runResolver := deploy.NewResolver(clustersSvc, chartCredsSvc, githubInstallsSvc)
 
@@ -110,18 +107,12 @@ func runWorker(_ []string) {
 	//   - invite-email: sends org invitation emails (Sender is SMTP when
 	//     configured, a no-op otherwise — the API only enqueues when email is on).
 	//   - tekton-install: installs Tekton into a cluster on enable.
-	//   - helm-rollout: runs a Helm release rollout (deploy/upgrade/uninstall) as
-	//     a TaskRun on the app's runner cluster, against its target cluster.
-	//   - helm-preview: runs `helm diff` (the refresh/preview) the same way,
-	//     recording the app's sync status without changing the cluster.
 	//   - workflow-run: executes an application's deploy-workflow DAG, running each
 	//     component as a TaskRun on the app's runner cluster (per-component crash-safe
 	//     recovery via the component-run label) and reconciling per-step + run status.
 	workers := queue.NewWorkers()
 	queue.AddWorker(workers, &email.InviteEmailWorker{Sender: emailSender(cfg)})
 	queue.AddWorker(workers, &tekton.InstallWorker{Store: clustersSvc})
-	queue.AddWorker(workers, &helm.RolloutWorker{Store: applicationsSvc})
-	queue.AddWorker(workers, &helm.PreviewWorker{Store: applicationsSvc})
 	queue.AddWorker(workers, workflows.NewWorker(workflowsSvc, runResolver))
 
 	client, err := queue.NewClient(rpool, queue.Config{

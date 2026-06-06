@@ -1,18 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import {
-  AppWindow,
-  CheckCircle2,
-  ChevronDown,
-  CircleDashed,
-  Loader2,
-  Plus,
-  XCircle,
-} from "lucide-react";
+import { AppWindow, ChevronDown, Plus } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
-import { chartSourceLabel } from "../components/chartSources";
 
 type Application = components["schemas"]["Application"];
 
@@ -81,9 +72,8 @@ export function Applications() {
             <thead>
               <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
                 <th className="px-4 py-2 font-medium">Name</th>
-                <th className="px-4 py-2 font-medium">Source</th>
                 <th className="px-4 py-2 font-medium">Namespace</th>
-                <th className="px-4 py-2 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium">Origin</th>
               </tr>
             </thead>
             <tbody>
@@ -97,13 +87,10 @@ export function Applications() {
                     {a.name}
                   </td>
                   <td className="px-4 py-3 text-neutral-600">
-                    {chartSourceLabel(a.chart_source)}
-                  </td>
-                  <td className="px-4 py-3 text-neutral-600">
                     {a.target_namespace}
                   </td>
-                  <td className="px-4 py-3">
-                    <AppStatusBadge status={a.status} message={a.status_message} />
+                  <td className="px-4 py-3 text-neutral-600">
+                    {a.imported ? "Imported" : "Created"}
                   </td>
                 </tr>
               ))}
@@ -182,41 +169,5 @@ function CreateAppButton({
         </div>
       )}
     </div>
-  );
-}
-
-export function AppStatusBadge({
-  status,
-  message,
-}: {
-  status: Application["status"];
-  message?: string;
-}) {
-  const styles: Record<Application["status"], string> = {
-    pending: "bg-neutral-100 text-neutral-700",
-    deploying: "bg-blue-100 text-blue-800",
-    deployed: "bg-green-100 text-green-800",
-    failed: "bg-red-100 text-red-800",
-    uninstalling: "bg-blue-100 text-blue-800",
-    uninstalled: "bg-neutral-100 text-neutral-700",
-  };
-  const Icon: Record<Application["status"], typeof CheckCircle2> = {
-    pending: CircleDashed,
-    deploying: Loader2,
-    deployed: CheckCircle2,
-    failed: XCircle,
-    uninstalling: Loader2,
-    uninstalled: CircleDashed,
-  };
-  const I = Icon[status];
-  const spinning = status === "deploying" || status === "uninstalling";
-  return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium ${styles[status]}`}
-      title={status === "failed" ? message : undefined}
-    >
-      <I className={`h-3.5 w-3.5 ${spinning ? "animate-spin" : ""}`} />
-      {status}
-    </span>
   );
 }

@@ -64,7 +64,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 	clustersSvc := clusters.NewService(entClient, sealer)
 	chartCredsSvc := chartcredentials.NewService(entClient, sealer)
 	githubInstallsSvc := githubinstallations.NewService(entClient, ghAuth)
-	applicationsSvc := applications.NewService(entClient, clustersSvc, chartCredsSvc, githubInstallsSvc)
+	applicationsSvc := applications.NewService(entClient)
 	workflowsSvc := workflows.NewService(entClient)
 	invitesSvc := invitations.NewService(entClient)
 

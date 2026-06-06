@@ -14,32 +14,12 @@ var (
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "name", Type: field.TypeString},
 		{Name: "imported", Type: field.TypeBool, Default: false},
-		{Name: "type", Type: field.TypeEnum, Enums: []string{"helm"}, Default: "helm"},
-		{Name: "chart_source", Type: field.TypeEnum, Enums: []string{"http_repo", "oci", "git"}},
-		{Name: "config", Type: field.TypeJSON, Nullable: true},
-		{Name: "values", Type: field.TypeString, Nullable: true},
-		{Name: "values_sources", Type: field.TypeJSON, Nullable: true},
-		{Name: "release_name", Type: field.TypeString, Nullable: true},
 		{Name: "target_namespace", Type: field.TypeString},
-		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "deploying", "deployed", "failed", "uninstalling", "uninstalled"}, Default: "pending"},
-		{Name: "status_message", Type: field.TypeString, Nullable: true},
-		{Name: "job_id", Type: field.TypeString, Nullable: true},
-		{Name: "last_run_name", Type: field.TypeString, Nullable: true},
-		{Name: "sync_status", Type: field.TypeEnum, Enums: []string{"unknown", "refreshing", "synced", "out_of_sync", "error"}, Default: "unknown"},
-		{Name: "sync_message", Type: field.TypeString, Nullable: true},
-		{Name: "last_diff", Type: field.TypeString, Nullable: true, Size: 2147483647},
-		{Name: "desired_chart_revision", Type: field.TypeString, Nullable: true},
-		{Name: "desired_values_revision", Type: field.TypeString, Nullable: true},
-		{Name: "last_refreshed_at", Type: field.TypeTime, Nullable: true},
-		{Name: "sync_job_id", Type: field.TypeString, Nullable: true},
-		{Name: "sync_run_name", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "organization_id", Type: field.TypeUUID},
 		{Name: "target_cluster_id", Type: field.TypeUUID},
 		{Name: "runner_cluster_id", Type: field.TypeUUID},
-		{Name: "chart_credential_id", Type: field.TypeUUID, Nullable: true},
-		{Name: "github_installation_id", Type: field.TypeUUID, Nullable: true},
 	}
 	// ApplicationsTable holds the schema information for the "applications" table.
 	ApplicationsTable = &schema.Table{
@@ -49,45 +29,33 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "applications_organizations_organization",
-				Columns:    []*schema.Column{ApplicationsColumns[24]},
+				Columns:    []*schema.Column{ApplicationsColumns[6]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "applications_clusters_target_cluster",
-				Columns:    []*schema.Column{ApplicationsColumns[25]},
+				Columns:    []*schema.Column{ApplicationsColumns[7]},
 				RefColumns: []*schema.Column{ClustersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "applications_clusters_runner_cluster",
-				Columns:    []*schema.Column{ApplicationsColumns[26]},
+				Columns:    []*schema.Column{ApplicationsColumns[8]},
 				RefColumns: []*schema.Column{ClustersColumns[0]},
 				OnDelete:   schema.NoAction,
-			},
-			{
-				Symbol:     "applications_chart_credentials_chart_credential",
-				Columns:    []*schema.Column{ApplicationsColumns[27]},
-				RefColumns: []*schema.Column{ChartCredentialsColumns[0]},
-				OnDelete:   schema.SetNull,
-			},
-			{
-				Symbol:     "applications_github_installations_github_installation",
-				Columns:    []*schema.Column{ApplicationsColumns[28]},
-				RefColumns: []*schema.Column{GithubInstallationsColumns[0]},
-				OnDelete:   schema.SetNull,
 			},
 		},
 		Indexes: []*schema.Index{
 			{
 				Name:    "application_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{ApplicationsColumns[24]},
+				Columns: []*schema.Column{ApplicationsColumns[6]},
 			},
 			{
 				Name:    "application_organization_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{ApplicationsColumns[24], ApplicationsColumns[1]},
+				Columns: []*schema.Column{ApplicationsColumns[6], ApplicationsColumns[1]},
 			},
 		},
 	}
@@ -285,61 +253,6 @@ var (
 				Name:    "componentrun_workflow_run_id",
 				Unique:  false,
 				Columns: []*schema.Column{ComponentRunsColumns[15]},
-			},
-		},
-	}
-	// DeploymentsColumns holds the columns for the "deployments" table.
-	DeploymentsColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeUUID},
-		{Name: "action", Type: field.TypeEnum, Enums: []string{"deploy", "upgrade", "uninstall"}},
-		{Name: "status", Type: field.TypeEnum, Enums: []string{"running", "succeeded", "failed"}, Default: "running"},
-		{Name: "forced", Type: field.TypeBool, Default: false},
-		{Name: "message", Type: field.TypeString, Nullable: true},
-		{Name: "job_id", Type: field.TypeString, Nullable: true},
-		{Name: "run_name", Type: field.TypeString, Nullable: true},
-		{Name: "logs", Type: field.TypeString, Nullable: true, Size: 2147483647},
-		{Name: "chart_revision", Type: field.TypeString, Nullable: true},
-		{Name: "values_revision", Type: field.TypeString, Nullable: true},
-		{Name: "created_at", Type: field.TypeTime},
-		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
-		{Name: "updated_at", Type: field.TypeTime},
-		{Name: "organization_id", Type: field.TypeUUID},
-		{Name: "application_id", Type: field.TypeUUID},
-	}
-	// DeploymentsTable holds the schema information for the "deployments" table.
-	DeploymentsTable = &schema.Table{
-		Name:       "deployments",
-		Columns:    DeploymentsColumns,
-		PrimaryKey: []*schema.Column{DeploymentsColumns[0]},
-		ForeignKeys: []*schema.ForeignKey{
-			{
-				Symbol:     "deployments_organizations_organization",
-				Columns:    []*schema.Column{DeploymentsColumns[13]},
-				RefColumns: []*schema.Column{OrganizationsColumns[0]},
-				OnDelete:   schema.NoAction,
-			},
-			{
-				Symbol:     "deployments_applications_application",
-				Columns:    []*schema.Column{DeploymentsColumns[14]},
-				RefColumns: []*schema.Column{ApplicationsColumns[0]},
-				OnDelete:   schema.NoAction,
-			},
-		},
-		Indexes: []*schema.Index{
-			{
-				Name:    "deployment_organization_id",
-				Unique:  false,
-				Columns: []*schema.Column{DeploymentsColumns[13]},
-			},
-			{
-				Name:    "deployment_application_id_created_at",
-				Unique:  false,
-				Columns: []*schema.Column{DeploymentsColumns[14], DeploymentsColumns[10]},
-			},
-			{
-				Name:    "deployment_organization_id_job_id",
-				Unique:  false,
-				Columns: []*schema.Column{DeploymentsColumns[13], DeploymentsColumns[5]},
 			},
 		},
 	}
@@ -568,7 +481,6 @@ var (
 		ClustersTable,
 		ComponentsTable,
 		ComponentRunsTable,
-		DeploymentsTable,
 		GithubInstallationsTable,
 		InvitationsTable,
 		MembershipsTable,
@@ -583,8 +495,6 @@ func init() {
 	ApplicationsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ApplicationsTable.ForeignKeys[1].RefTable = ClustersTable
 	ApplicationsTable.ForeignKeys[2].RefTable = ClustersTable
-	ApplicationsTable.ForeignKeys[3].RefTable = ChartCredentialsTable
-	ApplicationsTable.ForeignKeys[4].RefTable = GithubInstallationsTable
 	ChartCredentialsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ClustersTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ComponentsTable.ForeignKeys[0].RefTable = OrganizationsTable
@@ -594,8 +504,6 @@ func init() {
 	ComponentsTable.ForeignKeys[4].RefTable = GithubInstallationsTable
 	ComponentRunsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ComponentRunsTable.ForeignKeys[1].RefTable = WorkflowRunsTable
-	DeploymentsTable.ForeignKeys[0].RefTable = OrganizationsTable
-	DeploymentsTable.ForeignKeys[1].RefTable = ApplicationsTable
 	GithubInstallationsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	GithubInstallationsTable.Annotation = &entsql.Annotation{
 		Table: "github_installations",

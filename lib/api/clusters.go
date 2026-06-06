@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -619,16 +618,6 @@ func optStr(s string) *string {
 		return nil
 	}
 	return &s
-}
-
-// optTime returns a pointer to t, or nil when t is the zero time — so an unset
-// optional timestamp stays absent from the JSON rather than serializing as the
-// zero date.
-func optTime(t time.Time) *time.Time {
-	if t.IsZero() {
-		return nil
-	}
-	return &t
 }
 
 // clusterWriteError maps service-layer write errors common to create/update to

@@ -17,7 +17,6 @@ import (
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
-	"github.com/spacefleet/spacefleet/ent/deployment"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
@@ -90,7 +89,6 @@ func checkColumn(t, c string) error {
 			cluster.Table:            cluster.ValidColumn,
 			component.Table:          component.ValidColumn,
 			componentrun.Table:       componentrun.ValidColumn,
-			deployment.Table:         deployment.ValidColumn,
 			githubinstallation.Table: githubinstallation.ValidColumn,
 			invitation.Table:         invitation.ValidColumn,
 			membership.Table:         membership.ValidColumn,

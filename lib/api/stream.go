@@ -1,22 +1,18 @@
 package api
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/spacefleet/spacefleet/ent"
-	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
 	"github.com/spacefleet/spacefleet/lib/auth"
-	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/k8s"
 )
 
@@ -278,94 +274,11 @@ func (s *Server) StreamClusterTektonRun(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// StreamApplication streams an application's rollout status as Server-Sent
-// Events: an initial `status` event, then a `status` event whenever the row
-// changes, until a terminal state (deployed, failed, uninstalled) or the client
-// disconnects. Like StreamClusterTekton, this is the cross-process realtime
-// path: the rollout worker writes status to Postgres; this handler (in serve)
-// tails the row and pushes each change. It reuses GetApplication's auth path.
-func (s *Server) StreamApplication(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	orgID, canSeeSecrets, aerr, err := s.resolveAppRead(ctx)
-	if err != nil {
-		writeStreamError(w, http.StatusInternalServerError, "internal", "internal error")
-		return
-	}
-	if aerr != nil {
-		writeStreamError(w, aerr.status, aerr.code, aerr.msg)
-		return
-	}
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		writeStreamError(w, http.StatusNotFound, "not_found", "application not found")
-		return
-	}
-
-	// The initial read doubles as an existence/authorization check.
-	app, err := s.applications.Get(ctx, orgID, id)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			writeStreamError(w, http.StatusNotFound, "not_found", "application not found")
-			return
-		}
-		writeStreamError(w, http.StatusInternalServerError, "internal", "internal error")
-		return
-	}
-
-	ctx, cancel := context.WithDeadline(ctx, streamDeadline(ctx))
-	defer cancel()
-
-	sse, ok := newSSEWriter(w)
-	if !ok {
-		writeStreamError(w, http.StatusInternalServerError, "internal", "streaming unsupported")
-		return
-	}
-	if err := sse.event("status", toAPIApplication(app)); err != nil {
-		return
-	}
-	if appTerminal(app) {
-		return
-	}
-
-	prev := appRowKey(app)
-	poll := time.NewTicker(time.Second)
-	defer poll.Stop()
-	heartbeat := time.NewTicker(streamHeartbeat)
-	defer heartbeat.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-heartbeat.C:
-			if err := sse.comment("ping"); err != nil {
-				return
-			}
-		case <-poll.C:
-			app, err := s.applications.Get(ctx, orgID, id)
-			if err != nil {
-				return
-			}
-			key := appRowKey(app)
-			if key == prev {
-				continue
-			}
-			prev = key
-			if err := sse.event("status", redactAppSecrets(toAPIApplication(app), canSeeSecrets)); err != nil {
-				return
-			}
-			if appTerminal(app) {
-				return
-			}
-		}
-	}
-}
-
 // StreamApplicationRun streams a workflow run's status as Server-Sent Events: an
 // initial `snapshot` event with the run plus its component runs, then a
 // `snapshot` event whenever the run or any component run changes, until the run
 // reaches a terminal status (succeeded, failed, partial) or the client
-// disconnects. Like StreamApplication, this is the cross-process realtime path:
+// disconnects. Like StreamClusterTekton, this is the cross-process realtime path:
 // the workflow worker writes progress to Postgres; this handler (in serve) tails
 // the rows and pushes each change. It reuses GetRun's auth path and redacts
 // secret-bearing snapshot config below editor.
@@ -480,170 +393,6 @@ func runStateKey(run *ent.WorkflowRun, steps []*ent.ComponentRun) string {
 func runTerminal(run *ent.WorkflowRun) bool {
 	switch run.Status {
 	case workflowrun.StatusSucceeded, workflowrun.StatusFailed, workflowrun.StatusPartial:
-		return true
-	default:
-		return false
-	}
-}
-
-// StreamApplicationLogs streams the helm rollout pod's logs (the TaskRun pod on
-// the runner cluster). It resolves the app's run → pod, then reuses the cluster
-// pod-log stream. Mirrors StreamPodLogs.
-func (s *Server) StreamApplicationLogs(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	orgID, aerr, err := s.resolveApp(ctx)
-	if err != nil {
-		writeStreamError(w, http.StatusInternalServerError, "internal", "internal error")
-		return
-	}
-	if aerr != nil {
-		writeStreamError(w, aerr.status, aerr.code, aerr.msg)
-		return
-	}
-	app, aerr := s.appForStream(ctx, orgID, r)
-	if aerr != nil {
-		writeStreamError(w, aerr.status, aerr.code, aerr.msg)
-		return
-	}
-
-	// Streaming logs reaches the runner cluster via the clusters service; like
-	// any nil-service handler, return a clear 503 rather than panicking.
-	if s.clusters == nil {
-		writeStreamError(w, http.StatusServiceUnavailable, "unavailable", "clusters service not configured")
-		return
-	}
-
-	ctx, cancel := context.WithDeadline(ctx, streamDeadline(ctx))
-	defer cancel()
-
-	// The client passes the run it's viewing (?run=) so it reopens this stream
-	// when a new rollout starts. Only the app's current run is streamable; a
-	// stale name means the client is behind and should reconnect on the new one.
-	if q := r.URL.Query().Get("run"); q != "" && q != app.LastRunName {
-		writeStreamError(w, http.StatusConflict, "stale_run", "this run is no longer the current rollout")
-		return
-	}
-
-	// Resolve the run's backing pod before switching to event-stream mode.
-	run, err := s.clusters.GetRun(ctx, orgID, app.RunnerClusterID, helm.RunNamespace, app.LastRunName)
-	if err != nil {
-		status, code, msg := nodesFetchError(err)
-		writeStreamError(w, status, code, msg)
-		return
-	}
-	if run.PodName == "" {
-		writeStreamError(w, http.StatusConflict, "no_pod", "the rollout has not started a pod yet")
-		return
-	}
-
-	opts := k8s.LogOptions{Follow: true, TailLines: defaultLogTail, Timestamps: r.URL.Query().Get("timestamps") == "true"}
-	if tail := r.URL.Query().Get("tail"); tail != "" {
-		if n, perr := strconv.ParseInt(tail, 10, 64); perr == nil && n >= 0 {
-			opts.TailLines = n
-		}
-	}
-
-	rc, err := s.clusters.RunLogs(ctx, orgID, app.RunnerClusterID, helm.RunNamespace, run.PodName, opts)
-	if err != nil {
-		status, code, msg := nodesFetchError(err)
-		writeStreamError(w, status, code, msg)
-		return
-	}
-	defer rc.Close()
-
-	sse, ok := newSSEWriter(w)
-	if !ok {
-		writeStreamError(w, http.StatusInternalServerError, "internal", "streaming unsupported")
-		return
-	}
-
-	lines := make(chan string)
-	// scanErr is written by the scanner goroutine before it closes lines, and
-	// read by the consumer only after lines is closed — that ordering makes the
-	// access race-free without a lock.
-	var scanErr error
-	go func() {
-		defer close(lines)
-		sc := bufio.NewScanner(rc)
-		sc.Buffer(make([]byte, 0, 64*1024), maxLogLineBytes)
-		for sc.Scan() {
-			select {
-			case lines <- sc.Text():
-			case <-ctx.Done():
-				return
-			}
-		}
-		// A line over the cap (bufio.ErrTooLong) or a read failure ends the loop
-		// with a non-nil error; capture it so the consumer can report a real
-		// error instead of a clean eof.
-		scanErr = sc.Err()
-	}()
-
-	heartbeat := time.NewTicker(streamHeartbeat)
-	defer heartbeat.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-heartbeat.C:
-			if err := sse.comment("ping"); err != nil {
-				return
-			}
-		case line, ok := <-lines:
-			if !ok {
-				if scanErr != nil {
-					_ = sse.event("error", Error{Code: "log_stream_error", Message: "log stream ended unexpectedly"})
-				} else {
-					_ = sse.event("eof", struct{}{})
-				}
-				return
-			}
-			if err := sse.event("log", logLine{Line: line}); err != nil {
-				return
-			}
-		}
-	}
-}
-
-// appForStream resolves the application by the request's {id} path value and
-// checks it has had a rollout (a last run name), returning a typed error
-// otherwise. Shared by the run + logs streams.
-func (s *Server) appForStream(ctx context.Context, orgID uuid.UUID, r *http.Request) (*ent.Application, *apiError) {
-	id, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		return nil, &apiError{http.StatusNotFound, "not_found", "application not found"}
-	}
-	app, err := s.applications.Get(ctx, orgID, id)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return nil, &apiError{http.StatusNotFound, "not_found", "application not found"}
-		}
-		return nil, &apiError{http.StatusInternalServerError, "internal", "internal error"}
-	}
-	if app.LastRunName == "" {
-		return nil, &apiError{http.StatusConflict, "no_run", "this application has not been rolled out yet"}
-	}
-	return app, nil
-}
-
-// appRowKey is a change key over the rollout + sync fields the stream surfaces,
-// so a no-op poll doesn't emit a redundant event but a refresh's progress does.
-func appRowKey(a *ent.Application) string {
-	return string(a.Status) + "\x00" + a.StatusMessage + "\x00" + a.JobID + "\x00" + a.LastRunName +
-		"\x00" + string(a.SyncStatus) + "\x00" + a.SyncMessage + "\x00" + a.SyncJobID + "\x00" + a.SyncRunName
-}
-
-// appTerminal reports whether the stream can close: the rollout lifecycle has
-// settled and no refresh (preview/diff) is in flight. A refresh runs on an
-// already-deployed (rollout-terminal) app, so the stream must stay open while
-// sync_status is refreshing to carry the diff's progress.
-func appTerminal(a *ent.Application) bool {
-	if a.SyncStatus == application.SyncStatusRefreshing {
-		return false
-	}
-	switch a.Status {
-	case application.StatusDeployed, application.StatusFailed, application.StatusUninstalled:
 		return true
 	default:
 		return false

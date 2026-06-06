@@ -69,18 +69,6 @@ func (f ComponentRunFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ComponentRunMutation", m)
 }
 
-// The DeploymentFunc type is an adapter to allow the use of ordinary
-// function as Deployment mutator.
-type DeploymentFunc func(context.Context, *ent.DeploymentMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f DeploymentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.DeploymentMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DeploymentMutation", m)
-}
-
 // The GitHubInstallationFunc type is an adapter to allow the use of ordinary
 // function as GitHubInstallation mutator.
 type GitHubInstallationFunc func(context.Context, *ent.GitHubInstallationMutation) (ent.Value, error)

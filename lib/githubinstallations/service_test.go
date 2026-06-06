@@ -114,8 +114,8 @@ func TestNoAppConfigured(t *testing.T) {
 	}
 }
 
-// TestDeleteInUseRejected confirms an installation attached to an application
-// can't be deleted (the FK is ON DELETE RESTRICT → ErrInUse).
+// TestDeleteInUseRejected confirms an installation attached to a workflow
+// component can't be deleted (the FK is ON DELETE RESTRICT → ErrInUse).
 func TestDeleteInUseRejected(t *testing.T) {
 	client := testsupport.NewEntClient(t)
 	svc := NewService(client, fakeAuth{login: "acme"})
@@ -130,16 +130,25 @@ func TestDeleteInUseRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create cluster: %v", err)
 	}
-	if _, err := client.Application.Create().
+	// The installation FK now lives on a component, not the application.
+	app, err := client.Application.Create().
 		SetOrganizationID(org.ID).
 		SetName("web").
-		SetChartSource("git").
 		SetTargetNamespace("apps").
 		SetTargetClusterID(target.ID).
 		SetRunnerClusterID(target.ID).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("create application: %v", err)
+	}
+	if _, err := client.Component.Create().
+		SetOrganizationID(org.ID).
+		SetApplicationID(app.ID).
+		SetName("chart").
+		SetType("helm").
 		SetGithubInstallationID(inst.ID).
 		Save(ctx); err != nil {
-		t.Fatalf("create application: %v", err)
+		t.Fatalf("create component: %v", err)
 	}
 
 	if err := svc.Delete(ctx, org.ID, inst.ID); !errors.Is(err, ErrInUse) {

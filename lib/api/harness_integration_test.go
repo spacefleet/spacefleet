@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/spacefleet/spacefleet/ent"
-	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/lib/applications"
 	"github.com/spacefleet/spacefleet/lib/clusters"
@@ -64,7 +63,7 @@ func newHarness(t *testing.T, github githubinstallations.Authenticator) *harness
 	deps := ServerDeps{
 		Users:        users.NewService(client),
 		Orgs:         organizations.NewService(client),
-		Applications: applications.NewService(client, nil, nil, nil),
+		Applications: applications.NewService(client),
 		// A real clusters service (nil sealer) so the log-stream pre-checks that
 		// gate before reaching the cluster (stale_run) run; the happy paths here
 		// never actually reach a live cluster.
@@ -121,30 +120,4 @@ func (h *harness) signState(org uuid.UUID) string {
 		h.t.Fatalf("sign state: %v", err)
 	}
 	return state
-}
-
-// terminalApp seeds a deployed (rollout-terminal) application in org and returns
-// it. lastRun controls LastRunName (empty => the app has never rolled out).
-func (h *harness) terminalApp(org uuid.UUID, lastRun string) *ent.Application {
-	h.t.Helper()
-	ctx := context.Background()
-	cluster, err := h.client.Cluster.Create().
-		SetOrganizationID(org).SetName("c").SetConnectionMethod("token").Save(ctx)
-	if err != nil {
-		h.t.Fatalf("create cluster: %v", err)
-	}
-	app, err := h.client.Application.Create().
-		SetOrganizationID(org).
-		SetName("web").
-		SetChartSource("git").
-		SetTargetNamespace("apps").
-		SetTargetClusterID(cluster.ID).
-		SetRunnerClusterID(cluster.ID).
-		SetStatus(application.StatusDeployed).
-		SetLastRunName(lastRun).
-		Save(ctx)
-	if err != nil {
-		h.t.Fatalf("create application: %v", err)
-	}
-	return app
 }

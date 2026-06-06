@@ -24,11 +24,11 @@ import (
 	"github.com/spacefleet/spacefleet/lib/secrets"
 )
 
-// ErrInUse is returned by Delete when the credential is still attached to an
-// application: the FK is ON DELETE RESTRICT, so the database refuses the delete.
-// The handler maps it to 409. (ent surfaces a delete-time FK violation as the
-// raw driver error, not *ent.ConstraintError, so we classify it here.)
-var ErrInUse = errors.New("chart credential is attached to an application")
+// ErrInUse is returned by Delete when the credential is still attached to a
+// workflow component: the FK is ON DELETE RESTRICT, so the database refuses the
+// delete. The handler maps it to 409. (ent surfaces a delete-time FK violation
+// as the raw driver error, not *ent.ConstraintError, so we classify it here.)
+var ErrInUse = errors.New("chart credential is attached to a workflow component")
 
 // Service is a thin wrapper over the ent client plus the credential sealer.
 type Service struct {
@@ -144,8 +144,8 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, p UpdateParam
 }
 
 // Delete removes a chart credential scoped to the organization. A credential
-// still attached to an application fails with an ent constraint error (the FK is
-// ON DELETE RESTRICT), which the handler maps to 409.
+// still attached to a workflow component fails with an ent constraint error (the
+// FK is ON DELETE RESTRICT), which the handler maps to 409.
 func (s *Service) Delete(ctx context.Context, orgID, id uuid.UUID) error {
 	c, err := s.Get(ctx, orgID, id)
 	if err != nil {

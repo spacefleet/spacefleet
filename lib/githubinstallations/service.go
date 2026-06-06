@@ -25,10 +25,10 @@ import (
 	"github.com/spacefleet/spacefleet/lib/githubapp"
 )
 
-// ErrInUse is returned by Delete when the installation is still attached to an
-// application: the FK is ON DELETE RESTRICT, so the database refuses the delete.
-// The handler maps it to 409.
-var ErrInUse = errors.New("github installation is attached to an application")
+// ErrInUse is returned by Delete when the installation is still attached to a
+// workflow component: the FK is ON DELETE RESTRICT, so the database refuses the
+// delete. The handler maps it to 409.
+var ErrInUse = errors.New("github installation is attached to a workflow component")
 
 // ErrAppNotConfigured is returned when an operation needs the GitHub App but the
 // operator hasn't configured one (no authenticator wired). The handler maps it
@@ -106,8 +106,8 @@ func (s *Service) Link(ctx context.Context, orgID uuid.UUID, installationID int6
 }
 
 // Delete removes an installation scoped to the organization. An installation
-// still attached to an application fails with ErrInUse (the FK is ON DELETE
-// RESTRICT), which the handler maps to 409.
+// still attached to a workflow component fails with ErrInUse (the FK is ON
+// DELETE RESTRICT), which the handler maps to 409.
 func (s *Service) Delete(ctx context.Context, orgID, id uuid.UUID) error {
 	c, err := s.Get(ctx, orgID, id)
 	if err != nil {

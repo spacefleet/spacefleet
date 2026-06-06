@@ -669,138 +669,6 @@ export interface paths {
         patch: operations["updateApplication"];
         trace?: never;
     };
-    "/api/applications/{id}/rollout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Deploy or upgrade an application (run the Helm rollout)
-         * @description Org-scoped, editor or above. Enqueues a background job that runs
-         *     `helm upgrade --install` against the target cluster as a TaskRun on the
-         *     runner cluster, waiting for the release's resources to become Ready.
-         *     Returns immediately (202); follow progress via the application stream
-         *     and the run/log streams. Requires the background worker (503 otherwise).
-         */
-        post: operations["rolloutApplication"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/applications/{id}/uninstall": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Uninstall an application's Helm release
-         * @description Org-scoped, editor or above. Enqueues a background job that runs
-         *     `helm uninstall` against the target cluster as a TaskRun on the runner.
-         *     Returns immediately (202). Requires the background worker (503 otherwise).
-         */
-        post: operations["uninstallApplication"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/applications/{id}/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Refresh an application's sync status (preview the diff)
-         * @description Org-scoped, editor or above. Enqueues a background job that re-resolves
-         *     the desired state (latest git SHA / chart version / values) and runs
-         *     `helm diff` against the live target cluster as a TaskRun on the runner —
-         *     changing nothing. Returns immediately (202); follow progress via the
-         *     application stream, then read the result from GET .../diff. Requires the
-         *     background worker (503 otherwise). Returns 409 while a rollout is in
-         *     flight (the cluster is mid-change).
-         */
-        post: operations["refreshApplication"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/applications/{id}/diff": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get the cached diff from the application's most recent refresh
-         * @description Org-scoped. Returns the `helm diff` output captured by the last refresh,
-         *     the sync status, and the desired revisions a deploy would pull.
-         */
-        get: operations["getApplicationDiff"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/applications/{id}/deployments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List an application's deployment history
-         * @description Org-scoped. Returns the application's rollout runs newest-first — one per
-         *     deploy/upgrade/uninstall — for a CI-like history. Logs are not included
-         *     here (they can be large); fetch a single deployment for its logs.
-         */
-        get: operations["listDeployments"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/applications/{id}/deployments/{deploymentId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get one deployment run, with its captured logs */
-        get: operations["getDeployment"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/applications/{id}/workflow": {
         parameters: {
             query?: never;
@@ -1515,136 +1383,29 @@ export interface components {
             azure_client_secret?: string;
         };
         /**
-         * @description The kind of application. Only "helm" today.
-         * @enum {string}
+         * @description A deployable workload that owns a deploy workflow (a DAG of components).
+         *     The application holds only the workflow-owner fields; all chart-specific
+         *     config lives on its components, and run/sync state lives on its runs.
          */
-        ApplicationType: "helm";
-        /**
-         * @description Where the Helm chart comes from.
-         *       - http_repo: an HTTP Helm repository (repo_url + chart [+ version]).
-         *       - oci: an OCI registry reference (repo_url [+ version]).
-         *       - git: a chart in a Git repo (repo_url [+ git_ref] [+ git_path]).
-         * @enum {string}
-         */
-        ChartSource: "http_repo" | "oci" | "git";
-        /**
-         * @description The rollout lifecycle state of the application.
-         * @enum {string}
-         */
-        ApplicationStatus: "pending" | "deploying" | "deployed" | "failed" | "uninstalling" | "uninstalled";
-        /**
-         * @description Whether the application's desired state (latest chart/values, re-resolved
-         *     on refresh) matches the live cluster.
-         *       - unknown: never refreshed.
-         *       - refreshing: a refresh (preview/diff) is in flight.
-         *       - synced: deploying would change nothing.
-         *       - out_of_sync: deploying would change the live cluster (see the diff).
-         *       - error: the last refresh failed (see sync_message).
-         * @enum {string}
-         */
-        SyncStatus: "unknown" | "refreshing" | "synced" | "out_of_sync" | "error";
-        /**
-         * @description The cached result of the most recent refresh: the `helm diff` output
-         *     against the live cluster plus the desired revisions a deploy would pull.
-         */
-        ApplicationDiff: {
-            sync_status: components["schemas"]["SyncStatus"];
-            sync_message?: string;
-            /** @description The captured `helm diff` output (empty when synced or never refreshed). */
-            diff?: string;
-            desired_chart_revision?: string;
-            desired_values_revision?: string;
-            /** Format: date-time */
-            last_refreshed_at?: string;
-        };
-        /**
-         * @description A git source for a values file, layered beneath the inline values. Used
-         *     with any chart source. A private github.com source is authenticated by
-         *     the application's attached GitHub App installation.
-         */
-        ValuesSource: {
-            /** @description Git repository URL to clone (https). github.com may be private. */
-            repo_url: string;
-            /** @description Branch or tag to check out (default branch when empty). */
-            git_ref?: string;
-            /** @description Path to the values file within the repository. */
-            path: string;
-        };
         Application: {
             /** Format: uuid */
             id: string;
             name: string;
-            type: components["schemas"]["ApplicationType"];
-            chart_source: components["schemas"]["ChartSource"];
-            /**
-             * @description Non-secret per-source chart coordinates, varying by chart_source
-             *     (repo_url, chart, version, git_ref, git_path).
-             */
-            config: {
-                [key: string]: string;
-            };
-            /** @description Raw values.yaml override (applied last, so it wins over values_sources). */
-            values?: string;
-            /**
-             * @description Ordered git sources to pull values files from (orthogonal to the
-             *     chart source). Each is cloned and layered with helm -f in order —
-             *     earlier first — all beneath the inline values above, which wins.
-             */
-            values_sources?: components["schemas"]["ValuesSource"][];
-            /** @description The Helm release name (defaults to the app name when empty). */
-            release_name?: string;
-            /** @description Namespace in the target cluster the release is installed into. */
+            /** @description App-level default namespace components deploy into (overridable per component). */
             target_namespace: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description App-level default target cluster (overridable per component).
+             */
             target_cluster_id: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The Tekton-enabled cluster the management jobs run on.
+             */
             runner_cluster_id: string;
             /**
-             * Format: uuid
-             * @description Private-chart credential used to pull the chart (absent for public
-             *     charts, and for git charts, which authenticate via a GitHub App).
-             */
-            chart_credential_id?: string;
-            /**
-             * Format: uuid
-             * @description GitHub App installation used to pull a private github.com repo —
-             *     the chart (git chart source) and/or a git-sourced values file
-             *     (absent for public repos). Valid when the chart or the values come
-             *     from git.
-             */
-            github_installation_id?: string;
-            status: components["schemas"]["ApplicationStatus"];
-            /** @description Human-readable detail (last rollout-progress line, or error). */
-            status_message?: string;
-            /** @description Id of the in-flight rollout job, for correlation. */
-            job_id?: string;
-            /** @description TaskRun name of the most recent rollout (for streaming). */
-            last_run_name?: string;
-            sync_status?: components["schemas"]["SyncStatus"];
-            /** @description Human-readable detail of the last refresh (progress line, or error). */
-            sync_message?: string;
-            /**
-             * @description Git commit SHA the chart resolved to at the last refresh (empty for a
-             *     non-git chart) — the revision a deploy would pull right now.
-             */
-            desired_chart_revision?: string;
-            /**
-             * @description Newline-joined "<repo>@<sha>" lines each values source resolved to at
-             *     the last refresh — the values revisions a deploy would pull right now.
-             */
-            desired_values_revision?: string;
-            /**
-             * Format: date-time
-             * @description When the last refresh (preview/diff) completed.
-             */
-            last_refreshed_at?: string;
-            /** @description TaskRun name of the most recent preview run (for streaming). */
-            sync_run_name?: string;
-            /**
              * @description True when the application was adopted from a release already running
-             *     on the cluster (the import flow) rather than created and deployed by
-             *     Spacefleet. An imported app should be refreshed to confirm the
-             *     configured chart source reproduces the live release.
+             *     on the cluster (the import flow) rather than created from scratch.
              */
             imported?: boolean;
             /** Format: date-time */
@@ -1653,124 +1414,48 @@ export interface components {
             updated_at: string;
         };
         /**
-         * @description config carries the source-specific, non-secret chart coordinates
-         *     (repo_url, chart, version, git_ref, git_path); the server validates which
-         *     are required per chart_source. values_sources optionally pulls values
-         *     files from git, layered (in order) beneath the inline values.
+         * @description Register an application (the workflow owner). The deploy steps are added
+         *     afterwards as components via the workflow builder; create only sets the
+         *     name, the app-level default target cluster + namespace, and the runner.
          */
         ApplicationCreateRequest: {
             name: string;
-            chart_source: components["schemas"]["ChartSource"];
-            config?: {
-                [key: string]: string;
-            };
-            values?: string;
-            values_sources?: components["schemas"]["ValuesSource"][];
-            release_name?: string;
             target_namespace: string;
             /** Format: uuid */
             target_cluster_id: string;
             /** Format: uuid */
             runner_cluster_id: string;
-            /**
-             * Format: uuid
-             * @description Optional private-chart credential to attach. Valid for http_repo and
-             *     oci chart sources; git charts take none (they use a GitHub App).
-             */
-            chart_credential_id?: string;
-            /**
-             * Format: uuid
-             * @description Optional GitHub App installation to attach for a private github.com
-             *     repo. Valid when the chart (git chart source) or any values source is
-             *     pulled from git.
-             */
-            github_installation_id?: string;
         };
         /**
-         * @description Adopt a release already running on the target cluster. The same shape as
-         *     ApplicationCreateRequest: name/target_namespace/release_name and values
-         *     are pre-filled from the discovered release, while chart_source + config
-         *     (where the chart comes from), the runner cluster, values_sources, and any
-         *     credentials are supplied by the operator. Unlike create, no rollout runs —
-         *     the release is already deployed.
+         * @description Adopt an existing workload as an application. Creates the application in
+         *     the imported state (the workflow owner only); the user then builds the
+         *     deploy workflow from components. Same shape as ApplicationCreateRequest.
          */
         ApplicationImportRequest: {
             name: string;
-            chart_source: components["schemas"]["ChartSource"];
-            config?: {
-                [key: string]: string;
-            };
-            values?: string;
-            values_sources?: components["schemas"]["ValuesSource"][];
-            release_name?: string;
             target_namespace: string;
             /** Format: uuid */
             target_cluster_id: string;
             /** Format: uuid */
             runner_cluster_id: string;
-            /**
-             * Format: uuid
-             * @description Optional private-chart credential to attach. Valid for http_repo and
-             *     oci chart sources; git charts take none (they use a GitHub App).
-             */
-            chart_credential_id?: string;
-            /**
-             * Format: uuid
-             * @description Optional GitHub App installation to attach for a private github.com
-             *     repo. Valid when the chart (git chart source) or any values source is
-             *     pulled from git.
-             */
-            github_installation_id?: string;
         };
         /**
-         * @description All fields optional. The clusters and chart source are fixed at
-         *     registration; the chart coordinates (config), values, release name,
-         *     target namespace, and name can change.
+         * @description All fields optional. The clusters and name can change; the deploy steps
+         *     live on the components (edit them via the workflow builder).
          */
         ApplicationUpdateRequest: {
             name?: string;
-            config?: {
-                [key: string]: string;
-            };
-            values?: string;
-            /**
-             * @description Replaces the git values sources. Send an empty array to clear them;
-             *     omit the field to leave them unchanged.
-             */
-            values_sources?: components["schemas"]["ValuesSource"][];
-            release_name?: string;
             target_namespace?: string;
-            /**
-             * Format: uuid
-             * @description Change the attached credential. Send the nil UUID
-             *     (00000000-0000-0000-0000-000000000000) to detach.
-             */
-            chart_credential_id?: string;
-            /**
-             * Format: uuid
-             * @description Change the attached GitHub App installation (git chart and/or
-             *     git-sourced values). Send the nil UUID
-             *     (00000000-0000-0000-0000-000000000000) to detach.
-             */
-            github_installation_id?: string;
         };
-        ApplicationRolloutRequest: {
-            /**
-             * @description deploy and upgrade both run `helm upgrade --install`.
-             * @enum {string}
-             */
-            action: "deploy" | "upgrade";
-            /**
-             * @description Force a roll of the release's workloads even when the chart renders
-             *     no change. After the normal `helm upgrade --install`, the release's
-             *     Deployments, StatefulSets, and DaemonSets (selected by the standard
-             *     `app.kubernetes.io/instance` label) are restarted — the equivalent
-             *     of `kubectl rollout restart` — so pods cycle as if there had been a
-             *     diff. Workloads that don't carry the standard instance label are not
-             *     matched. Defaults to false.
-             */
-            force?: boolean;
-        };
+        /**
+         * @description Where a Helm component's chart comes from (a value of the component's
+         *     `config.chart_source`).
+         *       - http_repo: an HTTP Helm repository (repo_url + chart [+ version]).
+         *       - oci: an OCI registry reference (repo_url [+ version]).
+         *       - git: a chart in a Git repo (repo_url [+ git_ref] [+ git_path]).
+         * @enum {string}
+         */
+        ChartSource: "http_repo" | "oci" | "git";
         /**
          * @description A named credential set for pulling private Helm charts ("Private
          *     Charts"). A basic-auth username/password pair that works for both HTTP
@@ -1839,60 +1524,6 @@ export interface components {
         GitHubConnectUrl: {
             /** @description The GitHub App install URL to redirect the browser to. */
             url: string;
-        };
-        /**
-         * @description The rollout action a deployment run performed.
-         * @enum {string}
-         */
-        DeploymentAction: "deploy" | "upgrade" | "uninstall";
-        /**
-         * @description The run's lifecycle: running, then a terminal succeeded/failed.
-         * @enum {string}
-         */
-        DeploymentStatus: "running" | "succeeded" | "failed";
-        /** @description One rollout run of an application (a history entry). */
-        Deployment: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            application_id: string;
-            action: components["schemas"]["DeploymentAction"];
-            status: components["schemas"]["DeploymentStatus"];
-            /**
-             * @description Whether this run was a forced deploy — the release's workloads were
-             *     restarted even if the chart rendered no change. Only meaningful for
-             *     deploy/upgrade runs.
-             */
-            forced?: boolean;
-            /** @description Human-readable detail (last progress line, or the error). */
-            message?: string;
-            /** @description The TaskRun name on the runner cluster for this run. */
-            run_name?: string;
-            /**
-             * @description Git commit SHA the chart was resolved to, for a git chart source
-             *     (absent for http_repo/oci charts, which pin a chart version instead).
-             */
-            chart_revision?: string;
-            /**
-             * @description Git commit SHAs the values sources were resolved to, one
-             *     "<repo>@<sha>" per line, when values are pulled from git (absent
-             *     otherwise).
-             */
-            values_revision?: string;
-            /** Format: date-time */
-            created_at: string;
-            /**
-             * Format: date-time
-             * @description When the run settled; absent while still running.
-             */
-            finished_at?: string | null;
-        };
-        DeploymentDetail: components["schemas"]["Deployment"] & {
-            /**
-             * @description The captured Helm output, persisted when the run settled. Empty
-             *     while a run is still in flight (follow it live via the log stream).
-             */
-            logs?: string;
         };
         /**
          * @description The kind of step a workflow component runs.
@@ -2107,7 +1738,6 @@ export interface components {
         ApplicationID: string;
         ChartCredentialID: string;
         GitHubInstallationID: string;
-        DeploymentID: string;
         RunID: string;
         ComponentRunID: string;
         MemberUserID: string;
@@ -2987,149 +2617,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Application"];
-                };
-            };
-            default: components["responses"]["Error"];
-        };
-    };
-    rolloutApplication: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["ApplicationID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ApplicationRolloutRequest"];
-            };
-        };
-        responses: {
-            /** @description Rollout accepted; the job is in progress */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Application"];
-                };
-            };
-            default: components["responses"]["Error"];
-        };
-    };
-    uninstallApplication: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["ApplicationID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Uninstall accepted; the job is in progress */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Application"];
-                };
-            };
-            default: components["responses"]["Error"];
-        };
-    };
-    refreshApplication: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["ApplicationID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Refresh accepted; the preview job is in progress */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Application"];
-                };
-            };
-            default: components["responses"]["Error"];
-        };
-    };
-    getApplicationDiff: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["ApplicationID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The cached diff and sync status */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApplicationDiff"];
-                };
-            };
-            default: components["responses"]["Error"];
-        };
-    };
-    listDeployments: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["ApplicationID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The application's deployment runs, newest first */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Deployment"][];
-                };
-            };
-            default: components["responses"]["Error"];
-        };
-    };
-    getDeployment: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["ApplicationID"];
-                deploymentId: components["parameters"]["DeploymentID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The deployment run, including its captured Helm output */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeploymentDetail"];
                 };
             };
             default: components["responses"]["Error"];

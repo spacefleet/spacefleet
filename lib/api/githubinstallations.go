@@ -142,10 +142,10 @@ func (s *Server) DeleteGitHubInstallation(ctx context.Context, req DeleteGitHubI
 		if ent.IsNotFound(err) {
 			return errResp[DeleteGitHubInstallationdefaultJSONResponse](http.StatusNotFound, "not_found", "github installation not found"), nil
 		}
-		// The FK from applications is ON DELETE RESTRICT: an installation in use
+		// The FK from components is ON DELETE RESTRICT: an installation in use
 		// can't be deleted (the service classifies the DB violation as ErrInUse).
 		if errors.Is(err, githubinstallations.ErrInUse) {
-			return errResp[DeleteGitHubInstallationdefaultJSONResponse](http.StatusConflict, "conflict", "this installation is attached to an application; detach it first"), nil
+			return errResp[DeleteGitHubInstallationdefaultJSONResponse](http.StatusConflict, "conflict", "this installation is attached to a workflow component; detach it first"), nil
 		}
 		return nil, err
 	}

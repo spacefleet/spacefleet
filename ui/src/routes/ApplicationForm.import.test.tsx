@@ -28,7 +28,7 @@ const mockApi = api as unknown as {
   POST: ReturnType<typeof vi.fn>;
 };
 
-const cluster = { id: "cluster-1", name: "prod", runs_jobs: true };
+const cluster = { id: "cluster-1", name: "prod" };
 const release = {
   name: "cache",
   namespace: "data",
@@ -68,46 +68,31 @@ beforeEach(() => {
 });
 
 describe("ApplicationForm import mode", () => {
-  it("pre-fills from the discovered release and warns about secrets", async () => {
+  it("pre-fills the name, namespace, and target cluster from the release", async () => {
     renderImport();
 
     expect(
-      await screen.findByRole("heading", { name: "Import Helm release" }),
+      await screen.findByRole("heading", { name: "Import application" }),
     ).toBeInTheDocument();
-    // Name + values seeded from the live release.
+    // Name + namespace seeded from the live release.
     expect(screen.getByDisplayValue("cache")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("replicas: 3")).toBeInTheDocument();
-    // Chart coordinates inferred from the release.
-    expect(screen.getByDisplayValue("redis")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("1.2.3")).toBeInTheDocument();
-    // The secrets warning is shown.
-    expect(
-      screen.getByText(/may contain secrets passed at install time/i),
-    ).toBeInTheDocument();
-    // The target namespace is locked (read-only), shown as text not an input.
-    expect(screen.getByText("data")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("data")).toBeInTheDocument();
   });
 
-  it("adopts via POST /api/applications/import (no rollout) then opens the app", async () => {
+  it("adopts via POST /api/applications/import then opens the workflow canvas", async () => {
     mockApi.POST.mockResolvedValue({ data: { id: "app-9" }, error: undefined });
     renderImport();
     const user = userEvent.setup();
 
-    await screen.findByRole("heading", { name: "Import Helm release" });
+    await screen.findByRole("heading", { name: "Import application" });
 
-    // Fill the one required chart field the release can't supply.
-    await user.type(
-      screen.getByPlaceholderText("https://charts.bitnami.com/bitnami"),
-      "https://charts.example.com",
+    // The cluster the release was found on is pre-selected as the target;
+    // choose the runner cluster.
+    await user.selectOptions(
+      screen.getByLabelText("Runner cluster"),
+      "cluster-1",
     );
-    // Pick the runner cluster. The Labeled control isn't associated with its
-    // label, so find the runner select via its placeholder option.
-    const runner = screen
-      .getByRole("option", { name: "Select a runner…" })
-      .closest("select") as HTMLSelectElement;
-    await user.selectOptions(runner, "cluster-1");
-
-    await user.click(screen.getByRole("button", { name: "Import release" }));
+    await user.click(screen.getByRole("button", { name: "Import" }));
 
     await waitFor(() =>
       expect(mockApi.POST).toHaveBeenCalledWith(
@@ -115,7 +100,6 @@ describe("ApplicationForm import mode", () => {
         expect.objectContaining({
           body: expect.objectContaining({
             name: "cache",
-            chart_source: "http_repo",
             target_namespace: "data",
             target_cluster_id: "cluster-1",
             runner_cluster_id: "cluster-1",
@@ -129,7 +113,7 @@ describe("ApplicationForm import mode", () => {
       expect.anything(),
     );
     await waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith("/applications/app-9"),
+      expect(navigate).toHaveBeenCalledWith("/applications/app-9/workflow"),
     );
   });
 });
