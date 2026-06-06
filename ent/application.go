@@ -57,6 +57,22 @@ type Application struct {
 	JobID string `json:"job_id,omitempty"`
 	// LastRunName holds the value of the "last_run_name" field.
 	LastRunName string `json:"last_run_name,omitempty"`
+	// SyncStatus holds the value of the "sync_status" field.
+	SyncStatus application.SyncStatus `json:"sync_status,omitempty"`
+	// SyncMessage holds the value of the "sync_message" field.
+	SyncMessage string `json:"sync_message,omitempty"`
+	// LastDiff holds the value of the "last_diff" field.
+	LastDiff string `json:"last_diff,omitempty"`
+	// DesiredChartRevision holds the value of the "desired_chart_revision" field.
+	DesiredChartRevision string `json:"desired_chart_revision,omitempty"`
+	// DesiredValuesRevision holds the value of the "desired_values_revision" field.
+	DesiredValuesRevision string `json:"desired_values_revision,omitempty"`
+	// LastRefreshedAt holds the value of the "last_refreshed_at" field.
+	LastRefreshedAt time.Time `json:"last_refreshed_at,omitempty"`
+	// SyncJobID holds the value of the "sync_job_id" field.
+	SyncJobID string `json:"sync_job_id,omitempty"`
+	// SyncRunName holds the value of the "sync_run_name" field.
+	SyncRunName string `json:"sync_run_name,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -146,9 +162,9 @@ func (*Application) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case application.FieldConfig, application.FieldValuesSources:
 			values[i] = new([]byte)
-		case application.FieldName, application.FieldType, application.FieldChartSource, application.FieldValues, application.FieldReleaseName, application.FieldTargetNamespace, application.FieldStatus, application.FieldStatusMessage, application.FieldJobID, application.FieldLastRunName:
+		case application.FieldName, application.FieldType, application.FieldChartSource, application.FieldValues, application.FieldReleaseName, application.FieldTargetNamespace, application.FieldStatus, application.FieldStatusMessage, application.FieldJobID, application.FieldLastRunName, application.FieldSyncStatus, application.FieldSyncMessage, application.FieldLastDiff, application.FieldDesiredChartRevision, application.FieldDesiredValuesRevision, application.FieldSyncJobID, application.FieldSyncRunName:
 			values[i] = new(sql.NullString)
-		case application.FieldCreatedAt, application.FieldUpdatedAt:
+		case application.FieldLastRefreshedAt, application.FieldCreatedAt, application.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		case application.FieldID, application.FieldOrganizationID, application.FieldTargetClusterID, application.FieldRunnerClusterID, application.FieldChartCredentialID, application.FieldGithubInstallationID:
 			values[i] = new(uuid.UUID)
@@ -279,6 +295,54 @@ func (_m *Application) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.LastRunName = value.String
 			}
+		case application.FieldSyncStatus:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field sync_status", values[i])
+			} else if value.Valid {
+				_m.SyncStatus = application.SyncStatus(value.String)
+			}
+		case application.FieldSyncMessage:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field sync_message", values[i])
+			} else if value.Valid {
+				_m.SyncMessage = value.String
+			}
+		case application.FieldLastDiff:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field last_diff", values[i])
+			} else if value.Valid {
+				_m.LastDiff = value.String
+			}
+		case application.FieldDesiredChartRevision:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field desired_chart_revision", values[i])
+			} else if value.Valid {
+				_m.DesiredChartRevision = value.String
+			}
+		case application.FieldDesiredValuesRevision:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field desired_values_revision", values[i])
+			} else if value.Valid {
+				_m.DesiredValuesRevision = value.String
+			}
+		case application.FieldLastRefreshedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field last_refreshed_at", values[i])
+			} else if value.Valid {
+				_m.LastRefreshedAt = value.Time
+			}
+		case application.FieldSyncJobID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field sync_job_id", values[i])
+			} else if value.Valid {
+				_m.SyncJobID = value.String
+			}
+		case application.FieldSyncRunName:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field sync_run_name", values[i])
+			} else if value.Valid {
+				_m.SyncRunName = value.String
+			}
 		case application.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -402,6 +466,30 @@ func (_m *Application) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("last_run_name=")
 	builder.WriteString(_m.LastRunName)
+	builder.WriteString(", ")
+	builder.WriteString("sync_status=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SyncStatus))
+	builder.WriteString(", ")
+	builder.WriteString("sync_message=")
+	builder.WriteString(_m.SyncMessage)
+	builder.WriteString(", ")
+	builder.WriteString("last_diff=")
+	builder.WriteString(_m.LastDiff)
+	builder.WriteString(", ")
+	builder.WriteString("desired_chart_revision=")
+	builder.WriteString(_m.DesiredChartRevision)
+	builder.WriteString(", ")
+	builder.WriteString("desired_values_revision=")
+	builder.WriteString(_m.DesiredValuesRevision)
+	builder.WriteString(", ")
+	builder.WriteString("last_refreshed_at=")
+	builder.WriteString(_m.LastRefreshedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	builder.WriteString("sync_job_id=")
+	builder.WriteString(_m.SyncJobID)
+	builder.WriteString(", ")
+	builder.WriteString("sync_run_name=")
+	builder.WriteString(_m.SyncRunName)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

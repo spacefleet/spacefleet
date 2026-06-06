@@ -103,10 +103,13 @@ func runWorker(_ []string) {
 	//   - tekton-install: installs Tekton into a cluster on enable.
 	//   - helm-rollout: runs a Helm release rollout (deploy/upgrade/uninstall) as
 	//     a TaskRun on the app's runner cluster, against its target cluster.
+	//   - helm-preview: runs `helm diff` (the refresh/preview) the same way,
+	//     recording the app's sync status without changing the cluster.
 	workers := queue.NewWorkers()
 	queue.AddWorker(workers, &email.InviteEmailWorker{Sender: emailSender(cfg)})
 	queue.AddWorker(workers, &tekton.InstallWorker{Store: clustersSvc})
 	queue.AddWorker(workers, &helm.RolloutWorker{Store: applicationsSvc})
+	queue.AddWorker(workers, &helm.PreviewWorker{Store: applicationsSvc})
 
 	client, err := queue.NewClient(rpool, queue.Config{
 		WorkerMode:  true,

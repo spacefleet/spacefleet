@@ -107,8 +107,12 @@ func (s *Service) fetchRunLogs(ctx context.Context, app *ent.Application, runNam
 	return string(b)
 }
 
-// The rollout worker drives the service through the helm.Store seam.
-var _ helm.Store = (*Service)(nil)
+// The rollout worker drives the service through the helm.Store seam, and the
+// preview worker through helm.PreviewStore.
+var (
+	_ helm.Store        = (*Service)(nil)
+	_ helm.PreviewStore = (*Service)(nil)
+)
 
 // ValidationError is a client-input error (bad/missing fields, an invalid
 // cluster pairing) the handler maps to 400.
@@ -311,6 +315,98 @@ func (s *Service) BeginRollout(ctx context.Context, orgID, id uuid.UUID, action 
 	return app.Update().SetStatus(status).SetStatusMessage(msg).Save(ctx)
 }
 
+// BeginPreview moves an application into the refreshing state so the handler can
+// enqueue the preview job. It refuses while a rollout is in flight (deploying /
+// uninstalling) — diffing against a cluster mid-change would be meaningless — and
+// returns that as a ValidationError the handler maps to 409.
+func (s *Service) BeginPreview(ctx context.Context, orgID, id uuid.UUID) (*ent.Application, error) {
+	app, err := s.Get(ctx, orgID, id)
+	if err != nil {
+		return nil, err
+	}
+	if app.Status == application.StatusDeploying || app.Status == application.StatusUninstalling {
+		return nil, validationErr("a rollout is in progress; refresh once it settles")
+	}
+	return app.Update().
+		SetSyncStatus(application.SyncStatusRefreshing).
+		SetSyncMessage("queued for refresh").
+		SetSyncRunName("").
+		Save(ctx)
+}
+
+// MarkPreview persists a non-terminal sync transition reported by the preview
+// worker (it satisfies helm.PreviewStore): status is one of the helm.Sync*
+// values (refreshing / error). jobID/runName are set only when non-empty; the
+// message is always set. It writes only the sync_* columns, never the rollout
+// lifecycle.
+func (s *Service) MarkPreview(ctx context.Context, orgID, appID uuid.UUID, jobID, status, message, runName string) error {
+	st, err := syncStatusEnum(status)
+	if err != nil {
+		return err
+	}
+	upd := s.ent.Application.Update().
+		Where(application.OrganizationID(orgID), application.ID(appID)).
+		SetSyncStatus(st).
+		SetSyncMessage(message)
+	if jobID != "" {
+		upd.SetSyncJobID(jobID)
+	}
+	if runName != "" {
+		upd.SetSyncRunName(runName)
+	}
+	_, err = upd.Save(ctx)
+	return err
+}
+
+// maxDiffBytes caps the stored diff so a pathological all-additions diff (e.g. a
+// huge chart's initial install) can't bloat the row or the API response.
+const maxDiffBytes = 256 * 1024
+
+// CompletePreview records a successful diff run (it satisfies helm.PreviewStore):
+// it captures the run's logs, parses the diff body + verdict + resolved
+// revisions, and sets sync_status to synced or out_of_sync. The worker can't make
+// that call itself — the verdict is in the diff output, not the run phase. A
+// failure to capture logs is recorded as an error status (the run succeeded but
+// we have nothing to show).
+func (s *Service) CompletePreview(ctx context.Context, orgID, appID uuid.UUID, jobID, runName string) error {
+	app, err := s.Get(ctx, orgID, appID)
+	if err != nil {
+		return err
+	}
+	logs := ""
+	if s.captureLogs != nil {
+		logs = s.captureLogs(ctx, app, runName)
+	}
+	diff := helm.ParseDiff(logs)
+	rev := helm.ParseRevisions(logs)
+
+	status := application.SyncStatusSynced
+	msg := "in sync"
+	if diff.HasChanges {
+		status = application.SyncStatusOutOfSync
+		msg = "out of sync"
+	}
+	body := diff.Body
+	if len(body) > maxDiffBytes {
+		body = body[:maxDiffBytes] + "\n... diff truncated ..."
+	}
+	upd := app.Update().
+		SetSyncStatus(status).
+		SetSyncMessage(msg).
+		SetLastDiff(body).
+		SetDesiredChartRevision(rev.Chart).
+		SetDesiredValuesRevision(valuesRevision(app.ValuesSources, rev.Values)).
+		SetLastRefreshedAt(time.Now())
+	if jobID != "" {
+		upd.SetSyncJobID(jobID)
+	}
+	if runName != "" {
+		upd.SetSyncRunName(runName)
+	}
+	_, err = upd.Save(ctx)
+	return err
+}
+
 // MarkRollout persists a rollout-lifecycle transition reported by the worker (it
 // satisfies helm.Store). status must be one of the helm.Status* values;
 // jobID/runName are set only when non-empty, message is always set (pass "" to
@@ -422,22 +518,36 @@ func (s *Service) GetDeployment(ctx context.Context, orgID, appID, id uuid.UUID)
 		Only(ctx)
 }
 
-// ResolveRollout satisfies helm.Store: it resolves the runner connection, builds
-// the target cluster's kubeconfig (minting any cloud token late, this attempt),
-// and assembles the RunSpec (script + injected Files) for the action. The wait
-// timeout is tiered by the target's connection method (its credential longevity).
-func (s *Service) ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, action string) (helm.RolloutPlan, error) {
+// runInputs is the shared resolution both a rollout and a preview need: the app,
+// the runner connection, the target's connection method (for the wait timeout),
+// the injected Files (kubeconfig + values + any credentials), and the auth flags.
+// Only the final helm verb (Rollout.Action) differs between the two callers.
+type runInputs struct {
+	app           *ent.Application
+	runnerConn    k8s.Connection
+	targetMethod  k8s.Method
+	files         map[string]string
+	hasCredential bool
+	hasGitToken   bool
+}
+
+// resolveRunInputs resolves the runner connection, builds the target cluster's
+// kubeconfig (minting any cloud token late, this attempt), decrypts any chart
+// credential, mints any GitHub App token, and assembles the injected Files.
+// pullsChart is false only for uninstall (which pulls nothing), skipping the
+// chart credential + git token.
+func (s *Service) resolveRunInputs(ctx context.Context, orgID, appID uuid.UUID, pullsChart bool) (runInputs, error) {
 	app, err := s.Get(ctx, orgID, appID)
 	if err != nil {
-		return helm.RolloutPlan{}, err
+		return runInputs{}, err
 	}
 	runnerConn, err := s.conns.ConnForTekton(ctx, orgID, app.RunnerClusterID)
 	if err != nil {
-		return helm.RolloutPlan{}, err
+		return runInputs{}, err
 	}
 	targetConn, err := s.conns.ConnForTekton(ctx, orgID, app.TargetClusterID)
 	if err != nil {
-		return helm.RolloutPlan{}, err
+		return runInputs{}, err
 	}
 	// When the runner is the target cluster, the Helm job runs inside the cluster
 	// it deploys to, so the injected kubeconfig must use the in-cluster API server
@@ -445,12 +555,17 @@ func (s *Service) ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, ac
 	sameCluster := app.RunnerClusterID == app.TargetClusterID
 	kubeconfig, err := k8s.Kubeconfig(ctx, targetConn, sameCluster)
 	if err != nil {
-		return helm.RolloutPlan{}, err
+		return runInputs{}, err
 	}
 
-	files := map[string]string{
-		helm.KubeconfigFile: string(kubeconfig),
-		helm.ValuesFile:     app.Values,
+	in := runInputs{
+		app:          app,
+		runnerConn:   runnerConn,
+		targetMethod: targetConn.Method,
+		files: map[string]string{
+			helm.KubeconfigFile: string(kubeconfig),
+			helm.ValuesFile:     app.Values,
+		},
 	}
 
 	// Attach a private-chart credential, when one is set: resolve (decrypt) it and
@@ -458,18 +573,17 @@ func (s *Service) ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, ac
 	// runtime, so the password never lands in the script string, the TaskRun
 	// manifest, or env — only in the same owner-referenced, GC'd Secret as the
 	// kubeconfig. Uninstall pulls no chart, so it needs no credential.
-	hasCredential := false
-	if app.ChartCredentialID != uuid.Nil && action != helm.ActionUninstall {
+	if app.ChartCredentialID != uuid.Nil && pullsChart {
 		if s.creds == nil {
-			return helm.RolloutPlan{}, fmt.Errorf("applications: app references a chart credential but the chart-credentials service is not configured")
+			return runInputs{}, fmt.Errorf("applications: app references a chart credential but the chart-credentials service is not configured")
 		}
 		cred, err := s.creds.Resolve(ctx, orgID, app.ChartCredentialID)
 		if err != nil {
-			return helm.RolloutPlan{}, err
+			return runInputs{}, err
 		}
-		files[helm.RegistryUsernameFile] = cred.Username
-		files[helm.RegistryPasswordFile] = cred.Password
-		hasCredential = true
+		in.files[helm.RegistryUsernameFile] = cred.Username
+		in.files[helm.RegistryPasswordFile] = cred.Password
+		in.hasCredential = true
 	}
 
 	// Attach a GitHub App installation token, when one is set, for a private-Git
@@ -478,39 +592,78 @@ func (s *Service) ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, ac
 	// git's credential helper to it, so the token never lands in the script
 	// string, the clone's argv, or the workspace .git/config. Uninstall pulls no
 	// chart, so it needs no token.
-	hasGitToken := false
-	if app.GithubInstallationID != uuid.Nil && action != helm.ActionUninstall {
+	if app.GithubInstallationID != uuid.Nil && pullsChart {
 		if s.gitTokens == nil {
-			return helm.RolloutPlan{}, fmt.Errorf("applications: app references a github installation but the github-installations service is not configured")
+			return runInputs{}, fmt.Errorf("applications: app references a github installation but the github-installations service is not configured")
 		}
 		token, err := s.gitTokens.InstallationToken(ctx, orgID, app.GithubInstallationID)
 		if err != nil {
-			return helm.RolloutPlan{}, err
+			return runInputs{}, err
 		}
-		files[helm.GitCredentialsFile] = "https://x-access-token:" + token + "@github.com"
-		hasGitToken = true
+		in.files[helm.GitCredentialsFile] = "https://x-access-token:" + token + "@github.com"
+		in.hasGitToken = true
 	}
+	return in, nil
+}
 
+// ResolveRollout satisfies helm.Store: it resolves the shared run inputs and
+// assembles the RunSpec (script + injected Files) for the action. The wait
+// timeout is tiered by the target's connection method (its credential longevity).
+func (s *Service) ResolveRollout(ctx context.Context, orgID, appID uuid.UUID, action string) (helm.RolloutPlan, error) {
+	in, err := s.resolveRunInputs(ctx, orgID, appID, action != helm.ActionUninstall)
+	if err != nil {
+		return helm.RolloutPlan{}, err
+	}
 	script := helm.Script(helm.Rollout{
 		Action:          action,
-		ChartSource:     app.ChartSource.String(),
-		Config:          app.Config,
-		ValuesSources:   app.ValuesSources,
-		ReleaseName:     releaseName(app),
-		TargetNamespace: app.TargetNamespace,
-		WaitTimeout:     helm.WaitTimeout(targetConn.Method),
-		HasCredential:   hasCredential,
-		HasGitToken:     hasGitToken,
+		ChartSource:     in.app.ChartSource.String(),
+		Config:          in.app.Config,
+		ValuesSources:   in.app.ValuesSources,
+		ReleaseName:     releaseName(in.app),
+		TargetNamespace: in.app.TargetNamespace,
+		WaitTimeout:     helm.WaitTimeout(in.targetMethod),
+		HasCredential:   in.hasCredential,
+		HasGitToken:     in.hasGitToken,
 	})
-
 	return helm.RolloutPlan{
-		RunnerConn:  runnerConn,
-		ExistingRun: app.LastRunName,
+		RunnerConn:  in.runnerConn,
+		ExistingRun: in.app.LastRunName,
 		RunSpec: tekton.RunSpec{
-			Name:   runPrefix(app),
+			Name:   runPrefix(in.app),
 			Image:  helm.DefaultImage,
 			Script: script,
-			Files:  files,
+			Files:  in.files,
+		},
+	}, nil
+}
+
+// ResolvePreview satisfies helm.PreviewStore: same resolution as ResolveRollout,
+// but it renders the `helm diff` (ActionPreview) script and re-attaches to the
+// app's preview run (sync_run_name), never the last rollout run.
+func (s *Service) ResolvePreview(ctx context.Context, orgID, appID uuid.UUID) (helm.PreviewPlan, error) {
+	in, err := s.resolveRunInputs(ctx, orgID, appID, true)
+	if err != nil {
+		return helm.PreviewPlan{}, err
+	}
+	script := helm.Script(helm.Rollout{
+		Action:          helm.ActionPreview,
+		ChartSource:     in.app.ChartSource.String(),
+		Config:          in.app.Config,
+		ValuesSources:   in.app.ValuesSources,
+		ReleaseName:     releaseName(in.app),
+		TargetNamespace: in.app.TargetNamespace,
+		WaitTimeout:     helm.WaitTimeout(in.targetMethod),
+		HasCredential:   in.hasCredential,
+		HasGitToken:     in.hasGitToken,
+	})
+	return helm.PreviewPlan{
+		RunnerConn:  in.runnerConn,
+		ExistingRun: in.app.SyncRunName,
+		RunSpec: tekton.RunSpec{
+			Name:   runPrefix(in.app),
+			Image:  helm.DefaultImage,
+			Script: script,
+			Files:  in.files,
 		},
 	}, nil
 }
@@ -739,6 +892,22 @@ func rolloutStatusEnum(s string) (application.Status, error) {
 		return st, nil
 	default:
 		return "", fmt.Errorf("applications: unknown rollout status %q", s)
+	}
+}
+
+// syncStatusEnum validates and converts a helm.Sync* string to the ent enum,
+// rejecting unknown values so a typo can't reach the column.
+func syncStatusEnum(s string) (application.SyncStatus, error) {
+	st := application.SyncStatus(s)
+	switch st {
+	case application.SyncStatusUnknown,
+		application.SyncStatusRefreshing,
+		application.SyncStatusSynced,
+		application.SyncStatusOutOfSync,
+		application.SyncStatusError:
+		return st, nil
+	default:
+		return "", fmt.Errorf("applications: unknown sync status %q", s)
 	}
 }
 

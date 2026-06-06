@@ -65,6 +65,14 @@ type ApplicationMutation struct {
 	status_message             *string
 	job_id                     *string
 	last_run_name              *string
+	sync_status                *application.SyncStatus
+	sync_message               *string
+	last_diff                  *string
+	desired_chart_revision     *string
+	desired_values_revision    *string
+	last_refreshed_at          *time.Time
+	sync_job_id                *string
+	sync_run_name              *string
 	created_at                 *time.Time
 	updated_at                 *time.Time
 	clearedFields              map[string]struct{}
@@ -932,6 +940,385 @@ func (m *ApplicationMutation) ResetLastRunName() {
 	delete(m.clearedFields, application.FieldLastRunName)
 }
 
+// SetSyncStatus sets the "sync_status" field.
+func (m *ApplicationMutation) SetSyncStatus(as application.SyncStatus) {
+	m.sync_status = &as
+}
+
+// SyncStatus returns the value of the "sync_status" field in the mutation.
+func (m *ApplicationMutation) SyncStatus() (r application.SyncStatus, exists bool) {
+	v := m.sync_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSyncStatus returns the old "sync_status" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldSyncStatus(ctx context.Context) (v application.SyncStatus, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSyncStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSyncStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSyncStatus: %w", err)
+	}
+	return oldValue.SyncStatus, nil
+}
+
+// ResetSyncStatus resets all changes to the "sync_status" field.
+func (m *ApplicationMutation) ResetSyncStatus() {
+	m.sync_status = nil
+}
+
+// SetSyncMessage sets the "sync_message" field.
+func (m *ApplicationMutation) SetSyncMessage(s string) {
+	m.sync_message = &s
+}
+
+// SyncMessage returns the value of the "sync_message" field in the mutation.
+func (m *ApplicationMutation) SyncMessage() (r string, exists bool) {
+	v := m.sync_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSyncMessage returns the old "sync_message" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldSyncMessage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSyncMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSyncMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSyncMessage: %w", err)
+	}
+	return oldValue.SyncMessage, nil
+}
+
+// ClearSyncMessage clears the value of the "sync_message" field.
+func (m *ApplicationMutation) ClearSyncMessage() {
+	m.sync_message = nil
+	m.clearedFields[application.FieldSyncMessage] = struct{}{}
+}
+
+// SyncMessageCleared returns if the "sync_message" field was cleared in this mutation.
+func (m *ApplicationMutation) SyncMessageCleared() bool {
+	_, ok := m.clearedFields[application.FieldSyncMessage]
+	return ok
+}
+
+// ResetSyncMessage resets all changes to the "sync_message" field.
+func (m *ApplicationMutation) ResetSyncMessage() {
+	m.sync_message = nil
+	delete(m.clearedFields, application.FieldSyncMessage)
+}
+
+// SetLastDiff sets the "last_diff" field.
+func (m *ApplicationMutation) SetLastDiff(s string) {
+	m.last_diff = &s
+}
+
+// LastDiff returns the value of the "last_diff" field in the mutation.
+func (m *ApplicationMutation) LastDiff() (r string, exists bool) {
+	v := m.last_diff
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastDiff returns the old "last_diff" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldLastDiff(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastDiff is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastDiff requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastDiff: %w", err)
+	}
+	return oldValue.LastDiff, nil
+}
+
+// ClearLastDiff clears the value of the "last_diff" field.
+func (m *ApplicationMutation) ClearLastDiff() {
+	m.last_diff = nil
+	m.clearedFields[application.FieldLastDiff] = struct{}{}
+}
+
+// LastDiffCleared returns if the "last_diff" field was cleared in this mutation.
+func (m *ApplicationMutation) LastDiffCleared() bool {
+	_, ok := m.clearedFields[application.FieldLastDiff]
+	return ok
+}
+
+// ResetLastDiff resets all changes to the "last_diff" field.
+func (m *ApplicationMutation) ResetLastDiff() {
+	m.last_diff = nil
+	delete(m.clearedFields, application.FieldLastDiff)
+}
+
+// SetDesiredChartRevision sets the "desired_chart_revision" field.
+func (m *ApplicationMutation) SetDesiredChartRevision(s string) {
+	m.desired_chart_revision = &s
+}
+
+// DesiredChartRevision returns the value of the "desired_chart_revision" field in the mutation.
+func (m *ApplicationMutation) DesiredChartRevision() (r string, exists bool) {
+	v := m.desired_chart_revision
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDesiredChartRevision returns the old "desired_chart_revision" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldDesiredChartRevision(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDesiredChartRevision is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDesiredChartRevision requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDesiredChartRevision: %w", err)
+	}
+	return oldValue.DesiredChartRevision, nil
+}
+
+// ClearDesiredChartRevision clears the value of the "desired_chart_revision" field.
+func (m *ApplicationMutation) ClearDesiredChartRevision() {
+	m.desired_chart_revision = nil
+	m.clearedFields[application.FieldDesiredChartRevision] = struct{}{}
+}
+
+// DesiredChartRevisionCleared returns if the "desired_chart_revision" field was cleared in this mutation.
+func (m *ApplicationMutation) DesiredChartRevisionCleared() bool {
+	_, ok := m.clearedFields[application.FieldDesiredChartRevision]
+	return ok
+}
+
+// ResetDesiredChartRevision resets all changes to the "desired_chart_revision" field.
+func (m *ApplicationMutation) ResetDesiredChartRevision() {
+	m.desired_chart_revision = nil
+	delete(m.clearedFields, application.FieldDesiredChartRevision)
+}
+
+// SetDesiredValuesRevision sets the "desired_values_revision" field.
+func (m *ApplicationMutation) SetDesiredValuesRevision(s string) {
+	m.desired_values_revision = &s
+}
+
+// DesiredValuesRevision returns the value of the "desired_values_revision" field in the mutation.
+func (m *ApplicationMutation) DesiredValuesRevision() (r string, exists bool) {
+	v := m.desired_values_revision
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDesiredValuesRevision returns the old "desired_values_revision" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldDesiredValuesRevision(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDesiredValuesRevision is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDesiredValuesRevision requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDesiredValuesRevision: %w", err)
+	}
+	return oldValue.DesiredValuesRevision, nil
+}
+
+// ClearDesiredValuesRevision clears the value of the "desired_values_revision" field.
+func (m *ApplicationMutation) ClearDesiredValuesRevision() {
+	m.desired_values_revision = nil
+	m.clearedFields[application.FieldDesiredValuesRevision] = struct{}{}
+}
+
+// DesiredValuesRevisionCleared returns if the "desired_values_revision" field was cleared in this mutation.
+func (m *ApplicationMutation) DesiredValuesRevisionCleared() bool {
+	_, ok := m.clearedFields[application.FieldDesiredValuesRevision]
+	return ok
+}
+
+// ResetDesiredValuesRevision resets all changes to the "desired_values_revision" field.
+func (m *ApplicationMutation) ResetDesiredValuesRevision() {
+	m.desired_values_revision = nil
+	delete(m.clearedFields, application.FieldDesiredValuesRevision)
+}
+
+// SetLastRefreshedAt sets the "last_refreshed_at" field.
+func (m *ApplicationMutation) SetLastRefreshedAt(t time.Time) {
+	m.last_refreshed_at = &t
+}
+
+// LastRefreshedAt returns the value of the "last_refreshed_at" field in the mutation.
+func (m *ApplicationMutation) LastRefreshedAt() (r time.Time, exists bool) {
+	v := m.last_refreshed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastRefreshedAt returns the old "last_refreshed_at" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldLastRefreshedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastRefreshedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastRefreshedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastRefreshedAt: %w", err)
+	}
+	return oldValue.LastRefreshedAt, nil
+}
+
+// ClearLastRefreshedAt clears the value of the "last_refreshed_at" field.
+func (m *ApplicationMutation) ClearLastRefreshedAt() {
+	m.last_refreshed_at = nil
+	m.clearedFields[application.FieldLastRefreshedAt] = struct{}{}
+}
+
+// LastRefreshedAtCleared returns if the "last_refreshed_at" field was cleared in this mutation.
+func (m *ApplicationMutation) LastRefreshedAtCleared() bool {
+	_, ok := m.clearedFields[application.FieldLastRefreshedAt]
+	return ok
+}
+
+// ResetLastRefreshedAt resets all changes to the "last_refreshed_at" field.
+func (m *ApplicationMutation) ResetLastRefreshedAt() {
+	m.last_refreshed_at = nil
+	delete(m.clearedFields, application.FieldLastRefreshedAt)
+}
+
+// SetSyncJobID sets the "sync_job_id" field.
+func (m *ApplicationMutation) SetSyncJobID(s string) {
+	m.sync_job_id = &s
+}
+
+// SyncJobID returns the value of the "sync_job_id" field in the mutation.
+func (m *ApplicationMutation) SyncJobID() (r string, exists bool) {
+	v := m.sync_job_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSyncJobID returns the old "sync_job_id" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldSyncJobID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSyncJobID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSyncJobID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSyncJobID: %w", err)
+	}
+	return oldValue.SyncJobID, nil
+}
+
+// ClearSyncJobID clears the value of the "sync_job_id" field.
+func (m *ApplicationMutation) ClearSyncJobID() {
+	m.sync_job_id = nil
+	m.clearedFields[application.FieldSyncJobID] = struct{}{}
+}
+
+// SyncJobIDCleared returns if the "sync_job_id" field was cleared in this mutation.
+func (m *ApplicationMutation) SyncJobIDCleared() bool {
+	_, ok := m.clearedFields[application.FieldSyncJobID]
+	return ok
+}
+
+// ResetSyncJobID resets all changes to the "sync_job_id" field.
+func (m *ApplicationMutation) ResetSyncJobID() {
+	m.sync_job_id = nil
+	delete(m.clearedFields, application.FieldSyncJobID)
+}
+
+// SetSyncRunName sets the "sync_run_name" field.
+func (m *ApplicationMutation) SetSyncRunName(s string) {
+	m.sync_run_name = &s
+}
+
+// SyncRunName returns the value of the "sync_run_name" field in the mutation.
+func (m *ApplicationMutation) SyncRunName() (r string, exists bool) {
+	v := m.sync_run_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSyncRunName returns the old "sync_run_name" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldSyncRunName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSyncRunName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSyncRunName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSyncRunName: %w", err)
+	}
+	return oldValue.SyncRunName, nil
+}
+
+// ClearSyncRunName clears the value of the "sync_run_name" field.
+func (m *ApplicationMutation) ClearSyncRunName() {
+	m.sync_run_name = nil
+	m.clearedFields[application.FieldSyncRunName] = struct{}{}
+}
+
+// SyncRunNameCleared returns if the "sync_run_name" field was cleared in this mutation.
+func (m *ApplicationMutation) SyncRunNameCleared() bool {
+	_, ok := m.clearedFields[application.FieldSyncRunName]
+	return ok
+}
+
+// ResetSyncRunName resets all changes to the "sync_run_name" field.
+func (m *ApplicationMutation) ResetSyncRunName() {
+	m.sync_run_name = nil
+	delete(m.clearedFields, application.FieldSyncRunName)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *ApplicationMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -1173,7 +1560,7 @@ func (m *ApplicationMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ApplicationMutation) Fields() []string {
-	fields := make([]string, 0, 19)
+	fields := make([]string, 0, 27)
 	if m.organization != nil {
 		fields = append(fields, application.FieldOrganizationID)
 	}
@@ -1225,6 +1612,30 @@ func (m *ApplicationMutation) Fields() []string {
 	if m.last_run_name != nil {
 		fields = append(fields, application.FieldLastRunName)
 	}
+	if m.sync_status != nil {
+		fields = append(fields, application.FieldSyncStatus)
+	}
+	if m.sync_message != nil {
+		fields = append(fields, application.FieldSyncMessage)
+	}
+	if m.last_diff != nil {
+		fields = append(fields, application.FieldLastDiff)
+	}
+	if m.desired_chart_revision != nil {
+		fields = append(fields, application.FieldDesiredChartRevision)
+	}
+	if m.desired_values_revision != nil {
+		fields = append(fields, application.FieldDesiredValuesRevision)
+	}
+	if m.last_refreshed_at != nil {
+		fields = append(fields, application.FieldLastRefreshedAt)
+	}
+	if m.sync_job_id != nil {
+		fields = append(fields, application.FieldSyncJobID)
+	}
+	if m.sync_run_name != nil {
+		fields = append(fields, application.FieldSyncRunName)
+	}
 	if m.created_at != nil {
 		fields = append(fields, application.FieldCreatedAt)
 	}
@@ -1273,6 +1684,22 @@ func (m *ApplicationMutation) Field(name string) (ent.Value, bool) {
 		return m.JobID()
 	case application.FieldLastRunName:
 		return m.LastRunName()
+	case application.FieldSyncStatus:
+		return m.SyncStatus()
+	case application.FieldSyncMessage:
+		return m.SyncMessage()
+	case application.FieldLastDiff:
+		return m.LastDiff()
+	case application.FieldDesiredChartRevision:
+		return m.DesiredChartRevision()
+	case application.FieldDesiredValuesRevision:
+		return m.DesiredValuesRevision()
+	case application.FieldLastRefreshedAt:
+		return m.LastRefreshedAt()
+	case application.FieldSyncJobID:
+		return m.SyncJobID()
+	case application.FieldSyncRunName:
+		return m.SyncRunName()
 	case application.FieldCreatedAt:
 		return m.CreatedAt()
 	case application.FieldUpdatedAt:
@@ -1320,6 +1747,22 @@ func (m *ApplicationMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldJobID(ctx)
 	case application.FieldLastRunName:
 		return m.OldLastRunName(ctx)
+	case application.FieldSyncStatus:
+		return m.OldSyncStatus(ctx)
+	case application.FieldSyncMessage:
+		return m.OldSyncMessage(ctx)
+	case application.FieldLastDiff:
+		return m.OldLastDiff(ctx)
+	case application.FieldDesiredChartRevision:
+		return m.OldDesiredChartRevision(ctx)
+	case application.FieldDesiredValuesRevision:
+		return m.OldDesiredValuesRevision(ctx)
+	case application.FieldLastRefreshedAt:
+		return m.OldLastRefreshedAt(ctx)
+	case application.FieldSyncJobID:
+		return m.OldSyncJobID(ctx)
+	case application.FieldSyncRunName:
+		return m.OldSyncRunName(ctx)
 	case application.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case application.FieldUpdatedAt:
@@ -1452,6 +1895,62 @@ func (m *ApplicationMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetLastRunName(v)
 		return nil
+	case application.FieldSyncStatus:
+		v, ok := value.(application.SyncStatus)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSyncStatus(v)
+		return nil
+	case application.FieldSyncMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSyncMessage(v)
+		return nil
+	case application.FieldLastDiff:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastDiff(v)
+		return nil
+	case application.FieldDesiredChartRevision:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDesiredChartRevision(v)
+		return nil
+	case application.FieldDesiredValuesRevision:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDesiredValuesRevision(v)
+		return nil
+	case application.FieldLastRefreshedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastRefreshedAt(v)
+		return nil
+	case application.FieldSyncJobID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSyncJobID(v)
+		return nil
+	case application.FieldSyncRunName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSyncRunName(v)
+		return nil
 	case application.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -1523,6 +2022,27 @@ func (m *ApplicationMutation) ClearedFields() []string {
 	if m.FieldCleared(application.FieldLastRunName) {
 		fields = append(fields, application.FieldLastRunName)
 	}
+	if m.FieldCleared(application.FieldSyncMessage) {
+		fields = append(fields, application.FieldSyncMessage)
+	}
+	if m.FieldCleared(application.FieldLastDiff) {
+		fields = append(fields, application.FieldLastDiff)
+	}
+	if m.FieldCleared(application.FieldDesiredChartRevision) {
+		fields = append(fields, application.FieldDesiredChartRevision)
+	}
+	if m.FieldCleared(application.FieldDesiredValuesRevision) {
+		fields = append(fields, application.FieldDesiredValuesRevision)
+	}
+	if m.FieldCleared(application.FieldLastRefreshedAt) {
+		fields = append(fields, application.FieldLastRefreshedAt)
+	}
+	if m.FieldCleared(application.FieldSyncJobID) {
+		fields = append(fields, application.FieldSyncJobID)
+	}
+	if m.FieldCleared(application.FieldSyncRunName) {
+		fields = append(fields, application.FieldSyncRunName)
+	}
 	return fields
 }
 
@@ -1563,6 +2083,27 @@ func (m *ApplicationMutation) ClearField(name string) error {
 		return nil
 	case application.FieldLastRunName:
 		m.ClearLastRunName()
+		return nil
+	case application.FieldSyncMessage:
+		m.ClearSyncMessage()
+		return nil
+	case application.FieldLastDiff:
+		m.ClearLastDiff()
+		return nil
+	case application.FieldDesiredChartRevision:
+		m.ClearDesiredChartRevision()
+		return nil
+	case application.FieldDesiredValuesRevision:
+		m.ClearDesiredValuesRevision()
+		return nil
+	case application.FieldLastRefreshedAt:
+		m.ClearLastRefreshedAt()
+		return nil
+	case application.FieldSyncJobID:
+		m.ClearSyncJobID()
+		return nil
+	case application.FieldSyncRunName:
+		m.ClearSyncRunName()
 		return nil
 	}
 	return fmt.Errorf("unknown Application nullable field %s", name)
@@ -1622,6 +2163,30 @@ func (m *ApplicationMutation) ResetField(name string) error {
 		return nil
 	case application.FieldLastRunName:
 		m.ResetLastRunName()
+		return nil
+	case application.FieldSyncStatus:
+		m.ResetSyncStatus()
+		return nil
+	case application.FieldSyncMessage:
+		m.ResetSyncMessage()
+		return nil
+	case application.FieldLastDiff:
+		m.ResetLastDiff()
+		return nil
+	case application.FieldDesiredChartRevision:
+		m.ResetDesiredChartRevision()
+		return nil
+	case application.FieldDesiredValuesRevision:
+		m.ResetDesiredValuesRevision()
+		return nil
+	case application.FieldLastRefreshedAt:
+		m.ResetLastRefreshedAt()
+		return nil
+	case application.FieldSyncJobID:
+		m.ResetSyncJobID()
+		return nil
+	case application.FieldSyncRunName:
+		m.ResetSyncRunName()
 		return nil
 	case application.FieldCreatedAt:
 		m.ResetCreatedAt()

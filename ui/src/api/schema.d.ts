@@ -663,6 +663,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh an application's sync status (preview the diff)
+         * @description Org-scoped, editor or above. Enqueues a background job that re-resolves
+         *     the desired state (latest git SHA / chart version / values) and runs
+         *     `helm diff` against the live target cluster as a TaskRun on the runner —
+         *     changing nothing. Returns immediately (202); follow progress via the
+         *     application stream, then read the result from GET .../diff. Requires the
+         *     background worker (503 otherwise). Returns 409 while a rollout is in
+         *     flight (the cluster is mid-change).
+         */
+        post: operations["refreshApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the cached diff from the application's most recent refresh
+         * @description Org-scoped. Returns the `helm diff` output captured by the last refresh,
+         *     the sync status, and the desired revisions a deploy would pull.
+         */
+        get: operations["getApplicationDiff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{id}/deployments": {
         parameters: {
             query?: never;
@@ -1313,6 +1360,31 @@ export interface components {
          */
         ApplicationStatus: "pending" | "deploying" | "deployed" | "failed" | "uninstalling" | "uninstalled";
         /**
+         * @description Whether the application's desired state (latest chart/values, re-resolved
+         *     on refresh) matches the live cluster.
+         *       - unknown: never refreshed.
+         *       - refreshing: a refresh (preview/diff) is in flight.
+         *       - synced: deploying would change nothing.
+         *       - out_of_sync: deploying would change the live cluster (see the diff).
+         *       - error: the last refresh failed (see sync_message).
+         * @enum {string}
+         */
+        SyncStatus: "unknown" | "refreshing" | "synced" | "out_of_sync" | "error";
+        /**
+         * @description The cached result of the most recent refresh: the `helm diff` output
+         *     against the live cluster plus the desired revisions a deploy would pull.
+         */
+        ApplicationDiff: {
+            sync_status: components["schemas"]["SyncStatus"];
+            sync_message?: string;
+            /** @description The captured `helm diff` output (empty when synced or never refreshed). */
+            diff?: string;
+            desired_chart_revision?: string;
+            desired_values_revision?: string;
+            /** Format: date-time */
+            last_refreshed_at?: string;
+        };
+        /**
          * @description A git source for a values file, layered beneath the inline values. Used
          *     with any chart source. A private github.com source is authenticated by
          *     the application's attached GitHub App installation.
@@ -1376,6 +1448,26 @@ export interface components {
             job_id?: string;
             /** @description TaskRun name of the most recent rollout (for streaming). */
             last_run_name?: string;
+            sync_status?: components["schemas"]["SyncStatus"];
+            /** @description Human-readable detail of the last refresh (progress line, or error). */
+            sync_message?: string;
+            /**
+             * @description Git commit SHA the chart resolved to at the last refresh (empty for a
+             *     non-git chart) — the revision a deploy would pull right now.
+             */
+            desired_chart_revision?: string;
+            /**
+             * @description Newline-joined "<repo>@<sha>" lines each values source resolved to at
+             *     the last refresh — the values revisions a deploy would pull right now.
+             */
+            desired_values_revision?: string;
+            /**
+             * Format: date-time
+             * @description When the last refresh (preview/diff) completed.
+             */
+            last_refreshed_at?: string;
+            /** @description TaskRun name of the most recent preview run (for streaming). */
+            sync_run_name?: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2471,6 +2563,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Application"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    refreshApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Refresh accepted; the preview job is in progress */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Application"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getApplicationDiff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cached diff and sync status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDiff"];
                 };
             };
             default: components["responses"]["Error"];

@@ -79,6 +79,38 @@ func (Application) Fields() []ent.Field {
 		// The TaskRun name on the runner cluster for the most recent rollout, used
 		// to stream live status and logs.
 		field.String("last_run_name").Optional(),
+		// Sync (preview/diff) state, kept strictly disjoint from the rollout fields
+		// above (status/status_message/job_id/last_run_name) so a refresh — which
+		// runs `helm diff` as a TaskRun and changes nothing — never clobbers an
+		// in-flight rollout, and vice versa. A refresh re-resolves the desired state
+		// (latest git SHA / chart version / values) and diffs it against the live
+		// cluster.
+		//   unknown      — never refreshed
+		//   refreshing   — a preview job is in flight
+		//   synced       — desired state matches the live cluster (no changes)
+		//   out_of_sync  — deploying would change the live cluster (see last_diff)
+		//   error        — the diff run failed (see sync_message)
+		field.Enum("sync_status").
+			Values("unknown", "refreshing", "synced", "out_of_sync", "error").
+			Default("unknown"),
+		field.String("sync_message").Optional(),
+		// The captured `helm diff` output from the most recent refresh, shown in the
+		// deploy-confirmation UI. Text (unbounded), like values; truncated by the
+		// service before write so a pathological all-additions diff can't bloat the row.
+		field.Text("last_diff").Optional(),
+		// The git commit SHA the chart resolved to at the last refresh (empty for a
+		// non-git chart), and the newline-joined "<repo>@<sha>" lines each values
+		// source resolved to — the desired revisions a deploy would pull right now.
+		field.String("desired_chart_revision").Optional(),
+		field.String("desired_values_revision").Optional(),
+		// When the last refresh completed.
+		field.Time("last_refreshed_at").Optional(),
+		// Id of the in-flight preview (refresh) job, for correlation.
+		field.String("sync_job_id").Optional(),
+		// The TaskRun name on the runner cluster for the most recent preview run.
+		// Separate from last_run_name so a preview retry re-attaches to the preview
+		// run, never the last rollout run.
+		field.String("sync_run_name").Optional(),
 		field.Time("created_at").Default(time.Now).Immutable(),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}

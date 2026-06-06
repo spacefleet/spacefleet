@@ -116,6 +116,41 @@ func LastRunName(v string) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldLastRunName, v))
 }
 
+// SyncMessage applies equality check predicate on the "sync_message" field. It's identical to SyncMessageEQ.
+func SyncMessage(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldSyncMessage, v))
+}
+
+// LastDiff applies equality check predicate on the "last_diff" field. It's identical to LastDiffEQ.
+func LastDiff(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldLastDiff, v))
+}
+
+// DesiredChartRevision applies equality check predicate on the "desired_chart_revision" field. It's identical to DesiredChartRevisionEQ.
+func DesiredChartRevision(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldDesiredChartRevision, v))
+}
+
+// DesiredValuesRevision applies equality check predicate on the "desired_values_revision" field. It's identical to DesiredValuesRevisionEQ.
+func DesiredValuesRevision(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldDesiredValuesRevision, v))
+}
+
+// LastRefreshedAt applies equality check predicate on the "last_refreshed_at" field. It's identical to LastRefreshedAtEQ.
+func LastRefreshedAt(v time.Time) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldLastRefreshedAt, v))
+}
+
+// SyncJobID applies equality check predicate on the "sync_job_id" field. It's identical to SyncJobIDEQ.
+func SyncJobID(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldSyncJobID, v))
+}
+
+// SyncRunName applies equality check predicate on the "sync_run_name" field. It's identical to SyncRunNameEQ.
+func SyncRunName(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldSyncRunName, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldCreatedAt, v))
@@ -829,6 +864,526 @@ func LastRunNameEqualFold(v string) predicate.Application {
 // LastRunNameContainsFold applies the ContainsFold predicate on the "last_run_name" field.
 func LastRunNameContainsFold(v string) predicate.Application {
 	return predicate.Application(sql.FieldContainsFold(FieldLastRunName, v))
+}
+
+// SyncStatusEQ applies the EQ predicate on the "sync_status" field.
+func SyncStatusEQ(v SyncStatus) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldSyncStatus, v))
+}
+
+// SyncStatusNEQ applies the NEQ predicate on the "sync_status" field.
+func SyncStatusNEQ(v SyncStatus) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldSyncStatus, v))
+}
+
+// SyncStatusIn applies the In predicate on the "sync_status" field.
+func SyncStatusIn(vs ...SyncStatus) predicate.Application {
+	return predicate.Application(sql.FieldIn(FieldSyncStatus, vs...))
+}
+
+// SyncStatusNotIn applies the NotIn predicate on the "sync_status" field.
+func SyncStatusNotIn(vs ...SyncStatus) predicate.Application {
+	return predicate.Application(sql.FieldNotIn(FieldSyncStatus, vs...))
+}
+
+// SyncMessageEQ applies the EQ predicate on the "sync_message" field.
+func SyncMessageEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldSyncMessage, v))
+}
+
+// SyncMessageNEQ applies the NEQ predicate on the "sync_message" field.
+func SyncMessageNEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldSyncMessage, v))
+}
+
+// SyncMessageIn applies the In predicate on the "sync_message" field.
+func SyncMessageIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldIn(FieldSyncMessage, vs...))
+}
+
+// SyncMessageNotIn applies the NotIn predicate on the "sync_message" field.
+func SyncMessageNotIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldNotIn(FieldSyncMessage, vs...))
+}
+
+// SyncMessageGT applies the GT predicate on the "sync_message" field.
+func SyncMessageGT(v string) predicate.Application {
+	return predicate.Application(sql.FieldGT(FieldSyncMessage, v))
+}
+
+// SyncMessageGTE applies the GTE predicate on the "sync_message" field.
+func SyncMessageGTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldGTE(FieldSyncMessage, v))
+}
+
+// SyncMessageLT applies the LT predicate on the "sync_message" field.
+func SyncMessageLT(v string) predicate.Application {
+	return predicate.Application(sql.FieldLT(FieldSyncMessage, v))
+}
+
+// SyncMessageLTE applies the LTE predicate on the "sync_message" field.
+func SyncMessageLTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldLTE(FieldSyncMessage, v))
+}
+
+// SyncMessageContains applies the Contains predicate on the "sync_message" field.
+func SyncMessageContains(v string) predicate.Application {
+	return predicate.Application(sql.FieldContains(FieldSyncMessage, v))
+}
+
+// SyncMessageHasPrefix applies the HasPrefix predicate on the "sync_message" field.
+func SyncMessageHasPrefix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasPrefix(FieldSyncMessage, v))
+}
+
+// SyncMessageHasSuffix applies the HasSuffix predicate on the "sync_message" field.
+func SyncMessageHasSuffix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasSuffix(FieldSyncMessage, v))
+}
+
+// SyncMessageIsNil applies the IsNil predicate on the "sync_message" field.
+func SyncMessageIsNil() predicate.Application {
+	return predicate.Application(sql.FieldIsNull(FieldSyncMessage))
+}
+
+// SyncMessageNotNil applies the NotNil predicate on the "sync_message" field.
+func SyncMessageNotNil() predicate.Application {
+	return predicate.Application(sql.FieldNotNull(FieldSyncMessage))
+}
+
+// SyncMessageEqualFold applies the EqualFold predicate on the "sync_message" field.
+func SyncMessageEqualFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldEqualFold(FieldSyncMessage, v))
+}
+
+// SyncMessageContainsFold applies the ContainsFold predicate on the "sync_message" field.
+func SyncMessageContainsFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldContainsFold(FieldSyncMessage, v))
+}
+
+// LastDiffEQ applies the EQ predicate on the "last_diff" field.
+func LastDiffEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldLastDiff, v))
+}
+
+// LastDiffNEQ applies the NEQ predicate on the "last_diff" field.
+func LastDiffNEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldLastDiff, v))
+}
+
+// LastDiffIn applies the In predicate on the "last_diff" field.
+func LastDiffIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldIn(FieldLastDiff, vs...))
+}
+
+// LastDiffNotIn applies the NotIn predicate on the "last_diff" field.
+func LastDiffNotIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldNotIn(FieldLastDiff, vs...))
+}
+
+// LastDiffGT applies the GT predicate on the "last_diff" field.
+func LastDiffGT(v string) predicate.Application {
+	return predicate.Application(sql.FieldGT(FieldLastDiff, v))
+}
+
+// LastDiffGTE applies the GTE predicate on the "last_diff" field.
+func LastDiffGTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldGTE(FieldLastDiff, v))
+}
+
+// LastDiffLT applies the LT predicate on the "last_diff" field.
+func LastDiffLT(v string) predicate.Application {
+	return predicate.Application(sql.FieldLT(FieldLastDiff, v))
+}
+
+// LastDiffLTE applies the LTE predicate on the "last_diff" field.
+func LastDiffLTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldLTE(FieldLastDiff, v))
+}
+
+// LastDiffContains applies the Contains predicate on the "last_diff" field.
+func LastDiffContains(v string) predicate.Application {
+	return predicate.Application(sql.FieldContains(FieldLastDiff, v))
+}
+
+// LastDiffHasPrefix applies the HasPrefix predicate on the "last_diff" field.
+func LastDiffHasPrefix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasPrefix(FieldLastDiff, v))
+}
+
+// LastDiffHasSuffix applies the HasSuffix predicate on the "last_diff" field.
+func LastDiffHasSuffix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasSuffix(FieldLastDiff, v))
+}
+
+// LastDiffIsNil applies the IsNil predicate on the "last_diff" field.
+func LastDiffIsNil() predicate.Application {
+	return predicate.Application(sql.FieldIsNull(FieldLastDiff))
+}
+
+// LastDiffNotNil applies the NotNil predicate on the "last_diff" field.
+func LastDiffNotNil() predicate.Application {
+	return predicate.Application(sql.FieldNotNull(FieldLastDiff))
+}
+
+// LastDiffEqualFold applies the EqualFold predicate on the "last_diff" field.
+func LastDiffEqualFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldEqualFold(FieldLastDiff, v))
+}
+
+// LastDiffContainsFold applies the ContainsFold predicate on the "last_diff" field.
+func LastDiffContainsFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldContainsFold(FieldLastDiff, v))
+}
+
+// DesiredChartRevisionEQ applies the EQ predicate on the "desired_chart_revision" field.
+func DesiredChartRevisionEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldDesiredChartRevision, v))
+}
+
+// DesiredChartRevisionNEQ applies the NEQ predicate on the "desired_chart_revision" field.
+func DesiredChartRevisionNEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldDesiredChartRevision, v))
+}
+
+// DesiredChartRevisionIn applies the In predicate on the "desired_chart_revision" field.
+func DesiredChartRevisionIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldIn(FieldDesiredChartRevision, vs...))
+}
+
+// DesiredChartRevisionNotIn applies the NotIn predicate on the "desired_chart_revision" field.
+func DesiredChartRevisionNotIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldNotIn(FieldDesiredChartRevision, vs...))
+}
+
+// DesiredChartRevisionGT applies the GT predicate on the "desired_chart_revision" field.
+func DesiredChartRevisionGT(v string) predicate.Application {
+	return predicate.Application(sql.FieldGT(FieldDesiredChartRevision, v))
+}
+
+// DesiredChartRevisionGTE applies the GTE predicate on the "desired_chart_revision" field.
+func DesiredChartRevisionGTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldGTE(FieldDesiredChartRevision, v))
+}
+
+// DesiredChartRevisionLT applies the LT predicate on the "desired_chart_revision" field.
+func DesiredChartRevisionLT(v string) predicate.Application {
+	return predicate.Application(sql.FieldLT(FieldDesiredChartRevision, v))
+}
+
+// DesiredChartRevisionLTE applies the LTE predicate on the "desired_chart_revision" field.
+func DesiredChartRevisionLTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldLTE(FieldDesiredChartRevision, v))
+}
+
+// DesiredChartRevisionContains applies the Contains predicate on the "desired_chart_revision" field.
+func DesiredChartRevisionContains(v string) predicate.Application {
+	return predicate.Application(sql.FieldContains(FieldDesiredChartRevision, v))
+}
+
+// DesiredChartRevisionHasPrefix applies the HasPrefix predicate on the "desired_chart_revision" field.
+func DesiredChartRevisionHasPrefix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasPrefix(FieldDesiredChartRevision, v))
+}
+
+// DesiredChartRevisionHasSuffix applies the HasSuffix predicate on the "desired_chart_revision" field.
+func DesiredChartRevisionHasSuffix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasSuffix(FieldDesiredChartRevision, v))
+}
+
+// DesiredChartRevisionIsNil applies the IsNil predicate on the "desired_chart_revision" field.
+func DesiredChartRevisionIsNil() predicate.Application {
+	return predicate.Application(sql.FieldIsNull(FieldDesiredChartRevision))
+}
+
+// DesiredChartRevisionNotNil applies the NotNil predicate on the "desired_chart_revision" field.
+func DesiredChartRevisionNotNil() predicate.Application {
+	return predicate.Application(sql.FieldNotNull(FieldDesiredChartRevision))
+}
+
+// DesiredChartRevisionEqualFold applies the EqualFold predicate on the "desired_chart_revision" field.
+func DesiredChartRevisionEqualFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldEqualFold(FieldDesiredChartRevision, v))
+}
+
+// DesiredChartRevisionContainsFold applies the ContainsFold predicate on the "desired_chart_revision" field.
+func DesiredChartRevisionContainsFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldContainsFold(FieldDesiredChartRevision, v))
+}
+
+// DesiredValuesRevisionEQ applies the EQ predicate on the "desired_values_revision" field.
+func DesiredValuesRevisionEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldDesiredValuesRevision, v))
+}
+
+// DesiredValuesRevisionNEQ applies the NEQ predicate on the "desired_values_revision" field.
+func DesiredValuesRevisionNEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldDesiredValuesRevision, v))
+}
+
+// DesiredValuesRevisionIn applies the In predicate on the "desired_values_revision" field.
+func DesiredValuesRevisionIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldIn(FieldDesiredValuesRevision, vs...))
+}
+
+// DesiredValuesRevisionNotIn applies the NotIn predicate on the "desired_values_revision" field.
+func DesiredValuesRevisionNotIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldNotIn(FieldDesiredValuesRevision, vs...))
+}
+
+// DesiredValuesRevisionGT applies the GT predicate on the "desired_values_revision" field.
+func DesiredValuesRevisionGT(v string) predicate.Application {
+	return predicate.Application(sql.FieldGT(FieldDesiredValuesRevision, v))
+}
+
+// DesiredValuesRevisionGTE applies the GTE predicate on the "desired_values_revision" field.
+func DesiredValuesRevisionGTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldGTE(FieldDesiredValuesRevision, v))
+}
+
+// DesiredValuesRevisionLT applies the LT predicate on the "desired_values_revision" field.
+func DesiredValuesRevisionLT(v string) predicate.Application {
+	return predicate.Application(sql.FieldLT(FieldDesiredValuesRevision, v))
+}
+
+// DesiredValuesRevisionLTE applies the LTE predicate on the "desired_values_revision" field.
+func DesiredValuesRevisionLTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldLTE(FieldDesiredValuesRevision, v))
+}
+
+// DesiredValuesRevisionContains applies the Contains predicate on the "desired_values_revision" field.
+func DesiredValuesRevisionContains(v string) predicate.Application {
+	return predicate.Application(sql.FieldContains(FieldDesiredValuesRevision, v))
+}
+
+// DesiredValuesRevisionHasPrefix applies the HasPrefix predicate on the "desired_values_revision" field.
+func DesiredValuesRevisionHasPrefix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasPrefix(FieldDesiredValuesRevision, v))
+}
+
+// DesiredValuesRevisionHasSuffix applies the HasSuffix predicate on the "desired_values_revision" field.
+func DesiredValuesRevisionHasSuffix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasSuffix(FieldDesiredValuesRevision, v))
+}
+
+// DesiredValuesRevisionIsNil applies the IsNil predicate on the "desired_values_revision" field.
+func DesiredValuesRevisionIsNil() predicate.Application {
+	return predicate.Application(sql.FieldIsNull(FieldDesiredValuesRevision))
+}
+
+// DesiredValuesRevisionNotNil applies the NotNil predicate on the "desired_values_revision" field.
+func DesiredValuesRevisionNotNil() predicate.Application {
+	return predicate.Application(sql.FieldNotNull(FieldDesiredValuesRevision))
+}
+
+// DesiredValuesRevisionEqualFold applies the EqualFold predicate on the "desired_values_revision" field.
+func DesiredValuesRevisionEqualFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldEqualFold(FieldDesiredValuesRevision, v))
+}
+
+// DesiredValuesRevisionContainsFold applies the ContainsFold predicate on the "desired_values_revision" field.
+func DesiredValuesRevisionContainsFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldContainsFold(FieldDesiredValuesRevision, v))
+}
+
+// LastRefreshedAtEQ applies the EQ predicate on the "last_refreshed_at" field.
+func LastRefreshedAtEQ(v time.Time) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldLastRefreshedAt, v))
+}
+
+// LastRefreshedAtNEQ applies the NEQ predicate on the "last_refreshed_at" field.
+func LastRefreshedAtNEQ(v time.Time) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldLastRefreshedAt, v))
+}
+
+// LastRefreshedAtIn applies the In predicate on the "last_refreshed_at" field.
+func LastRefreshedAtIn(vs ...time.Time) predicate.Application {
+	return predicate.Application(sql.FieldIn(FieldLastRefreshedAt, vs...))
+}
+
+// LastRefreshedAtNotIn applies the NotIn predicate on the "last_refreshed_at" field.
+func LastRefreshedAtNotIn(vs ...time.Time) predicate.Application {
+	return predicate.Application(sql.FieldNotIn(FieldLastRefreshedAt, vs...))
+}
+
+// LastRefreshedAtGT applies the GT predicate on the "last_refreshed_at" field.
+func LastRefreshedAtGT(v time.Time) predicate.Application {
+	return predicate.Application(sql.FieldGT(FieldLastRefreshedAt, v))
+}
+
+// LastRefreshedAtGTE applies the GTE predicate on the "last_refreshed_at" field.
+func LastRefreshedAtGTE(v time.Time) predicate.Application {
+	return predicate.Application(sql.FieldGTE(FieldLastRefreshedAt, v))
+}
+
+// LastRefreshedAtLT applies the LT predicate on the "last_refreshed_at" field.
+func LastRefreshedAtLT(v time.Time) predicate.Application {
+	return predicate.Application(sql.FieldLT(FieldLastRefreshedAt, v))
+}
+
+// LastRefreshedAtLTE applies the LTE predicate on the "last_refreshed_at" field.
+func LastRefreshedAtLTE(v time.Time) predicate.Application {
+	return predicate.Application(sql.FieldLTE(FieldLastRefreshedAt, v))
+}
+
+// LastRefreshedAtIsNil applies the IsNil predicate on the "last_refreshed_at" field.
+func LastRefreshedAtIsNil() predicate.Application {
+	return predicate.Application(sql.FieldIsNull(FieldLastRefreshedAt))
+}
+
+// LastRefreshedAtNotNil applies the NotNil predicate on the "last_refreshed_at" field.
+func LastRefreshedAtNotNil() predicate.Application {
+	return predicate.Application(sql.FieldNotNull(FieldLastRefreshedAt))
+}
+
+// SyncJobIDEQ applies the EQ predicate on the "sync_job_id" field.
+func SyncJobIDEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldSyncJobID, v))
+}
+
+// SyncJobIDNEQ applies the NEQ predicate on the "sync_job_id" field.
+func SyncJobIDNEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldSyncJobID, v))
+}
+
+// SyncJobIDIn applies the In predicate on the "sync_job_id" field.
+func SyncJobIDIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldIn(FieldSyncJobID, vs...))
+}
+
+// SyncJobIDNotIn applies the NotIn predicate on the "sync_job_id" field.
+func SyncJobIDNotIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldNotIn(FieldSyncJobID, vs...))
+}
+
+// SyncJobIDGT applies the GT predicate on the "sync_job_id" field.
+func SyncJobIDGT(v string) predicate.Application {
+	return predicate.Application(sql.FieldGT(FieldSyncJobID, v))
+}
+
+// SyncJobIDGTE applies the GTE predicate on the "sync_job_id" field.
+func SyncJobIDGTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldGTE(FieldSyncJobID, v))
+}
+
+// SyncJobIDLT applies the LT predicate on the "sync_job_id" field.
+func SyncJobIDLT(v string) predicate.Application {
+	return predicate.Application(sql.FieldLT(FieldSyncJobID, v))
+}
+
+// SyncJobIDLTE applies the LTE predicate on the "sync_job_id" field.
+func SyncJobIDLTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldLTE(FieldSyncJobID, v))
+}
+
+// SyncJobIDContains applies the Contains predicate on the "sync_job_id" field.
+func SyncJobIDContains(v string) predicate.Application {
+	return predicate.Application(sql.FieldContains(FieldSyncJobID, v))
+}
+
+// SyncJobIDHasPrefix applies the HasPrefix predicate on the "sync_job_id" field.
+func SyncJobIDHasPrefix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasPrefix(FieldSyncJobID, v))
+}
+
+// SyncJobIDHasSuffix applies the HasSuffix predicate on the "sync_job_id" field.
+func SyncJobIDHasSuffix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasSuffix(FieldSyncJobID, v))
+}
+
+// SyncJobIDIsNil applies the IsNil predicate on the "sync_job_id" field.
+func SyncJobIDIsNil() predicate.Application {
+	return predicate.Application(sql.FieldIsNull(FieldSyncJobID))
+}
+
+// SyncJobIDNotNil applies the NotNil predicate on the "sync_job_id" field.
+func SyncJobIDNotNil() predicate.Application {
+	return predicate.Application(sql.FieldNotNull(FieldSyncJobID))
+}
+
+// SyncJobIDEqualFold applies the EqualFold predicate on the "sync_job_id" field.
+func SyncJobIDEqualFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldEqualFold(FieldSyncJobID, v))
+}
+
+// SyncJobIDContainsFold applies the ContainsFold predicate on the "sync_job_id" field.
+func SyncJobIDContainsFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldContainsFold(FieldSyncJobID, v))
+}
+
+// SyncRunNameEQ applies the EQ predicate on the "sync_run_name" field.
+func SyncRunNameEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldSyncRunName, v))
+}
+
+// SyncRunNameNEQ applies the NEQ predicate on the "sync_run_name" field.
+func SyncRunNameNEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldSyncRunName, v))
+}
+
+// SyncRunNameIn applies the In predicate on the "sync_run_name" field.
+func SyncRunNameIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldIn(FieldSyncRunName, vs...))
+}
+
+// SyncRunNameNotIn applies the NotIn predicate on the "sync_run_name" field.
+func SyncRunNameNotIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldNotIn(FieldSyncRunName, vs...))
+}
+
+// SyncRunNameGT applies the GT predicate on the "sync_run_name" field.
+func SyncRunNameGT(v string) predicate.Application {
+	return predicate.Application(sql.FieldGT(FieldSyncRunName, v))
+}
+
+// SyncRunNameGTE applies the GTE predicate on the "sync_run_name" field.
+func SyncRunNameGTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldGTE(FieldSyncRunName, v))
+}
+
+// SyncRunNameLT applies the LT predicate on the "sync_run_name" field.
+func SyncRunNameLT(v string) predicate.Application {
+	return predicate.Application(sql.FieldLT(FieldSyncRunName, v))
+}
+
+// SyncRunNameLTE applies the LTE predicate on the "sync_run_name" field.
+func SyncRunNameLTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldLTE(FieldSyncRunName, v))
+}
+
+// SyncRunNameContains applies the Contains predicate on the "sync_run_name" field.
+func SyncRunNameContains(v string) predicate.Application {
+	return predicate.Application(sql.FieldContains(FieldSyncRunName, v))
+}
+
+// SyncRunNameHasPrefix applies the HasPrefix predicate on the "sync_run_name" field.
+func SyncRunNameHasPrefix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasPrefix(FieldSyncRunName, v))
+}
+
+// SyncRunNameHasSuffix applies the HasSuffix predicate on the "sync_run_name" field.
+func SyncRunNameHasSuffix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasSuffix(FieldSyncRunName, v))
+}
+
+// SyncRunNameIsNil applies the IsNil predicate on the "sync_run_name" field.
+func SyncRunNameIsNil() predicate.Application {
+	return predicate.Application(sql.FieldIsNull(FieldSyncRunName))
+}
+
+// SyncRunNameNotNil applies the NotNil predicate on the "sync_run_name" field.
+func SyncRunNameNotNil() predicate.Application {
+	return predicate.Application(sql.FieldNotNull(FieldSyncRunName))
+}
+
+// SyncRunNameEqualFold applies the EqualFold predicate on the "sync_run_name" field.
+func SyncRunNameEqualFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldEqualFold(FieldSyncRunName, v))
+}
+
+// SyncRunNameContainsFold applies the ContainsFold predicate on the "sync_run_name" field.
+func SyncRunNameContainsFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldContainsFold(FieldSyncRunName, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

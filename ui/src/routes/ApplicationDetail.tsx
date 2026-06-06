@@ -1,18 +1,31 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { ArrowLeft, ArrowUpCircle, History, Pencil, Play, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowUpCircle,
+  CheckCircle2,
+  History,
+  Loader2,
+  Pencil,
+  Play,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import { AppStatusBadge } from "./Applications";
 import { DeploymentStatusBadge } from "./DeploymentDetail";
 import { DeleteApplicationDialog } from "../components/DeleteApplicationDialog";
+import { DeployConfirmDialog } from "../components/DeployConfirmDialog";
 import { chartSourceLabel } from "../components/chartSources";
 import { formatDuration } from "../lib/duration";
 import { useObjectStream } from "../lib/useObjectStream";
 
 type Application = components["schemas"]["Application"];
 type Deployment = components["schemas"]["Deployment"];
+type SyncStatus = components["schemas"]["SyncStatus"];
 
 // Statuses where a rollout job is in flight — the status/run/log streams are
 // open and the UI shows live progress.
@@ -39,6 +52,8 @@ export function ApplicationDetail() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // The deploy/upgrade confirmation dialog (shows the diff first), null when closed.
+  const [confirm, setConfirm] = useState<"deploy" | "upgrade" | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,6 +86,9 @@ export function ApplicationDetail() {
   }, [currentOrg?.id]);
 
   const inFlight = app ? IN_FLIGHT.includes(app.status) : false;
+  // A refresh (preview/diff) job is in flight — the status stream stays open to
+  // carry its progress even when the rollout itself has long settled.
+  const syncing = app?.sync_status === "refreshing";
 
   // The deployment history (rollout runs, newest first). Reloaded whenever a
   // rollout starts or settles — keyed below on the app's job id + status, which
@@ -91,21 +109,23 @@ export function ApplicationDetail() {
   // above then refreshes the history with the finished run).
   const { value: streamedApp } = useObjectStream<Application>(
     `/api/applications/${appId}/stream`,
-    inFlight,
+    inFlight || syncing,
   );
   useEffect(() => {
     if (streamedApp) setApp(streamedApp);
   }, [streamedApp]);
 
-  async function rollout(action: "deploy" | "upgrade") {
+  // Refresh re-resolves the desired state and diffs it against the live cluster
+  // (a preview job), changing nothing. The status stream above then carries the
+  // sync_status from refreshing → synced/out_of_sync.
+  async function refresh() {
     setBusy(true);
     setActionError(null);
-    const { data, error } = await api.POST("/api/applications/{id}/rollout", {
+    const { data, error } = await api.POST("/api/applications/{id}/refresh", {
       params: { path: { id: appId } },
-      body: { action },
     });
     setBusy(false);
-    if (error) setActionError(error.message ?? "Could not start the rollout");
+    if (error) setActionError(error.message ?? "Could not start the refresh");
     else if (data) setApp(data);
   }
 
@@ -134,16 +154,32 @@ export function ApplicationDetail() {
               <h1 className="mt-1 break-all text-2xl font-bold tracking-tight">
                 {app.name}
               </h1>
-              <div className="mt-2">
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <AppStatusBadge status={app.status} message={app.status_message} />
+                <SyncBadge status={app.sync_status} message={app.sync_message} />
+                {app.last_refreshed_at && !syncing && (
+                  <span className="text-xs text-neutral-400">
+                    refreshed {new Date(app.last_refreshed_at).toLocaleString()}
+                  </span>
+                )}
               </div>
             </div>
             {canEdit && (
               <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => void refresh()}
+                  disabled={busy || inFlight || syncing}
+                  title="Re-resolve the desired state and diff it against the live cluster"
+                  className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+                  Refresh
+                </button>
                 {app.status === "deployed" ? (
                   <button
                     type="button"
-                    onClick={() => void rollout("upgrade")}
+                    onClick={() => setConfirm("upgrade")}
                     disabled={busy || inFlight}
                     className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
                   >
@@ -153,7 +189,7 @@ export function ApplicationDetail() {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => void rollout("deploy")}
+                    onClick={() => setConfirm("deploy")}
                     disabled={busy || inFlight}
                     className="inline-flex items-center gap-1.5 bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
                   >
@@ -282,6 +318,18 @@ export function ApplicationDetail() {
             )}
           </div>
 
+          {confirm && (
+            <DeployConfirmDialog
+              app={app}
+              action={confirm}
+              onClose={() => setConfirm(null)}
+              onConfirmed={(updated) => {
+                setApp(updated);
+                setConfirm(null);
+              }}
+            />
+          )}
+
           {deleting && (
             <DeleteApplicationDialog
               app={app}
@@ -292,6 +340,42 @@ export function ApplicationDetail() {
         </>
       )}
     </div>
+  );
+}
+
+// SyncBadge shows whether the application's desired state (re-resolved on
+// refresh) matches the live cluster. "unknown" (never refreshed) is hidden so a
+// freshly-created app isn't cluttered with a meaningless badge.
+function SyncBadge({ status, message }: { status?: SyncStatus; message?: string }) {
+  if (!status || status === "unknown") return null;
+  const styles: Record<Exclude<SyncStatus, "unknown">, string> = {
+    refreshing: "bg-blue-100 text-blue-800",
+    synced: "bg-green-100 text-green-800",
+    out_of_sync: "bg-amber-100 text-amber-800",
+    error: "bg-red-100 text-red-800",
+  };
+  const label: Record<Exclude<SyncStatus, "unknown">, string> = {
+    refreshing: "refreshing",
+    synced: "in sync",
+    out_of_sync: "out of sync",
+    error: "sync error",
+  };
+  const Icon: Record<Exclude<SyncStatus, "unknown">, typeof CheckCircle2> = {
+    refreshing: Loader2,
+    synced: CheckCircle2,
+    out_of_sync: AlertTriangle,
+    error: AlertTriangle,
+  };
+  const key = status as Exclude<SyncStatus, "unknown">;
+  const I = Icon[key];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium ${styles[key]}`}
+      title={status === "error" ? message : undefined}
+    >
+      <I className={`h-3.5 w-3.5 ${status === "refreshing" ? "animate-spin" : ""}`} />
+      {label[key]}
+    </span>
   );
 }
 

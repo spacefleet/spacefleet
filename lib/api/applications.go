@@ -234,6 +234,71 @@ func (s *Server) UninstallApplication(ctx context.Context, req UninstallApplicat
 	return UninstallApplication202JSONResponse(toAPIApplication(a)), nil
 }
 
+// RefreshApplication enqueues a preview (diff) job: it re-resolves the desired
+// state and runs `helm diff` against the live cluster, changing nothing. Editor
+// or above; needs the background worker (503 otherwise). Refusing while a rollout
+// is in flight surfaces as 409.
+func (s *Server) RefreshApplication(ctx context.Context, req RefreshApplicationRequestObject) (RefreshApplicationResponseObject, error) {
+	orgID, aerr, err := s.resolveAppWrite(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[RefreshApplicationdefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	if s.jobQueue == nil {
+		return errResp[RefreshApplicationdefaultJSONResponse](http.StatusServiceUnavailable, "unavailable", "background job worker not configured; cannot refresh"), nil
+	}
+	a, err := s.applications.BeginPreview(ctx, orgID, req.Id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return errResp[RefreshApplicationdefaultJSONResponse](http.StatusNotFound, "not_found", "application not found"), nil
+		}
+		// The only validation error from BeginPreview is the in-flight-rollout gate.
+		if applications.IsValidation(err) {
+			return errResp[RefreshApplicationdefaultJSONResponse](http.StatusConflict, "conflict", err.Error()), nil
+		}
+		return nil, err
+	}
+	res, err := s.jobQueue.Insert(ctx, helm.PreviewArgs{ApplicationID: req.Id, OrgID: orgID})
+	if err != nil {
+		return nil, err
+	}
+	jobID := strconv.FormatInt(res.Job.ID, 10)
+	if err := s.applications.MarkPreview(ctx, orgID, req.Id, jobID, helm.SyncRefreshing, "queued for refresh", ""); err != nil {
+		return nil, err
+	}
+	a.SyncJobID = jobID
+	return RefreshApplication202JSONResponse(toAPIApplication(a)), nil
+}
+
+// GetApplicationDiff returns the cached diff from the application's most recent
+// refresh. Read access (viewer or above), like GetApplication.
+func (s *Server) GetApplicationDiff(ctx context.Context, req GetApplicationDiffRequestObject) (GetApplicationDiffResponseObject, error) {
+	orgID, aerr, err := s.resolveApp(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[GetApplicationDiffdefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	a, err := s.applications.Get(ctx, orgID, req.Id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return errResp[GetApplicationDiffdefaultJSONResponse](http.StatusNotFound, "not_found", "application not found"), nil
+		}
+		return nil, err
+	}
+	return GetApplicationDiff200JSONResponse(ApplicationDiff{
+		SyncStatus:            SyncStatus(a.SyncStatus),
+		SyncMessage:           optStr(a.SyncMessage),
+		Diff:                  optStr(a.LastDiff),
+		DesiredChartRevision:  optStr(a.DesiredChartRevision),
+		DesiredValuesRevision: optStr(a.DesiredValuesRevision),
+		LastRefreshedAt:       optTime(a.LastRefreshedAt),
+	}), nil
+}
+
 // beginRollout is the shared body of rollout + uninstall: require the worker,
 // flip the app to the in-flight status, enqueue the job, and record the job id.
 // It returns (app, nil, nil) on success, (_, *apiError, nil) for a client error
@@ -308,9 +373,18 @@ func toAPIApplication(a *ent.Application) Application {
 		StatusMessage:   optStr(a.StatusMessage),
 		JobId:           optStr(a.JobID),
 		LastRunName:     optStr(a.LastRunName),
-		CreatedAt:       a.CreatedAt,
-		UpdatedAt:       a.UpdatedAt,
+		// Sync (preview/diff) summary. The full diff text is not on the row response
+		// (it can be large) — it's fetched via GET .../diff.
+		SyncMessage:           optStr(a.SyncMessage),
+		DesiredChartRevision:  optStr(a.DesiredChartRevision),
+		DesiredValuesRevision: optStr(a.DesiredValuesRevision),
+		LastRefreshedAt:       optTime(a.LastRefreshedAt),
+		SyncRunName:           optStr(a.SyncRunName),
+		CreatedAt:             a.CreatedAt,
+		UpdatedAt:             a.UpdatedAt,
 	}
+	syncStatus := SyncStatus(a.SyncStatus)
+	out.SyncStatus = &syncStatus
 	if out.Config == nil {
 		out.Config = map[string]string{}
 	}

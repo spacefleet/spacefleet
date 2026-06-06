@@ -301,6 +301,160 @@ func (_u *ApplicationUpdate) ClearLastRunName() *ApplicationUpdate {
 	return _u
 }
 
+// SetSyncStatus sets the "sync_status" field.
+func (_u *ApplicationUpdate) SetSyncStatus(v application.SyncStatus) *ApplicationUpdate {
+	_u.mutation.SetSyncStatus(v)
+	return _u
+}
+
+// SetNillableSyncStatus sets the "sync_status" field if the given value is not nil.
+func (_u *ApplicationUpdate) SetNillableSyncStatus(v *application.SyncStatus) *ApplicationUpdate {
+	if v != nil {
+		_u.SetSyncStatus(*v)
+	}
+	return _u
+}
+
+// SetSyncMessage sets the "sync_message" field.
+func (_u *ApplicationUpdate) SetSyncMessage(v string) *ApplicationUpdate {
+	_u.mutation.SetSyncMessage(v)
+	return _u
+}
+
+// SetNillableSyncMessage sets the "sync_message" field if the given value is not nil.
+func (_u *ApplicationUpdate) SetNillableSyncMessage(v *string) *ApplicationUpdate {
+	if v != nil {
+		_u.SetSyncMessage(*v)
+	}
+	return _u
+}
+
+// ClearSyncMessage clears the value of the "sync_message" field.
+func (_u *ApplicationUpdate) ClearSyncMessage() *ApplicationUpdate {
+	_u.mutation.ClearSyncMessage()
+	return _u
+}
+
+// SetLastDiff sets the "last_diff" field.
+func (_u *ApplicationUpdate) SetLastDiff(v string) *ApplicationUpdate {
+	_u.mutation.SetLastDiff(v)
+	return _u
+}
+
+// SetNillableLastDiff sets the "last_diff" field if the given value is not nil.
+func (_u *ApplicationUpdate) SetNillableLastDiff(v *string) *ApplicationUpdate {
+	if v != nil {
+		_u.SetLastDiff(*v)
+	}
+	return _u
+}
+
+// ClearLastDiff clears the value of the "last_diff" field.
+func (_u *ApplicationUpdate) ClearLastDiff() *ApplicationUpdate {
+	_u.mutation.ClearLastDiff()
+	return _u
+}
+
+// SetDesiredChartRevision sets the "desired_chart_revision" field.
+func (_u *ApplicationUpdate) SetDesiredChartRevision(v string) *ApplicationUpdate {
+	_u.mutation.SetDesiredChartRevision(v)
+	return _u
+}
+
+// SetNillableDesiredChartRevision sets the "desired_chart_revision" field if the given value is not nil.
+func (_u *ApplicationUpdate) SetNillableDesiredChartRevision(v *string) *ApplicationUpdate {
+	if v != nil {
+		_u.SetDesiredChartRevision(*v)
+	}
+	return _u
+}
+
+// ClearDesiredChartRevision clears the value of the "desired_chart_revision" field.
+func (_u *ApplicationUpdate) ClearDesiredChartRevision() *ApplicationUpdate {
+	_u.mutation.ClearDesiredChartRevision()
+	return _u
+}
+
+// SetDesiredValuesRevision sets the "desired_values_revision" field.
+func (_u *ApplicationUpdate) SetDesiredValuesRevision(v string) *ApplicationUpdate {
+	_u.mutation.SetDesiredValuesRevision(v)
+	return _u
+}
+
+// SetNillableDesiredValuesRevision sets the "desired_values_revision" field if the given value is not nil.
+func (_u *ApplicationUpdate) SetNillableDesiredValuesRevision(v *string) *ApplicationUpdate {
+	if v != nil {
+		_u.SetDesiredValuesRevision(*v)
+	}
+	return _u
+}
+
+// ClearDesiredValuesRevision clears the value of the "desired_values_revision" field.
+func (_u *ApplicationUpdate) ClearDesiredValuesRevision() *ApplicationUpdate {
+	_u.mutation.ClearDesiredValuesRevision()
+	return _u
+}
+
+// SetLastRefreshedAt sets the "last_refreshed_at" field.
+func (_u *ApplicationUpdate) SetLastRefreshedAt(v time.Time) *ApplicationUpdate {
+	_u.mutation.SetLastRefreshedAt(v)
+	return _u
+}
+
+// SetNillableLastRefreshedAt sets the "last_refreshed_at" field if the given value is not nil.
+func (_u *ApplicationUpdate) SetNillableLastRefreshedAt(v *time.Time) *ApplicationUpdate {
+	if v != nil {
+		_u.SetLastRefreshedAt(*v)
+	}
+	return _u
+}
+
+// ClearLastRefreshedAt clears the value of the "last_refreshed_at" field.
+func (_u *ApplicationUpdate) ClearLastRefreshedAt() *ApplicationUpdate {
+	_u.mutation.ClearLastRefreshedAt()
+	return _u
+}
+
+// SetSyncJobID sets the "sync_job_id" field.
+func (_u *ApplicationUpdate) SetSyncJobID(v string) *ApplicationUpdate {
+	_u.mutation.SetSyncJobID(v)
+	return _u
+}
+
+// SetNillableSyncJobID sets the "sync_job_id" field if the given value is not nil.
+func (_u *ApplicationUpdate) SetNillableSyncJobID(v *string) *ApplicationUpdate {
+	if v != nil {
+		_u.SetSyncJobID(*v)
+	}
+	return _u
+}
+
+// ClearSyncJobID clears the value of the "sync_job_id" field.
+func (_u *ApplicationUpdate) ClearSyncJobID() *ApplicationUpdate {
+	_u.mutation.ClearSyncJobID()
+	return _u
+}
+
+// SetSyncRunName sets the "sync_run_name" field.
+func (_u *ApplicationUpdate) SetSyncRunName(v string) *ApplicationUpdate {
+	_u.mutation.SetSyncRunName(v)
+	return _u
+}
+
+// SetNillableSyncRunName sets the "sync_run_name" field if the given value is not nil.
+func (_u *ApplicationUpdate) SetNillableSyncRunName(v *string) *ApplicationUpdate {
+	if v != nil {
+		_u.SetSyncRunName(*v)
+	}
+	return _u
+}
+
+// ClearSyncRunName clears the value of the "sync_run_name" field.
+func (_u *ApplicationUpdate) ClearSyncRunName() *ApplicationUpdate {
+	_u.mutation.ClearSyncRunName()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ApplicationUpdate) SetUpdatedAt(v time.Time) *ApplicationUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -419,6 +573,11 @@ func (_u *ApplicationUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Application.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SyncStatus(); ok {
+		if err := application.SyncStatusValidator(v); err != nil {
+			return &ValidationError{Name: "sync_status", err: fmt.Errorf(`ent: validator failed for field "Application.sync_status": %w`, err)}
+		}
+	}
 	if _u.mutation.OrganizationCleared() && len(_u.mutation.OrganizationIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Application.organization"`)
 	}
@@ -504,6 +663,51 @@ func (_u *ApplicationUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if _u.mutation.LastRunNameCleared() {
 		_spec.ClearField(application.FieldLastRunName, field.TypeString)
+	}
+	if value, ok := _u.mutation.SyncStatus(); ok {
+		_spec.SetField(application.FieldSyncStatus, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.SyncMessage(); ok {
+		_spec.SetField(application.FieldSyncMessage, field.TypeString, value)
+	}
+	if _u.mutation.SyncMessageCleared() {
+		_spec.ClearField(application.FieldSyncMessage, field.TypeString)
+	}
+	if value, ok := _u.mutation.LastDiff(); ok {
+		_spec.SetField(application.FieldLastDiff, field.TypeString, value)
+	}
+	if _u.mutation.LastDiffCleared() {
+		_spec.ClearField(application.FieldLastDiff, field.TypeString)
+	}
+	if value, ok := _u.mutation.DesiredChartRevision(); ok {
+		_spec.SetField(application.FieldDesiredChartRevision, field.TypeString, value)
+	}
+	if _u.mutation.DesiredChartRevisionCleared() {
+		_spec.ClearField(application.FieldDesiredChartRevision, field.TypeString)
+	}
+	if value, ok := _u.mutation.DesiredValuesRevision(); ok {
+		_spec.SetField(application.FieldDesiredValuesRevision, field.TypeString, value)
+	}
+	if _u.mutation.DesiredValuesRevisionCleared() {
+		_spec.ClearField(application.FieldDesiredValuesRevision, field.TypeString)
+	}
+	if value, ok := _u.mutation.LastRefreshedAt(); ok {
+		_spec.SetField(application.FieldLastRefreshedAt, field.TypeTime, value)
+	}
+	if _u.mutation.LastRefreshedAtCleared() {
+		_spec.ClearField(application.FieldLastRefreshedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.SyncJobID(); ok {
+		_spec.SetField(application.FieldSyncJobID, field.TypeString, value)
+	}
+	if _u.mutation.SyncJobIDCleared() {
+		_spec.ClearField(application.FieldSyncJobID, field.TypeString)
+	}
+	if value, ok := _u.mutation.SyncRunName(); ok {
+		_spec.SetField(application.FieldSyncRunName, field.TypeString, value)
+	}
+	if _u.mutation.SyncRunNameCleared() {
+		_spec.ClearField(application.FieldSyncRunName, field.TypeString)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(application.FieldUpdatedAt, field.TypeTime, value)
@@ -912,6 +1116,160 @@ func (_u *ApplicationUpdateOne) ClearLastRunName() *ApplicationUpdateOne {
 	return _u
 }
 
+// SetSyncStatus sets the "sync_status" field.
+func (_u *ApplicationUpdateOne) SetSyncStatus(v application.SyncStatus) *ApplicationUpdateOne {
+	_u.mutation.SetSyncStatus(v)
+	return _u
+}
+
+// SetNillableSyncStatus sets the "sync_status" field if the given value is not nil.
+func (_u *ApplicationUpdateOne) SetNillableSyncStatus(v *application.SyncStatus) *ApplicationUpdateOne {
+	if v != nil {
+		_u.SetSyncStatus(*v)
+	}
+	return _u
+}
+
+// SetSyncMessage sets the "sync_message" field.
+func (_u *ApplicationUpdateOne) SetSyncMessage(v string) *ApplicationUpdateOne {
+	_u.mutation.SetSyncMessage(v)
+	return _u
+}
+
+// SetNillableSyncMessage sets the "sync_message" field if the given value is not nil.
+func (_u *ApplicationUpdateOne) SetNillableSyncMessage(v *string) *ApplicationUpdateOne {
+	if v != nil {
+		_u.SetSyncMessage(*v)
+	}
+	return _u
+}
+
+// ClearSyncMessage clears the value of the "sync_message" field.
+func (_u *ApplicationUpdateOne) ClearSyncMessage() *ApplicationUpdateOne {
+	_u.mutation.ClearSyncMessage()
+	return _u
+}
+
+// SetLastDiff sets the "last_diff" field.
+func (_u *ApplicationUpdateOne) SetLastDiff(v string) *ApplicationUpdateOne {
+	_u.mutation.SetLastDiff(v)
+	return _u
+}
+
+// SetNillableLastDiff sets the "last_diff" field if the given value is not nil.
+func (_u *ApplicationUpdateOne) SetNillableLastDiff(v *string) *ApplicationUpdateOne {
+	if v != nil {
+		_u.SetLastDiff(*v)
+	}
+	return _u
+}
+
+// ClearLastDiff clears the value of the "last_diff" field.
+func (_u *ApplicationUpdateOne) ClearLastDiff() *ApplicationUpdateOne {
+	_u.mutation.ClearLastDiff()
+	return _u
+}
+
+// SetDesiredChartRevision sets the "desired_chart_revision" field.
+func (_u *ApplicationUpdateOne) SetDesiredChartRevision(v string) *ApplicationUpdateOne {
+	_u.mutation.SetDesiredChartRevision(v)
+	return _u
+}
+
+// SetNillableDesiredChartRevision sets the "desired_chart_revision" field if the given value is not nil.
+func (_u *ApplicationUpdateOne) SetNillableDesiredChartRevision(v *string) *ApplicationUpdateOne {
+	if v != nil {
+		_u.SetDesiredChartRevision(*v)
+	}
+	return _u
+}
+
+// ClearDesiredChartRevision clears the value of the "desired_chart_revision" field.
+func (_u *ApplicationUpdateOne) ClearDesiredChartRevision() *ApplicationUpdateOne {
+	_u.mutation.ClearDesiredChartRevision()
+	return _u
+}
+
+// SetDesiredValuesRevision sets the "desired_values_revision" field.
+func (_u *ApplicationUpdateOne) SetDesiredValuesRevision(v string) *ApplicationUpdateOne {
+	_u.mutation.SetDesiredValuesRevision(v)
+	return _u
+}
+
+// SetNillableDesiredValuesRevision sets the "desired_values_revision" field if the given value is not nil.
+func (_u *ApplicationUpdateOne) SetNillableDesiredValuesRevision(v *string) *ApplicationUpdateOne {
+	if v != nil {
+		_u.SetDesiredValuesRevision(*v)
+	}
+	return _u
+}
+
+// ClearDesiredValuesRevision clears the value of the "desired_values_revision" field.
+func (_u *ApplicationUpdateOne) ClearDesiredValuesRevision() *ApplicationUpdateOne {
+	_u.mutation.ClearDesiredValuesRevision()
+	return _u
+}
+
+// SetLastRefreshedAt sets the "last_refreshed_at" field.
+func (_u *ApplicationUpdateOne) SetLastRefreshedAt(v time.Time) *ApplicationUpdateOne {
+	_u.mutation.SetLastRefreshedAt(v)
+	return _u
+}
+
+// SetNillableLastRefreshedAt sets the "last_refreshed_at" field if the given value is not nil.
+func (_u *ApplicationUpdateOne) SetNillableLastRefreshedAt(v *time.Time) *ApplicationUpdateOne {
+	if v != nil {
+		_u.SetLastRefreshedAt(*v)
+	}
+	return _u
+}
+
+// ClearLastRefreshedAt clears the value of the "last_refreshed_at" field.
+func (_u *ApplicationUpdateOne) ClearLastRefreshedAt() *ApplicationUpdateOne {
+	_u.mutation.ClearLastRefreshedAt()
+	return _u
+}
+
+// SetSyncJobID sets the "sync_job_id" field.
+func (_u *ApplicationUpdateOne) SetSyncJobID(v string) *ApplicationUpdateOne {
+	_u.mutation.SetSyncJobID(v)
+	return _u
+}
+
+// SetNillableSyncJobID sets the "sync_job_id" field if the given value is not nil.
+func (_u *ApplicationUpdateOne) SetNillableSyncJobID(v *string) *ApplicationUpdateOne {
+	if v != nil {
+		_u.SetSyncJobID(*v)
+	}
+	return _u
+}
+
+// ClearSyncJobID clears the value of the "sync_job_id" field.
+func (_u *ApplicationUpdateOne) ClearSyncJobID() *ApplicationUpdateOne {
+	_u.mutation.ClearSyncJobID()
+	return _u
+}
+
+// SetSyncRunName sets the "sync_run_name" field.
+func (_u *ApplicationUpdateOne) SetSyncRunName(v string) *ApplicationUpdateOne {
+	_u.mutation.SetSyncRunName(v)
+	return _u
+}
+
+// SetNillableSyncRunName sets the "sync_run_name" field if the given value is not nil.
+func (_u *ApplicationUpdateOne) SetNillableSyncRunName(v *string) *ApplicationUpdateOne {
+	if v != nil {
+		_u.SetSyncRunName(*v)
+	}
+	return _u
+}
+
+// ClearSyncRunName clears the value of the "sync_run_name" field.
+func (_u *ApplicationUpdateOne) ClearSyncRunName() *ApplicationUpdateOne {
+	_u.mutation.ClearSyncRunName()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ApplicationUpdateOne) SetUpdatedAt(v time.Time) *ApplicationUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -1043,6 +1401,11 @@ func (_u *ApplicationUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Application.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SyncStatus(); ok {
+		if err := application.SyncStatusValidator(v); err != nil {
+			return &ValidationError{Name: "sync_status", err: fmt.Errorf(`ent: validator failed for field "Application.sync_status": %w`, err)}
+		}
+	}
 	if _u.mutation.OrganizationCleared() && len(_u.mutation.OrganizationIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Application.organization"`)
 	}
@@ -1145,6 +1508,51 @@ func (_u *ApplicationUpdateOne) sqlSave(ctx context.Context) (_node *Application
 	}
 	if _u.mutation.LastRunNameCleared() {
 		_spec.ClearField(application.FieldLastRunName, field.TypeString)
+	}
+	if value, ok := _u.mutation.SyncStatus(); ok {
+		_spec.SetField(application.FieldSyncStatus, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.SyncMessage(); ok {
+		_spec.SetField(application.FieldSyncMessage, field.TypeString, value)
+	}
+	if _u.mutation.SyncMessageCleared() {
+		_spec.ClearField(application.FieldSyncMessage, field.TypeString)
+	}
+	if value, ok := _u.mutation.LastDiff(); ok {
+		_spec.SetField(application.FieldLastDiff, field.TypeString, value)
+	}
+	if _u.mutation.LastDiffCleared() {
+		_spec.ClearField(application.FieldLastDiff, field.TypeString)
+	}
+	if value, ok := _u.mutation.DesiredChartRevision(); ok {
+		_spec.SetField(application.FieldDesiredChartRevision, field.TypeString, value)
+	}
+	if _u.mutation.DesiredChartRevisionCleared() {
+		_spec.ClearField(application.FieldDesiredChartRevision, field.TypeString)
+	}
+	if value, ok := _u.mutation.DesiredValuesRevision(); ok {
+		_spec.SetField(application.FieldDesiredValuesRevision, field.TypeString, value)
+	}
+	if _u.mutation.DesiredValuesRevisionCleared() {
+		_spec.ClearField(application.FieldDesiredValuesRevision, field.TypeString)
+	}
+	if value, ok := _u.mutation.LastRefreshedAt(); ok {
+		_spec.SetField(application.FieldLastRefreshedAt, field.TypeTime, value)
+	}
+	if _u.mutation.LastRefreshedAtCleared() {
+		_spec.ClearField(application.FieldLastRefreshedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.SyncJobID(); ok {
+		_spec.SetField(application.FieldSyncJobID, field.TypeString, value)
+	}
+	if _u.mutation.SyncJobIDCleared() {
+		_spec.ClearField(application.FieldSyncJobID, field.TypeString)
+	}
+	if value, ok := _u.mutation.SyncRunName(); ok {
+		_spec.SetField(application.FieldSyncRunName, field.TypeString, value)
+	}
+	if _u.mutation.SyncRunNameCleared() {
+		_spec.ClearField(application.FieldSyncRunName, field.TypeString)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(application.FieldUpdatedAt, field.TypeTime, value)

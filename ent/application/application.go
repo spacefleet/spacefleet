@@ -50,6 +50,22 @@ const (
 	FieldJobID = "job_id"
 	// FieldLastRunName holds the string denoting the last_run_name field in the database.
 	FieldLastRunName = "last_run_name"
+	// FieldSyncStatus holds the string denoting the sync_status field in the database.
+	FieldSyncStatus = "sync_status"
+	// FieldSyncMessage holds the string denoting the sync_message field in the database.
+	FieldSyncMessage = "sync_message"
+	// FieldLastDiff holds the string denoting the last_diff field in the database.
+	FieldLastDiff = "last_diff"
+	// FieldDesiredChartRevision holds the string denoting the desired_chart_revision field in the database.
+	FieldDesiredChartRevision = "desired_chart_revision"
+	// FieldDesiredValuesRevision holds the string denoting the desired_values_revision field in the database.
+	FieldDesiredValuesRevision = "desired_values_revision"
+	// FieldLastRefreshedAt holds the string denoting the last_refreshed_at field in the database.
+	FieldLastRefreshedAt = "last_refreshed_at"
+	// FieldSyncJobID holds the string denoting the sync_job_id field in the database.
+	FieldSyncJobID = "sync_job_id"
+	// FieldSyncRunName holds the string denoting the sync_run_name field in the database.
+	FieldSyncRunName = "sync_run_name"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -123,6 +139,14 @@ var Columns = []string{
 	FieldStatusMessage,
 	FieldJobID,
 	FieldLastRunName,
+	FieldSyncStatus,
+	FieldSyncMessage,
+	FieldLastDiff,
+	FieldDesiredChartRevision,
+	FieldDesiredValuesRevision,
+	FieldLastRefreshedAt,
+	FieldSyncJobID,
+	FieldSyncRunName,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -231,6 +255,35 @@ func StatusValidator(s Status) error {
 	}
 }
 
+// SyncStatus defines the type for the "sync_status" enum field.
+type SyncStatus string
+
+// SyncStatusUnknown is the default value of the SyncStatus enum.
+const DefaultSyncStatus = SyncStatusUnknown
+
+// SyncStatus values.
+const (
+	SyncStatusUnknown    SyncStatus = "unknown"
+	SyncStatusRefreshing SyncStatus = "refreshing"
+	SyncStatusSynced     SyncStatus = "synced"
+	SyncStatusOutOfSync  SyncStatus = "out_of_sync"
+	SyncStatusError      SyncStatus = "error"
+)
+
+func (ss SyncStatus) String() string {
+	return string(ss)
+}
+
+// SyncStatusValidator is a validator for the "sync_status" field enum values. It is called by the builders before save.
+func SyncStatusValidator(ss SyncStatus) error {
+	switch ss {
+	case SyncStatusUnknown, SyncStatusRefreshing, SyncStatusSynced, SyncStatusOutOfSync, SyncStatusError:
+		return nil
+	default:
+		return fmt.Errorf("application: invalid enum value for sync_status field: %q", ss)
+	}
+}
+
 // OrderOption defines the ordering options for the Application queries.
 type OrderOption func(*sql.Selector)
 
@@ -312,6 +365,46 @@ func ByJobID(opts ...sql.OrderTermOption) OrderOption {
 // ByLastRunName orders the results by the last_run_name field.
 func ByLastRunName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastRunName, opts...).ToFunc()
+}
+
+// BySyncStatus orders the results by the sync_status field.
+func BySyncStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSyncStatus, opts...).ToFunc()
+}
+
+// BySyncMessage orders the results by the sync_message field.
+func BySyncMessage(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSyncMessage, opts...).ToFunc()
+}
+
+// ByLastDiff orders the results by the last_diff field.
+func ByLastDiff(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastDiff, opts...).ToFunc()
+}
+
+// ByDesiredChartRevision orders the results by the desired_chart_revision field.
+func ByDesiredChartRevision(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDesiredChartRevision, opts...).ToFunc()
+}
+
+// ByDesiredValuesRevision orders the results by the desired_values_revision field.
+func ByDesiredValuesRevision(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDesiredValuesRevision, opts...).ToFunc()
+}
+
+// ByLastRefreshedAt orders the results by the last_refreshed_at field.
+func ByLastRefreshedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastRefreshedAt, opts...).ToFunc()
+}
+
+// BySyncJobID orders the results by the sync_job_id field.
+func BySyncJobID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSyncJobID, opts...).ToFunc()
+}
+
+// BySyncRunName orders the results by the sync_run_name field.
+func BySyncRunName(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSyncRunName, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

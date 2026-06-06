@@ -762,6 +762,49 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/applications/{id}/refresh:
+    post:
+      summary: Refresh an application's sync status (preview the diff)
+      description: |
+        Org-scoped, editor or above. Enqueues a background job that re-resolves
+        the desired state (latest git SHA / chart version / values) and runs
+        `helm diff` against the live target cluster as a TaskRun on the runner —
+        changing nothing. Returns immediately (202); follow progress via the
+        application stream, then read the result from GET .../diff. Requires the
+        background worker (503 otherwise). Returns 409 while a rollout is in
+        flight (the cluster is mid-change).
+      operationId: refreshApplication
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+      responses:
+        "202":
+          description: Refresh accepted; the preview job is in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/applications/{id}/diff:
+    get:
+      summary: Get the cached diff from the application's most recent refresh
+      description: |
+        Org-scoped. Returns the `helm diff` output captured by the last refresh,
+        the sync status, and the desired revisions a deploy would pull.
+      operationId: getApplicationDiff
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+      responses:
+        "200":
+          description: The cached diff and sync status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationDiff"
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/applications/{id}/deployments:
     get:
       summary: List an application's deployment history
@@ -1805,6 +1848,40 @@ components:
       description: The rollout lifecycle state of the application.
       enum: [pending, deploying, deployed, failed, uninstalling, uninstalled]
 
+    SyncStatus:
+      type: string
+      description: |
+        Whether the application's desired state (latest chart/values, re-resolved
+        on refresh) matches the live cluster.
+          - unknown: never refreshed.
+          - refreshing: a refresh (preview/diff) is in flight.
+          - synced: deploying would change nothing.
+          - out_of_sync: deploying would change the live cluster (see the diff).
+          - error: the last refresh failed (see sync_message).
+      enum: [unknown, refreshing, synced, out_of_sync, error]
+
+    ApplicationDiff:
+      type: object
+      required: [sync_status]
+      description: |
+        The cached result of the most recent refresh: the `helm diff` output
+        against the live cluster plus the desired revisions a deploy would pull.
+      properties:
+        sync_status:
+          $ref: "#/components/schemas/SyncStatus"
+        sync_message:
+          type: string
+        diff:
+          type: string
+          description: The captured `helm diff` output (empty when synced or never refreshed).
+        desired_chart_revision:
+          type: string
+        desired_values_revision:
+          type: string
+        last_refreshed_at:
+          type: string
+          format: date-time
+
     ValuesSource:
       type: object
       description: |
@@ -1905,6 +1982,28 @@ components:
         last_run_name:
           type: string
           description: TaskRun name of the most recent rollout (for streaming).
+        sync_status:
+          $ref: "#/components/schemas/SyncStatus"
+        sync_message:
+          type: string
+          description: Human-readable detail of the last refresh (progress line, or error).
+        desired_chart_revision:
+          type: string
+          description: |
+            Git commit SHA the chart resolved to at the last refresh (empty for a
+            non-git chart) — the revision a deploy would pull right now.
+        desired_values_revision:
+          type: string
+          description: |
+            Newline-joined "<repo>@<sha>" lines each values source resolved to at
+            the last refresh — the values revisions a deploy would pull right now.
+        last_refreshed_at:
+          type: string
+          format: date-time
+          description: When the last refresh (preview/diff) completed.
+        sync_run_name:
+          type: string
+          description: TaskRun name of the most recent preview run (for streaming).
         created_at:
           type: string
           format: date-time

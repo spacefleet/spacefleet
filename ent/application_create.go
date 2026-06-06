@@ -202,6 +202,118 @@ func (_c *ApplicationCreate) SetNillableLastRunName(v *string) *ApplicationCreat
 	return _c
 }
 
+// SetSyncStatus sets the "sync_status" field.
+func (_c *ApplicationCreate) SetSyncStatus(v application.SyncStatus) *ApplicationCreate {
+	_c.mutation.SetSyncStatus(v)
+	return _c
+}
+
+// SetNillableSyncStatus sets the "sync_status" field if the given value is not nil.
+func (_c *ApplicationCreate) SetNillableSyncStatus(v *application.SyncStatus) *ApplicationCreate {
+	if v != nil {
+		_c.SetSyncStatus(*v)
+	}
+	return _c
+}
+
+// SetSyncMessage sets the "sync_message" field.
+func (_c *ApplicationCreate) SetSyncMessage(v string) *ApplicationCreate {
+	_c.mutation.SetSyncMessage(v)
+	return _c
+}
+
+// SetNillableSyncMessage sets the "sync_message" field if the given value is not nil.
+func (_c *ApplicationCreate) SetNillableSyncMessage(v *string) *ApplicationCreate {
+	if v != nil {
+		_c.SetSyncMessage(*v)
+	}
+	return _c
+}
+
+// SetLastDiff sets the "last_diff" field.
+func (_c *ApplicationCreate) SetLastDiff(v string) *ApplicationCreate {
+	_c.mutation.SetLastDiff(v)
+	return _c
+}
+
+// SetNillableLastDiff sets the "last_diff" field if the given value is not nil.
+func (_c *ApplicationCreate) SetNillableLastDiff(v *string) *ApplicationCreate {
+	if v != nil {
+		_c.SetLastDiff(*v)
+	}
+	return _c
+}
+
+// SetDesiredChartRevision sets the "desired_chart_revision" field.
+func (_c *ApplicationCreate) SetDesiredChartRevision(v string) *ApplicationCreate {
+	_c.mutation.SetDesiredChartRevision(v)
+	return _c
+}
+
+// SetNillableDesiredChartRevision sets the "desired_chart_revision" field if the given value is not nil.
+func (_c *ApplicationCreate) SetNillableDesiredChartRevision(v *string) *ApplicationCreate {
+	if v != nil {
+		_c.SetDesiredChartRevision(*v)
+	}
+	return _c
+}
+
+// SetDesiredValuesRevision sets the "desired_values_revision" field.
+func (_c *ApplicationCreate) SetDesiredValuesRevision(v string) *ApplicationCreate {
+	_c.mutation.SetDesiredValuesRevision(v)
+	return _c
+}
+
+// SetNillableDesiredValuesRevision sets the "desired_values_revision" field if the given value is not nil.
+func (_c *ApplicationCreate) SetNillableDesiredValuesRevision(v *string) *ApplicationCreate {
+	if v != nil {
+		_c.SetDesiredValuesRevision(*v)
+	}
+	return _c
+}
+
+// SetLastRefreshedAt sets the "last_refreshed_at" field.
+func (_c *ApplicationCreate) SetLastRefreshedAt(v time.Time) *ApplicationCreate {
+	_c.mutation.SetLastRefreshedAt(v)
+	return _c
+}
+
+// SetNillableLastRefreshedAt sets the "last_refreshed_at" field if the given value is not nil.
+func (_c *ApplicationCreate) SetNillableLastRefreshedAt(v *time.Time) *ApplicationCreate {
+	if v != nil {
+		_c.SetLastRefreshedAt(*v)
+	}
+	return _c
+}
+
+// SetSyncJobID sets the "sync_job_id" field.
+func (_c *ApplicationCreate) SetSyncJobID(v string) *ApplicationCreate {
+	_c.mutation.SetSyncJobID(v)
+	return _c
+}
+
+// SetNillableSyncJobID sets the "sync_job_id" field if the given value is not nil.
+func (_c *ApplicationCreate) SetNillableSyncJobID(v *string) *ApplicationCreate {
+	if v != nil {
+		_c.SetSyncJobID(*v)
+	}
+	return _c
+}
+
+// SetSyncRunName sets the "sync_run_name" field.
+func (_c *ApplicationCreate) SetSyncRunName(v string) *ApplicationCreate {
+	_c.mutation.SetSyncRunName(v)
+	return _c
+}
+
+// SetNillableSyncRunName sets the "sync_run_name" field if the given value is not nil.
+func (_c *ApplicationCreate) SetNillableSyncRunName(v *string) *ApplicationCreate {
+	if v != nil {
+		_c.SetSyncRunName(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *ApplicationCreate) SetCreatedAt(v time.Time) *ApplicationCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -312,6 +424,10 @@ func (_c *ApplicationCreate) defaults() {
 		v := application.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.SyncStatus(); !ok {
+		v := application.DefaultSyncStatus
+		_c.mutation.SetSyncStatus(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := application.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -375,6 +491,14 @@ func (_c *ApplicationCreate) check() error {
 	if v, ok := _c.mutation.Status(); ok {
 		if err := application.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Application.status": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.SyncStatus(); !ok {
+		return &ValidationError{Name: "sync_status", err: errors.New(`ent: missing required field "Application.sync_status"`)}
+	}
+	if v, ok := _c.mutation.SyncStatus(); ok {
+		if err := application.SyncStatusValidator(v); err != nil {
+			return &ValidationError{Name: "sync_status", err: fmt.Errorf(`ent: validator failed for field "Application.sync_status": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
@@ -475,6 +599,38 @@ func (_c *ApplicationCreate) createSpec() (*Application, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.LastRunName(); ok {
 		_spec.SetField(application.FieldLastRunName, field.TypeString, value)
 		_node.LastRunName = value
+	}
+	if value, ok := _c.mutation.SyncStatus(); ok {
+		_spec.SetField(application.FieldSyncStatus, field.TypeEnum, value)
+		_node.SyncStatus = value
+	}
+	if value, ok := _c.mutation.SyncMessage(); ok {
+		_spec.SetField(application.FieldSyncMessage, field.TypeString, value)
+		_node.SyncMessage = value
+	}
+	if value, ok := _c.mutation.LastDiff(); ok {
+		_spec.SetField(application.FieldLastDiff, field.TypeString, value)
+		_node.LastDiff = value
+	}
+	if value, ok := _c.mutation.DesiredChartRevision(); ok {
+		_spec.SetField(application.FieldDesiredChartRevision, field.TypeString, value)
+		_node.DesiredChartRevision = value
+	}
+	if value, ok := _c.mutation.DesiredValuesRevision(); ok {
+		_spec.SetField(application.FieldDesiredValuesRevision, field.TypeString, value)
+		_node.DesiredValuesRevision = value
+	}
+	if value, ok := _c.mutation.LastRefreshedAt(); ok {
+		_spec.SetField(application.FieldLastRefreshedAt, field.TypeTime, value)
+		_node.LastRefreshedAt = value
+	}
+	if value, ok := _c.mutation.SyncJobID(); ok {
+		_spec.SetField(application.FieldSyncJobID, field.TypeString, value)
+		_node.SyncJobID = value
+	}
+	if value, ok := _c.mutation.SyncRunName(); ok {
+		_spec.SetField(application.FieldSyncRunName, field.TypeString, value)
+		_node.SyncRunName = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(application.FieldCreatedAt, field.TypeTime, value)
@@ -867,6 +1023,144 @@ func (u *ApplicationUpsert) ClearLastRunName() *ApplicationUpsert {
 	return u
 }
 
+// SetSyncStatus sets the "sync_status" field.
+func (u *ApplicationUpsert) SetSyncStatus(v application.SyncStatus) *ApplicationUpsert {
+	u.Set(application.FieldSyncStatus, v)
+	return u
+}
+
+// UpdateSyncStatus sets the "sync_status" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdateSyncStatus() *ApplicationUpsert {
+	u.SetExcluded(application.FieldSyncStatus)
+	return u
+}
+
+// SetSyncMessage sets the "sync_message" field.
+func (u *ApplicationUpsert) SetSyncMessage(v string) *ApplicationUpsert {
+	u.Set(application.FieldSyncMessage, v)
+	return u
+}
+
+// UpdateSyncMessage sets the "sync_message" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdateSyncMessage() *ApplicationUpsert {
+	u.SetExcluded(application.FieldSyncMessage)
+	return u
+}
+
+// ClearSyncMessage clears the value of the "sync_message" field.
+func (u *ApplicationUpsert) ClearSyncMessage() *ApplicationUpsert {
+	u.SetNull(application.FieldSyncMessage)
+	return u
+}
+
+// SetLastDiff sets the "last_diff" field.
+func (u *ApplicationUpsert) SetLastDiff(v string) *ApplicationUpsert {
+	u.Set(application.FieldLastDiff, v)
+	return u
+}
+
+// UpdateLastDiff sets the "last_diff" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdateLastDiff() *ApplicationUpsert {
+	u.SetExcluded(application.FieldLastDiff)
+	return u
+}
+
+// ClearLastDiff clears the value of the "last_diff" field.
+func (u *ApplicationUpsert) ClearLastDiff() *ApplicationUpsert {
+	u.SetNull(application.FieldLastDiff)
+	return u
+}
+
+// SetDesiredChartRevision sets the "desired_chart_revision" field.
+func (u *ApplicationUpsert) SetDesiredChartRevision(v string) *ApplicationUpsert {
+	u.Set(application.FieldDesiredChartRevision, v)
+	return u
+}
+
+// UpdateDesiredChartRevision sets the "desired_chart_revision" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdateDesiredChartRevision() *ApplicationUpsert {
+	u.SetExcluded(application.FieldDesiredChartRevision)
+	return u
+}
+
+// ClearDesiredChartRevision clears the value of the "desired_chart_revision" field.
+func (u *ApplicationUpsert) ClearDesiredChartRevision() *ApplicationUpsert {
+	u.SetNull(application.FieldDesiredChartRevision)
+	return u
+}
+
+// SetDesiredValuesRevision sets the "desired_values_revision" field.
+func (u *ApplicationUpsert) SetDesiredValuesRevision(v string) *ApplicationUpsert {
+	u.Set(application.FieldDesiredValuesRevision, v)
+	return u
+}
+
+// UpdateDesiredValuesRevision sets the "desired_values_revision" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdateDesiredValuesRevision() *ApplicationUpsert {
+	u.SetExcluded(application.FieldDesiredValuesRevision)
+	return u
+}
+
+// ClearDesiredValuesRevision clears the value of the "desired_values_revision" field.
+func (u *ApplicationUpsert) ClearDesiredValuesRevision() *ApplicationUpsert {
+	u.SetNull(application.FieldDesiredValuesRevision)
+	return u
+}
+
+// SetLastRefreshedAt sets the "last_refreshed_at" field.
+func (u *ApplicationUpsert) SetLastRefreshedAt(v time.Time) *ApplicationUpsert {
+	u.Set(application.FieldLastRefreshedAt, v)
+	return u
+}
+
+// UpdateLastRefreshedAt sets the "last_refreshed_at" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdateLastRefreshedAt() *ApplicationUpsert {
+	u.SetExcluded(application.FieldLastRefreshedAt)
+	return u
+}
+
+// ClearLastRefreshedAt clears the value of the "last_refreshed_at" field.
+func (u *ApplicationUpsert) ClearLastRefreshedAt() *ApplicationUpsert {
+	u.SetNull(application.FieldLastRefreshedAt)
+	return u
+}
+
+// SetSyncJobID sets the "sync_job_id" field.
+func (u *ApplicationUpsert) SetSyncJobID(v string) *ApplicationUpsert {
+	u.Set(application.FieldSyncJobID, v)
+	return u
+}
+
+// UpdateSyncJobID sets the "sync_job_id" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdateSyncJobID() *ApplicationUpsert {
+	u.SetExcluded(application.FieldSyncJobID)
+	return u
+}
+
+// ClearSyncJobID clears the value of the "sync_job_id" field.
+func (u *ApplicationUpsert) ClearSyncJobID() *ApplicationUpsert {
+	u.SetNull(application.FieldSyncJobID)
+	return u
+}
+
+// SetSyncRunName sets the "sync_run_name" field.
+func (u *ApplicationUpsert) SetSyncRunName(v string) *ApplicationUpsert {
+	u.Set(application.FieldSyncRunName, v)
+	return u
+}
+
+// UpdateSyncRunName sets the "sync_run_name" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdateSyncRunName() *ApplicationUpsert {
+	u.SetExcluded(application.FieldSyncRunName)
+	return u
+}
+
+// ClearSyncRunName clears the value of the "sync_run_name" field.
+func (u *ApplicationUpsert) ClearSyncRunName() *ApplicationUpsert {
+	u.SetNull(application.FieldSyncRunName)
+	return u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (u *ApplicationUpsert) SetUpdatedAt(v time.Time) *ApplicationUpsert {
 	u.Set(application.FieldUpdatedAt, v)
@@ -1217,6 +1511,167 @@ func (u *ApplicationUpsertOne) UpdateLastRunName() *ApplicationUpsertOne {
 func (u *ApplicationUpsertOne) ClearLastRunName() *ApplicationUpsertOne {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.ClearLastRunName()
+	})
+}
+
+// SetSyncStatus sets the "sync_status" field.
+func (u *ApplicationUpsertOne) SetSyncStatus(v application.SyncStatus) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetSyncStatus(v)
+	})
+}
+
+// UpdateSyncStatus sets the "sync_status" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdateSyncStatus() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateSyncStatus()
+	})
+}
+
+// SetSyncMessage sets the "sync_message" field.
+func (u *ApplicationUpsertOne) SetSyncMessage(v string) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetSyncMessage(v)
+	})
+}
+
+// UpdateSyncMessage sets the "sync_message" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdateSyncMessage() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateSyncMessage()
+	})
+}
+
+// ClearSyncMessage clears the value of the "sync_message" field.
+func (u *ApplicationUpsertOne) ClearSyncMessage() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearSyncMessage()
+	})
+}
+
+// SetLastDiff sets the "last_diff" field.
+func (u *ApplicationUpsertOne) SetLastDiff(v string) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetLastDiff(v)
+	})
+}
+
+// UpdateLastDiff sets the "last_diff" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdateLastDiff() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateLastDiff()
+	})
+}
+
+// ClearLastDiff clears the value of the "last_diff" field.
+func (u *ApplicationUpsertOne) ClearLastDiff() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearLastDiff()
+	})
+}
+
+// SetDesiredChartRevision sets the "desired_chart_revision" field.
+func (u *ApplicationUpsertOne) SetDesiredChartRevision(v string) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetDesiredChartRevision(v)
+	})
+}
+
+// UpdateDesiredChartRevision sets the "desired_chart_revision" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdateDesiredChartRevision() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateDesiredChartRevision()
+	})
+}
+
+// ClearDesiredChartRevision clears the value of the "desired_chart_revision" field.
+func (u *ApplicationUpsertOne) ClearDesiredChartRevision() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearDesiredChartRevision()
+	})
+}
+
+// SetDesiredValuesRevision sets the "desired_values_revision" field.
+func (u *ApplicationUpsertOne) SetDesiredValuesRevision(v string) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetDesiredValuesRevision(v)
+	})
+}
+
+// UpdateDesiredValuesRevision sets the "desired_values_revision" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdateDesiredValuesRevision() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateDesiredValuesRevision()
+	})
+}
+
+// ClearDesiredValuesRevision clears the value of the "desired_values_revision" field.
+func (u *ApplicationUpsertOne) ClearDesiredValuesRevision() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearDesiredValuesRevision()
+	})
+}
+
+// SetLastRefreshedAt sets the "last_refreshed_at" field.
+func (u *ApplicationUpsertOne) SetLastRefreshedAt(v time.Time) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetLastRefreshedAt(v)
+	})
+}
+
+// UpdateLastRefreshedAt sets the "last_refreshed_at" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdateLastRefreshedAt() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateLastRefreshedAt()
+	})
+}
+
+// ClearLastRefreshedAt clears the value of the "last_refreshed_at" field.
+func (u *ApplicationUpsertOne) ClearLastRefreshedAt() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearLastRefreshedAt()
+	})
+}
+
+// SetSyncJobID sets the "sync_job_id" field.
+func (u *ApplicationUpsertOne) SetSyncJobID(v string) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetSyncJobID(v)
+	})
+}
+
+// UpdateSyncJobID sets the "sync_job_id" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdateSyncJobID() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateSyncJobID()
+	})
+}
+
+// ClearSyncJobID clears the value of the "sync_job_id" field.
+func (u *ApplicationUpsertOne) ClearSyncJobID() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearSyncJobID()
+	})
+}
+
+// SetSyncRunName sets the "sync_run_name" field.
+func (u *ApplicationUpsertOne) SetSyncRunName(v string) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetSyncRunName(v)
+	})
+}
+
+// UpdateSyncRunName sets the "sync_run_name" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdateSyncRunName() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateSyncRunName()
+	})
+}
+
+// ClearSyncRunName clears the value of the "sync_run_name" field.
+func (u *ApplicationUpsertOne) ClearSyncRunName() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearSyncRunName()
 	})
 }
 
@@ -1739,6 +2194,167 @@ func (u *ApplicationUpsertBulk) UpdateLastRunName() *ApplicationUpsertBulk {
 func (u *ApplicationUpsertBulk) ClearLastRunName() *ApplicationUpsertBulk {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.ClearLastRunName()
+	})
+}
+
+// SetSyncStatus sets the "sync_status" field.
+func (u *ApplicationUpsertBulk) SetSyncStatus(v application.SyncStatus) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetSyncStatus(v)
+	})
+}
+
+// UpdateSyncStatus sets the "sync_status" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdateSyncStatus() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateSyncStatus()
+	})
+}
+
+// SetSyncMessage sets the "sync_message" field.
+func (u *ApplicationUpsertBulk) SetSyncMessage(v string) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetSyncMessage(v)
+	})
+}
+
+// UpdateSyncMessage sets the "sync_message" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdateSyncMessage() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateSyncMessage()
+	})
+}
+
+// ClearSyncMessage clears the value of the "sync_message" field.
+func (u *ApplicationUpsertBulk) ClearSyncMessage() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearSyncMessage()
+	})
+}
+
+// SetLastDiff sets the "last_diff" field.
+func (u *ApplicationUpsertBulk) SetLastDiff(v string) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetLastDiff(v)
+	})
+}
+
+// UpdateLastDiff sets the "last_diff" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdateLastDiff() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateLastDiff()
+	})
+}
+
+// ClearLastDiff clears the value of the "last_diff" field.
+func (u *ApplicationUpsertBulk) ClearLastDiff() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearLastDiff()
+	})
+}
+
+// SetDesiredChartRevision sets the "desired_chart_revision" field.
+func (u *ApplicationUpsertBulk) SetDesiredChartRevision(v string) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetDesiredChartRevision(v)
+	})
+}
+
+// UpdateDesiredChartRevision sets the "desired_chart_revision" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdateDesiredChartRevision() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateDesiredChartRevision()
+	})
+}
+
+// ClearDesiredChartRevision clears the value of the "desired_chart_revision" field.
+func (u *ApplicationUpsertBulk) ClearDesiredChartRevision() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearDesiredChartRevision()
+	})
+}
+
+// SetDesiredValuesRevision sets the "desired_values_revision" field.
+func (u *ApplicationUpsertBulk) SetDesiredValuesRevision(v string) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetDesiredValuesRevision(v)
+	})
+}
+
+// UpdateDesiredValuesRevision sets the "desired_values_revision" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdateDesiredValuesRevision() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateDesiredValuesRevision()
+	})
+}
+
+// ClearDesiredValuesRevision clears the value of the "desired_values_revision" field.
+func (u *ApplicationUpsertBulk) ClearDesiredValuesRevision() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearDesiredValuesRevision()
+	})
+}
+
+// SetLastRefreshedAt sets the "last_refreshed_at" field.
+func (u *ApplicationUpsertBulk) SetLastRefreshedAt(v time.Time) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetLastRefreshedAt(v)
+	})
+}
+
+// UpdateLastRefreshedAt sets the "last_refreshed_at" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdateLastRefreshedAt() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateLastRefreshedAt()
+	})
+}
+
+// ClearLastRefreshedAt clears the value of the "last_refreshed_at" field.
+func (u *ApplicationUpsertBulk) ClearLastRefreshedAt() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearLastRefreshedAt()
+	})
+}
+
+// SetSyncJobID sets the "sync_job_id" field.
+func (u *ApplicationUpsertBulk) SetSyncJobID(v string) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetSyncJobID(v)
+	})
+}
+
+// UpdateSyncJobID sets the "sync_job_id" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdateSyncJobID() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateSyncJobID()
+	})
+}
+
+// ClearSyncJobID clears the value of the "sync_job_id" field.
+func (u *ApplicationUpsertBulk) ClearSyncJobID() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearSyncJobID()
+	})
+}
+
+// SetSyncRunName sets the "sync_run_name" field.
+func (u *ApplicationUpsertBulk) SetSyncRunName(v string) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetSyncRunName(v)
+	})
+}
+
+// UpdateSyncRunName sets the "sync_run_name" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdateSyncRunName() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateSyncRunName()
+	})
+}
+
+// ClearSyncRunName clears the value of the "sync_run_name" field.
+func (u *ApplicationUpsertBulk) ClearSyncRunName() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearSyncRunName()
 	})
 }
 

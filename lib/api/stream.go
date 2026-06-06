@@ -480,15 +480,21 @@ func (s *Server) appForStream(ctx context.Context, orgID uuid.UUID, r *http.Requ
 	return app, nil
 }
 
-// appRowKey is a change key over the rollout fields the stream surfaces, so a
-// no-op poll doesn't emit a redundant event.
+// appRowKey is a change key over the rollout + sync fields the stream surfaces,
+// so a no-op poll doesn't emit a redundant event but a refresh's progress does.
 func appRowKey(a *ent.Application) string {
-	return string(a.Status) + "\x00" + a.StatusMessage + "\x00" + a.JobID + "\x00" + a.LastRunName
+	return string(a.Status) + "\x00" + a.StatusMessage + "\x00" + a.JobID + "\x00" + a.LastRunName +
+		"\x00" + string(a.SyncStatus) + "\x00" + a.SyncMessage + "\x00" + a.SyncJobID + "\x00" + a.SyncRunName
 }
 
-// appTerminal reports whether the rollout lifecycle has settled, so the stream
-// can close.
+// appTerminal reports whether the stream can close: the rollout lifecycle has
+// settled and no refresh (preview/diff) is in flight. A refresh runs on an
+// already-deployed (rollout-terminal) app, so the stream must stay open while
+// sync_status is refreshing to carry the diff's progress.
 func appTerminal(a *ent.Application) bool {
+	if a.SyncStatus == application.SyncStatusRefreshing {
+		return false
+	}
 	switch a.Status {
 	case application.StatusDeployed, application.StatusFailed, application.StatusUninstalled:
 		return true

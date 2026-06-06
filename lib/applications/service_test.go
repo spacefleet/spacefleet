@@ -338,6 +338,111 @@ func TestMarkRolloutCapturesRevisions(t *testing.T) {
 	}
 }
 
+func TestCompletePreviewRecordsDiff(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	// Logs from a diff run: the bracketed body, the changes verdict, and the chart
+	// SHA the preview resolved.
+	svc.captureLogs = func(context.Context, *ent.Application, string) string {
+		return "installing helm-diff...\n" +
+			"SPACEFLEET_CHART_REVISION=abc123\n" +
+			"SPACEFLEET_DIFF_BEGIN\n" +
+			"apps, web, Deployment (apps) has changed:\n" +
+			"- replicas: 2\n+ replicas: 3\n" +
+			"SPACEFLEET_DIFF_END\n" +
+			"SPACEFLEET_DIFF_CHANGES=true\n"
+	}
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, svc, client, org.ID)
+
+	// BeginPreview flips the app to refreshing without touching the rollout status.
+	got, err := svc.BeginPreview(ctx, org.ID, app.ID)
+	if err != nil {
+		t.Fatalf("BeginPreview: %v", err)
+	}
+	if got.SyncStatus != application.SyncStatusRefreshing {
+		t.Errorf("sync_status = %q, want refreshing", got.SyncStatus)
+	}
+	if got.Status != application.StatusPending {
+		t.Errorf("BeginPreview must not change the rollout status; got %q", got.Status)
+	}
+
+	// CompletePreview parses the diff out of the captured logs onto the row.
+	if err := svc.CompletePreview(ctx, org.ID, app.ID, "42", "helm-web-diff"); err != nil {
+		t.Fatalf("CompletePreview: %v", err)
+	}
+	got, err = svc.Get(ctx, org.ID, app.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.SyncStatus != application.SyncStatusOutOfSync {
+		t.Errorf("sync_status = %q, want out_of_sync", got.SyncStatus)
+	}
+	if got.DesiredChartRevision != "abc123" {
+		t.Errorf("desired_chart_revision = %q, want abc123", got.DesiredChartRevision)
+	}
+	wantDiff := "apps, web, Deployment (apps) has changed:\n- replicas: 2\n+ replicas: 3"
+	if got.LastDiff != wantDiff {
+		t.Errorf("last_diff = %q, want %q", got.LastDiff, wantDiff)
+	}
+	if got.LastRefreshedAt.IsZero() {
+		t.Error("last_refreshed_at should be set")
+	}
+
+	// A preview must never write a deployment-history row.
+	n, err := client.Deployment.Query().All(ctx)
+	if err != nil {
+		t.Fatalf("query deployments: %v", err)
+	}
+	if len(n) != 0 {
+		t.Errorf("preview wrote %d deployment rows, want 0", len(n))
+	}
+}
+
+func TestBeginPreviewRefusedDuringRollout(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, svc, client, org.ID)
+	if _, err := app.Update().SetStatus(application.StatusDeploying).Save(ctx); err != nil {
+		t.Fatalf("set deploying: %v", err)
+	}
+
+	_, err := svc.BeginPreview(ctx, org.ID, app.ID)
+	if !IsValidation(err) {
+		t.Fatalf("BeginPreview during a rollout: got %v, want a ValidationError", err)
+	}
+}
+
+func TestCompletePreviewSynced(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, stubConns{}, nil, nil)
+	svc.captureLogs = func(context.Context, *ent.Application, string) string {
+		return "SPACEFLEET_DIFF_BEGIN\nSPACEFLEET_DIFF_END\nSPACEFLEET_DIFF_CHANGES=false\n"
+	}
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, svc, client, org.ID)
+	if err := svc.CompletePreview(ctx, org.ID, app.ID, "43", "helm-web-diff"); err != nil {
+		t.Fatalf("CompletePreview: %v", err)
+	}
+	got, err := svc.Get(ctx, org.ID, app.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.SyncStatus != application.SyncStatusSynced {
+		t.Errorf("sync_status = %q, want synced", got.SyncStatus)
+	}
+	if got.LastDiff != "" {
+		t.Errorf("last_diff = %q, want empty when synced", got.LastDiff)
+	}
+}
+
 // newChartCredential creates a chart credential row directly for validation
 // tests (the applications service checks type↔source compatibility by querying
 // the row, so no sealer is needed here).

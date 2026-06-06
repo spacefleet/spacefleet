@@ -33,6 +33,113 @@ func (f *fakeStore) MarkRollout(_ context.Context, _, _ uuid.UUID, _, status, _,
 	return nil
 }
 
+// fakePreviewStore records the preview worker's calls.
+type fakePreviewStore struct {
+	plan       PreviewPlan
+	resolveErr error
+	statuses   []string // ordered status values passed to MarkPreview
+	lastRun    string
+	completed  bool // CompletePreview was called (terminal success)
+}
+
+func (f *fakePreviewStore) ResolvePreview(context.Context, uuid.UUID, uuid.UUID) (PreviewPlan, error) {
+	return f.plan, f.resolveErr
+}
+
+func (f *fakePreviewStore) MarkPreview(_ context.Context, _, _ uuid.UUID, _, status, _, runName string) error {
+	f.statuses = append(f.statuses, status)
+	if runName != "" {
+		f.lastRun = runName
+	}
+	return nil
+}
+
+func (f *fakePreviewStore) CompletePreview(context.Context, uuid.UUID, uuid.UUID, string, string) error {
+	f.completed = true
+	return nil
+}
+
+func previewJob() *river.Job[PreviewArgs] {
+	return &river.Job[PreviewArgs]{
+		JobRow: &rivertype.JobRow{ID: 9},
+		Args:   PreviewArgs{ApplicationID: uuid.New(), OrgID: uuid.New()},
+	}
+}
+
+func TestPreviewWorkerSuccess(t *testing.T) {
+	store := &fakePreviewStore{}
+	w := &PreviewWorker{
+		Store: store,
+		submitFn: func(context.Context, k8s.Connection, string, tekton.RunSpec) (*tekton.RunStatus, error) {
+			return &tekton.RunStatus{Name: "helm-diff-1"}, nil
+		},
+		watchFn: func(context.Context, k8s.Connection, string, string) (*tekton.RunStream, error) {
+			return terminalStream("helm-diff-1", "Succeeded", "ok"), nil
+		},
+	}
+	if err := w.Work(context.Background(), previewJob()); err != nil {
+		t.Fatalf("Work: %v", err)
+	}
+	if !store.completed {
+		t.Error("expected CompletePreview to be called on a successful diff run")
+	}
+	if !containsPreviewStatus(store, SyncRefreshing) {
+		t.Error("expected a refreshing status")
+	}
+	if store.lastRun != "helm-diff-1" {
+		t.Errorf("recorded run = %q", store.lastRun)
+	}
+}
+
+func TestPreviewWorkerRunFailed(t *testing.T) {
+	store := &fakePreviewStore{}
+	w := &PreviewWorker{
+		Store: store,
+		submitFn: func(context.Context, k8s.Connection, string, tekton.RunSpec) (*tekton.RunStatus, error) {
+			return &tekton.RunStatus{Name: "helm-diff-2"}, nil
+		},
+		watchFn: func(context.Context, k8s.Connection, string, string) (*tekton.RunStream, error) {
+			return terminalStream("helm-diff-2", "Failed", "boom"), nil
+		},
+	}
+	if err := w.Work(context.Background(), previewJob()); err == nil {
+		t.Fatal("expected an error so River retries")
+	}
+	if store.completed {
+		t.Error("a failed run must not complete the preview")
+	}
+	if last := lastPreviewStatus(store); last != SyncError {
+		t.Errorf("final status = %q, want %q", last, SyncError)
+	}
+}
+
+func TestPreviewWorkerResolveFails(t *testing.T) {
+	store := &fakePreviewStore{resolveErr: errors.New("decrypt failed")}
+	w := &PreviewWorker{Store: store}
+	if err := w.Work(context.Background(), previewJob()); err == nil {
+		t.Fatal("expected an error")
+	}
+	if last := lastPreviewStatus(store); last != SyncError {
+		t.Errorf("final status = %q, want %q", last, SyncError)
+	}
+}
+
+func lastPreviewStatus(f *fakePreviewStore) string {
+	if len(f.statuses) == 0 {
+		return ""
+	}
+	return f.statuses[len(f.statuses)-1]
+}
+
+func containsPreviewStatus(f *fakePreviewStore, s string) bool {
+	for _, v := range f.statuses {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
 func rolloutJob(action string) *river.Job[RolloutArgs] {
 	return &river.Job[RolloutArgs]{
 		JobRow: &rivertype.JobRow{ID: 7},

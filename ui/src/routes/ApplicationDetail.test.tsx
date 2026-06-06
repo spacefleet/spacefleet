@@ -7,6 +7,10 @@ import { api } from "../api/client";
 
 vi.mock("../api/client", () => ({
   api: { GET: vi.fn(), POST: vi.fn(), DELETE: vi.fn() },
+  // The status stream (useObjectStream) reads these once a rollout/refresh is in
+  // flight; stub them so the connection is a no-op rather than an unhandled error.
+  authToken: () => Promise.resolve(null),
+  currentOrgId: () => "org-1",
 }));
 
 vi.mock("../contexts/OrgContext", () => ({
@@ -102,6 +106,42 @@ describe("ApplicationDetail deployment history", () => {
     renderDetail();
     await userEvent.click(await screen.findByText("#2"));
     expect(await screen.findByText("run page")).toBeInTheDocument();
+  });
+
+  it("shows the diff in a confirmation dialog before upgrading", async () => {
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}")
+        return Promise.resolve({ data: app, error: undefined });
+      if (path === "/api/applications/{id}/deployments")
+        return Promise.resolve({ data: deployments, error: undefined });
+      if (path === "/api/clusters")
+        return Promise.resolve({ data: [{ id: "c1", name: "prod" }], error: undefined });
+      if (path === "/api/applications/{id}/diff")
+        return Promise.resolve({
+          data: {
+            sync_status: "out_of_sync",
+            diff: "apps, web, Deployment (apps) has changed:\n+ replicas: 3",
+          },
+          error: undefined,
+        });
+      return Promise.resolve({ data: undefined, error: undefined });
+    });
+    mockApi.POST.mockResolvedValue({ data: { ...app, status: "deploying" }, error: undefined });
+
+    renderDetail();
+
+    // A deployed app offers Upgrade; clicking it opens the confirmation, which
+    // loads and shows the diff — no rollout is fired yet.
+    await userEvent.click(await screen.findByRole("button", { name: /upgrade/i }));
+    expect(await screen.findByText(/has changed/)).toBeInTheDocument();
+    expect(mockApi.POST).not.toHaveBeenCalled();
+
+    // Confirming fires the rollout.
+    await userEvent.click(screen.getByRole("button", { name: /confirm upgrade/i }));
+    expect(mockApi.POST).toHaveBeenCalledWith(
+      "/api/applications/{id}/rollout",
+      expect.objectContaining({ body: { action: "upgrade" } }),
+    );
   });
 
   it("shows the empty state when there are no runs", async () => {

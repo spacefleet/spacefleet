@@ -36,10 +36,26 @@ const (
 
 // Actions a rollout job can carry. Deploy and Upgrade run the same idempotent
 // `helm upgrade --install`; they differ only in the in-flight status reported.
+// Preview is the dry-run sibling: the preview job runs the same setup but a
+// `helm diff upgrade ... --detailed-exitcode` instead of an install, changing
+// nothing — it reports through Store.MarkPreview using the Sync* values below.
 const (
 	ActionDeploy    = "deploy"
 	ActionUpgrade   = "upgrade"
 	ActionUninstall = "uninstall"
+	ActionPreview   = "preview"
+)
+
+// Sync (preview/diff) status values. They match the application.sync_status ent
+// enum; the preview worker reports through Store.MarkPreview using these, so the
+// persistence layer maps them to the column without the worker importing
+// lib/applications (which would be a cycle, like the Status* values above).
+const (
+	SyncUnknown    = "unknown"
+	SyncRefreshing = "refreshing"
+	SyncSynced     = "synced"
+	SyncOutOfSync  = "out_of_sync"
+	SyncError      = "error"
 )
 
 // Chart source kinds. Match the application.chart_source ent enum.
@@ -101,6 +117,16 @@ const (
 	revValuesPrefix = "SPACEFLEET_VALUES_REVISION_"
 )
 
+// Preview-protocol log markers. The diff body is bracketed by sentinels so
+// ParseDiff can slice it out exactly rather than heuristically filtering setup
+// chatter (plugin install, clones, repo add) from the captured logs. The changes
+// marker carries `helm diff --detailed-exitcode`'s verdict (exit 2 ⇒ changes).
+const (
+	diffBeginMarker   = "SPACEFLEET_DIFF_BEGIN"
+	diffEndMarker     = "SPACEFLEET_DIFF_END"
+	diffChangesPrefix = "SPACEFLEET_DIFF_CHANGES="
+)
+
 // Revisions are the git commit SHAs a rollout resolved, parsed from its logs.
 // Chart is empty when the chart was not a git clone (an http_repo/oci chart).
 // Values maps a values-source index to its resolved SHA; empty when an app has
@@ -135,10 +161,50 @@ func ParseRevisions(logs string) Revisions {
 	return rev
 }
 
+// Diff is the result of a preview run, parsed from its logs: the `helm diff`
+// body (between the begin/end sentinels, so setup chatter is excluded) and
+// whether deploying would change the live cluster (the --detailed-exitcode
+// verdict the script echoed).
+type Diff struct {
+	Body       string
+	HasChanges bool
+}
+
+// ParseDiff extracts the preview's diff body and changes verdict from its
+// captured logs. The body is the lines strictly between the begin and end
+// sentinels; HasChanges reads the SPACEFLEET_DIFF_CHANGES marker (true ⇒ a
+// deploy would change the cluster). A run missing the markers (e.g. it failed
+// before the diff) yields an empty body and HasChanges=false.
+func ParseDiff(logs string) Diff {
+	var d Diff
+	lines := strings.Split(logs, "\n")
+	begin, end := -1, -1
+	for i, line := range lines {
+		switch strings.TrimSpace(line) {
+		case diffBeginMarker:
+			begin = i
+		case diffEndMarker:
+			end = i
+		}
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), diffChangesPrefix); ok {
+			d.HasChanges = strings.TrimSpace(v) == "true"
+		}
+	}
+	if begin >= 0 && end > begin {
+		d.Body = strings.Join(lines[begin+1:end], "\n")
+	}
+	return d
+}
+
 // DefaultImage is the helm CLI image the rollout step runs in. alpine/k8s
 // bundles helm, kubectl, and git, so the git chart source works without an
 // extra install. Pinned here; overridable later (per-app or per-deploy).
 const DefaultImage = "alpine/k8s:1.31.1"
+
+// helmDiffVersion pins the databus23/helm-diff plugin a preview run installs at
+// step start (alpine/k8s doesn't bundle it). Installed per run for now; baking
+// it into a custom runner image is the documented follow-up. Bump here.
+const helmDiffVersion = "v3.9.13"
 
 // WaitTimeout is the `helm --wait --timeout` value for a target reached via the
 // given connection method. Cloud methods mint short-lived (~15-min) bearer
@@ -185,16 +251,19 @@ type Rollout struct {
 	HasGitToken bool
 }
 
-// Script renders the shell script the rollout step runs. All forms target the
-// cluster via the injected kubeconfig and use `--wait --timeout` so the step
-// only succeeds once resources are Ready (so the rollout's success/failure is
-// real). `set -e` makes any intermediate failure fail the step.
+// Script renders the shell script the rollout step runs. A deploy/upgrade
+// targets the cluster via the injected kubeconfig and uses `--wait --timeout` so
+// the step only succeeds once resources are Ready (so the rollout's
+// success/failure is real). A preview (ActionPreview) runs the identical setup
+// but a `helm diff` against the live cluster, changing nothing. `set -e` makes
+// any intermediate failure fail the step.
 func Script(r Rollout) string {
 	kubeconfig := tekton.CredsMountPath + "/" + KubeconfigFile
 	values := tekton.CredsMountPath + "/" + ValuesFile
 	timeout := r.WaitTimeout.String()
 	ns := r.TargetNamespace
 	release := r.ReleaseName
+	preview := r.Action == ActionPreview
 
 	var b strings.Builder
 	b.WriteString("#!/bin/sh\nset -e\n")
@@ -205,6 +274,12 @@ func Script(r Rollout) string {
 		fmt.Fprintf(&b, "helm uninstall %s -n %s --wait --timeout %s --ignore-not-found --kubeconfig %s\n",
 			shQuote(release), shQuote(ns), shQuote(timeout), shQuote(kubeconfig))
 		return b.String()
+	}
+
+	if preview {
+		// alpine/k8s doesn't bundle helm-diff. Install it once (idempotent: skip if
+		// already present, so a re-attached retry in the same pod doesn't trip set -e).
+		fmt.Fprintf(&b, "helm plugin list 2>/dev/null | grep -q '^diff' || helm plugin install https://github.com/databus23/helm-diff --version %s\n", shQuote(helmDiffVersion))
 	}
 
 	version := r.Config[ConfigVersion]
@@ -247,20 +322,49 @@ func Script(r Rollout) string {
 		}
 	}
 
-	// install is the shared `helm upgrade --install <release> <ref> [flags]` line;
-	// chartRef and any prep differ per source.
+	// addValueFlags appends the -f layering shared by both verbs: git-sourced values
+	// are the base layers (in order); the inline values file is applied last so it
+	// overrides them (helm merges -f left to right).
+	addValueFlags := func() {
+		for _, vf := range valuesFiles {
+			fmt.Fprintf(&b, " -f %s", shQuote(vf))
+		}
+		fmt.Fprintf(&b, " -f %s --kubeconfig %s\n", shQuote(values), shQuote(kubeconfig))
+	}
+
+	// install emits the action's helm line for the given chart ref. A real rollout
+	// runs `helm upgrade --install ... --wait`; a preview runs `helm diff upgrade
+	// ... --detailed-exitcode` (the databus23/helm-diff plugin) against the live
+	// cluster, changing nothing — bracketed by sentinels and with its exit code
+	// captured so "there are changes" (exit 2) is reported as data, not a step
+	// failure. No --create-namespace/--wait for a diff (it must not mutate, and a
+	// missing namespace simply shows as all-additions).
 	install := func(chartRef string) {
+		if preview {
+			b.WriteString("echo " + diffBeginMarker + "\n")
+			b.WriteString("set +e\n")
+			fmt.Fprintf(&b, "helm diff upgrade %s %s --install --three-way-merge --detailed-exitcode --no-color -C 5", shQuote(release), shQuote(chartRef))
+			if version != "" {
+				fmt.Fprintf(&b, " --version %s", shQuote(version))
+			}
+			fmt.Fprintf(&b, " -n %s", shQuote(ns))
+			addValueFlags()
+			b.WriteString("diff_rc=$?\nset -e\n")
+			b.WriteString("echo " + diffEndMarker + "\n")
+			// Exit 1 is a real diff failure; exit 2 means there are changes, exit 0
+			// none — both are a successful run, so the step exits 0 and the verdict
+			// rides out in the marker.
+			b.WriteString("if [ \"$diff_rc\" -eq 1 ]; then echo 'helm diff failed' >&2; exit 1; fi\n")
+			fmt.Fprintf(&b, "if [ \"$diff_rc\" -eq 2 ]; then echo '%strue'; else echo '%sfalse'; fi\n", diffChangesPrefix, diffChangesPrefix)
+			b.WriteString("exit 0\n")
+			return
+		}
 		fmt.Fprintf(&b, "helm upgrade --install %s %s", shQuote(release), shQuote(chartRef))
 		if version != "" {
 			fmt.Fprintf(&b, " --version %s", shQuote(version))
 		}
 		fmt.Fprintf(&b, " -n %s --create-namespace --wait --timeout %s", shQuote(ns), shQuote(timeout))
-		// Git-sourced values are the base layers (in order); the inline values file
-		// is applied last so it overrides them (helm merges -f left to right).
-		for _, vf := range valuesFiles {
-			fmt.Fprintf(&b, " -f %s", shQuote(vf))
-		}
-		fmt.Fprintf(&b, " -f %s --kubeconfig %s\n", shQuote(values), shQuote(kubeconfig))
+		addValueFlags()
 	}
 
 	switch r.ChartSource {

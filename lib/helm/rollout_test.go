@@ -404,6 +404,112 @@ func TestParseRevisions(t *testing.T) {
 	}
 }
 
+func TestScriptPreview(t *testing.T) {
+	s := Script(Rollout{
+		Action:      ActionPreview,
+		ChartSource: SourceHTTPRepo,
+		Config: map[string]string{
+			ConfigRepoURL: "https://charts.example.com",
+			ConfigChart:   "nginx",
+			ConfigVersion: "1.2.3",
+		},
+		ReleaseName:     "web",
+		TargetNamespace: "apps",
+		WaitTimeout:     30 * time.Minute,
+	})
+	wantContains := []string{
+		// The helm-diff plugin is installed (idempotently) before the diff.
+		"helm plugin install https://github.com/databus23/helm-diff --version '" + helmDiffVersion + "'",
+		// The diff runs against the live cluster and reports changes via exit code.
+		"helm diff upgrade 'web' 'r/nginx' --install --three-way-merge --detailed-exitcode --no-color -C 5 --version '1.2.3'",
+		"-n 'apps'",
+		"-f '/workspace/creds/values.yaml'",
+		"--kubeconfig '/workspace/creds/kubeconfig'",
+		// Sentinels bracket the diff body; the verdict rides out in a marker.
+		"echo " + diffBeginMarker,
+		"echo " + diffEndMarker,
+		diffChangesPrefix + "true",
+		diffChangesPrefix + "false",
+		// Exit 0 on a successful diff (changes are data, not failure); exit 1 only on
+		// a real diff failure.
+		"exit 0",
+	}
+	for _, w := range wantContains {
+		if !strings.Contains(s, w) {
+			t.Errorf("preview script missing %q\n---\n%s", w, s)
+		}
+	}
+	// A preview must not mutate the cluster: no install, no namespace creation, no
+	// --wait.
+	for _, banned := range []string{"helm upgrade --install", "--create-namespace", "--wait"} {
+		if strings.Contains(s, banned) {
+			t.Errorf("preview script must not contain %q\n---\n%s", banned, s)
+		}
+	}
+	// The plugin install must precede the diff.
+	if strings.Index(s, "plugin install") > strings.Index(s, "helm diff") {
+		t.Errorf("plugin install must precede the diff:\n%s", s)
+	}
+}
+
+func TestScriptPreviewGit(t *testing.T) {
+	// A git-chart preview still echoes the resolved chart SHA (the same setup as a
+	// rollout) so a refresh records the desired revision a deploy would pull.
+	s := Script(Rollout{
+		Action:          ActionPreview,
+		ChartSource:     SourceGit,
+		Config:          map[string]string{ConfigRepoURL: "https://github.com/org/charts.git", ConfigGitPath: "charts/app"},
+		ReleaseName:     "app",
+		TargetNamespace: "ns",
+		WaitTimeout:     30 * time.Minute,
+	})
+	for _, w := range []string{
+		"git clone --depth 1 'https://github.com/org/charts.git' /src",
+		"helm dependency build",
+		`echo "SPACEFLEET_CHART_REVISION=$(git -C /src rev-parse HEAD)"`,
+		"helm diff upgrade 'app' '.' --install",
+	} {
+		if !strings.Contains(s, w) {
+			t.Errorf("git preview script missing %q\n---\n%s", w, s)
+		}
+	}
+}
+
+func TestParseDiff(t *testing.T) {
+	logs := strings.Join([]string{
+		"installing helm-diff...",
+		"SPACEFLEET_DIFF_BEGIN",
+		"apps, web, Deployment (apps) has changed:",
+		"- replicas: 2",
+		"+ replicas: 3",
+		"SPACEFLEET_DIFF_END",
+		"SPACEFLEET_DIFF_CHANGES=true",
+	}, "\n")
+	d := ParseDiff(logs)
+	if !d.HasChanges {
+		t.Error("expected HasChanges=true")
+	}
+	wantBody := "apps, web, Deployment (apps) has changed:\n- replicas: 2\n+ replicas: 3"
+	if d.Body != wantBody {
+		t.Errorf("Body = %q, want %q", d.Body, wantBody)
+	}
+	// The setup chatter before BEGIN and the marker after END are excluded.
+	if strings.Contains(d.Body, "installing helm-diff") || strings.Contains(d.Body, "SPACEFLEET_DIFF_CHANGES") {
+		t.Errorf("body should exclude setup chatter and markers: %q", d.Body)
+	}
+
+	// No changes: empty diff body, HasChanges=false.
+	none := ParseDiff("SPACEFLEET_DIFF_BEGIN\nSPACEFLEET_DIFF_END\nSPACEFLEET_DIFF_CHANGES=false\n")
+	if none.HasChanges || none.Body != "" {
+		t.Errorf("expected no changes and empty body, got %+v", none)
+	}
+
+	// Missing markers (e.g. a run that failed before the diff) → empty, no panic.
+	if d := ParseDiff("helm diff failed\n"); d.HasChanges || d.Body != "" {
+		t.Errorf("expected empty diff for marker-less logs, got %+v", d)
+	}
+}
+
 func TestScriptUninstall(t *testing.T) {
 	s := Script(Rollout{
 		Action:          ActionUninstall,
