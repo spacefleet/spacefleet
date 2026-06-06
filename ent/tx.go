@@ -18,6 +18,10 @@ type Tx struct {
 	ChartCredential *ChartCredentialClient
 	// Cluster is the client for interacting with the Cluster builders.
 	Cluster *ClusterClient
+	// Component is the client for interacting with the Component builders.
+	Component *ComponentClient
+	// ComponentRun is the client for interacting with the ComponentRun builders.
+	ComponentRun *ComponentRunClient
 	// Deployment is the client for interacting with the Deployment builders.
 	Deployment *DeploymentClient
 	// GitHubInstallation is the client for interacting with the GitHubInstallation builders.
@@ -32,6 +36,8 @@ type Tx struct {
 	TektonInstallation *TektonInstallationClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
+	// WorkflowRun is the client for interacting with the WorkflowRun builders.
+	WorkflowRun *WorkflowRunClient
 
 	// lazily loaded.
 	client     *Client
@@ -166,6 +172,8 @@ func (tx *Tx) init() {
 	tx.Application = NewApplicationClient(tx.config)
 	tx.ChartCredential = NewChartCredentialClient(tx.config)
 	tx.Cluster = NewClusterClient(tx.config)
+	tx.Component = NewComponentClient(tx.config)
+	tx.ComponentRun = NewComponentRunClient(tx.config)
 	tx.Deployment = NewDeploymentClient(tx.config)
 	tx.GitHubInstallation = NewGitHubInstallationClient(tx.config)
 	tx.Invitation = NewInvitationClient(tx.config)
@@ -173,6 +181,7 @@ func (tx *Tx) init() {
 	tx.Organization = NewOrganizationClient(tx.config)
 	tx.TektonInstallation = NewTektonInstallationClient(tx.config)
 	tx.User = NewUserClient(tx.config)
+	tx.WorkflowRun = NewWorkflowRunClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

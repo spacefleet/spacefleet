@@ -34,6 +34,14 @@ import (
 const (
 	RunOrgLabel = "spacefleet.io/org-id"
 	RunJobLabel = "spacefleet.io/job-id"
+	// RunComponentLabel ties a TaskRun to its ComponentRun within a workflow run.
+	// A single workflow River job submits *many* TaskRuns under one job id, so the
+	// job-id label alone is no longer unique per run — recovering the right
+	// in-flight TaskRun after a crash needs a per-component key. The workflow
+	// executor stamps this with the ComponentRun id and recovers on it (the
+	// ComponentRun row is persisted before submit), while helm's single-run workers
+	// keep recovering on the job-id label.
+	RunComponentLabel = "spacefleet.io/component-run-id"
 )
 
 // taskRunGVR is the GroupVersionResource for Tekton TaskRuns (tekton.dev/v1).

@@ -19,6 +19,8 @@ import (
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/component"
+	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/deployment"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/invitation"
@@ -26,6 +28,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/user"
+	"github.com/spacefleet/spacefleet/ent/workflowrun"
 )
 
 // Client is the client that holds all ent builders.
@@ -39,6 +42,10 @@ type Client struct {
 	ChartCredential *ChartCredentialClient
 	// Cluster is the client for interacting with the Cluster builders.
 	Cluster *ClusterClient
+	// Component is the client for interacting with the Component builders.
+	Component *ComponentClient
+	// ComponentRun is the client for interacting with the ComponentRun builders.
+	ComponentRun *ComponentRunClient
 	// Deployment is the client for interacting with the Deployment builders.
 	Deployment *DeploymentClient
 	// GitHubInstallation is the client for interacting with the GitHubInstallation builders.
@@ -53,6 +60,8 @@ type Client struct {
 	TektonInstallation *TektonInstallationClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
+	// WorkflowRun is the client for interacting with the WorkflowRun builders.
+	WorkflowRun *WorkflowRunClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -67,6 +76,8 @@ func (c *Client) init() {
 	c.Application = NewApplicationClient(c.config)
 	c.ChartCredential = NewChartCredentialClient(c.config)
 	c.Cluster = NewClusterClient(c.config)
+	c.Component = NewComponentClient(c.config)
+	c.ComponentRun = NewComponentRunClient(c.config)
 	c.Deployment = NewDeploymentClient(c.config)
 	c.GitHubInstallation = NewGitHubInstallationClient(c.config)
 	c.Invitation = NewInvitationClient(c.config)
@@ -74,6 +85,7 @@ func (c *Client) init() {
 	c.Organization = NewOrganizationClient(c.config)
 	c.TektonInstallation = NewTektonInstallationClient(c.config)
 	c.User = NewUserClient(c.config)
+	c.WorkflowRun = NewWorkflowRunClient(c.config)
 }
 
 type (
@@ -169,6 +181,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Application:        NewApplicationClient(cfg),
 		ChartCredential:    NewChartCredentialClient(cfg),
 		Cluster:            NewClusterClient(cfg),
+		Component:          NewComponentClient(cfg),
+		ComponentRun:       NewComponentRunClient(cfg),
 		Deployment:         NewDeploymentClient(cfg),
 		GitHubInstallation: NewGitHubInstallationClient(cfg),
 		Invitation:         NewInvitationClient(cfg),
@@ -176,6 +190,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Organization:       NewOrganizationClient(cfg),
 		TektonInstallation: NewTektonInstallationClient(cfg),
 		User:               NewUserClient(cfg),
+		WorkflowRun:        NewWorkflowRunClient(cfg),
 	}, nil
 }
 
@@ -198,6 +213,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Application:        NewApplicationClient(cfg),
 		ChartCredential:    NewChartCredentialClient(cfg),
 		Cluster:            NewClusterClient(cfg),
+		Component:          NewComponentClient(cfg),
+		ComponentRun:       NewComponentRunClient(cfg),
 		Deployment:         NewDeploymentClient(cfg),
 		GitHubInstallation: NewGitHubInstallationClient(cfg),
 		Invitation:         NewInvitationClient(cfg),
@@ -205,6 +222,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Organization:       NewOrganizationClient(cfg),
 		TektonInstallation: NewTektonInstallationClient(cfg),
 		User:               NewUserClient(cfg),
+		WorkflowRun:        NewWorkflowRunClient(cfg),
 	}, nil
 }
 
@@ -234,8 +252,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Application, c.ChartCredential, c.Cluster, c.Deployment, c.GitHubInstallation,
-		c.Invitation, c.Membership, c.Organization, c.TektonInstallation, c.User,
+		c.Application, c.ChartCredential, c.Cluster, c.Component, c.ComponentRun,
+		c.Deployment, c.GitHubInstallation, c.Invitation, c.Membership, c.Organization,
+		c.TektonInstallation, c.User, c.WorkflowRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -245,8 +264,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Application, c.ChartCredential, c.Cluster, c.Deployment, c.GitHubInstallation,
-		c.Invitation, c.Membership, c.Organization, c.TektonInstallation, c.User,
+		c.Application, c.ChartCredential, c.Cluster, c.Component, c.ComponentRun,
+		c.Deployment, c.GitHubInstallation, c.Invitation, c.Membership, c.Organization,
+		c.TektonInstallation, c.User, c.WorkflowRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -261,6 +281,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ChartCredential.mutate(ctx, m)
 	case *ClusterMutation:
 		return c.Cluster.mutate(ctx, m)
+	case *ComponentMutation:
+		return c.Component.mutate(ctx, m)
+	case *ComponentRunMutation:
+		return c.ComponentRun.mutate(ctx, m)
 	case *DeploymentMutation:
 		return c.Deployment.mutate(ctx, m)
 	case *GitHubInstallationMutation:
@@ -275,6 +299,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.TektonInstallation.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
+	case *WorkflowRunMutation:
+		return c.WorkflowRun.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -804,6 +830,384 @@ func (c *ClusterClient) mutate(ctx context.Context, m *ClusterMutation) (Value, 
 		return (&ClusterDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Cluster mutation op: %q", m.Op())
+	}
+}
+
+// ComponentClient is a client for the Component schema.
+type ComponentClient struct {
+	config
+}
+
+// NewComponentClient returns a client for the Component from the given config.
+func NewComponentClient(c config) *ComponentClient {
+	return &ComponentClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `component.Hooks(f(g(h())))`.
+func (c *ComponentClient) Use(hooks ...Hook) {
+	c.hooks.Component = append(c.hooks.Component, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `component.Intercept(f(g(h())))`.
+func (c *ComponentClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Component = append(c.inters.Component, interceptors...)
+}
+
+// Create returns a builder for creating a Component entity.
+func (c *ComponentClient) Create() *ComponentCreate {
+	mutation := newComponentMutation(c.config, OpCreate)
+	return &ComponentCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Component entities.
+func (c *ComponentClient) CreateBulk(builders ...*ComponentCreate) *ComponentCreateBulk {
+	return &ComponentCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ComponentClient) MapCreateBulk(slice any, setFunc func(*ComponentCreate, int)) *ComponentCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ComponentCreateBulk{err: fmt.Errorf("calling to ComponentClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ComponentCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ComponentCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Component.
+func (c *ComponentClient) Update() *ComponentUpdate {
+	mutation := newComponentMutation(c.config, OpUpdate)
+	return &ComponentUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ComponentClient) UpdateOne(_m *Component) *ComponentUpdateOne {
+	mutation := newComponentMutation(c.config, OpUpdateOne, withComponent(_m))
+	return &ComponentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ComponentClient) UpdateOneID(id uuid.UUID) *ComponentUpdateOne {
+	mutation := newComponentMutation(c.config, OpUpdateOne, withComponentID(id))
+	return &ComponentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Component.
+func (c *ComponentClient) Delete() *ComponentDelete {
+	mutation := newComponentMutation(c.config, OpDelete)
+	return &ComponentDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ComponentClient) DeleteOne(_m *Component) *ComponentDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ComponentClient) DeleteOneID(id uuid.UUID) *ComponentDeleteOne {
+	builder := c.Delete().Where(component.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ComponentDeleteOne{builder}
+}
+
+// Query returns a query builder for Component.
+func (c *ComponentClient) Query() *ComponentQuery {
+	return &ComponentQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeComponent},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Component entity by its id.
+func (c *ComponentClient) Get(ctx context.Context, id uuid.UUID) (*Component, error) {
+	return c.Query().Where(component.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ComponentClient) GetX(ctx context.Context, id uuid.UUID) *Component {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryOrganization queries the organization edge of a Component.
+func (c *ComponentClient) QueryOrganization(_m *Component) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(component.Table, component.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, component.OrganizationTable, component.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryApplication queries the application edge of a Component.
+func (c *ComponentClient) QueryApplication(_m *Component) *ApplicationQuery {
+	query := (&ApplicationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(component.Table, component.FieldID, id),
+			sqlgraph.To(application.Table, application.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, component.ApplicationTable, component.ApplicationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTargetCluster queries the target_cluster edge of a Component.
+func (c *ComponentClient) QueryTargetCluster(_m *Component) *ClusterQuery {
+	query := (&ClusterClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(component.Table, component.FieldID, id),
+			sqlgraph.To(cluster.Table, cluster.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, component.TargetClusterTable, component.TargetClusterColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryChartCredential queries the chart_credential edge of a Component.
+func (c *ComponentClient) QueryChartCredential(_m *Component) *ChartCredentialQuery {
+	query := (&ChartCredentialClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(component.Table, component.FieldID, id),
+			sqlgraph.To(chartcredential.Table, chartcredential.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, component.ChartCredentialTable, component.ChartCredentialColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGithubInstallation queries the github_installation edge of a Component.
+func (c *ComponentClient) QueryGithubInstallation(_m *Component) *GitHubInstallationQuery {
+	query := (&GitHubInstallationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(component.Table, component.FieldID, id),
+			sqlgraph.To(githubinstallation.Table, githubinstallation.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, component.GithubInstallationTable, component.GithubInstallationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ComponentClient) Hooks() []Hook {
+	return c.hooks.Component
+}
+
+// Interceptors returns the client interceptors.
+func (c *ComponentClient) Interceptors() []Interceptor {
+	return c.inters.Component
+}
+
+func (c *ComponentClient) mutate(ctx context.Context, m *ComponentMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ComponentCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ComponentUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ComponentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ComponentDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Component mutation op: %q", m.Op())
+	}
+}
+
+// ComponentRunClient is a client for the ComponentRun schema.
+type ComponentRunClient struct {
+	config
+}
+
+// NewComponentRunClient returns a client for the ComponentRun from the given config.
+func NewComponentRunClient(c config) *ComponentRunClient {
+	return &ComponentRunClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `componentrun.Hooks(f(g(h())))`.
+func (c *ComponentRunClient) Use(hooks ...Hook) {
+	c.hooks.ComponentRun = append(c.hooks.ComponentRun, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `componentrun.Intercept(f(g(h())))`.
+func (c *ComponentRunClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ComponentRun = append(c.inters.ComponentRun, interceptors...)
+}
+
+// Create returns a builder for creating a ComponentRun entity.
+func (c *ComponentRunClient) Create() *ComponentRunCreate {
+	mutation := newComponentRunMutation(c.config, OpCreate)
+	return &ComponentRunCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ComponentRun entities.
+func (c *ComponentRunClient) CreateBulk(builders ...*ComponentRunCreate) *ComponentRunCreateBulk {
+	return &ComponentRunCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ComponentRunClient) MapCreateBulk(slice any, setFunc func(*ComponentRunCreate, int)) *ComponentRunCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ComponentRunCreateBulk{err: fmt.Errorf("calling to ComponentRunClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ComponentRunCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ComponentRunCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ComponentRun.
+func (c *ComponentRunClient) Update() *ComponentRunUpdate {
+	mutation := newComponentRunMutation(c.config, OpUpdate)
+	return &ComponentRunUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ComponentRunClient) UpdateOne(_m *ComponentRun) *ComponentRunUpdateOne {
+	mutation := newComponentRunMutation(c.config, OpUpdateOne, withComponentRun(_m))
+	return &ComponentRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ComponentRunClient) UpdateOneID(id uuid.UUID) *ComponentRunUpdateOne {
+	mutation := newComponentRunMutation(c.config, OpUpdateOne, withComponentRunID(id))
+	return &ComponentRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ComponentRun.
+func (c *ComponentRunClient) Delete() *ComponentRunDelete {
+	mutation := newComponentRunMutation(c.config, OpDelete)
+	return &ComponentRunDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ComponentRunClient) DeleteOne(_m *ComponentRun) *ComponentRunDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ComponentRunClient) DeleteOneID(id uuid.UUID) *ComponentRunDeleteOne {
+	builder := c.Delete().Where(componentrun.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ComponentRunDeleteOne{builder}
+}
+
+// Query returns a query builder for ComponentRun.
+func (c *ComponentRunClient) Query() *ComponentRunQuery {
+	return &ComponentRunQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeComponentRun},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ComponentRun entity by its id.
+func (c *ComponentRunClient) Get(ctx context.Context, id uuid.UUID) (*ComponentRun, error) {
+	return c.Query().Where(componentrun.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ComponentRunClient) GetX(ctx context.Context, id uuid.UUID) *ComponentRun {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryOrganization queries the organization edge of a ComponentRun.
+func (c *ComponentRunClient) QueryOrganization(_m *ComponentRun) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(componentrun.Table, componentrun.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, componentrun.OrganizationTable, componentrun.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryWorkflowRun queries the workflow_run edge of a ComponentRun.
+func (c *ComponentRunClient) QueryWorkflowRun(_m *ComponentRun) *WorkflowRunQuery {
+	query := (&WorkflowRunClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(componentrun.Table, componentrun.FieldID, id),
+			sqlgraph.To(workflowrun.Table, workflowrun.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, componentrun.WorkflowRunTable, componentrun.WorkflowRunColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ComponentRunClient) Hooks() []Hook {
+	return c.hooks.ComponentRun
+}
+
+// Interceptors returns the client interceptors.
+func (c *ComponentRunClient) Interceptors() []Interceptor {
+	return c.inters.ComponentRun
+}
+
+func (c *ComponentRunClient) mutate(ctx context.Context, m *ComponentRunMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ComponentRunCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ComponentRunUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ComponentRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ComponentRunDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ComponentRun mutation op: %q", m.Op())
 	}
 }
 
@@ -1914,15 +2318,181 @@ func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error)
 	}
 }
 
+// WorkflowRunClient is a client for the WorkflowRun schema.
+type WorkflowRunClient struct {
+	config
+}
+
+// NewWorkflowRunClient returns a client for the WorkflowRun from the given config.
+func NewWorkflowRunClient(c config) *WorkflowRunClient {
+	return &WorkflowRunClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `workflowrun.Hooks(f(g(h())))`.
+func (c *WorkflowRunClient) Use(hooks ...Hook) {
+	c.hooks.WorkflowRun = append(c.hooks.WorkflowRun, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `workflowrun.Intercept(f(g(h())))`.
+func (c *WorkflowRunClient) Intercept(interceptors ...Interceptor) {
+	c.inters.WorkflowRun = append(c.inters.WorkflowRun, interceptors...)
+}
+
+// Create returns a builder for creating a WorkflowRun entity.
+func (c *WorkflowRunClient) Create() *WorkflowRunCreate {
+	mutation := newWorkflowRunMutation(c.config, OpCreate)
+	return &WorkflowRunCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of WorkflowRun entities.
+func (c *WorkflowRunClient) CreateBulk(builders ...*WorkflowRunCreate) *WorkflowRunCreateBulk {
+	return &WorkflowRunCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *WorkflowRunClient) MapCreateBulk(slice any, setFunc func(*WorkflowRunCreate, int)) *WorkflowRunCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &WorkflowRunCreateBulk{err: fmt.Errorf("calling to WorkflowRunClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*WorkflowRunCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &WorkflowRunCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for WorkflowRun.
+func (c *WorkflowRunClient) Update() *WorkflowRunUpdate {
+	mutation := newWorkflowRunMutation(c.config, OpUpdate)
+	return &WorkflowRunUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *WorkflowRunClient) UpdateOne(_m *WorkflowRun) *WorkflowRunUpdateOne {
+	mutation := newWorkflowRunMutation(c.config, OpUpdateOne, withWorkflowRun(_m))
+	return &WorkflowRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *WorkflowRunClient) UpdateOneID(id uuid.UUID) *WorkflowRunUpdateOne {
+	mutation := newWorkflowRunMutation(c.config, OpUpdateOne, withWorkflowRunID(id))
+	return &WorkflowRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for WorkflowRun.
+func (c *WorkflowRunClient) Delete() *WorkflowRunDelete {
+	mutation := newWorkflowRunMutation(c.config, OpDelete)
+	return &WorkflowRunDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *WorkflowRunClient) DeleteOne(_m *WorkflowRun) *WorkflowRunDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *WorkflowRunClient) DeleteOneID(id uuid.UUID) *WorkflowRunDeleteOne {
+	builder := c.Delete().Where(workflowrun.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &WorkflowRunDeleteOne{builder}
+}
+
+// Query returns a query builder for WorkflowRun.
+func (c *WorkflowRunClient) Query() *WorkflowRunQuery {
+	return &WorkflowRunQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeWorkflowRun},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a WorkflowRun entity by its id.
+func (c *WorkflowRunClient) Get(ctx context.Context, id uuid.UUID) (*WorkflowRun, error) {
+	return c.Query().Where(workflowrun.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *WorkflowRunClient) GetX(ctx context.Context, id uuid.UUID) *WorkflowRun {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryOrganization queries the organization edge of a WorkflowRun.
+func (c *WorkflowRunClient) QueryOrganization(_m *WorkflowRun) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(workflowrun.Table, workflowrun.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, workflowrun.OrganizationTable, workflowrun.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryApplication queries the application edge of a WorkflowRun.
+func (c *WorkflowRunClient) QueryApplication(_m *WorkflowRun) *ApplicationQuery {
+	query := (&ApplicationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(workflowrun.Table, workflowrun.FieldID, id),
+			sqlgraph.To(application.Table, application.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, workflowrun.ApplicationTable, workflowrun.ApplicationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *WorkflowRunClient) Hooks() []Hook {
+	return c.hooks.WorkflowRun
+}
+
+// Interceptors returns the client interceptors.
+func (c *WorkflowRunClient) Interceptors() []Interceptor {
+	return c.inters.WorkflowRun
+}
+
+func (c *WorkflowRunClient) mutate(ctx context.Context, m *WorkflowRunMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&WorkflowRunCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&WorkflowRunUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&WorkflowRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&WorkflowRunDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown WorkflowRun mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Application, ChartCredential, Cluster, Deployment, GitHubInstallation,
-		Invitation, Membership, Organization, TektonInstallation, User []ent.Hook
+		Application, ChartCredential, Cluster, Component, ComponentRun, Deployment,
+		GitHubInstallation, Invitation, Membership, Organization, TektonInstallation,
+		User, WorkflowRun []ent.Hook
 	}
 	inters struct {
-		Application, ChartCredential, Cluster, Deployment, GitHubInstallation,
-		Invitation, Membership, Organization, TektonInstallation,
-		User []ent.Interceptor
+		Application, ChartCredential, Cluster, Component, ComponentRun, Deployment,
+		GitHubInstallation, Invitation, Membership, Organization, TektonInstallation,
+		User, WorkflowRun []ent.Interceptor
 	}
 )

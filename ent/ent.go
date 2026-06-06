@@ -15,6 +15,8 @@ import (
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/component"
+	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/deployment"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/invitation"
@@ -22,6 +24,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/user"
+	"github.com/spacefleet/spacefleet/ent/workflowrun"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -85,6 +88,8 @@ func checkColumn(t, c string) error {
 			application.Table:        application.ValidColumn,
 			chartcredential.Table:    chartcredential.ValidColumn,
 			cluster.Table:            cluster.ValidColumn,
+			component.Table:          component.ValidColumn,
+			componentrun.Table:       componentrun.ValidColumn,
 			deployment.Table:         deployment.ValidColumn,
 			githubinstallation.Table: githubinstallation.ValidColumn,
 			invitation.Table:         invitation.ValidColumn,
@@ -92,6 +97,7 @@ func checkColumn(t, c string) error {
 			organization.Table:       organization.ValidColumn,
 			tektoninstallation.Table: tektoninstallation.ValidColumn,
 			user.Table:               user.ValidColumn,
+			workflowrun.Table:        workflowrun.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

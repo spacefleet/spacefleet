@@ -801,6 +801,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{id}/workflow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get an application's deploy workflow (its component graph)
+         * @description Org-scoped. Returns the application's workflow as the list of its
+         *     components (the DAG nodes; edges are each node's depends_on). Secret-
+         *     bearing component config (the Helm `values` override) is redacted for
+         *     callers below editor.
+         */
+        get: operations["getApplicationWorkflow"];
+        /**
+         * Replace an application's deploy workflow
+         * @description Org-scoped, editor or above. Validates the proposed DAG (distinct
+         *     non-zero ids, dependencies exist, no self-dependency, acyclic, per-type
+         *     config valid) and atomically replaces the application's components with
+         *     it. A validation failure returns 400 before any write.
+         */
+        put: operations["replaceApplicationWorkflow"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an application's workflow runs
+         * @description Org-scoped. Returns the application's workflow runs newest-first — one
+         *     per deploy/uninstall/preview of the whole DAG — for a CI-like history.
+         *     Component runs and the graph snapshot are not included here; fetch a
+         *     single run for those.
+         */
+        get: operations["listRuns"];
+        put?: never;
+        /**
+         * Start a workflow run (deploy, uninstall, or preview)
+         * @description Org-scoped, editor or above. Snapshots the current workflow graph,
+         *     creates a run plus one component run per node, and enqueues the
+         *     background job that executes it. Returns immediately (202); follow
+         *     progress via the run stream. Requires the background worker (503
+         *     otherwise). Returns 409 while a run is already in flight for the app.
+         */
+        post: operations["startRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{id}/runs/{runId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one workflow run, with its component runs and graph snapshot */
+        get: operations["getRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{id}/runs/{runId}/components/{componentRunId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one component run within a workflow run, with its logs */
+        get: operations["getComponentRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chart-credentials": {
         parameters: {
             query?: never;
@@ -1799,6 +1894,201 @@ export interface components {
              */
             logs?: string;
         };
+        /**
+         * @description The kind of step a workflow component runs.
+         * @enum {string}
+         */
+        ComponentType: "helm" | "manifest";
+        /**
+         * @description One node of an application's deploy workflow (a DAG step). Edges are
+         *     expressed by each node's depends_on. The secret-bearing config (the Helm
+         *     `values` override) is redacted for callers below editor.
+         */
+        Component: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            type: components["schemas"]["ComponentType"];
+            /**
+             * @description Type-specific, non-secret parameters (helm: chart_source/repo_url/
+             *     chart/version/git_ref/git_path/values/…; manifest: repo_url/git_ref/
+             *     path). The `values` key is redacted for callers below editor.
+             */
+            config: {
+                [key: string]: string;
+            };
+            /** @description Ids of sibling components this node waits on. */
+            depends_on: string[];
+            /**
+             * @description When true, a failure of this node does not skip its dependents or
+             *     fail the run (the run settles "partial" instead).
+             */
+            continue_on_failure: boolean;
+            /**
+             * Format: uuid
+             * @description Per-component override of the app's default target cluster.
+             */
+            target_cluster_id?: string | null;
+            /** @description Per-component override of the app's default target namespace. */
+            target_namespace?: string;
+            /**
+             * Format: uuid
+             * @description Optional credential for pulling a private chart.
+             */
+            chart_credential_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Optional GitHub App installation for a private git source.
+             */
+            github_installation_id?: string | null;
+            /** @description Canvas coordinates {x, y} for the workflow builder UI. */
+            position?: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * @description One proposed workflow node, supplied by the canvas. id is client-provided
+         *     (a stable uuid per node) so depends_on edges and canvas identity survive a
+         *     replace.
+         */
+        ComponentInput: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            type: components["schemas"]["ComponentType"];
+            config?: {
+                [key: string]: string;
+            };
+            depends_on?: string[];
+            continue_on_failure?: boolean;
+            /** Format: uuid */
+            target_cluster_id?: string | null;
+            target_namespace?: string;
+            /** Format: uuid */
+            chart_credential_id?: string | null;
+            /** Format: uuid */
+            github_installation_id?: string | null;
+            position?: {
+                [key: string]: number;
+            };
+        };
+        /** @description An application's deploy workflow — the list of its components. */
+        Workflow: {
+            components: components["schemas"]["Component"][];
+        };
+        /** @description The full set of components to replace the workflow with. */
+        WorkflowReplaceRequest: {
+            components: components["schemas"]["ComponentInput"][];
+        };
+        /**
+         * @description What a workflow run does across the whole DAG.
+         * @enum {string}
+         */
+        RunAction: "deploy" | "uninstall" | "preview";
+        /**
+         * @description The run's lifecycle: pending → running → a terminal succeeded / failed /
+         *     partial (partial = only continue-on-failure nodes failed).
+         * @enum {string}
+         */
+        RunStatus: "pending" | "running" | "succeeded" | "failed" | "partial";
+        RunStartRequest: {
+            action: components["schemas"]["RunAction"];
+        };
+        /** @description One logical run of an application's deploy workflow. */
+        WorkflowRun: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            application_id: string;
+            action: components["schemas"]["RunAction"];
+            status: components["schemas"]["RunStatus"];
+            /** @description Human-readable detail (a progress line, or the summary). */
+            message?: string;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the run started executing; absent while pending.
+             */
+            started_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When the run settled; absent until terminal.
+             */
+            finished_at?: string | null;
+        };
+        RunList: {
+            runs: components["schemas"]["WorkflowRun"][];
+        };
+        /**
+         * @description A step's lifecycle: pending → running → a terminal succeeded / failed /
+         *     skipped.
+         * @enum {string}
+         */
+        ComponentRunStatus: "pending" | "running" | "succeeded" | "failed" | "skipped";
+        /** @description The execution of one workflow node within a run. */
+        ComponentRun: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The source component, denormalized; null if it was deleted after the
+             *     run.
+             */
+            component_id?: string | null;
+            /** @description The component's name as it ran (a snapshot). */
+            name?: string;
+            /** @description The component's type as it ran (a snapshot). */
+            type?: string;
+            status: components["schemas"]["ComponentRunStatus"];
+            /** @description Human-readable detail (the last progress line, or the error). */
+            message?: string;
+            /** @description The TaskRun name on the runner cluster for this step. */
+            run_name?: string;
+            /** @description Git commit SHA the chart was resolved to (git sources only). */
+            chart_revision?: string;
+            /** @description Git commit SHAs the values sources were resolved to. */
+            values_revision?: string;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the step started executing; absent while pending.
+             */
+            started_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When the step settled; absent until terminal.
+             */
+            finished_at?: string | null;
+        };
+        ComponentRunDetail: components["schemas"]["ComponentRun"] & {
+            /**
+             * @description The captured output, persisted when the step settled. Empty while
+             *     still in flight (follow it live via the log stream).
+             */
+            logs?: string;
+            /**
+             * @description For a preview (dry-run) run, the parsed diff body — what deploying
+             *     this component would change on the live cluster. Empty for
+             *     non-preview runs (and while a preview is still in flight).
+             */
+            diff?: string;
+            /**
+             * @description For a preview (dry-run) run, whether deploying this component would
+             *     change the live cluster. False for non-preview runs.
+             */
+            has_changes?: boolean;
+        };
+        WorkflowRunDetail: components["schemas"]["WorkflowRun"] & {
+            component_runs: components["schemas"]["ComponentRun"][];
+            /**
+             * @description JSON snapshot of the workflow graph (nodes + edges + config) as it
+             *     was when the run began. Secret-bearing config is redacted for
+             *     callers below editor.
+             */
+            graph?: string;
+        };
     };
     responses: {
         /** @description Error response */
@@ -1818,6 +2108,8 @@ export interface components {
         ChartCredentialID: string;
         GitHubInstallationID: string;
         DeploymentID: string;
+        RunID: string;
+        ComponentRunID: string;
         MemberUserID: string;
         InvitationID: string;
         InviteToken: string;
@@ -2838,6 +3130,155 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeploymentDetail"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getApplicationWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The application's workflow components */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    replaceApplicationWorkflow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowReplaceRequest"];
+            };
+        };
+        responses: {
+            /** @description The replaced workflow components */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listRuns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The application's workflow runs, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    startRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Run accepted; the job is in progress */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRun"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                runId: components["parameters"]["RunID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workflow run, its component runs, and the graph snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRunDetail"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getComponentRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                runId: components["parameters"]["RunID"];
+                componentRunId: components["parameters"]["ComponentRunID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The component run, including its captured logs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentRunDetail"];
                 };
             };
             default: components["responses"]["Error"];

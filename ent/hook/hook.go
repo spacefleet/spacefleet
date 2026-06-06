@@ -45,6 +45,30 @@ func (f ClusterFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ClusterMutation", m)
 }
 
+// The ComponentFunc type is an adapter to allow the use of ordinary
+// function as Component mutator.
+type ComponentFunc func(context.Context, *ent.ComponentMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ComponentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ComponentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ComponentMutation", m)
+}
+
+// The ComponentRunFunc type is an adapter to allow the use of ordinary
+// function as ComponentRun mutator.
+type ComponentRunFunc func(context.Context, *ent.ComponentRunMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ComponentRunFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ComponentRunMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ComponentRunMutation", m)
+}
+
 // The DeploymentFunc type is an adapter to allow the use of ordinary
 // function as Deployment mutator.
 type DeploymentFunc func(context.Context, *ent.DeploymentMutation) (ent.Value, error)
@@ -127,6 +151,18 @@ func (f UserFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error)
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserMutation", m)
+}
+
+// The WorkflowRunFunc type is an adapter to allow the use of ordinary
+// function as WorkflowRun mutator.
+type WorkflowRunFunc func(context.Context, *ent.WorkflowRunMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f WorkflowRunFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.WorkflowRunMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.WorkflowRunMutation", m)
 }
 
 // Condition is a hook condition function.

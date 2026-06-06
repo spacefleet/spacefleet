@@ -9,6 +9,8 @@ import (
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/component"
+	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/deployment"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/invitation"
@@ -17,6 +19,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/schema"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/user"
+	"github.com/spacefleet/spacefleet/ent/workflowrun"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -91,6 +94,46 @@ func init() {
 	clusterDescID := clusterFields[0].Descriptor()
 	// cluster.DefaultID holds the default value on creation for the id field.
 	cluster.DefaultID = clusterDescID.Default.(func() uuid.UUID)
+	componentFields := schema.Component{}.Fields()
+	_ = componentFields
+	// componentDescName is the schema descriptor for name field.
+	componentDescName := componentFields[3].Descriptor()
+	// component.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	component.NameValidator = componentDescName.Validators[0].(func(string) error)
+	// componentDescContinueOnFailure is the schema descriptor for continue_on_failure field.
+	componentDescContinueOnFailure := componentFields[7].Descriptor()
+	// component.DefaultContinueOnFailure holds the default value on creation for the continue_on_failure field.
+	component.DefaultContinueOnFailure = componentDescContinueOnFailure.Default.(bool)
+	// componentDescCreatedAt is the schema descriptor for created_at field.
+	componentDescCreatedAt := componentFields[13].Descriptor()
+	// component.DefaultCreatedAt holds the default value on creation for the created_at field.
+	component.DefaultCreatedAt = componentDescCreatedAt.Default.(func() time.Time)
+	// componentDescUpdatedAt is the schema descriptor for updated_at field.
+	componentDescUpdatedAt := componentFields[14].Descriptor()
+	// component.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	component.DefaultUpdatedAt = componentDescUpdatedAt.Default.(func() time.Time)
+	// component.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	component.UpdateDefaultUpdatedAt = componentDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// componentDescID is the schema descriptor for id field.
+	componentDescID := componentFields[0].Descriptor()
+	// component.DefaultID holds the default value on creation for the id field.
+	component.DefaultID = componentDescID.Default.(func() uuid.UUID)
+	componentrunFields := schema.ComponentRun{}.Fields()
+	_ = componentrunFields
+	// componentrunDescCreatedAt is the schema descriptor for created_at field.
+	componentrunDescCreatedAt := componentrunFields[12].Descriptor()
+	// componentrun.DefaultCreatedAt holds the default value on creation for the created_at field.
+	componentrun.DefaultCreatedAt = componentrunDescCreatedAt.Default.(func() time.Time)
+	// componentrunDescUpdatedAt is the schema descriptor for updated_at field.
+	componentrunDescUpdatedAt := componentrunFields[15].Descriptor()
+	// componentrun.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	componentrun.DefaultUpdatedAt = componentrunDescUpdatedAt.Default.(func() time.Time)
+	// componentrun.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	componentrun.UpdateDefaultUpdatedAt = componentrunDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// componentrunDescID is the schema descriptor for id field.
+	componentrunDescID := componentrunFields[0].Descriptor()
+	// componentrun.DefaultID holds the default value on creation for the id field.
+	componentrun.DefaultID = componentrunDescID.Default.(func() uuid.UUID)
 	deploymentFields := schema.Deployment{}.Fields()
 	_ = deploymentFields
 	// deploymentDescForced is the schema descriptor for forced field.
@@ -211,4 +254,20 @@ func init() {
 	userDescID := userFields[0].Descriptor()
 	// user.DefaultID holds the default value on creation for the id field.
 	user.DefaultID = userDescID.Default.(func() uuid.UUID)
+	workflowrunFields := schema.WorkflowRun{}.Fields()
+	_ = workflowrunFields
+	// workflowrunDescCreatedAt is the schema descriptor for created_at field.
+	workflowrunDescCreatedAt := workflowrunFields[8].Descriptor()
+	// workflowrun.DefaultCreatedAt holds the default value on creation for the created_at field.
+	workflowrun.DefaultCreatedAt = workflowrunDescCreatedAt.Default.(func() time.Time)
+	// workflowrunDescUpdatedAt is the schema descriptor for updated_at field.
+	workflowrunDescUpdatedAt := workflowrunFields[11].Descriptor()
+	// workflowrun.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	workflowrun.DefaultUpdatedAt = workflowrunDescUpdatedAt.Default.(func() time.Time)
+	// workflowrun.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	workflowrun.UpdateDefaultUpdatedAt = workflowrunDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// workflowrunDescID is the schema descriptor for id field.
+	workflowrunDescID := workflowrunFields[0].Descriptor()
+	// workflowrun.DefaultID holds the default value on creation for the id field.
+	workflowrun.DefaultID = workflowrunDescID.Default.(func() uuid.UUID)
 }

@@ -426,10 +426,10 @@ func TestScriptPreview(t *testing.T) {
 		"-f '/workspace/creds/values.yaml'",
 		"--kubeconfig '/workspace/creds/kubeconfig'",
 		// Sentinels bracket the diff body; the verdict rides out in a marker.
-		"echo " + diffBeginMarker,
-		"echo " + diffEndMarker,
-		diffChangesPrefix + "true",
-		diffChangesPrefix + "false",
+		"echo " + DiffBeginMarker,
+		"echo " + DiffEndMarker,
+		DiffChangesPrefix + "true",
+		DiffChangesPrefix + "false",
 		// Exit 0 on a successful diff (changes are data, not failure); exit 1 only on
 		// a real diff failure.
 		"exit 0",

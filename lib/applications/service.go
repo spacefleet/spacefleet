@@ -29,6 +29,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/deployment"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/lib/chartcredentials"
+	"github.com/spacefleet/spacefleet/lib/deploy"
 	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/k8s"
 	"github.com/spacefleet/spacefleet/lib/tekton"
@@ -65,6 +66,11 @@ type Service struct {
 	conns     ConnResolver
 	creds     CredentialResolver
 	gitTokens GitTokenResolver
+	// resolver is the single, shared implementation of the run-input resolution
+	// (kubeconfig + credential + git token + Files). Held over the same three deps
+	// so the legacy single-helm path and the workflow per-component planner use one
+	// implementation rather than two copies of the delicate credential handling.
+	resolver *deploy.Resolver
 
 	// captureLogs reads a terminal run's full output for its deployment record.
 	// A seam over the runner-cluster interaction (resolve conn → find pod → read
@@ -74,7 +80,13 @@ type Service struct {
 }
 
 func NewService(entClient *ent.Client, conns ConnResolver, creds CredentialResolver, gitTokens GitTokenResolver) *Service {
-	svc := &Service{ent: entClient, conns: conns, creds: creds, gitTokens: gitTokens}
+	svc := &Service{
+		ent:       entClient,
+		conns:     conns,
+		creds:     creds,
+		gitTokens: gitTokens,
+		resolver:  deploy.NewResolver(conns, creds, gitTokens),
+	}
 	svc.captureLogs = svc.fetchRunLogs
 	return svc
 }
@@ -641,69 +653,30 @@ func (s *Service) resolveRunInputs(ctx context.Context, orgID, appID uuid.UUID, 
 	if err != nil {
 		return runInputs{}, err
 	}
-	runnerConn, err := s.conns.ConnForTekton(ctx, orgID, app.RunnerClusterID)
+	// Delegate the kubeconfig + credential + git-token + Files assembly to the one
+	// shared implementation (lib/deploy), so the legacy path and the workflow
+	// per-component planner can't drift. This service maps the app row onto the
+	// generic inputs; the resolver does the rest.
+	resolved, err := s.resolver.Resolve(ctx, deploy.RunInputs{
+		OrgID:                orgID,
+		RunnerClusterID:      app.RunnerClusterID,
+		TargetClusterID:      app.TargetClusterID,
+		Values:               app.Values,
+		ChartCredentialID:    app.ChartCredentialID,
+		GitHubInstallationID: app.GithubInstallationID,
+		PullsChart:           pullsChart,
+	})
 	if err != nil {
 		return runInputs{}, err
 	}
-	targetConn, err := s.conns.ConnForTekton(ctx, orgID, app.TargetClusterID)
-	if err != nil {
-		return runInputs{}, err
-	}
-	// When the runner is the target cluster, the Helm job runs inside the cluster
-	// it deploys to, so the injected kubeconfig must use the in-cluster API server
-	// address rather than the registered (possibly host-only) endpoint.
-	sameCluster := app.RunnerClusterID == app.TargetClusterID
-	kubeconfig, err := k8s.Kubeconfig(ctx, targetConn, sameCluster)
-	if err != nil {
-		return runInputs{}, err
-	}
-
-	in := runInputs{
-		app:          app,
-		runnerConn:   runnerConn,
-		targetMethod: targetConn.Method,
-		files: map[string]string{
-			helm.KubeconfigFile: string(kubeconfig),
-			helm.ValuesFile:     app.Values,
-		},
-	}
-
-	// Attach a private-chart credential, when one is set: resolve (decrypt) it and
-	// inject the username/password as mounted files. The script reads them at
-	// runtime, so the password never lands in the script string, the TaskRun
-	// manifest, or env — only in the same owner-referenced, GC'd Secret as the
-	// kubeconfig. Uninstall pulls no chart, so it needs no credential.
-	if app.ChartCredentialID != uuid.Nil && pullsChart {
-		if s.creds == nil {
-			return runInputs{}, fmt.Errorf("applications: app references a chart credential but the chart-credentials service is not configured")
-		}
-		cred, err := s.creds.Resolve(ctx, orgID, app.ChartCredentialID)
-		if err != nil {
-			return runInputs{}, err
-		}
-		in.files[helm.RegistryUsernameFile] = cred.Username
-		in.files[helm.RegistryPasswordFile] = cred.Password
-		in.hasCredential = true
-	}
-
-	// Attach a GitHub App installation token, when one is set, for a private-Git
-	// chart: mint it late (this attempt) so River retries always carry a fresh
-	// token, and inject it as the mounted git-credentials file. The script wires
-	// git's credential helper to it, so the token never lands in the script
-	// string, the clone's argv, or the workspace .git/config. Uninstall pulls no
-	// chart, so it needs no token.
-	if app.GithubInstallationID != uuid.Nil && pullsChart {
-		if s.gitTokens == nil {
-			return runInputs{}, fmt.Errorf("applications: app references a github installation but the github-installations service is not configured")
-		}
-		token, err := s.gitTokens.InstallationToken(ctx, orgID, app.GithubInstallationID)
-		if err != nil {
-			return runInputs{}, err
-		}
-		in.files[helm.GitCredentialsFile] = "https://x-access-token:" + token + "@github.com"
-		in.hasGitToken = true
-	}
-	return in, nil
+	return runInputs{
+		app:           app,
+		runnerConn:    resolved.RunnerConn,
+		targetMethod:  resolved.TargetMethod,
+		files:         resolved.Files,
+		hasCredential: resolved.HasCredential,
+		hasGitToken:   resolved.HasGitToken,
+	}, nil
 }
 
 // ResolveRollout satisfies helm.Store: it resolves the shared run inputs and

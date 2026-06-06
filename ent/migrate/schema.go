@@ -169,6 +169,125 @@ var (
 			},
 		},
 	}
+	// ComponentsColumns holds the columns for the "components" table.
+	ComponentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"helm", "manifest"}, Default: "helm"},
+		{Name: "config", Type: field.TypeJSON, Nullable: true},
+		{Name: "depends_on", Type: field.TypeJSON, Nullable: true},
+		{Name: "continue_on_failure", Type: field.TypeBool, Default: false},
+		{Name: "target_namespace", Type: field.TypeString, Nullable: true},
+		{Name: "position", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+		{Name: "application_id", Type: field.TypeUUID},
+		{Name: "target_cluster_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "chart_credential_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "github_installation_id", Type: field.TypeUUID, Nullable: true},
+	}
+	// ComponentsTable holds the schema information for the "components" table.
+	ComponentsTable = &schema.Table{
+		Name:       "components",
+		Columns:    ComponentsColumns,
+		PrimaryKey: []*schema.Column{ComponentsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "components_organizations_organization",
+				Columns:    []*schema.Column{ComponentsColumns[10]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "components_applications_application",
+				Columns:    []*schema.Column{ComponentsColumns[11]},
+				RefColumns: []*schema.Column{ApplicationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "components_clusters_target_cluster",
+				Columns:    []*schema.Column{ComponentsColumns[12]},
+				RefColumns: []*schema.Column{ClustersColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "components_chart_credentials_chart_credential",
+				Columns:    []*schema.Column{ComponentsColumns[13]},
+				RefColumns: []*schema.Column{ChartCredentialsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "components_github_installations_github_installation",
+				Columns:    []*schema.Column{ComponentsColumns[14]},
+				RefColumns: []*schema.Column{GithubInstallationsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "component_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{ComponentsColumns[10]},
+			},
+			{
+				Name:    "component_application_id",
+				Unique:  false,
+				Columns: []*schema.Column{ComponentsColumns[11]},
+			},
+		},
+	}
+	// ComponentRunsColumns holds the columns for the "component_runs" table.
+	ComponentRunsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "component_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "name", Type: field.TypeString, Nullable: true},
+		{Name: "type", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "running", "succeeded", "failed", "skipped"}, Default: "pending"},
+		{Name: "message", Type: field.TypeString, Nullable: true},
+		{Name: "run_name", Type: field.TypeString, Nullable: true},
+		{Name: "logs", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "chart_revision", Type: field.TypeString, Nullable: true},
+		{Name: "values_revision", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "started_at", Type: field.TypeTime, Nullable: true},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+		{Name: "workflow_run_id", Type: field.TypeUUID},
+	}
+	// ComponentRunsTable holds the schema information for the "component_runs" table.
+	ComponentRunsTable = &schema.Table{
+		Name:       "component_runs",
+		Columns:    ComponentRunsColumns,
+		PrimaryKey: []*schema.Column{ComponentRunsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "component_runs_organizations_organization",
+				Columns:    []*schema.Column{ComponentRunsColumns[14]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "component_runs_workflow_runs_workflow_run",
+				Columns:    []*schema.Column{ComponentRunsColumns[15]},
+				RefColumns: []*schema.Column{WorkflowRunsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "componentrun_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{ComponentRunsColumns[14]},
+			},
+			{
+				Name:    "componentrun_workflow_run_id",
+				Unique:  false,
+				Columns: []*schema.Column{ComponentRunsColumns[15]},
+			},
+		},
+	}
 	// DeploymentsColumns holds the columns for the "deployments" table.
 	DeploymentsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -390,11 +509,65 @@ var (
 		Columns:    UsersColumns,
 		PrimaryKey: []*schema.Column{UsersColumns[0]},
 	}
+	// WorkflowRunsColumns holds the columns for the "workflow_runs" table.
+	WorkflowRunsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "action", Type: field.TypeEnum, Enums: []string{"deploy", "uninstall", "preview"}},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "running", "succeeded", "failed", "partial"}, Default: "pending"},
+		{Name: "message", Type: field.TypeString, Nullable: true},
+		{Name: "job_id", Type: field.TypeString, Nullable: true},
+		{Name: "graph", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "started_at", Type: field.TypeTime, Nullable: true},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+		{Name: "application_id", Type: field.TypeUUID},
+	}
+	// WorkflowRunsTable holds the schema information for the "workflow_runs" table.
+	WorkflowRunsTable = &schema.Table{
+		Name:       "workflow_runs",
+		Columns:    WorkflowRunsColumns,
+		PrimaryKey: []*schema.Column{WorkflowRunsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "workflow_runs_organizations_organization",
+				Columns:    []*schema.Column{WorkflowRunsColumns[10]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "workflow_runs_applications_application",
+				Columns:    []*schema.Column{WorkflowRunsColumns[11]},
+				RefColumns: []*schema.Column{ApplicationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "workflowrun_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{WorkflowRunsColumns[10]},
+			},
+			{
+				Name:    "workflowrun_application_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{WorkflowRunsColumns[11], WorkflowRunsColumns[6]},
+			},
+			{
+				Name:    "workflowrun_organization_id_job_id",
+				Unique:  false,
+				Columns: []*schema.Column{WorkflowRunsColumns[10], WorkflowRunsColumns[4]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		ApplicationsTable,
 		ChartCredentialsTable,
 		ClustersTable,
+		ComponentsTable,
+		ComponentRunsTable,
 		DeploymentsTable,
 		GithubInstallationsTable,
 		InvitationsTable,
@@ -402,6 +575,7 @@ var (
 		OrganizationsTable,
 		TektonInstallationsTable,
 		UsersTable,
+		WorkflowRunsTable,
 	}
 )
 
@@ -413,6 +587,13 @@ func init() {
 	ApplicationsTable.ForeignKeys[4].RefTable = GithubInstallationsTable
 	ChartCredentialsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ClustersTable.ForeignKeys[0].RefTable = OrganizationsTable
+	ComponentsTable.ForeignKeys[0].RefTable = OrganizationsTable
+	ComponentsTable.ForeignKeys[1].RefTable = ApplicationsTable
+	ComponentsTable.ForeignKeys[2].RefTable = ClustersTable
+	ComponentsTable.ForeignKeys[3].RefTable = ChartCredentialsTable
+	ComponentsTable.ForeignKeys[4].RefTable = GithubInstallationsTable
+	ComponentRunsTable.ForeignKeys[0].RefTable = OrganizationsTable
+	ComponentRunsTable.ForeignKeys[1].RefTable = WorkflowRunsTable
 	DeploymentsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	DeploymentsTable.ForeignKeys[1].RefTable = ApplicationsTable
 	GithubInstallationsTable.ForeignKeys[0].RefTable = OrganizationsTable
@@ -423,4 +604,6 @@ func init() {
 	MembershipsTable.ForeignKeys[0].RefTable = UsersTable
 	MembershipsTable.ForeignKeys[1].RefTable = OrganizationsTable
 	TektonInstallationsTable.ForeignKeys[0].RefTable = ClustersTable
+	WorkflowRunsTable.ForeignKeys[0].RefTable = OrganizationsTable
+	WorkflowRunsTable.ForeignKeys[1].RefTable = ApplicationsTable
 }

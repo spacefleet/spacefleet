@@ -1,0 +1,260 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strconv"
+
+	"github.com/google/uuid"
+
+	"github.com/spacefleet/spacefleet/ent"
+	"github.com/spacefleet/spacefleet/lib/helm"
+	"github.com/spacefleet/spacefleet/lib/workflows"
+)
+
+// ListRuns returns an application's workflow runs (newest first). Read access
+// (viewer or above).
+func (s *Server) ListRuns(ctx context.Context, req ListRunsRequestObject) (ListRunsResponseObject, error) {
+	orgID, _, aerr, err := s.resolveWorkflowRead(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[ListRunsdefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	list, err := s.workflows.ListRuns(ctx, orgID, req.Id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return errResp[ListRunsdefaultJSONResponse](http.StatusNotFound, "not_found", "application not found"), nil
+		}
+		return nil, err
+	}
+	out := make([]WorkflowRun, len(list))
+	for i, r := range list {
+		out[i] = toAPIWorkflowRun(r)
+	}
+	return ListRuns200JSONResponse(RunList{Runs: out}), nil
+}
+
+// StartRun snapshots the current workflow, opens a run, enqueues the executor
+// job, and records its id. Editor or above; needs the background worker (503
+// otherwise). A run already in flight is a 409; an invalid action is a 400.
+func (s *Server) StartRun(ctx context.Context, req StartRunRequestObject) (StartRunResponseObject, error) {
+	orgID, aerr, err := s.resolveWorkflowWrite(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[StartRundefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	if req.Body == nil {
+		return errResp[StartRundefaultJSONResponse](http.StatusBadRequest, "bad_request", "request body is required"), nil
+	}
+	if s.jobQueue == nil {
+		return errResp[StartRundefaultJSONResponse](http.StatusServiceUnavailable, "unavailable", "background job worker not configured; cannot start a run"), nil
+	}
+	action := string(req.Body.Action)
+	run, err := s.workflows.BeginRun(ctx, orgID, req.Id, action)
+	if err != nil {
+		switch {
+		case ent.IsNotFound(err):
+			return errResp[StartRundefaultJSONResponse](http.StatusNotFound, "not_found", "application not found"), nil
+		case errors.Is(err, workflows.ErrRunInFlight):
+			return errResp[StartRundefaultJSONResponse](http.StatusConflict, "conflict", err.Error()), nil
+		case errors.Is(err, workflows.ErrInvalidAction):
+			return errResp[StartRundefaultJSONResponse](http.StatusBadRequest, "bad_request", "action must be deploy, uninstall, or preview"), nil
+		default:
+			return nil, err
+		}
+	}
+	// Best-effort, non-atomic by design (the queue isn't part of the ent tx),
+	// mirroring beginRollout: enqueue then record the job id. A failure after the
+	// run row exists leaves a pending run the worker can still pick up by id.
+	res, err := s.jobQueue.Insert(ctx, workflows.WorkflowRunArgs{
+		WorkflowRunID: run.ID,
+		OrgID:         orgID,
+		ApplicationID: req.Id,
+		Action:        action,
+	})
+	if err != nil {
+		return nil, err
+	}
+	jobID := strconv.FormatInt(res.Job.ID, 10)
+	if err := s.workflows.SetRunJob(ctx, orgID, run.ID, jobID); err != nil {
+		return nil, err
+	}
+	run.JobID = jobID
+	return StartRun202JSONResponse(toAPIWorkflowRun(run)), nil
+}
+
+// GetRun returns one workflow run with its component runs and graph snapshot.
+// Read access (viewer or above); secret-bearing config in the snapshot is
+// redacted below editor.
+func (s *Server) GetRun(ctx context.Context, req GetRunRequestObject) (GetRunResponseObject, error) {
+	orgID, canSeeSecrets, aerr, err := s.resolveWorkflowRead(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[GetRundefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	run, steps, err := s.workflows.GetRun(ctx, orgID, req.Id, req.RunId)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return errResp[GetRundefaultJSONResponse](http.StatusNotFound, "not_found", "run not found"), nil
+		}
+		return nil, err
+	}
+	return GetRun200JSONResponse(toAPIWorkflowRunDetail(run, steps, canSeeSecrets)), nil
+}
+
+// GetComponentRun returns one component run within a run, with its logs. Read
+// access (viewer or above).
+func (s *Server) GetComponentRun(ctx context.Context, req GetComponentRunRequestObject) (GetComponentRunResponseObject, error) {
+	orgID, _, aerr, err := s.resolveWorkflowRead(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[GetComponentRundefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	cr, err := s.workflows.GetComponentRun(ctx, orgID, req.Id, req.RunId, req.ComponentRunId)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return errResp[GetComponentRundefaultJSONResponse](http.StatusNotFound, "not_found", "component run not found"), nil
+		}
+		return nil, err
+	}
+	return GetComponentRun200JSONResponse(toAPIComponentRunDetail(cr)), nil
+}
+
+// toAPIWorkflowRun maps a run row to the API list/summary type. started_at /
+// finished_at pass through as nullable times.
+func toAPIWorkflowRun(r *ent.WorkflowRun) WorkflowRun {
+	return WorkflowRun{
+		Id:            r.ID,
+		ApplicationId: r.ApplicationID,
+		Action:        RunAction(r.Action),
+		Status:        RunStatus(r.Status),
+		Message:       optStr(r.Message),
+		CreatedAt:     r.CreatedAt,
+		StartedAt:     r.StartedAt,
+		FinishedAt:    r.FinishedAt,
+	}
+}
+
+// toAPIWorkflowRunDetail is toAPIWorkflowRun plus the component runs and the
+// graph snapshot, redacting secret-bearing config in the snapshot for callers
+// below editor.
+func toAPIWorkflowRunDetail(r *ent.WorkflowRun, steps []*ent.ComponentRun, canSee bool) WorkflowRunDetail {
+	b := toAPIWorkflowRun(r)
+	out := WorkflowRunDetail{
+		Id:            b.Id,
+		ApplicationId: b.ApplicationId,
+		Action:        b.Action,
+		Status:        b.Status,
+		Message:       b.Message,
+		CreatedAt:     b.CreatedAt,
+		StartedAt:     b.StartedAt,
+		FinishedAt:    b.FinishedAt,
+		ComponentRuns: make([]ComponentRun, len(steps)),
+	}
+	for i, cr := range steps {
+		out.ComponentRuns[i] = toAPIComponentRun(cr)
+	}
+	if graph := redactGraph(r.Graph, canSee); graph != "" {
+		out.Graph = &graph
+	}
+	return out
+}
+
+// toAPIComponentRun maps a component-run row to the API list type (no logs).
+func toAPIComponentRun(cr *ent.ComponentRun) ComponentRun {
+	out := ComponentRun{
+		Id:             cr.ID,
+		Status:         ComponentRunStatus(cr.Status),
+		Name:           optStr(cr.Name),
+		Type:           optStr(cr.Type),
+		Message:        optStr(cr.Message),
+		RunName:        optStr(cr.RunName),
+		ChartRevision:  optStr(cr.ChartRevision),
+		ValuesRevision: optStr(cr.ValuesRevision),
+		CreatedAt:      cr.CreatedAt,
+		StartedAt:      cr.StartedAt,
+		FinishedAt:     cr.FinishedAt,
+	}
+	if cr.ComponentID != uuid.Nil {
+		id := cr.ComponentID
+		out.ComponentId = &id
+	}
+	return out
+}
+
+// toAPIComponentRunDetail is toAPIComponentRun plus the captured logs and the
+// parsed preview diff. The diff is derived from the same captured logs via
+// helm.ParseDiff (the single parser for both helm and manifest previews, which
+// emit identical sentinels): for a preview run it yields the diff body + whether
+// deploying would change the cluster; a non-preview run has no markers, so it
+// yields an empty body / false — the diff field is then simply omitted. The diff
+// is dry-run output, not a stored secret, and rides in the same logs we already
+// return here, so it inherits the existing logs gating (read access) — no extra
+// redaction is applied or needed.
+func toAPIComponentRunDetail(cr *ent.ComponentRun) ComponentRunDetail {
+	b := toAPIComponentRun(cr)
+	out := ComponentRunDetail{
+		Id:             b.Id,
+		ComponentId:    b.ComponentId,
+		Status:         b.Status,
+		Name:           b.Name,
+		Type:           b.Type,
+		Message:        b.Message,
+		RunName:        b.RunName,
+		ChartRevision:  b.ChartRevision,
+		ValuesRevision: b.ValuesRevision,
+		CreatedAt:      b.CreatedAt,
+		StartedAt:      b.StartedAt,
+		FinishedAt:     b.FinishedAt,
+		Logs:           optStr(cr.Logs),
+	}
+	diff := helm.ParseDiff(cr.Logs)
+	if diff.Body != "" {
+		body := diff.Body
+		out.Diff = &body
+	}
+	if diff.HasChanges {
+		hc := true
+		out.HasChanges = &hc
+	}
+	return out
+}
+
+// redactGraph strips secret-bearing config keys from each node of the stored
+// graph snapshot for callers below editor (canSee=false). It round-trips the
+// JSON through the snapshot type so the shape is exactly what the executor reads.
+// An unparseable or empty snapshot returns "" (the field is then omitted).
+func redactGraph(graph string, canSee bool) string {
+	if graph == "" {
+		return ""
+	}
+	if canSee {
+		return graph
+	}
+	var snap workflows.GraphSnapshot
+	if err := json.Unmarshal([]byte(graph), &snap); err != nil {
+		// A snapshot we can't parse could hide secrets in an unexpected shape, so
+		// withhold it entirely rather than risk leaking it to a viewer.
+		return ""
+	}
+	for i := range snap.Nodes {
+		for _, k := range secretConfigKeys {
+			delete(snap.Nodes[i].Config, k)
+		}
+	}
+	out, err := json.Marshal(snap)
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}

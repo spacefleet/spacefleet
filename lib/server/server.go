@@ -23,6 +23,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/secrets"
 	"github.com/spacefleet/spacefleet/lib/users"
+	"github.com/spacefleet/spacefleet/lib/workflows"
 )
 
 // New wires runtime dependencies (Postgres via ent) and returns a
@@ -64,6 +65,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 	chartCredsSvc := chartcredentials.NewService(entClient, sealer)
 	githubInstallsSvc := githubinstallations.NewService(entClient, ghAuth)
 	applicationsSvc := applications.NewService(entClient, clustersSvc, chartCredsSvc, githubInstallsSvc)
+	workflowsSvc := workflows.NewService(entClient)
 	invitesSvc := invitations.NewService(entClient)
 
 	// Build the request authenticator. Spacefleet always authenticates against
@@ -92,6 +94,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 		ChartCredentials:    chartCredsSvc,
 		GitHubInstallations: githubInstallsSvc,
 		Invites:             invitesSvc,
+		Workflows:           workflowsSvc,
 		AllowOrgCreation:    cfg.AllowOrgCreation,
 		ExternalURL:         cfg.ExternalURL,
 		EmailEnabled:        cfg.EmailEnabled(),

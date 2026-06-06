@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +14,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
+	"github.com/spacefleet/spacefleet/ent/workflowrun"
 	"github.com/spacefleet/spacefleet/lib/auth"
 	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/k8s"
@@ -356,6 +358,131 @@ func (s *Server) StreamApplication(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+}
+
+// StreamApplicationRun streams a workflow run's status as Server-Sent Events: an
+// initial `snapshot` event with the run plus its component runs, then a
+// `snapshot` event whenever the run or any component run changes, until the run
+// reaches a terminal status (succeeded, failed, partial) or the client
+// disconnects. Like StreamApplication, this is the cross-process realtime path:
+// the workflow worker writes progress to Postgres; this handler (in serve) tails
+// the rows and pushes each change. It reuses GetRun's auth path and redacts
+// secret-bearing snapshot config below editor.
+func (s *Server) StreamApplicationRun(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if s.workflows == nil {
+		writeStreamError(w, http.StatusServiceUnavailable, "unavailable", "workflows service not configured")
+		return
+	}
+	orgID, canSeeSecrets, aerr, err := s.resolveAppRead(ctx)
+	if err != nil {
+		writeStreamError(w, http.StatusInternalServerError, "internal", "internal error")
+		return
+	}
+	if aerr != nil {
+		writeStreamError(w, aerr.status, aerr.code, aerr.msg)
+		return
+	}
+	appID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeStreamError(w, http.StatusNotFound, "not_found", "application not found")
+		return
+	}
+	runID, err := uuid.Parse(r.PathValue("runId"))
+	if err != nil {
+		writeStreamError(w, http.StatusNotFound, "not_found", "run not found")
+		return
+	}
+
+	// The initial read doubles as an existence/authorization check.
+	run, steps, err := s.workflows.GetRun(ctx, orgID, appID, runID)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			writeStreamError(w, http.StatusNotFound, "not_found", "run not found")
+			return
+		}
+		writeStreamError(w, http.StatusInternalServerError, "internal", "internal error")
+		return
+	}
+
+	ctx, cancel := context.WithDeadline(ctx, streamDeadline(ctx))
+	defer cancel()
+
+	sse, ok := newSSEWriter(w)
+	if !ok {
+		writeStreamError(w, http.StatusInternalServerError, "internal", "streaming unsupported")
+		return
+	}
+	if err := sse.event("snapshot", toAPIWorkflowRunDetail(run, steps, canSeeSecrets)); err != nil {
+		return
+	}
+	if runTerminal(run) {
+		return
+	}
+
+	prev := runStateKey(run, steps)
+	poll := time.NewTicker(time.Second)
+	defer poll.Stop()
+	heartbeat := time.NewTicker(streamHeartbeat)
+	defer heartbeat.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-heartbeat.C:
+			if err := sse.comment("ping"); err != nil {
+				return
+			}
+		case <-poll.C:
+			run, steps, err := s.workflows.GetRun(ctx, orgID, appID, runID)
+			if err != nil {
+				return
+			}
+			key := runStateKey(run, steps)
+			if key == prev {
+				continue
+			}
+			prev = key
+			if err := sse.event("snapshot", toAPIWorkflowRunDetail(run, steps, canSeeSecrets)); err != nil {
+				return
+			}
+			if runTerminal(run) {
+				return
+			}
+		}
+	}
+}
+
+// runStateKey is a change key over the run + its component runs' surfaced fields,
+// so a no-op poll doesn't emit a redundant event but any step's progress does.
+func runStateKey(run *ent.WorkflowRun, steps []*ent.ComponentRun) string {
+	var b strings.Builder
+	b.WriteString(string(run.Status))
+	b.WriteByte(0)
+	b.WriteString(run.Message)
+	for _, cr := range steps {
+		b.WriteByte(0)
+		b.WriteString(cr.ID.String())
+		b.WriteByte(':')
+		b.WriteString(string(cr.Status))
+		b.WriteByte(':')
+		b.WriteString(cr.Message)
+		b.WriteByte(':')
+		b.WriteString(cr.RunName)
+	}
+	return b.String()
+}
+
+// runTerminal reports whether a workflow run has settled, so the stream can
+// close.
+func runTerminal(run *ent.WorkflowRun) bool {
+	switch run.Status {
+	case workflowrun.StatusSucceeded, workflowrun.StatusFailed, workflowrun.StatusPartial:
+		return true
+	default:
+		return false
 	}
 }
 

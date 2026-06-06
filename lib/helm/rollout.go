@@ -121,10 +121,14 @@ const (
 // ParseDiff can slice it out exactly rather than heuristically filtering setup
 // chatter (plugin install, clones, repo add) from the captured logs. The changes
 // marker carries `helm diff --detailed-exitcode`'s verdict (exit 2 ⇒ changes).
+//
+// These are exported so other preview renderers (lib/manifest's kubectl-diff
+// dry-run) can emit the SAME sentinels — ParseDiff is the single parser for both
+// component types, so a manifest preview's diff is sliced out identically.
 const (
-	diffBeginMarker   = "SPACEFLEET_DIFF_BEGIN"
-	diffEndMarker     = "SPACEFLEET_DIFF_END"
-	diffChangesPrefix = "SPACEFLEET_DIFF_CHANGES="
+	DiffBeginMarker   = "SPACEFLEET_DIFF_BEGIN"
+	DiffEndMarker     = "SPACEFLEET_DIFF_END"
+	DiffChangesPrefix = "SPACEFLEET_DIFF_CHANGES="
 )
 
 // Revisions are the git commit SHAs a rollout resolved, parsed from its logs.
@@ -181,12 +185,12 @@ func ParseDiff(logs string) Diff {
 	begin, end := -1, -1
 	for i, line := range lines {
 		switch strings.TrimSpace(line) {
-		case diffBeginMarker:
+		case DiffBeginMarker:
 			begin = i
-		case diffEndMarker:
+		case DiffEndMarker:
 			end = i
 		}
-		if v, ok := strings.CutPrefix(strings.TrimSpace(line), diffChangesPrefix); ok {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), DiffChangesPrefix); ok {
 			d.HasChanges = strings.TrimSpace(v) == "true"
 		}
 	}
@@ -355,7 +359,7 @@ func Script(r Rollout) string {
 	// missing namespace simply shows as all-additions).
 	install := func(chartRef string) {
 		if preview {
-			b.WriteString("echo " + diffBeginMarker + "\n")
+			b.WriteString("echo " + DiffBeginMarker + "\n")
 			b.WriteString("set +e\n")
 			fmt.Fprintf(&b, "helm diff upgrade %s %s --install --three-way-merge --detailed-exitcode --no-color -C 5", shQuote(release), shQuote(chartRef))
 			if version != "" {
@@ -364,12 +368,12 @@ func Script(r Rollout) string {
 			fmt.Fprintf(&b, " -n %s", shQuote(ns))
 			addValueFlags()
 			b.WriteString("diff_rc=$?\nset -e\n")
-			b.WriteString("echo " + diffEndMarker + "\n")
+			b.WriteString("echo " + DiffEndMarker + "\n")
 			// Exit 1 is a real diff failure; exit 2 means there are changes, exit 0
 			// none — both are a successful run, so the step exits 0 and the verdict
 			// rides out in the marker.
 			b.WriteString("if [ \"$diff_rc\" -eq 1 ]; then echo 'helm diff failed' >&2; exit 1; fi\n")
-			fmt.Fprintf(&b, "if [ \"$diff_rc\" -eq 2 ]; then echo '%strue'; else echo '%sfalse'; fi\n", diffChangesPrefix, diffChangesPrefix)
+			fmt.Fprintf(&b, "if [ \"$diff_rc\" -eq 2 ]; then echo '%strue'; else echo '%sfalse'; fi\n", DiffChangesPrefix, DiffChangesPrefix)
 			b.WriteString("exit 0\n")
 			return
 		}

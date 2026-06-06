@@ -15,6 +15,12 @@ type ChartCredential func(*sql.Selector)
 // Cluster is the predicate function for cluster builders.
 type Cluster func(*sql.Selector)
 
+// Component is the predicate function for component builders.
+type Component func(*sql.Selector)
+
+// ComponentRun is the predicate function for componentrun builders.
+type ComponentRun func(*sql.Selector)
+
 // Deployment is the predicate function for deployment builders.
 type Deployment func(*sql.Selector)
 
@@ -35,3 +41,6 @@ type TektonInstallation func(*sql.Selector)
 
 // User is the predicate function for user builders.
 type User func(*sql.Selector)
+
+// WorkflowRun is the predicate function for workflowrun builders.
+type WorkflowRun func(*sql.Selector)
