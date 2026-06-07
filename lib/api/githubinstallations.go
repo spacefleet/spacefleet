@@ -64,6 +64,28 @@ func (s *Server) ListGitHubInstallations(ctx context.Context, _ ListGitHubInstal
 	return ListGitHubInstallations200JSONResponse(out), nil
 }
 
+func (s *Server) ListGitHubRepositories(ctx context.Context, _ ListGitHubRepositoriesRequestObject) (ListGitHubRepositoriesResponseObject, error) {
+	orgID, aerr, err := s.resolveGitHubInstallationsRead(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[ListGitHubRepositoriesdefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	repos, err := s.githubInstallations.ListRepositories(ctx, orgID)
+	if err != nil {
+		if errors.Is(err, githubinstallations.ErrAppNotConfigured) {
+			return errResp[ListGitHubRepositoriesdefaultJSONResponse](http.StatusServiceUnavailable, "unavailable", "github app is not configured on this deployment"), nil
+		}
+		return nil, err
+	}
+	out := make([]GitHubRepository, len(repos))
+	for i, r := range repos {
+		out[i] = toAPIGitHubRepository(r)
+	}
+	return ListGitHubRepositories200JSONResponse(out), nil
+}
+
 // GetGitHubConnectUrl returns the GitHub App install URL to redirect the browser
 // to, carrying a signed state token that binds the connect flow to this org.
 func (s *Server) GetGitHubConnectUrl(ctx context.Context, _ GetGitHubConnectUrlRequestObject) (GetGitHubConnectUrlResponseObject, error) {
@@ -162,5 +184,18 @@ func toAPIGitHubInstallation(inst *ent.GitHubInstallation) GitHubInstallation {
 		AccountType:    optStr(inst.AccountType),
 		CreatedAt:      inst.CreatedAt,
 		UpdatedAt:      inst.UpdatedAt,
+	}
+}
+
+// toAPIGitHubRepository maps an aggregated repository to the API type. account
+// and default branch are optional in the contract, so map them through optStr.
+func toAPIGitHubRepository(r githubinstallations.Repository) GitHubRepository {
+	return GitHubRepository{
+		InstallationId: r.InstallationID,
+		AccountLogin:   optStr(r.AccountLogin),
+		FullName:       r.FullName,
+		CloneUrl:       r.CloneURL,
+		DefaultBranch:  optStr(r.DefaultBranch),
+		Private:        r.Private,
 	}
 }

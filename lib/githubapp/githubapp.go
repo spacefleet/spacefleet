@@ -119,6 +119,82 @@ func (a *Authenticator) GetInstallation(ctx context.Context, installationID int6
 	return Installation{Login: body.Account.Login, AccountType: body.Account.Type}, nil
 }
 
+// Repository is the subset of a repository accessible to an installation that
+// the repository picker needs: its full name (owner/repo), HTTPS clone URL,
+// whether it is private, and its default branch.
+type Repository struct {
+	FullName      string
+	CloneURL      string
+	Private       bool
+	DefaultBranch string
+}
+
+// ListRepositories returns every repository the installation can reach. Unlike
+// the App-level calls above, GitHub's /installation/repositories endpoint is
+// authenticated with an installation access token (not the App JWT), so this
+// mints one first and pages through the results (100 per page) until a short
+// page signals the end.
+func (a *Authenticator) ListRepositories(ctx context.Context, installationID int64) ([]Repository, error) {
+	token, _, err := a.InstallationToken(ctx, installationID)
+	if err != nil {
+		return nil, err
+	}
+	const perPage = 100
+	var repos []Repository
+	for page := 1; ; page++ {
+		var body struct {
+			Repositories []struct {
+				FullName      string `json:"full_name"`
+				CloneURL      string `json:"clone_url"`
+				Private       bool   `json:"private"`
+				DefaultBranch string `json:"default_branch"`
+			} `json:"repositories"`
+		}
+		url := fmt.Sprintf("%s/installation/repositories?per_page=%d&page=%d", a.baseURL, perPage, page)
+		if err := a.doToken(ctx, url, token, &body); err != nil {
+			return nil, err
+		}
+		for _, r := range body.Repositories {
+			repos = append(repos, Repository{
+				FullName:      r.FullName,
+				CloneURL:      r.CloneURL,
+				Private:       r.Private,
+				DefaultBranch: r.DefaultBranch,
+			})
+		}
+		if len(body.Repositories) < perPage {
+			return repos, nil
+		}
+	}
+}
+
+// doToken performs a GET authenticated with an installation access token
+// (Authorization: token …), as opposed to do which signs as the App. It shares
+// do's Accept/version headers and non-2xx error shape.
+func (a *Authenticator) doToken(ctx context.Context, url, token string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "token "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := a.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("githubapp: GET %s: status %d: %s", url, resp.StatusCode, bytes.TrimSpace(snippet))
+	}
+	if out == nil {
+		return nil
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
 // do performs a GitHub API request authenticated as the App and decodes a JSON
 // response into out. A non-2xx response is returned as an error including the
 // status, so callers (and ultimately the rollout) get a clear failure.

@@ -1133,6 +1133,28 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/github/repositories:
+    get:
+      summary: List repositories reachable across the organization's GitHub installations
+      description: |
+        Org-scoped: the organization is taken from the X-Organization-ID header.
+        Aggregates the repositories every one of the organization's GitHub App
+        installations can reach, each tagged with the installation it came from,
+        so the workflow editor can offer a single quick-pick list. An
+        installation that can't be read is skipped rather than failing the list.
+      operationId: listGitHubRepositories
+      responses:
+        "200":
+          description: Repositories across the organization's installations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GitHubRepository"
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/github/installations/connect-url:
     get:
       summary: Get the GitHub App install URL to begin connecting
@@ -2232,6 +2254,36 @@ components:
         url:
           type: string
           description: The GitHub App install URL to redirect the browser to.
+
+    GitHubRepository:
+      type: object
+      description: |
+        A repository reachable through one of the organization's GitHub App
+        installations, tagged with the installation it came from so selecting it
+        can fill the clone URL and select the matching installation at once.
+      required: [installation_id, full_name, clone_url, private]
+      properties:
+        installation_id:
+          type: string
+          format: uuid
+          description: |
+            The Spacefleet installation record id (the value a component stores
+            in github_installation_id), not GitHub's numeric installation id.
+        account_login:
+          type: string
+          description: The GitHub account (org or user) the installation is on.
+        full_name:
+          type: string
+          description: The repository's owner/name.
+        clone_url:
+          type: string
+          description: The HTTPS clone URL.
+        default_branch:
+          type: string
+          description: The repository's default branch.
+        private:
+          type: boolean
+          description: Whether the repository is private.
 
     ComponentType:
       type: string

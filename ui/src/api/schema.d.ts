@@ -945,6 +945,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/github/repositories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List repositories reachable across the organization's GitHub installations
+         * @description Org-scoped: the organization is taken from the X-Organization-ID header.
+         *     Aggregates the repositories every one of the organization's GitHub App
+         *     installations can reach, each tagged with the installation it came from,
+         *     so the workflow editor can offer a single quick-pick list. An
+         *     installation that can't be read is skipped rather than failing the list.
+         */
+        get: operations["listGitHubRepositories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/github/installations/connect-url": {
         parameters: {
             query?: never;
@@ -1622,6 +1646,29 @@ export interface components {
         GitHubConnectUrl: {
             /** @description The GitHub App install URL to redirect the browser to. */
             url: string;
+        };
+        /**
+         * @description A repository reachable through one of the organization's GitHub App
+         *     installations, tagged with the installation it came from so selecting it
+         *     can fill the clone URL and select the matching installation at once.
+         */
+        GitHubRepository: {
+            /**
+             * Format: uuid
+             * @description The Spacefleet installation record id (the value a component stores
+             *     in github_installation_id), not GitHub's numeric installation id.
+             */
+            installation_id: string;
+            /** @description The GitHub account (org or user) the installation is on. */
+            account_login?: string;
+            /** @description The repository's owner/name. */
+            full_name: string;
+            /** @description The HTTPS clone URL. */
+            clone_url: string;
+            /** @description The repository's default branch. */
+            default_branch?: string;
+            /** @description Whether the repository is private. */
+            private: boolean;
         };
         /**
          * @description The kind of step a workflow component runs.
@@ -3218,6 +3265,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GitHubInstallation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listGitHubRepositories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Repositories across the organization's installations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubRepository"][];
                 };
             };
             default: components["responses"]["Error"];

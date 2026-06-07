@@ -101,6 +101,53 @@ func TestInstallationTokenAndGetInstallation(t *testing.T) {
 	}
 }
 
+func TestListRepositoriesPaginates(t *testing.T) {
+	// Page 1 returns a full page (100 entries) so the client requests page 2,
+	// which returns a short page and ends the loop. The handler authenticates the
+	// repository calls with the installation token, not the App JWT.
+	full := make([]string, 100)
+	for i := range full {
+		full[i] = `{"full_name":"acme/r","clone_url":"https://github.com/acme/r.git","private":true,"default_branch":"main"}`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/app/installations/5/access_tokens":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"token":"ghs_inst","expires_at":"2026-06-03T12:00:00Z"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/installation/repositories":
+			if got := r.Header.Get("Authorization"); got != "token ghs_inst" {
+				t.Errorf("Authorization = %q, want token ghs_inst", got)
+			}
+			if r.URL.Query().Get("page") == "1" {
+				_, _ = w.Write([]byte(`{"repositories":[` + strings.Join(full, ",") + `]}`))
+			} else {
+				_, _ = w.Write([]byte(`{"repositories":[{"full_name":"acme/last","clone_url":"https://github.com/acme/last.git","private":false,"default_branch":"trunk"}]}`))
+			}
+		default:
+			http.Error(w, "unexpected "+r.URL.Path, http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	a, err := New(1, testKeyPEM(t))
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	a.baseURL = srv.URL
+
+	repos, err := a.ListRepositories(context.Background(), 5)
+	if err != nil {
+		t.Fatalf("list repositories: %v", err)
+	}
+	if len(repos) != 101 {
+		t.Fatalf("got %d repos, want 101 (two pages)", len(repos))
+	}
+	last := repos[100]
+	if last.FullName != "acme/last" || last.CloneURL != "https://github.com/acme/last.git" || last.Private || last.DefaultBranch != "trunk" {
+		t.Errorf("last repo = %+v, want acme/last public on trunk", last)
+	}
+}
+
 func TestInstallationTokenPropagatesErrorStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "no access", http.StatusNotFound)

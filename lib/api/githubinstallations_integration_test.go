@@ -134,3 +134,53 @@ func TestCreateGitHubInstallationHappyPath(t *testing.T) {
 		t.Fatalf("expected 1 installation scoped to org %s, got %+v", orgID, list)
 	}
 }
+
+// TestListGitHubRepositories confirms the picker endpoint returns the
+// repositories the org's installations can reach, each tagged with the
+// installation record id (so the UI can select it) and the account login.
+func TestListGitHubRepositories(t *testing.T) {
+	h := newHarness(t, fakeGitHubAuth{login: "acme"})
+	token, orgID := h.member("editor", membership.RoleEditor)
+
+	// Link an installation so the org has one to list repositories from.
+	rec := testReq{
+		method: http.MethodPost,
+		path:   "/api/github/installations",
+		body:   createBody(424242, h.signState(orgID)),
+		token:  token,
+		orgID:  orgID.String(),
+	}.do(t, h.handler)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("link installation: got %d, want 201\n%s", rec.Code, rec.Body.String())
+	}
+	var inst GitHubInstallation
+	if err := json.Unmarshal(rec.Body.Bytes(), &inst); err != nil {
+		t.Fatalf("decode installation: %v", err)
+	}
+
+	rec = testReq{
+		method: http.MethodGet,
+		path:   "/api/github/repositories",
+		token:  token,
+		orgID:  orgID.String(),
+	}.do(t, h.handler)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list repositories: got %d, want 200\n%s", rec.Code, rec.Body.String())
+	}
+	var repos []GitHubRepository
+	if err := json.Unmarshal(rec.Body.Bytes(), &repos); err != nil {
+		t.Fatalf("decode repositories: %v", err)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("got %d repos, want 1", len(repos))
+	}
+	if repos[0].FullName != "acme/charts" {
+		t.Errorf("full_name = %q, want acme/charts", repos[0].FullName)
+	}
+	if repos[0].InstallationId != inst.Id {
+		t.Errorf("installation_id = %v, want %v (the record id)", repos[0].InstallationId, inst.Id)
+	}
+	if repos[0].AccountLogin == nil || *repos[0].AccountLogin != "acme" {
+		t.Errorf("account_login = %v, want acme", repos[0].AccountLogin)
+	}
+}

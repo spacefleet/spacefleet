@@ -41,6 +41,12 @@ func (f fakeGitHubAuth) InstallationToken(_ context.Context, _ int64) (string, t
 	return "ghs_test", time.Now().Add(time.Hour), nil
 }
 
+func (f fakeGitHubAuth) ListRepositories(_ context.Context, _ int64) ([]githubapp.Repository, error) {
+	return []githubapp.Repository{
+		{FullName: f.login + "/charts", CloneURL: "https://github.com/" + f.login + "/charts.git", Private: true, DefaultBranch: "main"},
+	}, nil
+}
+
 // testSecretKey is a valid base64 32-byte key used to sign/verify connect state
 // (the same key class as the credential sealer). Stable so a state signed in a
 // test verifies under the same harness key.

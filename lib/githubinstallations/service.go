@@ -42,6 +42,18 @@ var ErrAppNotConfigured = errors.New("github app is not configured on this deplo
 type Authenticator interface {
 	GetInstallation(ctx context.Context, installationID int64) (githubapp.Installation, error)
 	InstallationToken(ctx context.Context, installationID int64) (token string, expiresAt time.Time, err error)
+	ListRepositories(ctx context.Context, installationID int64) ([]githubapp.Repository, error)
+}
+
+// Repository is a repository reachable through one of the organization's
+// installations, tagged with which installation record it came from so the UI
+// can both fill the clone URL and select the matching installation in one step.
+type Repository struct {
+	// InstallationID is the spacefleet installation record id (not GitHub's
+	// numeric id) — the value the component stores in github_installation_id.
+	InstallationID uuid.UUID
+	AccountLogin   string
+	githubapp.Repository
 }
 
 // Service is a thin wrapper over the ent client plus the GitHub App
@@ -65,6 +77,42 @@ func (s *Service) List(ctx context.Context, orgID uuid.UUID) ([]*ent.GitHubInsta
 		Where(githubinstallation.OrganizationID(orgID)).
 		Order(ent.Asc(githubinstallation.FieldCreatedAt)).
 		All(ctx)
+}
+
+// ListRepositories returns every repository reachable across all of the
+// organization's installations, each tagged with its installation record so the
+// caller can select the matching installation. It is resilient per installation:
+// if one fails (its access was revoked, GitHub is unreachable, a token can't be
+// minted), that installation is skipped rather than failing the whole list.
+//
+// Known limitation: installations are queried sequentially and the result is not
+// cached, so an organization with many installations incurs serial GitHub
+// round-trips on each call.
+func (s *Service) ListRepositories(ctx context.Context, orgID uuid.UUID) ([]Repository, error) {
+	if s.auth == nil {
+		return nil, ErrAppNotConfigured
+	}
+	installs, err := s.List(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	var repos []Repository
+	for _, inst := range installs {
+		ghRepos, err := s.auth.ListRepositories(ctx, inst.InstallationID)
+		if err != nil {
+			// Skip an installation we can't read rather than failing the whole
+			// picker — others may still be reachable.
+			continue
+		}
+		for _, r := range ghRepos {
+			repos = append(repos, Repository{
+				InstallationID: inst.ID,
+				AccountLogin:   inst.AccountLogin,
+				Repository:     r,
+			})
+		}
+	}
+	return repos, nil
 }
 
 // Get returns one installation scoped to the organization, or ent's

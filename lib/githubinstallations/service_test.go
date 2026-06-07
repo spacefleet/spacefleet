@@ -15,9 +15,14 @@ import (
 
 // fakeAuth is a stub Authenticator: it records the installation it is asked
 // about and returns canned values, so the service tests don't reach GitHub.
+// repos/failRepos are keyed by GitHub installation id and only exercised by the
+// repository-listing tests; the zero value (nil maps) is fine for every other
+// test, which never lists repositories.
 type fakeAuth struct {
-	login string
-	token string
+	login     string
+	token     string
+	repos     map[int64][]githubapp.Repository
+	failRepos map[int64]bool
 }
 
 func (f fakeAuth) GetInstallation(_ context.Context, _ int64) (githubapp.Installation, error) {
@@ -26,6 +31,13 @@ func (f fakeAuth) GetInstallation(_ context.Context, _ int64) (githubapp.Install
 
 func (f fakeAuth) InstallationToken(_ context.Context, _ int64) (string, time.Time, error) {
 	return f.token, time.Now().Add(time.Hour), nil
+}
+
+func (f fakeAuth) ListRepositories(_ context.Context, installationID int64) ([]githubapp.Repository, error) {
+	if f.failRepos[installationID] {
+		return nil, errors.New("installation access revoked")
+	}
+	return f.repos[installationID], nil
 }
 
 func newOrg(t *testing.T, client *ent.Client, name string) *ent.Organization {
@@ -94,6 +106,60 @@ func TestInstallationTokenMints(t *testing.T) {
 	}
 	if tok != "ghs_minted" {
 		t.Errorf("token = %q, want ghs_minted", tok)
+	}
+}
+
+// TestListRepositoriesAggregatesAndSkips confirms ListRepositories gathers
+// repositories across all of the org's installations (tagged with the
+// installation record), and skips an installation whose listing fails rather
+// than failing the whole call.
+func TestListRepositoriesAggregatesAndSkips(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	auth := fakeAuth{
+		login: "acme",
+		repos: map[int64][]githubapp.Repository{
+			11: {{FullName: "acme/charts", CloneURL: "https://github.com/acme/charts.git"}},
+		},
+		failRepos: map[int64]bool{22: true},
+	}
+	svc := NewService(client, auth)
+	ctx := context.Background()
+	org := newOrg(t, client, "Acme")
+
+	good, err := svc.Link(ctx, org.ID, 11)
+	if err != nil {
+		t.Fatalf("Link good: %v", err)
+	}
+	if _, err := svc.Link(ctx, org.ID, 22); err != nil {
+		t.Fatalf("Link failing: %v", err)
+	}
+
+	repos, err := svc.ListRepositories(ctx, org.ID)
+	if err != nil {
+		t.Fatalf("ListRepositories: %v", err)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("got %d repos, want 1 (the failing installation is skipped)", len(repos))
+	}
+	if repos[0].FullName != "acme/charts" {
+		t.Errorf("FullName = %q, want acme/charts", repos[0].FullName)
+	}
+	if repos[0].InstallationID != good.ID {
+		t.Errorf("InstallationID = %v, want %v (the record, not GitHub's id)", repos[0].InstallationID, good.ID)
+	}
+	if repos[0].AccountLogin != "acme" {
+		t.Errorf("AccountLogin = %q, want acme", repos[0].AccountLogin)
+	}
+}
+
+// TestListRepositoriesNoApp confirms the aggregate listing fails clearly when no
+// authenticator is wired.
+func TestListRepositoriesNoApp(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, nil)
+	org := newOrg(t, client, "Acme")
+	if _, err := svc.ListRepositories(context.Background(), org.ID); !errors.Is(err, ErrAppNotConfigured) {
+		t.Errorf("ListRepositories error = %v, want ErrAppNotConfigured", err)
 	}
 }
 

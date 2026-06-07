@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
 import type { components } from "../../api/schema";
 import { CHART_SOURCES } from "../chartSources";
+import { RepositoryPicker } from "./RepositoryPicker";
 import {
   parseValuesSources,
   serializeValuesSources,
@@ -11,6 +13,7 @@ type ChartSource = components["schemas"]["ChartSource"];
 type Cluster = components["schemas"]["Cluster"];
 type ChartCredential = components["schemas"]["ChartCredential"];
 type GitHubInstallation = components["schemas"]["GitHubInstallation"];
+type GitHubRepository = components["schemas"]["GitHubRepository"];
 
 // EditableComponent is the canvas's working copy of one node — the fields the
 // editor edits. position/depends_on/group_id live on the React Flow node + edges,
@@ -76,6 +79,43 @@ export function ComponentFields({
     });
   }
 
+  // A repository can be picked when the GitHub App is configured and the org has
+  // at least one installation; otherwise the user types the URL by hand.
+  const canPickRepo = githubEnabled && installations.length > 0;
+
+  // pickRepoInto sets a config repo-URL field to the picked clone URL and, in the
+  // same update, selects the matching GitHub installation on the component — the
+  // whole point of the picker is that the two stay in sync.
+  function pickRepoInto(repoUrlKey: string) {
+    return (repo: GitHubRepository) =>
+      onChange({
+        ...component,
+        config: { ...component.config, [repoUrlKey]: repo.clone_url },
+        github_installation_id: repo.installation_id,
+      });
+  }
+
+  // pickValuesSourceRepo is the same idea for a git values source row: it must
+  // update the row's repo_url and the component-level installation in one
+  // onChange so neither change clobbers the other.
+  function pickValuesSourceRepo(rowIndex: number, repo: GitHubRepository) {
+    const rows = valuesRows.map((r, i) =>
+      i === rowIndex ? { ...r, repo_url: repo.clone_url } : r,
+    );
+    onChange({
+      ...component,
+      config: { ...component.config, values_sources: serializeValuesSources(rows) },
+      github_installation_id: repo.installation_id,
+    });
+  }
+
+  // The picker button for a "repo_url" config field — shared by the helm git
+  // source, manifest, and terraform forms (all use the repo_url key). Null when
+  // the picker isn't available so the forms render just the text input.
+  const repoUrlPicker: ReactNode = canPickRepo ? (
+    <RepositoryPicker disabled={disabled} onSelect={pickRepoInto("repo_url")} />
+  ) : null;
+
   return (
     <div className="space-y-4">
       <Field label="Name">
@@ -95,12 +135,25 @@ export function ComponentFields({
           setConfig={setConfig}
           valuesRows={valuesRows}
           setValuesRows={setValuesRows}
+          repoUrlPicker={repoUrlPicker}
+          canPickRepo={canPickRepo}
+          onPickValuesSourceRepo={pickValuesSourceRepo}
           disabled={disabled}
         />
       ) : component.type === "terraform" ? (
-        <TerraformConfig config={component.config} setConfig={setConfig} disabled={disabled} />
+        <TerraformConfig
+          config={component.config}
+          setConfig={setConfig}
+          repoUrlPicker={repoUrlPicker}
+          disabled={disabled}
+        />
       ) : (
-        <ManifestConfig config={component.config} setConfig={setConfig} disabled={disabled} />
+        <ManifestConfig
+          config={component.config}
+          setConfig={setConfig}
+          repoUrlPicker={repoUrlPicker}
+          disabled={disabled}
+        />
       )}
 
       {/* Credentials. Helm http_repo/oci take a chart credential; git sources
@@ -233,6 +286,9 @@ function HelmConfig({
   setConfig,
   valuesRows,
   setValuesRows,
+  repoUrlPicker,
+  canPickRepo,
+  onPickValuesSourceRepo,
   disabled,
 }: {
   config: Record<string, string>;
@@ -240,6 +296,9 @@ function HelmConfig({
   setConfig: (key: string, value: string) => void;
   valuesRows: ValuesSourceRow[];
   setValuesRows: (rows: ValuesSourceRow[]) => void;
+  repoUrlPicker: ReactNode;
+  canPickRepo: boolean;
+  onPickValuesSourceRepo: (rowIndex: number, repo: GitHubRepository) => void;
   disabled: boolean;
 }) {
   const source = CHART_SOURCES.find((s) => s.value === chartSource) ?? CHART_SOURCES[0];
@@ -262,6 +321,11 @@ function HelmConfig({
 
       {source.fields.map((field) => (
         <Field key={field.key} label={field.label} help={field.help}>
+          {/* The git source's repository URL gets the picker; other sources
+              (http_repo/oci) point at registries the picker doesn't enumerate. */}
+          {field.key === "repo_url" && chartSource === "git" && repoUrlPicker && (
+            <div className="mb-1.5">{repoUrlPicker}</div>
+          )}
           <input
             type="text"
             className="w-full border border-neutral-300 px-3 py-2 text-sm"
@@ -297,6 +361,8 @@ function HelmConfig({
       <ValuesSourcesEditor
         rows={valuesRows}
         onChange={setValuesRows}
+        canPickRepo={canPickRepo}
+        onPickRepo={onPickValuesSourceRepo}
         disabled={disabled}
       />
     </>
@@ -306,15 +372,18 @@ function HelmConfig({
 function ManifestConfig({
   config,
   setConfig,
+  repoUrlPicker,
   disabled,
 }: {
   config: Record<string, string>;
   setConfig: (key: string, value: string) => void;
+  repoUrlPicker: ReactNode;
   disabled: boolean;
 }) {
   return (
     <>
       <Field label="Repository URL">
+        {repoUrlPicker && <div className="mb-1.5">{repoUrlPicker}</div>}
         <input
           type="text"
           className="w-full border border-neutral-300 px-3 py-2 text-sm"
@@ -356,10 +425,12 @@ function ManifestConfig({
 function TerraformConfig({
   config,
   setConfig,
+  repoUrlPicker,
   disabled,
 }: {
   config: Record<string, string>;
   setConfig: (key: string, value: string) => void;
+  repoUrlPicker: ReactNode;
   disabled: boolean;
 }) {
   const backend = config.backend || "kubernetes";
@@ -388,6 +459,7 @@ function TerraformConfig({
         />
       </Field>
       <Field label="Repository URL">
+        {repoUrlPicker && <div className="mb-1.5">{repoUrlPicker}</div>}
         <input
           type="text"
           className="w-full border border-neutral-300 px-3 py-2 text-sm"
@@ -469,10 +541,14 @@ function TerraformConfig({
 function ValuesSourcesEditor({
   rows,
   onChange,
+  canPickRepo,
+  onPickRepo,
   disabled,
 }: {
   rows: ValuesSourceRow[];
   onChange: (rows: ValuesSourceRow[]) => void;
+  canPickRepo: boolean;
+  onPickRepo: (rowIndex: number, repo: GitHubRepository) => void;
   disabled: boolean;
 }) {
   function update(i: number, key: keyof ValuesSourceRow, value: string) {
@@ -505,6 +581,14 @@ function ValuesSourcesEditor({
                   </button>
                 )}
               </div>
+              {canPickRepo && !disabled && (
+                <div className="mb-1">
+                  <RepositoryPicker
+                    label="Select repository"
+                    onSelect={(repo) => onPickRepo(i, repo)}
+                  />
+                </div>
+              )}
               <input
                 type="text"
                 aria-label={`Source ${i + 1} repository URL`}
