@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
+	"github.com/spacefleet/spacefleet/ent/cloudcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
 	"github.com/spacefleet/spacefleet/ent/componentgroup"
@@ -87,6 +88,7 @@ func checkColumn(t, c string) error {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			application.Table:        application.ValidColumn,
 			chartcredential.Table:    chartcredential.ValidColumn,
+			cloudcredential.Table:    cloudcredential.ValidColumn,
 			cluster.Table:            cluster.ValidColumn,
 			component.Table:          component.ValidColumn,
 			componentgroup.Table:     componentgroup.ValidColumn,

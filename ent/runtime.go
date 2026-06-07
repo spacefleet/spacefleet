@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
+	"github.com/spacefleet/spacefleet/ent/cloudcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
 	"github.com/spacefleet/spacefleet/ent/componentgroup"
@@ -74,6 +75,26 @@ func init() {
 	chartcredentialDescID := chartcredentialFields[0].Descriptor()
 	// chartcredential.DefaultID holds the default value on creation for the id field.
 	chartcredential.DefaultID = chartcredentialDescID.Default.(func() uuid.UUID)
+	cloudcredentialFields := schema.CloudCredential{}.Fields()
+	_ = cloudcredentialFields
+	// cloudcredentialDescName is the schema descriptor for name field.
+	cloudcredentialDescName := cloudcredentialFields[2].Descriptor()
+	// cloudcredential.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	cloudcredential.NameValidator = cloudcredentialDescName.Validators[0].(func(string) error)
+	// cloudcredentialDescCreatedAt is the schema descriptor for created_at field.
+	cloudcredentialDescCreatedAt := cloudcredentialFields[7].Descriptor()
+	// cloudcredential.DefaultCreatedAt holds the default value on creation for the created_at field.
+	cloudcredential.DefaultCreatedAt = cloudcredentialDescCreatedAt.Default.(func() time.Time)
+	// cloudcredentialDescUpdatedAt is the schema descriptor for updated_at field.
+	cloudcredentialDescUpdatedAt := cloudcredentialFields[8].Descriptor()
+	// cloudcredential.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	cloudcredential.DefaultUpdatedAt = cloudcredentialDescUpdatedAt.Default.(func() time.Time)
+	// cloudcredential.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	cloudcredential.UpdateDefaultUpdatedAt = cloudcredentialDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// cloudcredentialDescID is the schema descriptor for id field.
+	cloudcredentialDescID := cloudcredentialFields[0].Descriptor()
+	// cloudcredential.DefaultID holds the default value on creation for the id field.
+	cloudcredential.DefaultID = cloudcredentialDescID.Default.(func() uuid.UUID)
 	clusterFields := schema.Cluster{}.Fields()
 	_ = clusterFields
 	// clusterDescName is the schema descriptor for name field.

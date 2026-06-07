@@ -18,6 +18,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
+	"github.com/spacefleet/spacefleet/ent/cloudcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
 	"github.com/spacefleet/spacefleet/ent/componentgroup"
@@ -40,6 +41,8 @@ type Client struct {
 	Application *ApplicationClient
 	// ChartCredential is the client for interacting with the ChartCredential builders.
 	ChartCredential *ChartCredentialClient
+	// CloudCredential is the client for interacting with the CloudCredential builders.
+	CloudCredential *CloudCredentialClient
 	// Cluster is the client for interacting with the Cluster builders.
 	Cluster *ClusterClient
 	// Component is the client for interacting with the Component builders.
@@ -75,6 +78,7 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.Application = NewApplicationClient(c.config)
 	c.ChartCredential = NewChartCredentialClient(c.config)
+	c.CloudCredential = NewCloudCredentialClient(c.config)
 	c.Cluster = NewClusterClient(c.config)
 	c.Component = NewComponentClient(c.config)
 	c.ComponentGroup = NewComponentGroupClient(c.config)
@@ -180,6 +184,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:             cfg,
 		Application:        NewApplicationClient(cfg),
 		ChartCredential:    NewChartCredentialClient(cfg),
+		CloudCredential:    NewCloudCredentialClient(cfg),
 		Cluster:            NewClusterClient(cfg),
 		Component:          NewComponentClient(cfg),
 		ComponentGroup:     NewComponentGroupClient(cfg),
@@ -212,6 +217,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:             cfg,
 		Application:        NewApplicationClient(cfg),
 		ChartCredential:    NewChartCredentialClient(cfg),
+		CloudCredential:    NewCloudCredentialClient(cfg),
 		Cluster:            NewClusterClient(cfg),
 		Component:          NewComponentClient(cfg),
 		ComponentGroup:     NewComponentGroupClient(cfg),
@@ -252,9 +258,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Application, c.ChartCredential, c.Cluster, c.Component, c.ComponentGroup,
-		c.ComponentRun, c.GitHubInstallation, c.Invitation, c.Membership,
-		c.Organization, c.TektonInstallation, c.User, c.WorkflowRun,
+		c.Application, c.ChartCredential, c.CloudCredential, c.Cluster, c.Component,
+		c.ComponentGroup, c.ComponentRun, c.GitHubInstallation, c.Invitation,
+		c.Membership, c.Organization, c.TektonInstallation, c.User, c.WorkflowRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -264,9 +270,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Application, c.ChartCredential, c.Cluster, c.Component, c.ComponentGroup,
-		c.ComponentRun, c.GitHubInstallation, c.Invitation, c.Membership,
-		c.Organization, c.TektonInstallation, c.User, c.WorkflowRun,
+		c.Application, c.ChartCredential, c.CloudCredential, c.Cluster, c.Component,
+		c.ComponentGroup, c.ComponentRun, c.GitHubInstallation, c.Invitation,
+		c.Membership, c.Organization, c.TektonInstallation, c.User, c.WorkflowRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -279,6 +285,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Application.mutate(ctx, m)
 	case *ChartCredentialMutation:
 		return c.ChartCredential.mutate(ctx, m)
+	case *CloudCredentialMutation:
+		return c.CloudCredential.mutate(ctx, m)
 	case *ClusterMutation:
 		return c.Cluster.mutate(ctx, m)
 	case *ComponentMutation:
@@ -633,6 +641,155 @@ func (c *ChartCredentialClient) mutate(ctx context.Context, m *ChartCredentialMu
 		return (&ChartCredentialDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ChartCredential mutation op: %q", m.Op())
+	}
+}
+
+// CloudCredentialClient is a client for the CloudCredential schema.
+type CloudCredentialClient struct {
+	config
+}
+
+// NewCloudCredentialClient returns a client for the CloudCredential from the given config.
+func NewCloudCredentialClient(c config) *CloudCredentialClient {
+	return &CloudCredentialClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `cloudcredential.Hooks(f(g(h())))`.
+func (c *CloudCredentialClient) Use(hooks ...Hook) {
+	c.hooks.CloudCredential = append(c.hooks.CloudCredential, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `cloudcredential.Intercept(f(g(h())))`.
+func (c *CloudCredentialClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CloudCredential = append(c.inters.CloudCredential, interceptors...)
+}
+
+// Create returns a builder for creating a CloudCredential entity.
+func (c *CloudCredentialClient) Create() *CloudCredentialCreate {
+	mutation := newCloudCredentialMutation(c.config, OpCreate)
+	return &CloudCredentialCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CloudCredential entities.
+func (c *CloudCredentialClient) CreateBulk(builders ...*CloudCredentialCreate) *CloudCredentialCreateBulk {
+	return &CloudCredentialCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CloudCredentialClient) MapCreateBulk(slice any, setFunc func(*CloudCredentialCreate, int)) *CloudCredentialCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CloudCredentialCreateBulk{err: fmt.Errorf("calling to CloudCredentialClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CloudCredentialCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CloudCredentialCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CloudCredential.
+func (c *CloudCredentialClient) Update() *CloudCredentialUpdate {
+	mutation := newCloudCredentialMutation(c.config, OpUpdate)
+	return &CloudCredentialUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CloudCredentialClient) UpdateOne(_m *CloudCredential) *CloudCredentialUpdateOne {
+	mutation := newCloudCredentialMutation(c.config, OpUpdateOne, withCloudCredential(_m))
+	return &CloudCredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CloudCredentialClient) UpdateOneID(id uuid.UUID) *CloudCredentialUpdateOne {
+	mutation := newCloudCredentialMutation(c.config, OpUpdateOne, withCloudCredentialID(id))
+	return &CloudCredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CloudCredential.
+func (c *CloudCredentialClient) Delete() *CloudCredentialDelete {
+	mutation := newCloudCredentialMutation(c.config, OpDelete)
+	return &CloudCredentialDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CloudCredentialClient) DeleteOne(_m *CloudCredential) *CloudCredentialDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CloudCredentialClient) DeleteOneID(id uuid.UUID) *CloudCredentialDeleteOne {
+	builder := c.Delete().Where(cloudcredential.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CloudCredentialDeleteOne{builder}
+}
+
+// Query returns a query builder for CloudCredential.
+func (c *CloudCredentialClient) Query() *CloudCredentialQuery {
+	return &CloudCredentialQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCloudCredential},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CloudCredential entity by its id.
+func (c *CloudCredentialClient) Get(ctx context.Context, id uuid.UUID) (*CloudCredential, error) {
+	return c.Query().Where(cloudcredential.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CloudCredentialClient) GetX(ctx context.Context, id uuid.UUID) *CloudCredential {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryOrganization queries the organization edge of a CloudCredential.
+func (c *CloudCredentialClient) QueryOrganization(_m *CloudCredential) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(cloudcredential.Table, cloudcredential.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, cloudcredential.OrganizationTable, cloudcredential.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *CloudCredentialClient) Hooks() []Hook {
+	return c.hooks.CloudCredential
+}
+
+// Interceptors returns the client interceptors.
+func (c *CloudCredentialClient) Interceptors() []Interceptor {
+	return c.inters.CloudCredential
+}
+
+func (c *CloudCredentialClient) mutate(ctx context.Context, m *CloudCredentialMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CloudCredentialCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CloudCredentialUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CloudCredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CloudCredentialDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CloudCredential mutation op: %q", m.Op())
 	}
 }
 
@@ -2470,13 +2627,13 @@ func (c *WorkflowRunClient) mutate(ctx context.Context, m *WorkflowRunMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Application, ChartCredential, Cluster, Component, ComponentGroup, ComponentRun,
-		GitHubInstallation, Invitation, Membership, Organization, TektonInstallation,
-		User, WorkflowRun []ent.Hook
+		Application, ChartCredential, CloudCredential, Cluster, Component,
+		ComponentGroup, ComponentRun, GitHubInstallation, Invitation, Membership,
+		Organization, TektonInstallation, User, WorkflowRun []ent.Hook
 	}
 	inters struct {
-		Application, ChartCredential, Cluster, Component, ComponentGroup, ComponentRun,
-		GitHubInstallation, Invitation, Membership, Organization, TektonInstallation,
-		User, WorkflowRun []ent.Interceptor
+		Application, ChartCredential, CloudCredential, Cluster, Component,
+		ComponentGroup, ComponentRun, GitHubInstallation, Invitation, Membership,
+		Organization, TektonInstallation, User, WorkflowRun []ent.Interceptor
 	}
 )

@@ -1090,6 +1090,99 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/cloud-credentials:
+    get:
+      summary: List the cloud credentials in the current organization
+      description: |
+        Org-scoped: the organization is taken from the X-Organization-ID header.
+        Cloud-provider credentials (AWS, GCP, Azure) used to authenticate to a
+        cloud. The sealed secret material is never returned.
+      operationId: listCloudCredentials
+      responses:
+        "200":
+          description: Cloud credentials in the current organization
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CloudCredential"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Register a cloud credential in the current organization
+      description: |
+        Org-scoped, editor or above. The secret material is sealed at rest and
+        never returned. Requires an encryption key (SPACEFLEET_SECRET_KEY). An
+        organization may register many credentials, including several of the
+        same provider; names are unique within the organization.
+      operationId: createCloudCredential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CloudCredentialCreateRequest"
+      responses:
+        "201":
+          description: Cloud credential registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CloudCredential"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/cloud-credentials/{id}:
+    get:
+      summary: Get a cloud credential
+      operationId: getCloudCredential
+      parameters:
+        - $ref: "#/components/parameters/CloudCredentialID"
+      responses:
+        "200":
+          description: The cloud credential
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CloudCredential"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      summary: Update a cloud credential
+      description: |
+        Org-scoped, editor or above. Updates the name, description, and/or the
+        credential material. Supplying any credential field re-encrypts the
+        secret. The provider is fixed at registration.
+      operationId: updateCloudCredential
+      parameters:
+        - $ref: "#/components/parameters/CloudCredentialID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CloudCredentialUpdateRequest"
+      responses:
+        "200":
+          description: Cloud credential updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CloudCredential"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete a cloud credential
+      operationId: deleteCloudCredential
+      parameters:
+        - $ref: "#/components/parameters/CloudCredentialID"
+      responses:
+        "204":
+          description: Cloud credential deleted
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/github/installations:
     get:
       summary: List the GitHub App installations in the current organization
@@ -2205,6 +2298,127 @@ components:
           type: string
           minLength: 1
 
+    CloudProvider:
+      type: string
+      description: The cloud the credential authenticates to.
+      enum: [aws, gcp, azure]
+
+    CloudCredential:
+      type: object
+      description: |
+        A named cloud-provider credential set (AWS, GCP, or Azure) for
+        authenticating to a cloud — the foundation for cluster registration,
+        private packages in workflows, etc. config holds non-secret identifiers
+        safe to display; the secret material is sealed at rest and never
+        returned.
+      required: [id, name, provider, config, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        provider:
+          $ref: "#/components/schemas/CloudProvider"
+        description:
+          type: string
+        config:
+          type: object
+          additionalProperties:
+            type: string
+          description: Non-secret per-provider identifiers (region, project, tenant/subscription id, …).
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CloudCredentialCreateRequest:
+      type: object
+      required: [name, provider]
+      description: |
+        A flat object: only the fields relevant to the chosen provider need be
+        set; the server validates per provider. Secret fields (access keys,
+        service-account key, client secret) are encrypted at rest and never
+        returned.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        provider:
+          $ref: "#/components/schemas/CloudProvider"
+        description:
+          type: string
+        # aws provider
+        aws_access_key_id:
+          type: string
+        aws_secret_access_key:
+          type: string
+        aws_session_token:
+          type: string
+          description: Optional temporary-session token.
+        aws_region:
+          type: string
+          description: Optional default region (non-secret).
+        aws_role_arn:
+          type: string
+          description: Optional role to assume after authenticating (non-secret).
+        # gcp provider
+        gcp_service_account_key:
+          type: string
+          description: GCP service-account JSON key.
+        gcp_project:
+          type: string
+          description: Optional project id (non-secret).
+        # azure provider
+        azure_tenant_id:
+          type: string
+        azure_client_id:
+          type: string
+        azure_client_secret:
+          type: string
+        azure_subscription_id:
+          type: string
+          description: Optional subscription id (non-secret).
+
+    CloudCredentialUpdateRequest:
+      type: object
+      description: |
+        All fields optional. Set name/description to edit metadata; supply any
+        credential field to re-encrypt the secret. The provider is fixed at
+        registration.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+        aws_access_key_id:
+          type: string
+        aws_secret_access_key:
+          type: string
+        aws_session_token:
+          type: string
+        aws_region:
+          type: string
+        aws_role_arn:
+          type: string
+        gcp_service_account_key:
+          type: string
+        gcp_project:
+          type: string
+        azure_tenant_id:
+          type: string
+        azure_client_id:
+          type: string
+        azure_client_secret:
+          type: string
+        azure_subscription_id:
+          type: string
+
     GitHubInstallation:
       type: object
       description: |
@@ -2716,6 +2930,14 @@ components:
         format: uuid
 
     ChartCredentialID:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    CloudCredentialID:
       in: path
       name: id
       required: true

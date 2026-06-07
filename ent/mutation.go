@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
+	"github.com/spacefleet/spacefleet/ent/cloudcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
 	"github.com/spacefleet/spacefleet/ent/componentgroup"
@@ -39,6 +40,7 @@ const (
 	// Node types.
 	TypeApplication        = "Application"
 	TypeChartCredential    = "ChartCredential"
+	TypeCloudCredential    = "CloudCredential"
 	TypeCluster            = "Cluster"
 	TypeComponent          = "Component"
 	TypeComponentGroup     = "ComponentGroup"
@@ -1603,6 +1605,830 @@ func (m *ChartCredentialMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown ChartCredential edge %s", name)
+}
+
+// CloudCredentialMutation represents an operation that mutates the CloudCredential nodes in the graph.
+type CloudCredentialMutation struct {
+	config
+	op                    Op
+	typ                   string
+	id                    *uuid.UUID
+	name                  *string
+	provider              *cloudcredential.Provider
+	description           *string
+	_config               *map[string]string
+	encrypted_credentials *[]byte
+	created_at            *time.Time
+	updated_at            *time.Time
+	clearedFields         map[string]struct{}
+	organization          *uuid.UUID
+	clearedorganization   bool
+	done                  bool
+	oldValue              func(context.Context) (*CloudCredential, error)
+	predicates            []predicate.CloudCredential
+}
+
+var _ ent.Mutation = (*CloudCredentialMutation)(nil)
+
+// cloudcredentialOption allows management of the mutation configuration using functional options.
+type cloudcredentialOption func(*CloudCredentialMutation)
+
+// newCloudCredentialMutation creates new mutation for the CloudCredential entity.
+func newCloudCredentialMutation(c config, op Op, opts ...cloudcredentialOption) *CloudCredentialMutation {
+	m := &CloudCredentialMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCloudCredential,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCloudCredentialID sets the ID field of the mutation.
+func withCloudCredentialID(id uuid.UUID) cloudcredentialOption {
+	return func(m *CloudCredentialMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CloudCredential
+		)
+		m.oldValue = func(ctx context.Context) (*CloudCredential, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CloudCredential.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCloudCredential sets the old CloudCredential of the mutation.
+func withCloudCredential(node *CloudCredential) cloudcredentialOption {
+	return func(m *CloudCredentialMutation) {
+		m.oldValue = func(context.Context) (*CloudCredential, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CloudCredentialMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CloudCredentialMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of CloudCredential entities.
+func (m *CloudCredentialMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CloudCredentialMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CloudCredentialMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CloudCredential.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (m *CloudCredentialMutation) SetOrganizationID(u uuid.UUID) {
+	m.organization = &u
+}
+
+// OrganizationID returns the value of the "organization_id" field in the mutation.
+func (m *CloudCredentialMutation) OrganizationID() (r uuid.UUID, exists bool) {
+	v := m.organization
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrganizationID returns the old "organization_id" field's value of the CloudCredential entity.
+// If the CloudCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CloudCredentialMutation) OldOrganizationID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrganizationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrganizationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrganizationID: %w", err)
+	}
+	return oldValue.OrganizationID, nil
+}
+
+// ResetOrganizationID resets all changes to the "organization_id" field.
+func (m *CloudCredentialMutation) ResetOrganizationID() {
+	m.organization = nil
+}
+
+// SetName sets the "name" field.
+func (m *CloudCredentialMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *CloudCredentialMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the CloudCredential entity.
+// If the CloudCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CloudCredentialMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *CloudCredentialMutation) ResetName() {
+	m.name = nil
+}
+
+// SetProvider sets the "provider" field.
+func (m *CloudCredentialMutation) SetProvider(c cloudcredential.Provider) {
+	m.provider = &c
+}
+
+// Provider returns the value of the "provider" field in the mutation.
+func (m *CloudCredentialMutation) Provider() (r cloudcredential.Provider, exists bool) {
+	v := m.provider
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProvider returns the old "provider" field's value of the CloudCredential entity.
+// If the CloudCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CloudCredentialMutation) OldProvider(ctx context.Context) (v cloudcredential.Provider, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProvider is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProvider requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProvider: %w", err)
+	}
+	return oldValue.Provider, nil
+}
+
+// ResetProvider resets all changes to the "provider" field.
+func (m *CloudCredentialMutation) ResetProvider() {
+	m.provider = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *CloudCredentialMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *CloudCredentialMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the CloudCredential entity.
+// If the CloudCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CloudCredentialMutation) OldDescription(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ClearDescription clears the value of the "description" field.
+func (m *CloudCredentialMutation) ClearDescription() {
+	m.description = nil
+	m.clearedFields[cloudcredential.FieldDescription] = struct{}{}
+}
+
+// DescriptionCleared returns if the "description" field was cleared in this mutation.
+func (m *CloudCredentialMutation) DescriptionCleared() bool {
+	_, ok := m.clearedFields[cloudcredential.FieldDescription]
+	return ok
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *CloudCredentialMutation) ResetDescription() {
+	m.description = nil
+	delete(m.clearedFields, cloudcredential.FieldDescription)
+}
+
+// SetConfig sets the "config" field.
+func (m *CloudCredentialMutation) SetConfig(value map[string]string) {
+	m._config = &value
+}
+
+// Config returns the value of the "config" field in the mutation.
+func (m *CloudCredentialMutation) Config() (r map[string]string, exists bool) {
+	v := m._config
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConfig returns the old "config" field's value of the CloudCredential entity.
+// If the CloudCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CloudCredentialMutation) OldConfig(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConfig is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConfig requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConfig: %w", err)
+	}
+	return oldValue.Config, nil
+}
+
+// ClearConfig clears the value of the "config" field.
+func (m *CloudCredentialMutation) ClearConfig() {
+	m._config = nil
+	m.clearedFields[cloudcredential.FieldConfig] = struct{}{}
+}
+
+// ConfigCleared returns if the "config" field was cleared in this mutation.
+func (m *CloudCredentialMutation) ConfigCleared() bool {
+	_, ok := m.clearedFields[cloudcredential.FieldConfig]
+	return ok
+}
+
+// ResetConfig resets all changes to the "config" field.
+func (m *CloudCredentialMutation) ResetConfig() {
+	m._config = nil
+	delete(m.clearedFields, cloudcredential.FieldConfig)
+}
+
+// SetEncryptedCredentials sets the "encrypted_credentials" field.
+func (m *CloudCredentialMutation) SetEncryptedCredentials(b []byte) {
+	m.encrypted_credentials = &b
+}
+
+// EncryptedCredentials returns the value of the "encrypted_credentials" field in the mutation.
+func (m *CloudCredentialMutation) EncryptedCredentials() (r []byte, exists bool) {
+	v := m.encrypted_credentials
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEncryptedCredentials returns the old "encrypted_credentials" field's value of the CloudCredential entity.
+// If the CloudCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CloudCredentialMutation) OldEncryptedCredentials(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEncryptedCredentials is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEncryptedCredentials requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEncryptedCredentials: %w", err)
+	}
+	return oldValue.EncryptedCredentials, nil
+}
+
+// ClearEncryptedCredentials clears the value of the "encrypted_credentials" field.
+func (m *CloudCredentialMutation) ClearEncryptedCredentials() {
+	m.encrypted_credentials = nil
+	m.clearedFields[cloudcredential.FieldEncryptedCredentials] = struct{}{}
+}
+
+// EncryptedCredentialsCleared returns if the "encrypted_credentials" field was cleared in this mutation.
+func (m *CloudCredentialMutation) EncryptedCredentialsCleared() bool {
+	_, ok := m.clearedFields[cloudcredential.FieldEncryptedCredentials]
+	return ok
+}
+
+// ResetEncryptedCredentials resets all changes to the "encrypted_credentials" field.
+func (m *CloudCredentialMutation) ResetEncryptedCredentials() {
+	m.encrypted_credentials = nil
+	delete(m.clearedFields, cloudcredential.FieldEncryptedCredentials)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CloudCredentialMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CloudCredentialMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CloudCredential entity.
+// If the CloudCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CloudCredentialMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CloudCredentialMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *CloudCredentialMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *CloudCredentialMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the CloudCredential entity.
+// If the CloudCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CloudCredentialMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *CloudCredentialMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearOrganization clears the "organization" edge to the Organization entity.
+func (m *CloudCredentialMutation) ClearOrganization() {
+	m.clearedorganization = true
+	m.clearedFields[cloudcredential.FieldOrganizationID] = struct{}{}
+}
+
+// OrganizationCleared reports if the "organization" edge to the Organization entity was cleared.
+func (m *CloudCredentialMutation) OrganizationCleared() bool {
+	return m.clearedorganization
+}
+
+// OrganizationIDs returns the "organization" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OrganizationID instead. It exists only for internal usage by the builders.
+func (m *CloudCredentialMutation) OrganizationIDs() (ids []uuid.UUID) {
+	if id := m.organization; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOrganization resets all changes to the "organization" edge.
+func (m *CloudCredentialMutation) ResetOrganization() {
+	m.organization = nil
+	m.clearedorganization = false
+}
+
+// Where appends a list predicates to the CloudCredentialMutation builder.
+func (m *CloudCredentialMutation) Where(ps ...predicate.CloudCredential) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CloudCredentialMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CloudCredentialMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CloudCredential, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CloudCredentialMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CloudCredentialMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CloudCredential).
+func (m *CloudCredentialMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CloudCredentialMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.organization != nil {
+		fields = append(fields, cloudcredential.FieldOrganizationID)
+	}
+	if m.name != nil {
+		fields = append(fields, cloudcredential.FieldName)
+	}
+	if m.provider != nil {
+		fields = append(fields, cloudcredential.FieldProvider)
+	}
+	if m.description != nil {
+		fields = append(fields, cloudcredential.FieldDescription)
+	}
+	if m._config != nil {
+		fields = append(fields, cloudcredential.FieldConfig)
+	}
+	if m.encrypted_credentials != nil {
+		fields = append(fields, cloudcredential.FieldEncryptedCredentials)
+	}
+	if m.created_at != nil {
+		fields = append(fields, cloudcredential.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, cloudcredential.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CloudCredentialMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case cloudcredential.FieldOrganizationID:
+		return m.OrganizationID()
+	case cloudcredential.FieldName:
+		return m.Name()
+	case cloudcredential.FieldProvider:
+		return m.Provider()
+	case cloudcredential.FieldDescription:
+		return m.Description()
+	case cloudcredential.FieldConfig:
+		return m.Config()
+	case cloudcredential.FieldEncryptedCredentials:
+		return m.EncryptedCredentials()
+	case cloudcredential.FieldCreatedAt:
+		return m.CreatedAt()
+	case cloudcredential.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CloudCredentialMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case cloudcredential.FieldOrganizationID:
+		return m.OldOrganizationID(ctx)
+	case cloudcredential.FieldName:
+		return m.OldName(ctx)
+	case cloudcredential.FieldProvider:
+		return m.OldProvider(ctx)
+	case cloudcredential.FieldDescription:
+		return m.OldDescription(ctx)
+	case cloudcredential.FieldConfig:
+		return m.OldConfig(ctx)
+	case cloudcredential.FieldEncryptedCredentials:
+		return m.OldEncryptedCredentials(ctx)
+	case cloudcredential.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case cloudcredential.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown CloudCredential field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CloudCredentialMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case cloudcredential.FieldOrganizationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrganizationID(v)
+		return nil
+	case cloudcredential.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case cloudcredential.FieldProvider:
+		v, ok := value.(cloudcredential.Provider)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProvider(v)
+		return nil
+	case cloudcredential.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case cloudcredential.FieldConfig:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConfig(v)
+		return nil
+	case cloudcredential.FieldEncryptedCredentials:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEncryptedCredentials(v)
+		return nil
+	case cloudcredential.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case cloudcredential.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CloudCredential field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CloudCredentialMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CloudCredentialMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CloudCredentialMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown CloudCredential numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CloudCredentialMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(cloudcredential.FieldDescription) {
+		fields = append(fields, cloudcredential.FieldDescription)
+	}
+	if m.FieldCleared(cloudcredential.FieldConfig) {
+		fields = append(fields, cloudcredential.FieldConfig)
+	}
+	if m.FieldCleared(cloudcredential.FieldEncryptedCredentials) {
+		fields = append(fields, cloudcredential.FieldEncryptedCredentials)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CloudCredentialMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CloudCredentialMutation) ClearField(name string) error {
+	switch name {
+	case cloudcredential.FieldDescription:
+		m.ClearDescription()
+		return nil
+	case cloudcredential.FieldConfig:
+		m.ClearConfig()
+		return nil
+	case cloudcredential.FieldEncryptedCredentials:
+		m.ClearEncryptedCredentials()
+		return nil
+	}
+	return fmt.Errorf("unknown CloudCredential nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CloudCredentialMutation) ResetField(name string) error {
+	switch name {
+	case cloudcredential.FieldOrganizationID:
+		m.ResetOrganizationID()
+		return nil
+	case cloudcredential.FieldName:
+		m.ResetName()
+		return nil
+	case cloudcredential.FieldProvider:
+		m.ResetProvider()
+		return nil
+	case cloudcredential.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case cloudcredential.FieldConfig:
+		m.ResetConfig()
+		return nil
+	case cloudcredential.FieldEncryptedCredentials:
+		m.ResetEncryptedCredentials()
+		return nil
+	case cloudcredential.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case cloudcredential.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown CloudCredential field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CloudCredentialMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.organization != nil {
+		edges = append(edges, cloudcredential.EdgeOrganization)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CloudCredentialMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case cloudcredential.EdgeOrganization:
+		if id := m.organization; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CloudCredentialMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CloudCredentialMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CloudCredentialMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedorganization {
+		edges = append(edges, cloudcredential.EdgeOrganization)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CloudCredentialMutation) EdgeCleared(name string) bool {
+	switch name {
+	case cloudcredential.EdgeOrganization:
+		return m.clearedorganization
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CloudCredentialMutation) ClearEdge(name string) error {
+	switch name {
+	case cloudcredential.EdgeOrganization:
+		m.ClearOrganization()
+		return nil
+	}
+	return fmt.Errorf("unknown CloudCredential unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CloudCredentialMutation) ResetEdge(name string) error {
+	switch name {
+	case cloudcredential.EdgeOrganization:
+		m.ResetOrganization()
+		return nil
+	}
+	return fmt.Errorf("unknown CloudCredential edge %s", name)
 }
 
 // ClusterMutation represents an operation that mutates the Cluster nodes in the graph.

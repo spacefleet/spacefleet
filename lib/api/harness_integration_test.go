@@ -13,10 +13,12 @@ import (
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/lib/applications"
+	"github.com/spacefleet/spacefleet/lib/cloudcredentials"
 	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/githubapp"
 	"github.com/spacefleet/spacefleet/lib/githubinstallations"
 	"github.com/spacefleet/spacefleet/lib/organizations"
+	"github.com/spacefleet/spacefleet/lib/secrets"
 	"github.com/spacefleet/spacefleet/lib/testsupport"
 	"github.com/spacefleet/spacefleet/lib/users"
 )
@@ -66,6 +68,12 @@ type harness struct {
 func newHarness(t *testing.T, github githubinstallations.Authenticator) *harness {
 	t.Helper()
 	client := testsupport.NewEntClient(t)
+	// A real sealer (the harness secret key is a valid base64 32-byte key) so the
+	// cloud-credential seal/open round-trip is exercised.
+	sealer, err := secrets.NewSealer(testSecretKey)
+	if err != nil {
+		t.Fatalf("new sealer: %v", err)
+	}
 	deps := ServerDeps{
 		Users:        users.NewService(client),
 		Orgs:         organizations.NewService(client),
@@ -74,6 +82,7 @@ func newHarness(t *testing.T, github githubinstallations.Authenticator) *harness
 		// gate before reaching the cluster (stale_run) run; the happy paths here
 		// never actually reach a live cluster.
 		Clusters:            clusters.NewService(client, nil),
+		CloudCredentials:    cloudcredentials.NewService(client, sealer),
 		GitHubInstallations: githubinstallations.NewService(client, github),
 		SecretKey:           testSecretKey,
 		GitHubAppSlug:       "spacefleet-test",

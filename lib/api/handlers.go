@@ -12,6 +12,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/applications"
 	"github.com/spacefleet/spacefleet/lib/auth"
 	"github.com/spacefleet/spacefleet/lib/chartcredentials"
+	"github.com/spacefleet/spacefleet/lib/cloudcredentials"
 	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/email"
 	"github.com/spacefleet/spacefleet/lib/githubinstallations"
@@ -28,6 +29,7 @@ type Server struct {
 	clusters            *clusters.Service
 	applications        *applications.Service
 	chartCredentials    *chartcredentials.Service
+	cloudCredentials    *cloudcredentials.Service
 	githubInstallations *githubinstallations.Service
 	invites             *invitations.Service
 	workflows           *workflows.Service
@@ -70,6 +72,7 @@ type ServerDeps struct {
 	Clusters            *clusters.Service
 	Applications        *applications.Service
 	ChartCredentials    *chartcredentials.Service
+	CloudCredentials    *cloudcredentials.Service
 	GitHubInstallations *githubinstallations.Service
 	Invites             *invitations.Service
 	Workflows           *workflows.Service
@@ -89,6 +92,7 @@ func NewServer(d ServerDeps) *Server {
 		clusters:            d.Clusters,
 		applications:        d.Applications,
 		chartCredentials:    d.ChartCredentials,
+		cloudCredentials:    d.CloudCredentials,
 		githubInstallations: d.GitHubInstallations,
 		invites:             d.Invites,
 		workflows:           d.Workflows,

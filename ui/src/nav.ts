@@ -76,6 +76,7 @@ export const navSections: NavSection[] = [
     items: [
       { label: "Members", path: "/admin/members" },
       { label: "Clusters", path: "/admin/clusters" },
+      { label: "Cloud Credentials", path: "/admin/cloud-credentials" },
       { label: "Private Charts", path: "/admin/private-charts" },
       { label: "GitHub", path: "/admin/github" },
     ],

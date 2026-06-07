@@ -95,6 +95,44 @@ var (
 			},
 		},
 	}
+	// CloudCredentialsColumns holds the columns for the "cloud_credentials" table.
+	CloudCredentialsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "provider", Type: field.TypeEnum, Enums: []string{"aws", "gcp", "azure"}},
+		{Name: "description", Type: field.TypeString, Nullable: true},
+		{Name: "config", Type: field.TypeJSON, Nullable: true},
+		{Name: "encrypted_credentials", Type: field.TypeBytes, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+	}
+	// CloudCredentialsTable holds the schema information for the "cloud_credentials" table.
+	CloudCredentialsTable = &schema.Table{
+		Name:       "cloud_credentials",
+		Columns:    CloudCredentialsColumns,
+		PrimaryKey: []*schema.Column{CloudCredentialsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "cloud_credentials_organizations_organization",
+				Columns:    []*schema.Column{CloudCredentialsColumns[8]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "cloudcredential_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{CloudCredentialsColumns[8]},
+			},
+			{
+				Name:    "cloudcredential_organization_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{CloudCredentialsColumns[8], CloudCredentialsColumns[1]},
+			},
+		},
+	}
 	// ClustersColumns holds the columns for the "clusters" table.
 	ClustersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -532,6 +570,7 @@ var (
 	Tables = []*schema.Table{
 		ApplicationsTable,
 		ChartCredentialsTable,
+		CloudCredentialsTable,
 		ClustersTable,
 		ComponentsTable,
 		ComponentGroupsTable,
@@ -551,6 +590,7 @@ func init() {
 	ApplicationsTable.ForeignKeys[1].RefTable = ClustersTable
 	ApplicationsTable.ForeignKeys[2].RefTable = ClustersTable
 	ChartCredentialsTable.ForeignKeys[0].RefTable = OrganizationsTable
+	CloudCredentialsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ClustersTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ComponentsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ComponentsTable.ForeignKeys[1].RefTable = ApplicationsTable

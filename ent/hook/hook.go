@@ -33,6 +33,18 @@ func (f ChartCredentialFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Va
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ChartCredentialMutation", m)
 }
 
+// The CloudCredentialFunc type is an adapter to allow the use of ordinary
+// function as CloudCredential mutator.
+type CloudCredentialFunc func(context.Context, *ent.CloudCredentialMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CloudCredentialFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CloudCredentialMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CloudCredentialMutation", m)
+}
+
 // The ClusterFunc type is an adapter to allow the use of ordinary
 // function as Cluster mutator.
 type ClusterFunc func(context.Context, *ent.ClusterMutation) (ent.Value, error)

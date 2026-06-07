@@ -12,6 +12,9 @@ type Application func(*sql.Selector)
 // ChartCredential is the predicate function for chartcredential builders.
 type ChartCredential func(*sql.Selector)
 
+// CloudCredential is the predicate function for cloudcredential builders.
+type CloudCredential func(*sql.Selector)
+
 // Cluster is the predicate function for cluster builders.
 type Cluster func(*sql.Selector)
 

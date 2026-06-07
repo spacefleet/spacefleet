@@ -16,6 +16,8 @@ type Tx struct {
 	Application *ApplicationClient
 	// ChartCredential is the client for interacting with the ChartCredential builders.
 	ChartCredential *ChartCredentialClient
+	// CloudCredential is the client for interacting with the CloudCredential builders.
+	CloudCredential *CloudCredentialClient
 	// Cluster is the client for interacting with the Cluster builders.
 	Cluster *ClusterClient
 	// Component is the client for interacting with the Component builders.
@@ -171,6 +173,7 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.Application = NewApplicationClient(tx.config)
 	tx.ChartCredential = NewChartCredentialClient(tx.config)
+	tx.CloudCredential = NewCloudCredentialClient(tx.config)
 	tx.Cluster = NewClusterClient(tx.config)
 	tx.Component = NewComponentClient(tx.config)
 	tx.ComponentGroup = NewComponentGroupClient(tx.config)

@@ -26,6 +26,7 @@ import { Home } from "./routes/Home";
 import { Login } from "./routes/Login";
 import { Members } from "./routes/Members";
 import { PrivateCharts } from "./routes/PrivateCharts";
+import { CloudCredentials } from "./routes/CloudCredentials";
 import { NamespaceDetail } from "./routes/NamespaceDetail";
 import { Namespaces } from "./routes/Namespaces";
 import { NodeDetail } from "./routes/NodeDetail";
@@ -46,6 +47,7 @@ const pageComponents: Record<string, ReactNode> = {
   "/infrastructure/namespaces": <Namespaces />,
   "/infrastructure/pods": <Pods />,
   "/admin/members": <Members />,
+  "/admin/cloud-credentials": <CloudCredentials />,
   "/admin/private-charts": <PrivateCharts />,
   "/admin/github": <GitHubInstallations />,
 };

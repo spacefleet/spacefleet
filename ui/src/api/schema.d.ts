@@ -916,6 +916,59 @@ export interface paths {
         patch: operations["updateChartCredential"];
         trace?: never;
     };
+    "/api/cloud-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the cloud credentials in the current organization
+         * @description Org-scoped: the organization is taken from the X-Organization-ID header.
+         *     Cloud-provider credentials (AWS, GCP, Azure) used to authenticate to a
+         *     cloud. The sealed secret material is never returned.
+         */
+        get: operations["listCloudCredentials"];
+        put?: never;
+        /**
+         * Register a cloud credential in the current organization
+         * @description Org-scoped, editor or above. The secret material is sealed at rest and
+         *     never returned. Requires an encryption key (SPACEFLEET_SECRET_KEY). An
+         *     organization may register many credentials, including several of the
+         *     same provider; names are unique within the organization.
+         */
+        post: operations["createCloudCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cloud-credentials/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a cloud credential */
+        get: operations["getCloudCredential"];
+        put?: never;
+        post?: never;
+        /** Delete a cloud credential */
+        delete: operations["deleteCloudCredential"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a cloud credential
+         * @description Org-scoped, editor or above. Updates the name, description, and/or the
+         *     credential material. Supplying any credential field re-encrypts the
+         *     secret. The provider is fixed at registration.
+         */
+        patch: operations["updateCloudCredential"];
+        trace?: never;
+    };
     "/api/github/installations": {
         parameters: {
             query?: never;
@@ -1610,6 +1663,81 @@ export interface components {
             password?: string;
         };
         /**
+         * @description The cloud the credential authenticates to.
+         * @enum {string}
+         */
+        CloudProvider: "aws" | "gcp" | "azure";
+        /**
+         * @description A named cloud-provider credential set (AWS, GCP, or Azure) for
+         *     authenticating to a cloud — the foundation for cluster registration,
+         *     private packages in workflows, etc. config holds non-secret identifiers
+         *     safe to display; the secret material is sealed at rest and never
+         *     returned.
+         */
+        CloudCredential: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            provider: components["schemas"]["CloudProvider"];
+            description?: string;
+            /** @description Non-secret per-provider identifiers (region, project, tenant/subscription id, …). */
+            config: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /**
+         * @description A flat object: only the fields relevant to the chosen provider need be
+         *     set; the server validates per provider. Secret fields (access keys,
+         *     service-account key, client secret) are encrypted at rest and never
+         *     returned.
+         */
+        CloudCredentialCreateRequest: {
+            name: string;
+            provider: components["schemas"]["CloudProvider"];
+            description?: string;
+            aws_access_key_id?: string;
+            aws_secret_access_key?: string;
+            /** @description Optional temporary-session token. */
+            aws_session_token?: string;
+            /** @description Optional default region (non-secret). */
+            aws_region?: string;
+            /** @description Optional role to assume after authenticating (non-secret). */
+            aws_role_arn?: string;
+            /** @description GCP service-account JSON key. */
+            gcp_service_account_key?: string;
+            /** @description Optional project id (non-secret). */
+            gcp_project?: string;
+            azure_tenant_id?: string;
+            azure_client_id?: string;
+            azure_client_secret?: string;
+            /** @description Optional subscription id (non-secret). */
+            azure_subscription_id?: string;
+        };
+        /**
+         * @description All fields optional. Set name/description to edit metadata; supply any
+         *     credential field to re-encrypt the secret. The provider is fixed at
+         *     registration.
+         */
+        CloudCredentialUpdateRequest: {
+            name?: string;
+            description?: string;
+            aws_access_key_id?: string;
+            aws_secret_access_key?: string;
+            aws_session_token?: string;
+            aws_region?: string;
+            aws_role_arn?: string;
+            gcp_service_account_key?: string;
+            gcp_project?: string;
+            azure_tenant_id?: string;
+            azure_client_id?: string;
+            azure_client_secret?: string;
+            azure_subscription_id?: string;
+        };
+        /**
          * @description An organization's installation of the operator's GitHub App, used to
          *     pull charts from private Git repositories. No secret is stored — the
          *     access token is minted on demand at rollout time.
@@ -1978,6 +2106,7 @@ export interface components {
         ClusterID: string;
         ApplicationID: string;
         ChartCredentialID: string;
+        CloudCredentialID: string;
         GitHubInstallationID: string;
         RunID: string;
         ComponentRunID: string;
@@ -3219,6 +3348,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChartCredential"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listCloudCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cloud credentials in the current organization */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudCredential"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createCloudCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloudCredentialCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Cloud credential registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudCredential"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getCloudCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CloudCredentialID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cloud credential */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudCredential"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteCloudCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CloudCredentialID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cloud credential deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateCloudCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["CloudCredentialID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloudCredentialUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Cloud credential updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudCredential"];
                 };
             };
             default: components["responses"]["Error"];
