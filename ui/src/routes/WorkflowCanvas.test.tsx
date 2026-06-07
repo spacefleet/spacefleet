@@ -183,7 +183,7 @@ describe("WorkflowCanvas", () => {
     ).toBeInTheDocument();
   });
 
-  it("the + Add dropdown lists Helm, Manifest, and Group and can add a node", async () => {
+  it("the + Add dropdown lists Helm, Manifest, OpenTofu, and Group and can add a node", async () => {
     defaultGets([]);
     renderWorkflow();
     await screen.findByText(/no components yet/i);
@@ -192,10 +192,58 @@ describe("WorkflowCanvas", () => {
     // The menu lists every addable type, driven by the items array.
     expect(screen.getByRole("menuitem", { name: /helm/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /manifest/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /opentofu/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /group/i })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("menuitem", { name: /helm/i }));
     expect(await screen.findByText("helm release")).toBeInTheDocument();
+  });
+
+  it("adding OpenTofu creates two linked plan + apply nodes", async () => {
+    defaultGets([]);
+    renderWorkflow();
+    await screen.findByText(/no components yet/i);
+
+    await userEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /opentofu/i }));
+
+    // Both nodes appear, named for their stage.
+    expect(await screen.findByText("terraform plan")).toBeInTheDocument();
+    expect(screen.getByText("terraform apply")).toBeInTheDocument();
+  });
+
+  it("OpenTofu apply node depends on the plan node and is gated by default", async () => {
+    defaultGets([]);
+    mockApi.PUT.mockResolvedValue({
+      data: { components: [], groups: [] },
+      error: undefined,
+    });
+    renderWorkflow();
+    await screen.findByText(/no components yet/i);
+
+    await userEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /opentofu/i }));
+    await screen.findByText("terraform plan");
+
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(mockApi.PUT).toHaveBeenCalled());
+
+    const body = mockApi.PUT.mock.calls[0][1].body as {
+      components: {
+        id: string;
+        name: string;
+        depends_on: string[];
+        requires_approval: boolean;
+        config: Record<string, string>;
+      }[];
+    };
+    const plan = body.components.find((c) => c.name === "terraform plan")!;
+    const apply = body.components.find((c) => c.name === "terraform apply")!;
+    expect(plan.config.command).toBe("plan");
+    expect(plan.requires_approval).toBe(false);
+    expect(apply.config.command).toBe("apply");
+    expect(apply.requires_approval).toBe(true);
+    expect(apply.depends_on).toEqual([plan.id]);
   });
 
   it("selecting a node and clicking Edit navigates to the node editor route", async () => {

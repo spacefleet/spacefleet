@@ -31,8 +31,9 @@ const reapMaxLifetime = workflowWatchTimeout + 15*time.Minute
 // a few minutes keeps abandoned runs from lingering without busy-polling.
 const reapInterval = 5 * time.Minute
 
-// CancelRun cancels an in-flight workflow run: it verifies the run belongs to the
-// app and org, refuses a run that has already settled (ErrRunNotInFlight → 409),
+// CancelRun cancels an in-flight workflow run (pending, running, or parked
+// awaiting_approval): it verifies the run belongs to the app and org, refuses a run
+// that has already settled (ErrRunNotInFlight → 409),
 // then — in one transaction — marks the run failed and settles every non-terminal
 // component run failed. Marking the run terminal clears the application's
 // in-flight gate (BeginRun's pending/running guard), so a new run can start.
@@ -57,7 +58,9 @@ func (s *Service) CancelRun(ctx context.Context, orgID, appID, runID uuid.UUID) 
 	if err != nil {
 		return nil, err
 	}
-	if run.Status != workflowrun.StatusPending && run.Status != workflowrun.StatusRunning {
+	if run.Status != workflowrun.StatusPending &&
+		run.Status != workflowrun.StatusRunning &&
+		run.Status != workflowrun.StatusAwaitingApproval {
 		return nil, ErrRunNotInFlight
 	}
 
@@ -75,7 +78,7 @@ func (s *Service) CancelRun(ctx context.Context, orgID, appID, runID uuid.UUID) 
 		Where(
 			workflowrun.OrganizationID(orgID),
 			workflowrun.ID(runID),
-			workflowrun.StatusIn(workflowrun.StatusPending, workflowrun.StatusRunning),
+			workflowrun.StatusIn(workflowrun.StatusPending, workflowrun.StatusRunning, workflowrun.StatusAwaitingApproval),
 		).
 		SetStatus(workflowrun.StatusFailed).
 		SetMessage("run cancelled").
@@ -94,7 +97,7 @@ func (s *Service) CancelRun(ctx context.Context, orgID, appID, runID uuid.UUID) 
 		Where(
 			componentrun.OrganizationID(orgID),
 			componentrun.WorkflowRunID(runID),
-			componentrun.StatusIn(componentrun.StatusPending, componentrun.StatusRunning),
+			componentrun.StatusIn(componentrun.StatusPending, componentrun.StatusRunning, componentrun.StatusAwaitingApproval),
 		).
 		SetStatus(componentrun.StatusFailed).
 		SetMessage("cancelled (run cancelled)").

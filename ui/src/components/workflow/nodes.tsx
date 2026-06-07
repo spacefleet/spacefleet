@@ -1,5 +1,5 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Package, FileCode, RefreshCw, Boxes } from "lucide-react";
+import { Package, FileCode, Layers, RefreshCw, Boxes } from "lucide-react";
 import type { components } from "../../api/schema";
 import { ComponentStatusIcon } from "./status";
 import { componentStatusClasses } from "./statusClasses";
@@ -10,7 +10,8 @@ type ComponentRunStatus = components["schemas"]["ComponentRunStatus"];
 // TypeBadge labels a node with its component type (helm/manifest) — sharp
 // corners, neutral palette, a small leading glyph.
 export function TypeBadge({ type }: { type: ComponentType }) {
-  const Icon = type === "helm" ? Package : FileCode;
+  const Icon =
+    type === "helm" ? Package : type === "terraform" ? Layers : FileCode;
   return (
     <span className="inline-flex items-center gap-1 border border-neutral-300 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500">
       <Icon className="h-3 w-3" />
@@ -133,7 +134,7 @@ export function RunNode({ data, selected }: NodeProps) {
       <div className="mt-1.5 flex items-center justify-between gap-2">
         <TypeBadge type={d.type} />
         <span className="text-[10px] uppercase tracking-wide text-neutral-500">
-          {d.status}
+          {d.status.replace(/_/g, " ")}
         </span>
       </div>
       <Handle

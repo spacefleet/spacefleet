@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { AppWindow, ChevronDown, Plus } from "lucide-react";
+import { AppWindow, Plus } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
@@ -45,10 +45,14 @@ export function Applications() {
           </p>
         </div>
         {canEdit && (
-          <CreateAppButton
-            onHelm={() => navigate("/applications/new")}
-            onImport={() => navigate("/applications/import")}
-          />
+          <button
+            type="button"
+            onClick={() => navigate("/applications/new")}
+            className="inline-flex items-center gap-2 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
+          >
+            <Plus className="h-4 w-4" />
+            Create app
+          </button>
         )}
       </div>
 
@@ -98,76 +102,6 @@ export function Applications() {
           </table>
         )}
       </div>
-    </div>
-  );
-}
-
-// CreateAppButton is a split dropdown: the primary action creates a Helm app;
-// the menu lists other (not-yet-available) application types so the surface is
-// ready to grow.
-function CreateAppButton({
-  onHelm,
-  onImport,
-}: {
-  onHelm: () => void;
-  onImport: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function onDocClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
-
-  return (
-    <div ref={ref} className="relative inline-flex">
-      <button
-        type="button"
-        onClick={onHelm}
-        className="inline-flex items-center gap-2 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
-      >
-        <Plus className="h-4 w-4" />
-        Create app
-      </button>
-      <button
-        type="button"
-        aria-label="More application types"
-        onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center border-l border-neutral-700 bg-black px-2 text-white hover:bg-neutral-800"
-      >
-        <ChevronDown className="h-4 w-4" />
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-10 mt-1 w-56 border border-neutral-200 bg-white py-1 shadow-lg">
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              onHelm();
-            }}
-            className="block w-full px-3 py-2 text-left text-sm hover:bg-neutral-50"
-          >
-            Helm release
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              onImport();
-            }}
-            className="block w-full px-3 py-2 text-left text-sm hover:bg-neutral-50"
-          >
-            Import existing release
-          </button>
-          <span className="block w-full cursor-not-allowed px-3 py-2 text-left text-sm text-neutral-400">
-            Container image (coming soon)
-          </span>
-        </div>
-      )}
     </div>
   );
 }

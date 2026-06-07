@@ -304,3 +304,139 @@ func TestScheduleAllSucceed(t *testing.T) {
 		t.Fatal("expected a 'running' transition for node a")
 	}
 }
+
+func TestScheduleGateParksRunSuspended(t *testing.T) {
+	t.Parallel()
+	// a -> b(gated) -> c. b parks; b is never run, c waits behind it. Run suspends.
+	a, b, c := uuid.New(), uuid.New(), uuid.New()
+	nodes := []schedNode{
+		{ID: a},
+		{ID: b, DependsOn: []uuid.UUID{a}, RequiresApproval: true},
+		{ID: c, DependsOn: []uuid.UUID{b}},
+	}
+	st := newRecordingState()
+	ran := newRecordingState()
+	got := schedule(context.Background(), nodes, 4, outcomeRunFn(nil, ran), st.on)
+	if got != runSuspended {
+		t.Fatalf("gated run: got %q, want suspended", got)
+	}
+	if !st.saw(b, statusAwaitingApproval) {
+		t.Fatal("gated node b must emit awaiting_approval")
+	}
+	// awaiting_approval emitted exactly once.
+	st.mu.Lock()
+	cnt := 0
+	for _, s := range st.states[b] {
+		if s == statusAwaitingApproval {
+			cnt++
+		}
+	}
+	st.mu.Unlock()
+	if cnt != 1 {
+		t.Fatalf("awaiting_approval must be emitted exactly once: got %d", cnt)
+	}
+	if ran.saw(b, "ran") {
+		t.Fatal("parked node b must not run")
+	}
+	if ran.saw(c, "ran") {
+		t.Fatal("dependent of a parked node must not run")
+	}
+	if st.last(c) == statusSkipped {
+		t.Fatal("dependent of a parked node must wait, not be skipped")
+	}
+	if st.last(a) != statusSucceeded {
+		t.Fatalf("upstream node a should have succeeded: %q", st.last(a))
+	}
+}
+
+func TestScheduleSiblingsDrainBeforeSuspend(t *testing.T) {
+	t.Parallel()
+	// gate(gated) and sib are independent. sib must fully run even though gate parks.
+	gate, sib := uuid.New(), uuid.New()
+	nodes := []schedNode{
+		{ID: gate, RequiresApproval: true},
+		{ID: sib},
+	}
+	st := newRecordingState()
+	ran := newRecordingState()
+	got := schedule(context.Background(), nodes, 4, outcomeRunFn(nil, ran), st.on)
+	if got != runSuspended {
+		t.Fatalf("got %q, want suspended", got)
+	}
+	if !ran.saw(sib, "ran") {
+		t.Fatal("sibling must drain even though another branch parked")
+	}
+	if st.last(sib) != statusSucceeded {
+		t.Fatalf("sibling should have succeeded: %q", st.last(sib))
+	}
+	if ran.saw(gate, "ran") {
+		t.Fatal("gated node must not run")
+	}
+}
+
+func TestScheduleHardFailureOutranksSuspend(t *testing.T) {
+	t.Parallel()
+	// A parallel branch hard-fails while another branch parks: the run is failed.
+	gate, boom := uuid.New(), uuid.New()
+	nodes := []schedNode{
+		{ID: gate, RequiresApproval: true},
+		{ID: boom},
+	}
+	ran := newRecordingState()
+	got := schedule(context.Background(), nodes, 4, outcomeRunFn(map[uuid.UUID]string{boom: statusFailed}, ran), nil)
+	if got != runFailed {
+		t.Fatalf("hard failure must outrank suspend: got %q, want failed", got)
+	}
+}
+
+func TestScheduleApprovedGateLaunchesAndProceeds(t *testing.T) {
+	t.Parallel()
+	// Models a resume: the same DAG re-scheduled with Approved=true on the gated node.
+	// b now launches and its dependent c proceeds — the run succeeds.
+	a, b, c := uuid.New(), uuid.New(), uuid.New()
+	nodes := []schedNode{
+		{ID: a},
+		{ID: b, DependsOn: []uuid.UUID{a}, RequiresApproval: true, Approved: true},
+		{ID: c, DependsOn: []uuid.UUID{b}},
+	}
+	st := newRecordingState()
+	ran := newRecordingState()
+	got := schedule(context.Background(), nodes, 4, outcomeRunFn(nil, ran), st.on)
+	if got != runSucceeded {
+		t.Fatalf("approved gate: got %q, want succeeded", got)
+	}
+	if !ran.saw(b, "ran") {
+		t.Fatal("an approved gated node must run")
+	}
+	if !ran.saw(c, "ran") {
+		t.Fatal("downstream of an approved gate must run")
+	}
+	if st.saw(b, statusAwaitingApproval) {
+		t.Fatal("an approved gate must not park")
+	}
+	if st.last(c) != statusSucceeded {
+		t.Fatalf("downstream should have succeeded: %q", st.last(c))
+	}
+}
+
+func TestScheduleNotRequiredApprovalRunsAsToday(t *testing.T) {
+	t.Parallel()
+	// Approved=false but RequiresApproval=false: behaves exactly as an ungated node.
+	a, b := uuid.New(), uuid.New()
+	nodes := []schedNode{
+		{ID: a, RequiresApproval: false, Approved: false},
+		{ID: b, DependsOn: []uuid.UUID{a}},
+	}
+	st := newRecordingState()
+	ran := newRecordingState()
+	got := schedule(context.Background(), nodes, 4, outcomeRunFn(nil, ran), st.on)
+	if got != runSucceeded {
+		t.Fatalf("ungated run: got %q, want succeeded", got)
+	}
+	if !ran.saw(a, "ran") || !ran.saw(b, "ran") {
+		t.Fatal("ungated nodes must run")
+	}
+	if st.saw(a, statusAwaitingApproval) {
+		t.Fatal("an ungated node must not park")
+	}
+}

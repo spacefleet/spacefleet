@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -307,5 +308,61 @@ func TestCancelRunIsDurableAgainstExecutorWrites(t *testing.T) {
 	// The in-flight gate cleared: a fresh run can start.
 	if _, err := svc.BeginRun(ctx, org.ID, app.ID, ActionDeploy); err != nil {
 		t.Fatalf("BeginRun after cancel: %v", err)
+	}
+}
+
+// TestReaperLeavesParkedRunsAlone proves the stuck-run reaper never touches a run
+// parked at awaiting_approval — even one whose River job is positively gone and
+// whose started_at is far past the reap cutoff. The reaper only fails runs stuck in
+// "running" (its query filters StatusEQ(running)); a gate can stay open for days, so
+// a parked run must not be mistaken for an abandoned one. Without that status filter
+// this run would be reaped, since the liveJob below reports the job as gone.
+func TestReaperLeavesParkedRunsAlone(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	addComponent(t, client, org.ID, app.ID, "api", nil)
+
+	run, err := svc.BeginRun(ctx, org.ID, app.ID, ActionDeploy)
+	if err != nil {
+		t.Fatalf("BeginRun: %v", err)
+	}
+	if err := svc.SetRunJob(ctx, org.ID, run.ID, "job-parked"); err != nil {
+		t.Fatalf("SetRunJob: %v", err)
+	}
+	// Drive the run to running, then park it awaiting approval, then backdate its
+	// started_at well past the reap cutoff so only the status filter protects it.
+	if err := svc.MarkRun(ctx, org.ID, run.ID, string(workflowrun.StatusRunning), "running"); err != nil {
+		t.Fatalf("MarkRun running: %v", err)
+	}
+	if err := svc.MarkRun(ctx, org.ID, run.ID, string(workflowrun.StatusAwaitingApproval), "awaiting manual approval"); err != nil {
+		t.Fatalf("MarkRun awaiting_approval: %v", err)
+	}
+	if err := client.WorkflowRun.UpdateOneID(run.ID).
+		SetStartedAt(time.Now().Add(-2 * reapMaxLifetime)).
+		Exec(ctx); err != nil {
+		t.Fatalf("backdate started_at: %v", err)
+	}
+
+	// liveJob reports the job as gone — the only thing keeping this run alive is the
+	// reaper's running-only status filter.
+	jobGone := func(context.Context, string) (bool, error) { return false, nil }
+	reaped, err := svc.ReapStuckRuns(ctx, reapMaxLifetime, jobGone)
+	if err != nil {
+		t.Fatalf("ReapStuckRuns: %v", err)
+	}
+	if reaped != 0 {
+		t.Fatalf("reaped = %d, want 0 (a parked run must not be reaped)", reaped)
+	}
+
+	after, _, err := svc.GetRun(ctx, org.ID, app.ID, run.ID)
+	if err != nil {
+		t.Fatalf("GetRun: %v", err)
+	}
+	if after.Status != workflowrun.StatusAwaitingApproval {
+		t.Fatalf("run status after reap = %q, want awaiting_approval (untouched)", after.Status)
 	}
 }

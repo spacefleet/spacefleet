@@ -115,9 +115,12 @@ func isWorkflowValidation(err error) bool {
 }
 
 // secretConfigKeys are the component config keys that may carry secrets and so
-// are withheld from callers below editor. Today that's the raw Helm `values`
-// override (not sealed at rest), mirroring redactAppSecrets on the application.
-var secretConfigKeys = []string{"values"}
+// are withheld from callers below editor. These are not sealed at rest,
+// mirroring redactAppSecrets on the application:
+//   - "values": the raw Helm inline values override.
+//   - "backend_config": the OpenTofu backend override, which can carry S3 access
+//     keys, azurerm secrets, a pg backend conn_str password, etc.
+var secretConfigKeys = []string{"values", "backend_config"}
 
 // toComponentInput maps an API ComponentInput to the service input. Optional
 // fields default to their zero value; the canvas sends a stable client-provided
@@ -129,6 +132,7 @@ func toComponentInput(c ComponentInput) workflows.ComponentInput {
 		Type:                 string(c.Type),
 		Config:               derefMap(c.Config),
 		ContinueOnFailure:    c.ContinueOnFailure != nil && *c.ContinueOnFailure,
+		RequiresApproval:     c.RequiresApproval != nil && *c.RequiresApproval,
 		TargetClusterID:      c.TargetClusterId,
 		TargetNamespace:      strings.TrimSpace(deref(c.TargetNamespace)),
 		ChartCredentialID:    c.ChartCredentialId,
@@ -204,6 +208,7 @@ func toAPIComponent(c *ent.Component, canSee bool) Component {
 		Config:            redactConfig(c.Config, canSee),
 		DependsOn:         nonNilUUIDs(c.DependsOn),
 		ContinueOnFailure: c.ContinueOnFailure,
+		RequiresApproval:  &c.RequiresApproval,
 	}
 	if c.TargetNamespace != "" {
 		ns := c.TargetNamespace

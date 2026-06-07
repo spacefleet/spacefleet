@@ -163,6 +163,40 @@ func (_u *ComponentRunUpdate) ClearLogs() *ComponentRunUpdate {
 	return _u
 }
 
+// SetApprovedBy sets the "approved_by" field.
+func (_u *ComponentRunUpdate) SetApprovedBy(v string) *ComponentRunUpdate {
+	_u.mutation.SetApprovedBy(v)
+	return _u
+}
+
+// SetNillableApprovedBy sets the "approved_by" field if the given value is not nil.
+func (_u *ComponentRunUpdate) SetNillableApprovedBy(v *string) *ComponentRunUpdate {
+	if v != nil {
+		_u.SetApprovedBy(*v)
+	}
+	return _u
+}
+
+// SetApprovedAt sets the "approved_at" field.
+func (_u *ComponentRunUpdate) SetApprovedAt(v time.Time) *ComponentRunUpdate {
+	_u.mutation.SetApprovedAt(v)
+	return _u
+}
+
+// SetNillableApprovedAt sets the "approved_at" field if the given value is not nil.
+func (_u *ComponentRunUpdate) SetNillableApprovedAt(v *time.Time) *ComponentRunUpdate {
+	if v != nil {
+		_u.SetApprovedAt(*v)
+	}
+	return _u
+}
+
+// ClearApprovedAt clears the value of the "approved_at" field.
+func (_u *ComponentRunUpdate) ClearApprovedAt() *ComponentRunUpdate {
+	_u.mutation.ClearApprovedAt()
+	return _u
+}
+
 // SetChartRevision sets the "chart_revision" field.
 func (_u *ComponentRunUpdate) SetChartRevision(v string) *ComponentRunUpdate {
 	_u.mutation.SetChartRevision(v)
@@ -357,6 +391,15 @@ func (_u *ComponentRunUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if _u.mutation.LogsCleared() {
 		_spec.ClearField(componentrun.FieldLogs, field.TypeString)
 	}
+	if value, ok := _u.mutation.ApprovedBy(); ok {
+		_spec.SetField(componentrun.FieldApprovedBy, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ApprovedAt(); ok {
+		_spec.SetField(componentrun.FieldApprovedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ApprovedAtCleared() {
+		_spec.ClearField(componentrun.FieldApprovedAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.ChartRevision(); ok {
 		_spec.SetField(componentrun.FieldChartRevision, field.TypeString, value)
 	}
@@ -535,6 +578,40 @@ func (_u *ComponentRunUpdateOne) SetNillableLogs(v *string) *ComponentRunUpdateO
 // ClearLogs clears the value of the "logs" field.
 func (_u *ComponentRunUpdateOne) ClearLogs() *ComponentRunUpdateOne {
 	_u.mutation.ClearLogs()
+	return _u
+}
+
+// SetApprovedBy sets the "approved_by" field.
+func (_u *ComponentRunUpdateOne) SetApprovedBy(v string) *ComponentRunUpdateOne {
+	_u.mutation.SetApprovedBy(v)
+	return _u
+}
+
+// SetNillableApprovedBy sets the "approved_by" field if the given value is not nil.
+func (_u *ComponentRunUpdateOne) SetNillableApprovedBy(v *string) *ComponentRunUpdateOne {
+	if v != nil {
+		_u.SetApprovedBy(*v)
+	}
+	return _u
+}
+
+// SetApprovedAt sets the "approved_at" field.
+func (_u *ComponentRunUpdateOne) SetApprovedAt(v time.Time) *ComponentRunUpdateOne {
+	_u.mutation.SetApprovedAt(v)
+	return _u
+}
+
+// SetNillableApprovedAt sets the "approved_at" field if the given value is not nil.
+func (_u *ComponentRunUpdateOne) SetNillableApprovedAt(v *time.Time) *ComponentRunUpdateOne {
+	if v != nil {
+		_u.SetApprovedAt(*v)
+	}
+	return _u
+}
+
+// ClearApprovedAt clears the value of the "approved_at" field.
+func (_u *ComponentRunUpdateOne) ClearApprovedAt() *ComponentRunUpdateOne {
+	_u.mutation.ClearApprovedAt()
 	return _u
 }
 
@@ -761,6 +838,15 @@ func (_u *ComponentRunUpdateOne) sqlSave(ctx context.Context) (_node *ComponentR
 	}
 	if _u.mutation.LogsCleared() {
 		_spec.ClearField(componentrun.FieldLogs, field.TypeString)
+	}
+	if value, ok := _u.mutation.ApprovedBy(); ok {
+		_spec.SetField(componentrun.FieldApprovedBy, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ApprovedAt(); ok {
+		_spec.SetField(componentrun.FieldApprovedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ApprovedAtCleared() {
+		_spec.ClearField(componentrun.FieldApprovedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.ChartRevision(); ok {
 		_spec.SetField(componentrun.FieldChartRevision, field.TypeString, value)

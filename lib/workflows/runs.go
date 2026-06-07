@@ -54,6 +54,7 @@ type GraphNode struct {
 	Config               map[string]string `json:"config"`
 	DependsOn            []uuid.UUID       `json:"depends_on"`
 	ContinueOnFailure    bool              `json:"continue_on_failure"`
+	RequiresApproval     bool              `json:"requires_approval"`
 	TargetClusterID      *uuid.UUID        `json:"target_cluster_id,omitempty"`
 	TargetNamespace      string            `json:"target_namespace,omitempty"`
 	ChartCredentialID    *uuid.UUID        `json:"chart_credential_id,omitempty"`
@@ -106,7 +107,7 @@ func (s *Service) BeginRun(ctx context.Context, orgID, appID uuid.UUID, action s
 		Where(
 			workflowrun.OrganizationID(orgID),
 			workflowrun.ApplicationID(appID),
-			workflowrun.StatusIn(workflowrun.StatusPending, workflowrun.StatusRunning),
+			workflowrun.StatusIn(workflowrun.StatusPending, workflowrun.StatusRunning, workflowrun.StatusAwaitingApproval),
 		).
 		Exist(ctx)
 	if err != nil {
@@ -203,6 +204,7 @@ func snapshotComponents(comps []*ent.Component, groups []*ent.ComponentGroup) Gr
 			Config:            nonNilStringMap(c.Config),
 			DependsOn:         nonNilIDs(expanded[c.ID]),
 			ContinueOnFailure: c.ContinueOnFailure,
+			RequiresApproval:  c.RequiresApproval,
 			TargetNamespace:   c.TargetNamespace,
 		}
 		if c.TargetClusterID != uuid.Nil {
@@ -247,6 +249,115 @@ func snapshotComponents(comps []*ent.Component, groups []*ent.ComponentGroup) Gr
 		graphGroups = append(graphGroups, gg)
 	}
 	return GraphSnapshot{Nodes: nodes, Groups: graphGroups}
+}
+
+// Approval decisions for ApproveComponentRun.
+const (
+	DecisionApprove = "approve"
+	DecisionReject  = "reject"
+)
+
+// ErrInvalidDecision is returned by ApproveComponentRun for a decision that isn't
+// approve or reject. A handler maps it to 400.
+var ErrInvalidDecision = errors.New("workflows: invalid approval decision")
+
+// ErrNotAwaitingApproval is returned by ApproveComponentRun when the run or its
+// component run is not parked awaiting approval — there is nothing to decide. A
+// handler maps it to 409.
+var ErrNotAwaitingApproval = errors.New("workflows: run or component is not awaiting approval")
+
+// ApproveComponentRun records a manual-approval decision on a parked gate and
+// returns the run so the handler can re-enqueue the resume job. It verifies — all
+// org-scoped, and confirming the run belongs to the app and the component run to
+// the run — that the run is awaiting_approval and the target component run is
+// awaiting_approval, then, in one transaction:
+//
+//   - approve: stamps approved_by/approved_at and moves the component run back to
+//     pending so the resumed worker re-evaluates it as runnable (the gate cleared).
+//   - reject: settles the component run failed ("approval rejected"); its dependents
+//     skip on resume and the run settles failed/partial.
+//
+// In both cases the run is left awaiting_approval here — the handler enqueues a
+// resume job, whose worker flips the run back to running (and on to terminal). The
+// status guards are re-asserted as predicates inside the tx so a concurrent decision
+// or a cancel that settled the run first makes this a no-op (ErrNotAwaitingApproval).
+func (s *Service) ApproveComponentRun(ctx context.Context, orgID, appID, runID, crID uuid.UUID, approver, decision string) (*ent.WorkflowRun, error) {
+	if decision != DecisionApprove && decision != DecisionReject {
+		return nil, ErrInvalidDecision
+	}
+
+	run, err := s.ent.WorkflowRun.Query().
+		Where(
+			workflowrun.OrganizationID(orgID),
+			workflowrun.ApplicationID(appID),
+			workflowrun.ID(runID),
+		).
+		Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if run.Status != workflowrun.StatusAwaitingApproval {
+		return nil, ErrNotAwaitingApproval
+	}
+
+	// Confirm the component run belongs to this run (and org) and is the parked gate.
+	cr, err := s.ent.ComponentRun.Query().
+		Where(
+			componentrun.OrganizationID(orgID),
+			componentrun.WorkflowRunID(runID),
+			componentrun.ID(crID),
+		).
+		Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if cr.Status != componentrun.StatusAwaitingApproval {
+		return nil, ErrNotAwaitingApproval
+	}
+
+	tx, err := s.ent.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	upd := tx.ComponentRun.Update().
+		Where(
+			componentrun.OrganizationID(orgID),
+			componentrun.WorkflowRunID(runID),
+			componentrun.ID(crID),
+			componentrun.StatusEQ(componentrun.StatusAwaitingApproval),
+		)
+	switch decision {
+	case DecisionApprove:
+		upd.SetApprovedBy(approver).
+			SetApprovedAt(now).
+			SetStatus(componentrun.StatusPending).
+			SetMessage("approved by " + approver)
+	case DecisionReject:
+		upd.SetApprovedBy(approver).
+			SetApprovedAt(now).
+			SetStatus(componentrun.StatusFailed).
+			SetMessage("approval rejected").
+			SetFinishedAt(now)
+	}
+	affected, err := upd.Save(ctx)
+	if err != nil {
+		return nil, rollback(tx, err)
+	}
+	if affected == 0 {
+		return nil, rollback(tx, ErrNotAwaitingApproval)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	// Re-read the run so the handler returns the current row (still awaiting_approval
+	// until the resume job it enqueues flips it back to running).
+	return s.ent.WorkflowRun.Query().
+		Where(workflowrun.OrganizationID(orgID), workflowrun.ID(runID)).
+		Only(ctx)
 }
 
 // SetRunJob records the River job id driving a run, after the handler enqueues
@@ -333,18 +444,19 @@ func (s *Service) GetComponentRun(ctx context.Context, orgID, appID, runID, comp
 // Org-scoped; a run not in the org updates zero rows and surfaces as NotFound.
 //
 // The update is guarded to only transition a run that is still in flight
-// (pending/running): once a run has settled it is frozen. This makes a terminal
-// status durable — the worker's final MarkRun(final) at the end of a run can no
-// longer resurrect a run that CancelRun or the reaper already failed (it becomes
-// a no-op), closing the cancel-vs-executor race. The legitimate transitions the
-// executor drives (pending→running, running→terminal) all start from an in-flight
-// state, so they are unaffected.
+// (pending/running/awaiting_approval): once a run has settled (succeeded/failed/
+// partial) it is frozen. This makes a terminal status durable — the worker's final
+// MarkRun(final) at the end of a run can no longer resurrect a run that CancelRun or
+// the reaper already failed (it becomes a no-op), closing the cancel-vs-executor
+// race. The legitimate transitions the executor drives (pending→running,
+// running→awaiting_approval when a gate parks the DAG, awaiting_approval→running on
+// resume, and →terminal) all start from an in-flight state, so they are unaffected.
 func (s *Service) MarkRun(ctx context.Context, orgID, runID uuid.UUID, status, message string) error {
 	upd := s.ent.WorkflowRun.Update().
 		Where(
 			workflowrun.OrganizationID(orgID),
 			workflowrun.ID(runID),
-			workflowrun.StatusIn(workflowrun.StatusPending, workflowrun.StatusRunning),
+			workflowrun.StatusIn(workflowrun.StatusPending, workflowrun.StatusRunning, workflowrun.StatusAwaitingApproval),
 		).
 		SetStatus(workflowrun.Status(status))
 	if message != "" {
@@ -397,6 +509,34 @@ func (s *Service) MarkComponentRun(ctx context.Context, orgID, componentRunID uu
 		return &ent.NotFoundError{}
 	}
 	return nil
+}
+
+// SettleStuckComponentRuns sweeps every still-non-terminal component run of a
+// run (pending / running / awaiting_approval) to a terminal "skipped" status.
+// It exists for the worker's terminal path: when the scheduler returns a failed
+// (or partial) run because a hard failure on one branch outranks a gate that
+// parked another branch, the parked node was emitted awaiting_approval and
+// persisted, but the scheduler deliberately never settles a parked node. The
+// run's own MarkRun only touches the workflow_runs row, so without this sweep
+// that component run would sit at awaiting_approval forever under a terminal
+// run — an unrecoverable inconsistent state (approve/reject and cancel both
+// require an in-flight run). Mirrors CancelRun's settle-steps sweep; terminal
+// steps are left untouched, so it never clobbers a real succeeded/failed/skipped
+// result. Org-scoped. Returns the number of steps settled.
+func (s *Service) SettleStuckComponentRuns(ctx context.Context, orgID, runID uuid.UUID, message string) (int, error) {
+	if message == "" {
+		message = "skipped (run did not complete)"
+	}
+	return s.ent.ComponentRun.Update().
+		Where(
+			componentrun.OrganizationID(orgID),
+			componentrun.WorkflowRunID(runID),
+			componentrun.StatusIn(componentrun.StatusPending, componentrun.StatusRunning, componentrun.StatusAwaitingApproval),
+		).
+		SetStatus(componentrun.StatusSkipped).
+		SetMessage(message).
+		SetFinishedAt(time.Now()).
+		Save(ctx)
 }
 
 // SetComponentRunLogs persists a component run's captured output and resolved

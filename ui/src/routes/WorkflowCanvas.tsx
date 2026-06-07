@@ -12,6 +12,7 @@ import {
   Boxes,
   FileCode,
   History,
+  Layers,
   Package,
   Pencil,
   Play,
@@ -26,6 +27,9 @@ import {
   TypeBadge,
 } from "../components/workflow/nodes";
 import { Dropdown } from "../components/Dropdown";
+import type { components } from "../api/schema";
+
+type ComponentType = components["schemas"]["ComponentType"];
 
 const nodeTypes = { component: BuilderNode, group: GroupNode };
 
@@ -56,6 +60,7 @@ export function WorkflowCanvas() {
     onConnect,
     onNodeDragStop,
     addComponent,
+    addTerraform,
     addGroup,
     deleteNode,
     save,
@@ -113,6 +118,11 @@ export function WorkflowCanvas() {
                     label: "Manifest",
                     icon: <FileCode className="h-3.5 w-3.5" />,
                     onSelect: () => addComponent("manifest"),
+                  },
+                  {
+                    label: "OpenTofu",
+                    icon: <Layers className="h-3.5 w-3.5" />,
+                    onSelect: () => addTerraform(),
                   },
                   {
                     label: "Group",
@@ -224,7 +234,7 @@ export function WorkflowCanvas() {
                   <span className="shrink-0">
                     <TypeBadge
                       type={
-                        (selected.data as { type: "helm" | "manifest" }).type
+                        (selected.data as { type: ComponentType }).type
                       }
                     />
                   </span>

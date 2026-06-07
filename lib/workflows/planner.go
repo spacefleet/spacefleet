@@ -13,6 +13,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/manifest"
 	"github.com/spacefleet/spacefleet/lib/tekton"
+	"github.com/spacefleet/spacefleet/lib/tofu"
 )
 
 // Component helm-config keys that live alongside the chart-source keys
@@ -48,6 +49,9 @@ func (w *WorkflowRunWorker) planComponent(ctx context.Context, app *ent.Applicat
 		// force is a helm-only "roll the workload" opt-in; a manifest apply has no
 		// equivalent, so it's intentionally not threaded into planManifest.
 		return w.planManifest(ctx, app, node, action, existingRun)
+	case TypeTerraform:
+		// force is helm-only; a terraform plan/apply has no equivalent.
+		return w.planTofu(ctx, app, node, action, existingRun)
 	default:
 		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q has unsupported type %q for execution", node.Name, node.Type)
 	}
@@ -118,6 +122,136 @@ func (w *WorkflowRunWorker) planManifest(ctx context.Context, app *ent.Applicati
 			Files:  resolved.Files,
 		},
 	}, nil
+}
+
+// planTofu builds the OpenTofu RunSpec + runner connection for a terraform
+// component. It resolves the runner/target clusters (honoring the per-component
+// target override), reads the command/backend from the component config, calls
+// the shared resolver (lib/deploy) for the injected kubeconfig + optional git
+// token, and renders the plan/apply script via tofu.Script in tofu.DefaultImage.
+//
+// The target kubeconfig is injected (PullsChart:true) because the default
+// Kubernetes state backend authenticates with it — the step exports it as
+// KUBECONFIG so tofu init/plan/apply read/write state Secrets in the runner
+// cluster. It is requested for every action (a terraform uninstall is a
+// `tofu destroy` that still needs state + git), so PullsChart is true here
+// regardless of action, and a private-repo git token is honored the same way.
+//
+// The plan node's output is the review material captured as the component_run
+// logs; the apply node re-plans (the plan artifact does not cross pods) — see
+// the tofu package doc for the re-plan-on-apply caveat.
+func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, node GraphNode, action, existingRun string) (tekton.RunRequest, error) {
+	tofuAction, err := tofuActionFor(action)
+	if err != nil {
+		return tekton.RunRequest{}, err
+	}
+
+	// Runner is always app-level; target cluster takes the per-component override
+	// when set, else the application's app-level default.
+	targetClusterID := app.TargetClusterID
+	if node.TargetClusterID != nil && *node.TargetClusterID != uuid.Nil {
+		targetClusterID = *node.TargetClusterID
+	}
+
+	// Decode an optional custom backend_config (validated at write time in
+	// validateTerraformConfig); ignored for the kubernetes default backend.
+	backendConfig, err := decodeBackendConfig(node.Config[terraformConfigBackendConfig])
+	if err != nil {
+		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q: %w", node.Name, err)
+	}
+
+	// Always inject the target kubeconfig (the Kubernetes backend uses it) and,
+	// for a private github.com repo, the git-credentials file — for every action,
+	// since even an uninstall (tofu destroy) needs state + the root module.
+	pullsChart := true
+	resolved, err := w.resolver.Resolve(ctx, deploy.RunInputs{
+		OrgID:                app.OrganizationID,
+		RunnerClusterID:      app.RunnerClusterID,
+		TargetClusterID:      targetClusterID,
+		Values:               "",
+		ChartCredentialID:    uuid.Nil,
+		GitHubInstallationID: deref(node.GitHubInstallationID),
+		PullsChart:           pullsChart,
+	})
+	if err != nil {
+		return tekton.RunRequest{}, err
+	}
+
+	script := tofu.Script(tofu.Apply{
+		Command:       node.Config[terraformConfigCommand],
+		Action:        tofuAction,
+		RepoURL:       node.Config[helm.ConfigRepoURL],
+		GitRef:        node.Config[helm.ConfigGitRef],
+		Path:          node.Config[manifestConfigPath],
+		Backend:       node.Config[terraformConfigBackend],
+		BackendConfig: backendConfig,
+		SecretSuffix:  tofuSecretSuffix(app, node),
+		Namespace:     helm.RunNamespace,
+		HasGitToken:   resolved.HasGitToken,
+	})
+
+	return tekton.RunRequest{
+		Conn:        resolved.RunnerConn,
+		Namespace:   helm.RunNamespace,
+		ExistingRun: existingRun,
+		Spec: tekton.RunSpec{
+			Name:   tofuRunPrefix(node),
+			Image:  tofu.DefaultImage,
+			Script: script,
+			Files:  resolved.Files,
+		},
+	}, nil
+}
+
+// tofuActionFor maps a workflow run action to the tofu script action. deploy →
+// plan/apply; uninstall → plan -destroy / destroy; preview → a read-only plan;
+// an unknown action returns a clear error rather than panicking — the executor
+// surfaces it as a component failure, mirroring helm/manifest.
+func tofuActionFor(action string) (string, error) {
+	switch action {
+	case ActionDeploy:
+		return tofu.ActionDeploy, nil
+	case ActionUninstall:
+		return tofu.ActionUninstall, nil
+	case ActionPreview:
+		return tofu.ActionPreview, nil
+	default:
+		return "", fmt.Errorf("workflows: unknown run action %q", action)
+	}
+}
+
+// decodeBackendConfig parses the JSON object a terraform component stores under
+// the backend_config key into a flat string map for the script renderer. An
+// empty or absent value yields nil (the kubernetes default backend needs none).
+// Values are stringified so the renderer can emit them as HCL strings.
+func decodeBackendConfig(encoded string) (map[string]string, error) {
+	if encoded == "" {
+		return nil, nil
+	}
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(encoded), &raw); err != nil {
+		return nil, fmt.Errorf("invalid %s (expected a JSON object): %w", terraformConfigBackendConfig, err)
+	}
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		out[k] = fmt.Sprintf("%v", v)
+	}
+	return out, nil
+}
+
+// tofuSecretSuffix derives the Kubernetes-backend state Secret suffix for a
+// terraform component, per application + component id, so two components (and
+// two apps) never share state. The backend names its Secret
+// tfstate-default-<suffix>, which must be a DNS-1123 label.
+func tofuSecretSuffix(app *ent.Application, node GraphNode) string {
+	return sanitizeLabel(app.ID.String() + "-" + node.ID.String())
+}
+
+// tofuRunPrefix is the TaskRun generateName prefix for a terraform component (a
+// DNS-1123 label), derived from the component name; lib/tekton appends a unique
+// suffix.
+func tofuRunPrefix(node GraphNode) string {
+	return "tofu-" + sanitizeLabel(node.Name)
 }
 
 // manifestActionFor maps a workflow run action to the manifest script action.

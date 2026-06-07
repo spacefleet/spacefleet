@@ -145,6 +145,7 @@ var (
 		{Name: "config", Type: field.TypeJSON, Nullable: true},
 		{Name: "depends_on", Type: field.TypeJSON, Nullable: true},
 		{Name: "continue_on_failure", Type: field.TypeBool, Default: false},
+		{Name: "requires_approval", Type: field.TypeBool, Default: false},
 		{Name: "target_namespace", Type: field.TypeString, Nullable: true},
 		{Name: "position", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
@@ -164,37 +165,37 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "components_organizations_organization",
-				Columns:    []*schema.Column{ComponentsColumns[10]},
+				Columns:    []*schema.Column{ComponentsColumns[11]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "components_applications_application",
-				Columns:    []*schema.Column{ComponentsColumns[11]},
+				Columns:    []*schema.Column{ComponentsColumns[12]},
 				RefColumns: []*schema.Column{ApplicationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "components_clusters_target_cluster",
-				Columns:    []*schema.Column{ComponentsColumns[12]},
+				Columns:    []*schema.Column{ComponentsColumns[13]},
 				RefColumns: []*schema.Column{ClustersColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "components_chart_credentials_chart_credential",
-				Columns:    []*schema.Column{ComponentsColumns[13]},
+				Columns:    []*schema.Column{ComponentsColumns[14]},
 				RefColumns: []*schema.Column{ChartCredentialsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "components_github_installations_github_installation",
-				Columns:    []*schema.Column{ComponentsColumns[14]},
+				Columns:    []*schema.Column{ComponentsColumns[15]},
 				RefColumns: []*schema.Column{GithubInstallationsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "components_component_groups_group",
-				Columns:    []*schema.Column{ComponentsColumns[15]},
+				Columns:    []*schema.Column{ComponentsColumns[16]},
 				RefColumns: []*schema.Column{ComponentGroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -203,12 +204,12 @@ var (
 			{
 				Name:    "component_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{ComponentsColumns[10]},
+				Columns: []*schema.Column{ComponentsColumns[11]},
 			},
 			{
 				Name:    "component_application_id",
 				Unique:  false,
-				Columns: []*schema.Column{ComponentsColumns[11]},
+				Columns: []*schema.Column{ComponentsColumns[12]},
 			},
 		},
 	}
@@ -262,10 +263,12 @@ var (
 		{Name: "component_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "name", Type: field.TypeString, Nullable: true},
 		{Name: "type", Type: field.TypeString, Nullable: true},
-		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "running", "succeeded", "failed", "skipped"}, Default: "pending"},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "running", "succeeded", "failed", "skipped", "awaiting_approval"}, Default: "pending"},
 		{Name: "message", Type: field.TypeString, Nullable: true},
 		{Name: "run_name", Type: field.TypeString, Nullable: true},
 		{Name: "logs", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "approved_by", Type: field.TypeString, Default: ""},
+		{Name: "approved_at", Type: field.TypeTime, Nullable: true},
 		{Name: "chart_revision", Type: field.TypeString, Nullable: true},
 		{Name: "values_revision", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
@@ -283,13 +286,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "component_runs_organizations_organization",
-				Columns:    []*schema.Column{ComponentRunsColumns[14]},
+				Columns:    []*schema.Column{ComponentRunsColumns[16]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "component_runs_workflow_runs_workflow_run",
-				Columns:    []*schema.Column{ComponentRunsColumns[15]},
+				Columns:    []*schema.Column{ComponentRunsColumns[17]},
 				RefColumns: []*schema.Column{WorkflowRunsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -298,12 +301,12 @@ var (
 			{
 				Name:    "componentrun_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{ComponentRunsColumns[14]},
+				Columns: []*schema.Column{ComponentRunsColumns[16]},
 			},
 			{
 				Name:    "componentrun_workflow_run_id",
 				Unique:  false,
-				Columns: []*schema.Column{ComponentRunsColumns[15]},
+				Columns: []*schema.Column{ComponentRunsColumns[17]},
 			},
 		},
 	}
@@ -477,7 +480,7 @@ var (
 	WorkflowRunsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "action", Type: field.TypeEnum, Enums: []string{"deploy", "uninstall", "preview"}},
-		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "running", "succeeded", "failed", "partial"}, Default: "pending"},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "running", "succeeded", "failed", "partial", "awaiting_approval"}, Default: "pending"},
 		{Name: "message", Type: field.TypeString, Nullable: true},
 		{Name: "job_id", Type: field.TypeString, Nullable: true},
 		{Name: "graph", Type: field.TypeString, Nullable: true, Size: 2147483647},

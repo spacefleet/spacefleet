@@ -39,6 +39,8 @@ type Component struct {
 	DependsOn []uuid.UUID `json:"depends_on,omitempty"`
 	// ContinueOnFailure holds the value of the "continue_on_failure" field.
 	ContinueOnFailure bool `json:"continue_on_failure,omitempty"`
+	// RequiresApproval holds the value of the "requires_approval" field.
+	RequiresApproval bool `json:"requires_approval,omitempty"`
 	// TargetClusterID holds the value of the "target_cluster_id" field.
 	TargetClusterID uuid.UUID `json:"target_cluster_id,omitempty"`
 	// TargetNamespace holds the value of the "target_namespace" field.
@@ -153,7 +155,7 @@ func (*Component) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case component.FieldConfig, component.FieldDependsOn, component.FieldPosition:
 			values[i] = new([]byte)
-		case component.FieldContinueOnFailure:
+		case component.FieldContinueOnFailure, component.FieldRequiresApproval:
 			values[i] = new(sql.NullBool)
 		case component.FieldName, component.FieldType, component.FieldTargetNamespace:
 			values[i] = new(sql.NullString)
@@ -227,6 +229,12 @@ func (_m *Component) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field continue_on_failure", values[i])
 			} else if value.Valid {
 				_m.ContinueOnFailure = value.Bool
+			}
+		case component.FieldRequiresApproval:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field requires_approval", values[i])
+			} else if value.Valid {
+				_m.RequiresApproval = value.Bool
 			}
 		case component.FieldTargetClusterID:
 			if value, ok := values[i].(*uuid.UUID); !ok {
@@ -364,6 +372,9 @@ func (_m *Component) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("continue_on_failure=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ContinueOnFailure))
+	builder.WriteString(", ")
+	builder.WriteString("requires_approval=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RequiresApproval))
 	builder.WriteString(", ")
 	builder.WriteString("target_cluster_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TargetClusterID))

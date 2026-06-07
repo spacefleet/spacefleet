@@ -37,9 +37,11 @@ func (WorkflowRun) Fields() []ent.Field {
 		// What the run does across the whole workflow.
 		field.Enum("action").
 			Values("deploy", "uninstall", "preview"),
-		// Run lifecycle: pending → running → succeeded / failed / partial.
+		// Run lifecycle: pending → running → succeeded / failed / partial. A run
+		// parks at awaiting_approval when a node hits an approval gate and waits for
+		// a human decision before resuming.
 		field.Enum("status").
-			Values("pending", "running", "succeeded", "failed", "partial").
+			Values("pending", "running", "succeeded", "failed", "partial", "awaiting_approval").
 			Default("pending"),
 		// Human-readable detail: a progress line or the terminal summary.
 		field.String("message").Optional(),

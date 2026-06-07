@@ -139,13 +139,23 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 	preview := a.Action == ActionPreview
 	nodes := make([]schedNode, 0, len(snapshot.Nodes))
 	for _, n := range snapshot.Nodes {
+		cr := crByComponent[n.ID]
 		sn := schedNode{
 			ID:                n.ID,
 			DependsOn:         n.DependsOn,
 			ContinueOnFailure: n.ContinueOnFailure,
+			RequiresApproval:  n.RequiresApproval,
+			// A gate that was already approved on a prior (parked) attempt carries an
+			// approved_at; treat it as approved so a resumed run launches it instead of
+			// re-parking. Missing component runs (defensive) read as not-approved.
+			Approved: cr != nil && cr.ApprovedAt != nil && !cr.ApprovedAt.IsZero(),
 		}
 		if preview {
+			// Preview is a whole-workflow dry-run: every node runs independently and
+			// approval gates do not apply (there is nothing to apply to a cluster), so
+			// clear both the DAG deps and the gate.
 			sn.DependsOn = nil
+			sn.RequiresApproval = false
 		}
 		nodes = append(nodes, sn)
 	}
@@ -203,6 +213,12 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 			return
 		}
 		switch status {
+		case statusAwaitingApproval:
+			// The scheduler parked a ready, gated node (RequiresApproval && !Approved)
+			// instead of running it. Persist the gate so the run view shows it paused and
+			// the approve/reject handler has a component run to act on. The node never
+			// reaches runFn while parked, so this is the only writer of the status.
+			_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "awaiting_approval", "awaiting manual approval", "")
 		case statusSkipped:
 			_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "skipped", "skipped (an upstream component did not pass)", "")
 		case statusFailed:
@@ -220,8 +236,30 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 
 	final := schedule(ctx, nodes, concurrency, runFn, onState)
 
+	// Suspended: one or more gated nodes parked awaiting approval and the rest of the
+	// DAG drained as far as it could. Park the run (not terminal) and return nil so
+	// River considers this job done — there is nothing to retry. The approve/reject
+	// handler enqueues a fresh resume job that re-drives the DAG with the gate cleared
+	// (already-terminal components short-circuit; the approved gate now launches).
+	if final == runSuspended {
+		_ = w.svc.MarkRun(ctx, a.OrgID, a.WorkflowRunID, "awaiting_approval", "awaiting manual approval")
+		return nil
+	}
+
 	msg := "workflow " + final
 	_ = w.svc.MarkRun(ctx, a.OrgID, a.WorkflowRunID, final, msg)
+
+	// Settle any component run the scheduler left non-terminal. The case that bites
+	// is a gated node that parked at awaiting_approval on a branch while a parallel
+	// branch hard-failed: hardFailed outranks suspended, so schedule() returns
+	// runFailed/runPartial and the parked node is never settled. The run is now
+	// terminal, but its parked step would otherwise sit at awaiting_approval forever
+	// with no recovery path (approve/reject and cancel all require an in-flight run).
+	// Sweep those to skipped, mirroring CancelRun's settle-steps. Terminal steps are
+	// untouched, so genuine succeeded/failed/skipped results are preserved.
+	if final == runFailed || final == runPartial {
+		_, _ = w.svc.SettleStuckComponentRuns(ctx, a.OrgID, a.WorkflowRunID, "skipped (run did not complete)")
+	}
 	if final == runFailed {
 		// F4: only return an error (so River retries the whole job) when at least one
 		// component failed for a genuinely retryable reason — a transient/infra

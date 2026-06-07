@@ -21,6 +21,10 @@ export interface EditableComponent {
   type: ComponentType;
   config: Record<string, string>;
   continue_on_failure: boolean;
+  // When true the run parks at this node (status awaiting_approval) until a
+  // human approves it. The terraform apply node defaults this on; helm/manifest
+  // nodes can opt in too.
+  requires_approval: boolean;
   target_cluster_id: string | null;
   target_namespace: string;
   chart_credential_id: string | null;
@@ -93,6 +97,8 @@ export function ComponentFields({
           setValuesRows={setValuesRows}
           disabled={disabled}
         />
+      ) : component.type === "terraform" ? (
+        <TerraformConfig config={component.config} setConfig={setConfig} disabled={disabled} />
       ) : (
         <ManifestConfig config={component.config} setConfig={setConfig} disabled={disabled} />
       )}
@@ -186,6 +192,37 @@ export function ComponentFields({
         />
         Continue on failure
       </label>
+
+      {/* Approval gate. A terraform apply node frames it as an Auto-approve
+          opt-out (gated by default); every other node frames it as an opt-in
+          manual-approval requirement. Both edit the same requires_approval flag. */}
+      {component.type === "terraform" && component.config.command === "apply" ? (
+        <Field help="Off (the default): the run pauses here for a human to review the plan and approve before applying.">
+          <label className="flex items-center gap-2 text-sm text-neutral-700">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-black"
+              checked={!component.requires_approval}
+              onChange={(e) => set("requires_approval", !e.target.checked)}
+              disabled={disabled}
+            />
+            Auto-approve apply
+          </label>
+        </Field>
+      ) : (
+        <Field help="When on, the run pauses at this step until a human approves it.">
+          <label className="flex items-center gap-2 text-sm text-neutral-700">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-black"
+              checked={component.requires_approval}
+              onChange={(e) => set("requires_approval", e.target.checked)}
+              disabled={disabled}
+            />
+            Require manual approval
+          </label>
+        </Field>
+      )}
     </div>
   );
 }
@@ -311,6 +348,122 @@ function ManifestConfig({
   );
 }
 
+// TerraformConfig edits an OpenTofu node: the git source (repo_url/ref/path),
+// the tofu command (plan/apply — set by addTerraform, shown read-only so the
+// two-node shape stays intact), the state backend, and for a custom backend an
+// editor for the backend_config JSON object. Secret backend values get the same
+// redaction treatment as helm inline values (see lib/api workflow secret keys).
+function TerraformConfig({
+  config,
+  setConfig,
+  disabled,
+}: {
+  config: Record<string, string>;
+  setConfig: (key: string, value: string) => void;
+  disabled: boolean;
+}) {
+  const backend = config.backend || "kubernetes";
+  const isCustom = backend !== "kubernetes";
+  const command = config.command || "plan";
+  const backendRows = parseBackendConfig(config.backend_config);
+
+  function setBackend(next: string) {
+    // Switching back to the Kubernetes default drops any custom backend_config.
+    setConfig("backend", next);
+    if (next === "kubernetes") setConfig("backend_config", "");
+  }
+  function setBackendRows(rows: KeyValueRow[]) {
+    setConfig("backend_config", serializeBackendConfig(rows));
+  }
+
+  return (
+    <>
+      <Field label="Stage" help="Set when the OpenTofu nodes are created.">
+        <input
+          type="text"
+          className="w-full border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-600"
+          value={command === "apply" ? "Apply" : "Plan"}
+          readOnly
+          disabled
+        />
+      </Field>
+      <Field label="Repository URL">
+        <input
+          type="text"
+          className="w-full border border-neutral-300 px-3 py-2 text-sm"
+          placeholder="https://github.com/org/infra.git"
+          value={config.repo_url ?? ""}
+          onChange={(e) => setConfig("repo_url", e.target.value)}
+          disabled={disabled}
+        />
+      </Field>
+      <Field label="Branch or tag" help="Default branch if empty.">
+        <input
+          type="text"
+          className="w-full border border-neutral-300 px-3 py-2 text-sm"
+          placeholder="(default branch)"
+          value={config.git_ref ?? ""}
+          onChange={(e) => setConfig("git_ref", e.target.value)}
+          disabled={disabled}
+        />
+      </Field>
+      <Field label="Working path" help="Directory holding the OpenTofu files.">
+        <input
+          type="text"
+          className="w-full border border-neutral-300 px-3 py-2 text-sm"
+          placeholder="infra/prod"
+          value={config.path ?? ""}
+          onChange={(e) => setConfig("path", e.target.value)}
+          disabled={disabled}
+        />
+      </Field>
+
+      <Field
+        label="State backend"
+        help="Kubernetes (default) stores state as Secrets in the target cluster — zero config. Choose Custom to point at S3/GCS/azurerm/pg/etc."
+      >
+        <select
+          className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+          value={isCustom ? "custom" : "kubernetes"}
+          onChange={(e) =>
+            setBackend(e.target.value === "custom" ? "s3" : "kubernetes")
+          }
+          disabled={disabled}
+        >
+          <option value="kubernetes">Kubernetes (default)</option>
+          <option value="custom">Custom</option>
+        </select>
+      </Field>
+
+      {isCustom && (
+        <>
+          <Field
+            label="Backend type"
+            help="The OpenTofu backend name, e.g. s3, gcs, azurerm, pg."
+          >
+            <input
+              type="text"
+              className="w-full border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="s3"
+              value={backend}
+              onChange={(e) => setConfig("backend", e.target.value)}
+              disabled={disabled}
+            />
+          </Field>
+          <KeyValueEditor
+            label="Backend configuration"
+            help="Keys passed to the backend (e.g. bucket, region). Secret values are redacted from non-editors."
+            addLabel="+ Add backend setting"
+            rows={backendRows}
+            onChange={setBackendRows}
+            disabled={disabled}
+          />
+        </>
+      )}
+    </>
+  );
+}
+
 // ValuesSourcesEditor edits the ordered list of git value sources that the
 // helm component serializes into the config.values_sources JSON string.
 function ValuesSourcesEditor({
@@ -398,20 +551,131 @@ function ValuesSourcesEditor({
   );
 }
 
+// A backend_config entry as an editable row. The list serializes to the JSON
+// object string the terraform node stores in config.backend_config (which the
+// server validates as a JSON object).
+interface KeyValueRow {
+  key: string;
+  value: string;
+}
+
+// parseBackendConfig defensively parses the JSON-object string into rows. A
+// missing/invalid value yields no rows (the editor starts empty).
+function parseBackendConfig(raw: string | undefined): KeyValueRow[] {
+  if (!raw || raw.trim() === "") return [];
+  try {
+    const obj = JSON.parse(raw) as unknown;
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return [];
+    return Object.entries(obj as Record<string, unknown>).map(([key, value]) => ({
+      key,
+      value: value == null ? "" : String(value),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// serializeBackendConfig turns the rows back into a JSON-object string, dropping
+// blank-keyed rows. An empty list serializes to "" so the key is omitted on save.
+function serializeBackendConfig(rows: KeyValueRow[]): string {
+  const obj: Record<string, string> = {};
+  for (const r of rows) {
+    if (r.key.trim() !== "") obj[r.key] = r.value;
+  }
+  if (Object.keys(obj).length === 0) return "";
+  return JSON.stringify(obj);
+}
+
+// KeyValueEditor edits a flat string→string map (used for the terraform backend
+// config). Sharp corners, neutral palette per brand.
+function KeyValueEditor({
+  label,
+  help,
+  addLabel,
+  rows,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  help?: string;
+  addLabel: string;
+  rows: KeyValueRow[];
+  onChange: (rows: KeyValueRow[]) => void;
+  disabled: boolean;
+}) {
+  function update(i: number, key: keyof KeyValueRow, value: string) {
+    onChange(rows.map((r, j) => (j === i ? { ...r, [key]: value } : r)));
+  }
+  return (
+    <div>
+      <p className="mb-1 text-sm font-medium text-neutral-700">{label}</p>
+      {help && <p className="mb-2 text-xs text-neutral-500">{help}</p>}
+      {rows.length === 0 ? (
+        <p className="text-xs text-neutral-500">No settings.</p>
+      ) : (
+        <ol className="space-y-2">
+          {rows.map((row, i) => (
+            <li key={i} className="flex gap-1">
+              <input
+                type="text"
+                aria-label={`Setting ${i + 1} key`}
+                className="w-1/3 border border-neutral-300 px-2 py-1 text-xs"
+                placeholder="key"
+                value={row.key}
+                onChange={(e) => update(i, "key", e.target.value)}
+                disabled={disabled}
+              />
+              <input
+                type="text"
+                aria-label={`Setting ${i + 1} value`}
+                className="flex-1 border border-neutral-300 px-2 py-1 text-xs"
+                placeholder="value"
+                value={row.value}
+                onChange={(e) => update(i, "value", e.target.value)}
+                disabled={disabled}
+              />
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={() => onChange(rows.filter((_, j) => j !== i))}
+                  className="px-2 text-xs text-neutral-500 hover:text-red-600"
+                >
+                  Remove
+                </button>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      {!disabled && (
+        <button
+          type="button"
+          onClick={() => onChange([...rows, { key: "", value: "" }])}
+          className="mt-2 text-sm font-medium text-neutral-700 hover:text-black"
+        >
+          {addLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Field({
   label,
   help,
   children,
 }: {
-  label: string;
+  label?: string;
   help?: string;
   children: React.ReactNode;
 }) {
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium text-neutral-700">
-        {label}
-      </label>
+      {label && (
+        <label className="mb-1 block text-sm font-medium text-neutral-700">
+          {label}
+        </label>
+      )}
       {children}
       {help && <p className="mt-1 text-xs italic text-neutral-500">{help}</p>}
     </div>

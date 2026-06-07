@@ -93,17 +93,6 @@ describe("Applications list", () => {
     expect(await screen.findByText("new form")).toBeInTheDocument();
   });
 
-  it("offers Import existing release from the split menu", async () => {
-    mockApi.GET.mockResolvedValue({ data: [], error: undefined });
-    renderApps();
-    await screen.findByText("No applications yet");
-    await userEvent.click(
-      screen.getByRole("button", { name: "More application types" }),
-    );
-    await userEvent.click(screen.getByText("Import existing release"));
-    expect(await screen.findByText("import page")).toBeInTheDocument();
-  });
-
   it("hides the create affordance for viewers", async () => {
     role = "viewer";
     mockApi.GET.mockResolvedValue({ data: [], error: undefined });

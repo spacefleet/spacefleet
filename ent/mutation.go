@@ -2773,6 +2773,7 @@ type ComponentMutation struct {
 	depends_on                 *[]uuid.UUID
 	appenddepends_on           []uuid.UUID
 	continue_on_failure        *bool
+	requires_approval          *bool
 	target_namespace           *string
 	position                   *map[string]float64
 	created_at                 *time.Time
@@ -3191,6 +3192,42 @@ func (m *ComponentMutation) OldContinueOnFailure(ctx context.Context) (v bool, e
 // ResetContinueOnFailure resets all changes to the "continue_on_failure" field.
 func (m *ComponentMutation) ResetContinueOnFailure() {
 	m.continue_on_failure = nil
+}
+
+// SetRequiresApproval sets the "requires_approval" field.
+func (m *ComponentMutation) SetRequiresApproval(b bool) {
+	m.requires_approval = &b
+}
+
+// RequiresApproval returns the value of the "requires_approval" field in the mutation.
+func (m *ComponentMutation) RequiresApproval() (r bool, exists bool) {
+	v := m.requires_approval
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequiresApproval returns the old "requires_approval" field's value of the Component entity.
+// If the Component object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComponentMutation) OldRequiresApproval(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequiresApproval is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequiresApproval requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequiresApproval: %w", err)
+	}
+	return oldValue.RequiresApproval, nil
+}
+
+// ResetRequiresApproval resets all changes to the "requires_approval" field.
+func (m *ComponentMutation) ResetRequiresApproval() {
+	m.requires_approval = nil
 }
 
 // SetTargetClusterID sets the "target_cluster_id" field.
@@ -3755,7 +3792,7 @@ func (m *ComponentMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ComponentMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 16)
 	if m.organization != nil {
 		fields = append(fields, component.FieldOrganizationID)
 	}
@@ -3776,6 +3813,9 @@ func (m *ComponentMutation) Fields() []string {
 	}
 	if m.continue_on_failure != nil {
 		fields = append(fields, component.FieldContinueOnFailure)
+	}
+	if m.requires_approval != nil {
+		fields = append(fields, component.FieldRequiresApproval)
 	}
 	if m.target_cluster != nil {
 		fields = append(fields, component.FieldTargetClusterID)
@@ -3823,6 +3863,8 @@ func (m *ComponentMutation) Field(name string) (ent.Value, bool) {
 		return m.DependsOn()
 	case component.FieldContinueOnFailure:
 		return m.ContinueOnFailure()
+	case component.FieldRequiresApproval:
+		return m.RequiresApproval()
 	case component.FieldTargetClusterID:
 		return m.TargetClusterID()
 	case component.FieldTargetNamespace:
@@ -3862,6 +3904,8 @@ func (m *ComponentMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldDependsOn(ctx)
 	case component.FieldContinueOnFailure:
 		return m.OldContinueOnFailure(ctx)
+	case component.FieldRequiresApproval:
+		return m.OldRequiresApproval(ctx)
 	case component.FieldTargetClusterID:
 		return m.OldTargetClusterID(ctx)
 	case component.FieldTargetNamespace:
@@ -3935,6 +3979,13 @@ func (m *ComponentMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetContinueOnFailure(v)
+		return nil
+	case component.FieldRequiresApproval:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequiresApproval(v)
 		return nil
 	case component.FieldTargetClusterID:
 		v, ok := value.(uuid.UUID)
@@ -4112,6 +4163,9 @@ func (m *ComponentMutation) ResetField(name string) error {
 		return nil
 	case component.FieldContinueOnFailure:
 		m.ResetContinueOnFailure()
+		return nil
+	case component.FieldRequiresApproval:
+		m.ResetRequiresApproval()
 		return nil
 	case component.FieldTargetClusterID:
 		m.ResetTargetClusterID()
@@ -5205,6 +5259,8 @@ type ComponentRunMutation struct {
 	message             *string
 	run_name            *string
 	logs                *string
+	approved_by         *string
+	approved_at         *time.Time
 	chart_revision      *string
 	values_revision     *string
 	created_at          *time.Time
@@ -5727,6 +5783,91 @@ func (m *ComponentRunMutation) ResetLogs() {
 	delete(m.clearedFields, componentrun.FieldLogs)
 }
 
+// SetApprovedBy sets the "approved_by" field.
+func (m *ComponentRunMutation) SetApprovedBy(s string) {
+	m.approved_by = &s
+}
+
+// ApprovedBy returns the value of the "approved_by" field in the mutation.
+func (m *ComponentRunMutation) ApprovedBy() (r string, exists bool) {
+	v := m.approved_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldApprovedBy returns the old "approved_by" field's value of the ComponentRun entity.
+// If the ComponentRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComponentRunMutation) OldApprovedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldApprovedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldApprovedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldApprovedBy: %w", err)
+	}
+	return oldValue.ApprovedBy, nil
+}
+
+// ResetApprovedBy resets all changes to the "approved_by" field.
+func (m *ComponentRunMutation) ResetApprovedBy() {
+	m.approved_by = nil
+}
+
+// SetApprovedAt sets the "approved_at" field.
+func (m *ComponentRunMutation) SetApprovedAt(t time.Time) {
+	m.approved_at = &t
+}
+
+// ApprovedAt returns the value of the "approved_at" field in the mutation.
+func (m *ComponentRunMutation) ApprovedAt() (r time.Time, exists bool) {
+	v := m.approved_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldApprovedAt returns the old "approved_at" field's value of the ComponentRun entity.
+// If the ComponentRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComponentRunMutation) OldApprovedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldApprovedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldApprovedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldApprovedAt: %w", err)
+	}
+	return oldValue.ApprovedAt, nil
+}
+
+// ClearApprovedAt clears the value of the "approved_at" field.
+func (m *ComponentRunMutation) ClearApprovedAt() {
+	m.approved_at = nil
+	m.clearedFields[componentrun.FieldApprovedAt] = struct{}{}
+}
+
+// ApprovedAtCleared returns if the "approved_at" field was cleared in this mutation.
+func (m *ComponentRunMutation) ApprovedAtCleared() bool {
+	_, ok := m.clearedFields[componentrun.FieldApprovedAt]
+	return ok
+}
+
+// ResetApprovedAt resets all changes to the "approved_at" field.
+func (m *ComponentRunMutation) ResetApprovedAt() {
+	m.approved_at = nil
+	delete(m.clearedFields, componentrun.FieldApprovedAt)
+}
+
 // SetChartRevision sets the "chart_revision" field.
 func (m *ComponentRunMutation) SetChartRevision(s string) {
 	m.chart_revision = &s
@@ -6083,7 +6224,7 @@ func (m *ComponentRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ComponentRunMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 17)
 	if m.organization != nil {
 		fields = append(fields, componentrun.FieldOrganizationID)
 	}
@@ -6110,6 +6251,12 @@ func (m *ComponentRunMutation) Fields() []string {
 	}
 	if m.logs != nil {
 		fields = append(fields, componentrun.FieldLogs)
+	}
+	if m.approved_by != nil {
+		fields = append(fields, componentrun.FieldApprovedBy)
+	}
+	if m.approved_at != nil {
+		fields = append(fields, componentrun.FieldApprovedAt)
 	}
 	if m.chart_revision != nil {
 		fields = append(fields, componentrun.FieldChartRevision)
@@ -6155,6 +6302,10 @@ func (m *ComponentRunMutation) Field(name string) (ent.Value, bool) {
 		return m.RunName()
 	case componentrun.FieldLogs:
 		return m.Logs()
+	case componentrun.FieldApprovedBy:
+		return m.ApprovedBy()
+	case componentrun.FieldApprovedAt:
+		return m.ApprovedAt()
 	case componentrun.FieldChartRevision:
 		return m.ChartRevision()
 	case componentrun.FieldValuesRevision:
@@ -6194,6 +6345,10 @@ func (m *ComponentRunMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldRunName(ctx)
 	case componentrun.FieldLogs:
 		return m.OldLogs(ctx)
+	case componentrun.FieldApprovedBy:
+		return m.OldApprovedBy(ctx)
+	case componentrun.FieldApprovedAt:
+		return m.OldApprovedAt(ctx)
 	case componentrun.FieldChartRevision:
 		return m.OldChartRevision(ctx)
 	case componentrun.FieldValuesRevision:
@@ -6277,6 +6432,20 @@ func (m *ComponentRunMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetLogs(v)
+		return nil
+	case componentrun.FieldApprovedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetApprovedBy(v)
+		return nil
+	case componentrun.FieldApprovedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetApprovedAt(v)
 		return nil
 	case componentrun.FieldChartRevision:
 		v, ok := value.(string)
@@ -6368,6 +6537,9 @@ func (m *ComponentRunMutation) ClearedFields() []string {
 	if m.FieldCleared(componentrun.FieldLogs) {
 		fields = append(fields, componentrun.FieldLogs)
 	}
+	if m.FieldCleared(componentrun.FieldApprovedAt) {
+		fields = append(fields, componentrun.FieldApprovedAt)
+	}
 	if m.FieldCleared(componentrun.FieldChartRevision) {
 		fields = append(fields, componentrun.FieldChartRevision)
 	}
@@ -6411,6 +6583,9 @@ func (m *ComponentRunMutation) ClearField(name string) error {
 		return nil
 	case componentrun.FieldLogs:
 		m.ClearLogs()
+		return nil
+	case componentrun.FieldApprovedAt:
+		m.ClearApprovedAt()
 		return nil
 	case componentrun.FieldChartRevision:
 		m.ClearChartRevision()
@@ -6458,6 +6633,12 @@ func (m *ComponentRunMutation) ResetField(name string) error {
 		return nil
 	case componentrun.FieldLogs:
 		m.ResetLogs()
+		return nil
+	case componentrun.FieldApprovedBy:
+		m.ResetApprovedBy()
+		return nil
+	case componentrun.FieldApprovedAt:
+		m.ResetApprovedAt()
 		return nil
 	case componentrun.FieldChartRevision:
 		m.ResetChartRevision()

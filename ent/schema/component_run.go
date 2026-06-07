@@ -42,9 +42,11 @@ func (ComponentRun) Fields() []ent.Field {
 		// (not the Component enum) to stay decoupled from the live component schema.
 		field.String("name").Optional(),
 		field.String("type").Optional(),
-		// Step lifecycle: pending → running → succeeded / failed / skipped.
+		// Step lifecycle: pending → running → succeeded / failed / skipped. A node
+		// with an approval gate parks at awaiting_approval until a human approves
+		// (→ pending) or rejects (→ failed).
 		field.Enum("status").
-			Values("pending", "running", "succeeded", "failed", "skipped").
+			Values("pending", "running", "succeeded", "failed", "skipped", "awaiting_approval").
 			Default("pending"),
 		// Human-readable detail: the last progress line, or the error.
 		field.String("message").Optional(),
@@ -53,6 +55,10 @@ func (ComponentRun) Fields() []ent.Field {
 		// The captured output, persisted when the step reaches a terminal phase (the
 		// runner pod is then garbage-collected, so this is the durable copy).
 		field.Text("logs").Optional(),
+		// Who approved this step's approval gate, and when. Set when a human approves
+		// an awaiting_approval step; empty/nil otherwise.
+		field.String("approved_by").Default(""),
+		field.Time("approved_at").Optional().Nillable(),
 		// The git commit SHAs this step actually resolved (chart / values), for an
 		// auditable, reproducible run. Empty when the source wasn't a git clone.
 		field.String("chart_revision").Optional(),

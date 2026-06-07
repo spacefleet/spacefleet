@@ -136,6 +136,34 @@ func (_c *ComponentRunCreate) SetNillableLogs(v *string) *ComponentRunCreate {
 	return _c
 }
 
+// SetApprovedBy sets the "approved_by" field.
+func (_c *ComponentRunCreate) SetApprovedBy(v string) *ComponentRunCreate {
+	_c.mutation.SetApprovedBy(v)
+	return _c
+}
+
+// SetNillableApprovedBy sets the "approved_by" field if the given value is not nil.
+func (_c *ComponentRunCreate) SetNillableApprovedBy(v *string) *ComponentRunCreate {
+	if v != nil {
+		_c.SetApprovedBy(*v)
+	}
+	return _c
+}
+
+// SetApprovedAt sets the "approved_at" field.
+func (_c *ComponentRunCreate) SetApprovedAt(v time.Time) *ComponentRunCreate {
+	_c.mutation.SetApprovedAt(v)
+	return _c
+}
+
+// SetNillableApprovedAt sets the "approved_at" field if the given value is not nil.
+func (_c *ComponentRunCreate) SetNillableApprovedAt(v *time.Time) *ComponentRunCreate {
+	if v != nil {
+		_c.SetApprovedAt(*v)
+	}
+	return _c
+}
+
 // SetChartRevision sets the "chart_revision" field.
 func (_c *ComponentRunCreate) SetChartRevision(v string) *ComponentRunCreate {
 	_c.mutation.SetChartRevision(v)
@@ -283,6 +311,10 @@ func (_c *ComponentRunCreate) defaults() {
 		v := componentrun.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.ApprovedBy(); !ok {
+		v := componentrun.DefaultApprovedBy
+		_c.mutation.SetApprovedBy(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := componentrun.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -312,6 +344,9 @@ func (_c *ComponentRunCreate) check() error {
 		if err := componentrun.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "ComponentRun.status": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.ApprovedBy(); !ok {
+		return &ValidationError{Name: "approved_by", err: errors.New(`ent: missing required field "ComponentRun.approved_by"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "ComponentRun.created_at"`)}
@@ -388,6 +423,14 @@ func (_c *ComponentRunCreate) createSpec() (*ComponentRun, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.Logs(); ok {
 		_spec.SetField(componentrun.FieldLogs, field.TypeString, value)
 		_node.Logs = value
+	}
+	if value, ok := _c.mutation.ApprovedBy(); ok {
+		_spec.SetField(componentrun.FieldApprovedBy, field.TypeString, value)
+		_node.ApprovedBy = value
+	}
+	if value, ok := _c.mutation.ApprovedAt(); ok {
+		_spec.SetField(componentrun.FieldApprovedAt, field.TypeTime, value)
+		_node.ApprovedAt = &value
 	}
 	if value, ok := _c.mutation.ChartRevision(); ok {
 		_spec.SetField(componentrun.FieldChartRevision, field.TypeString, value)
@@ -616,6 +659,36 @@ func (u *ComponentRunUpsert) UpdateLogs() *ComponentRunUpsert {
 // ClearLogs clears the value of the "logs" field.
 func (u *ComponentRunUpsert) ClearLogs() *ComponentRunUpsert {
 	u.SetNull(componentrun.FieldLogs)
+	return u
+}
+
+// SetApprovedBy sets the "approved_by" field.
+func (u *ComponentRunUpsert) SetApprovedBy(v string) *ComponentRunUpsert {
+	u.Set(componentrun.FieldApprovedBy, v)
+	return u
+}
+
+// UpdateApprovedBy sets the "approved_by" field to the value that was provided on create.
+func (u *ComponentRunUpsert) UpdateApprovedBy() *ComponentRunUpsert {
+	u.SetExcluded(componentrun.FieldApprovedBy)
+	return u
+}
+
+// SetApprovedAt sets the "approved_at" field.
+func (u *ComponentRunUpsert) SetApprovedAt(v time.Time) *ComponentRunUpsert {
+	u.Set(componentrun.FieldApprovedAt, v)
+	return u
+}
+
+// UpdateApprovedAt sets the "approved_at" field to the value that was provided on create.
+func (u *ComponentRunUpsert) UpdateApprovedAt() *ComponentRunUpsert {
+	u.SetExcluded(componentrun.FieldApprovedAt)
+	return u
+}
+
+// ClearApprovedAt clears the value of the "approved_at" field.
+func (u *ComponentRunUpsert) ClearApprovedAt() *ComponentRunUpsert {
+	u.SetNull(componentrun.FieldApprovedAt)
 	return u
 }
 
@@ -897,6 +970,41 @@ func (u *ComponentRunUpsertOne) UpdateLogs() *ComponentRunUpsertOne {
 func (u *ComponentRunUpsertOne) ClearLogs() *ComponentRunUpsertOne {
 	return u.Update(func(s *ComponentRunUpsert) {
 		s.ClearLogs()
+	})
+}
+
+// SetApprovedBy sets the "approved_by" field.
+func (u *ComponentRunUpsertOne) SetApprovedBy(v string) *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.SetApprovedBy(v)
+	})
+}
+
+// UpdateApprovedBy sets the "approved_by" field to the value that was provided on create.
+func (u *ComponentRunUpsertOne) UpdateApprovedBy() *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.UpdateApprovedBy()
+	})
+}
+
+// SetApprovedAt sets the "approved_at" field.
+func (u *ComponentRunUpsertOne) SetApprovedAt(v time.Time) *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.SetApprovedAt(v)
+	})
+}
+
+// UpdateApprovedAt sets the "approved_at" field to the value that was provided on create.
+func (u *ComponentRunUpsertOne) UpdateApprovedAt() *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.UpdateApprovedAt()
+	})
+}
+
+// ClearApprovedAt clears the value of the "approved_at" field.
+func (u *ComponentRunUpsertOne) ClearApprovedAt() *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.ClearApprovedAt()
 	})
 }
 
@@ -1359,6 +1467,41 @@ func (u *ComponentRunUpsertBulk) UpdateLogs() *ComponentRunUpsertBulk {
 func (u *ComponentRunUpsertBulk) ClearLogs() *ComponentRunUpsertBulk {
 	return u.Update(func(s *ComponentRunUpsert) {
 		s.ClearLogs()
+	})
+}
+
+// SetApprovedBy sets the "approved_by" field.
+func (u *ComponentRunUpsertBulk) SetApprovedBy(v string) *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.SetApprovedBy(v)
+	})
+}
+
+// UpdateApprovedBy sets the "approved_by" field to the value that was provided on create.
+func (u *ComponentRunUpsertBulk) UpdateApprovedBy() *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.UpdateApprovedBy()
+	})
+}
+
+// SetApprovedAt sets the "approved_at" field.
+func (u *ComponentRunUpsertBulk) SetApprovedAt(v time.Time) *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.SetApprovedAt(v)
+	})
+}
+
+// UpdateApprovedAt sets the "approved_at" field to the value that was provided on create.
+func (u *ComponentRunUpsertBulk) UpdateApprovedAt() *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.UpdateApprovedAt()
+	})
+}
+
+// ClearApprovedAt clears the value of the "approved_at" field.
+func (u *ComponentRunUpsertBulk) ClearApprovedAt() *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.ClearApprovedAt()
 	})
 }
 

@@ -34,6 +34,10 @@ const (
 	FieldRunName = "run_name"
 	// FieldLogs holds the string denoting the logs field in the database.
 	FieldLogs = "logs"
+	// FieldApprovedBy holds the string denoting the approved_by field in the database.
+	FieldApprovedBy = "approved_by"
+	// FieldApprovedAt holds the string denoting the approved_at field in the database.
+	FieldApprovedAt = "approved_at"
 	// FieldChartRevision holds the string denoting the chart_revision field in the database.
 	FieldChartRevision = "chart_revision"
 	// FieldValuesRevision holds the string denoting the values_revision field in the database.
@@ -80,6 +84,8 @@ var Columns = []string{
 	FieldMessage,
 	FieldRunName,
 	FieldLogs,
+	FieldApprovedBy,
+	FieldApprovedAt,
 	FieldChartRevision,
 	FieldValuesRevision,
 	FieldCreatedAt,
@@ -99,6 +105,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultApprovedBy holds the default value on creation for the "approved_by" field.
+	DefaultApprovedBy string
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -117,11 +125,12 @@ const DefaultStatus = StatusPending
 
 // Status values.
 const (
-	StatusPending   Status = "pending"
-	StatusRunning   Status = "running"
-	StatusSucceeded Status = "succeeded"
-	StatusFailed    Status = "failed"
-	StatusSkipped   Status = "skipped"
+	StatusPending          Status = "pending"
+	StatusRunning          Status = "running"
+	StatusSucceeded        Status = "succeeded"
+	StatusFailed           Status = "failed"
+	StatusSkipped          Status = "skipped"
+	StatusAwaitingApproval Status = "awaiting_approval"
 )
 
 func (s Status) String() string {
@@ -131,7 +140,7 @@ func (s Status) String() string {
 // StatusValidator is a validator for the "status" field enum values. It is called by the builders before save.
 func StatusValidator(s Status) error {
 	switch s {
-	case StatusPending, StatusRunning, StatusSucceeded, StatusFailed, StatusSkipped:
+	case StatusPending, StatusRunning, StatusSucceeded, StatusFailed, StatusSkipped, StatusAwaitingApproval:
 		return nil
 	default:
 		return fmt.Errorf("componentrun: invalid enum value for status field: %q", s)
@@ -189,6 +198,16 @@ func ByRunName(opts ...sql.OrderTermOption) OrderOption {
 // ByLogs orders the results by the logs field.
 func ByLogs(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLogs, opts...).ToFunc()
+}
+
+// ByApprovedBy orders the results by the approved_by field.
+func ByApprovedBy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldApprovedBy, opts...).ToFunc()
+}
+
+// ByApprovedAt orders the results by the approved_at field.
+func ByApprovedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldApprovedAt, opts...).ToFunc()
 }
 
 // ByChartRevision orders the results by the chart_revision field.

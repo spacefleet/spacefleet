@@ -13,15 +13,19 @@ import (
 // only ever deals in these strings, so it is fully unit-testable (and race-tested)
 // on its own.
 const (
-	statusRunning   = "running"
-	statusSucceeded = "succeeded"
-	statusFailed    = "failed"
-	statusSkipped   = "skipped"
+	statusRunning          = "running"
+	statusSucceeded        = "succeeded"
+	statusFailed           = "failed"
+	statusSkipped          = "skipped"
+	statusAwaitingApproval = "awaiting_approval"
 
 	// Run terminal statuses returned by schedule.
 	runSucceeded = "succeeded"
 	runFailed    = "failed"
 	runPartial   = "partial"
+	// runSuspended is the (non-terminal-to-the-user, but loop-ending) outcome when
+	// at least one node parked awaiting manual approval and nothing hard-failed.
+	runSuspended = "suspended"
 )
 
 // schedNode is one node of the DAG as the scheduler sees it: an id, the ids it
@@ -32,6 +36,12 @@ type schedNode struct {
 	ID                uuid.UUID
 	DependsOn         []uuid.UUID
 	ContinueOnFailure bool
+	// RequiresApproval marks a node as gated: when it becomes ready it does not run,
+	// it parks awaiting a manual approval decision. Approved records whether that
+	// decision has already been made (carried in from the persisted approved_at on a
+	// resumed run), so a gated node only parks while RequiresApproval && !Approved.
+	RequiresApproval bool
+	Approved         bool
 }
 
 // nodeResult is the outcome of running one node to terminal. Status is one of
@@ -61,10 +71,15 @@ type nodeResult struct {
 //     !ContinueOnFailure) or was itself skipped. Skips propagate transitively.
 //   - All currently-runnable nodes run CONCURRENTLY behind a bounded semaphore of
 //     size concurrency (>=1). As each finishes, readiness is re-evaluated.
-//   - onState(id, "running"/"succeeded"/"failed"/"skipped") fires on each
-//     transition so the caller can persist + drive the SSE stream.
-//   - Final status: "failed" if any node hard-failed; else "partial" if any node
-//     failed (continue-on-failure); else "succeeded". An empty graph → "succeeded".
+//   - onState(id, "running"/"succeeded"/"failed"/"skipped"/"awaiting_approval")
+//     fires on each transition so the caller can persist + drive the SSE stream.
+//   - A node that is ready to run but is gated (RequiresApproval && !Approved) is
+//     PARKED instead of launched: onState(id, "awaiting_approval") fires once and
+//     the node neither runs nor settles. Its dependents see an unsettled dependency
+//     and wait; in-flight siblings drain, then the loop exits.
+//   - Final status precedence: "failed" if any node hard-failed; else "suspended"
+//     if any node parked; else "partial" if any node failed (continue-on-failure);
+//     else "succeeded". An empty graph → "succeeded".
 //
 // Shared state is guarded by a single mutex; runFn runs outside the lock so node
 // executions are genuinely concurrent. `go test -race` covers this.
@@ -90,12 +105,14 @@ func schedule(
 	}
 
 	var (
-		mu       sync.Mutex
-		results  = make(map[uuid.UUID]string, len(nodes)) // terminal status per settled node
-		inflight = make(map[uuid.UUID]bool, len(nodes))   // running or scheduled-to-run
-		done     = make(chan uuid.UUID)                   // ids of just-settled (executed) nodes
-		sem      = make(chan struct{}, concurrency)
-		active   int // goroutines that will eventually push to done
+		mu        sync.Mutex
+		results   = make(map[uuid.UUID]string, len(nodes)) // terminal status per settled node
+		inflight  = make(map[uuid.UUID]bool, len(nodes))   // running or scheduled-to-run
+		parked    = make(map[uuid.UUID]bool, len(nodes))   // gated, awaiting approval (never settles here)
+		suspended bool                                     // at least one node parked
+		done      = make(chan uuid.UUID)                   // ids of just-settled (executed) nodes
+		sem       = make(chan struct{}, concurrency)
+		active    int // goroutines that will eventually push to done
 	)
 
 	emit := func(id uuid.UUID, status string) {
@@ -177,6 +194,11 @@ func schedule(
 				if inflight[n.ID] {
 					continue
 				}
+				// A parked (gated, awaiting-approval) node neither settles nor launches; it
+				// stays out of the sweep so the fixpoint doesn't spin re-emitting on it.
+				if parked[n.ID] {
+					continue
+				}
 				blocked := false
 				ready := true
 				unknownDep := false
@@ -214,6 +236,16 @@ func schedule(
 					continue
 				}
 				if ready {
+					// A gated node that hasn't been approved parks instead of launching: emit
+					// awaiting_approval once, record it, and leave it unsettled so its dependents
+					// wait. A resume re-runs schedule with Approved=true and it launches normally.
+					if n.RequiresApproval && !n.Approved {
+						parked[n.ID] = true
+						suspended = true
+						progressed = true
+						emit(n.ID, statusAwaitingApproval)
+						continue
+					}
 					inflight[n.ID] = true
 					launched++
 					launch(n)
@@ -262,7 +294,11 @@ func schedule(
 	}
 	switch {
 	case hardFailed:
+		// A hard failure on a parallel branch still fails the run, even if another
+		// branch parked awaiting approval — a failure outranks a pending gate.
 		return runFailed
+	case suspended:
+		return runSuspended
 	case softFailed:
 		return runPartial
 	default:

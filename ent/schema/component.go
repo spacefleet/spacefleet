@@ -68,6 +68,10 @@ func (Component) Fields() []ent.Field {
 		// When true, a failure of this node does not skip its dependents or fail the
 		// run (the run settles "partial" instead).
 		field.Bool("continue_on_failure").Default(false),
+		// When true, a run pauses at this node ("awaiting_approval") and waits for a
+		// human to approve before it executes. The general per-component approval-gate
+		// flag; OpenTofu's apply node is its first consumer.
+		field.Bool("requires_approval").Default(false),
 		// Optional per-component override of the application's default target cluster.
 		// Bound to the target_cluster edge below; RESTRICT in the migration.
 		field.UUID("target_cluster_id", uuid.UUID{}).Optional(),

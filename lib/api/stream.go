@@ -384,6 +384,13 @@ func runStateKey(run *ent.WorkflowRun, steps []*ent.ComponentRun) string {
 		b.WriteString(cr.Message)
 		b.WriteByte(':')
 		b.WriteString(cr.RunName)
+		b.WriteByte(':')
+		// approved_at: a manual-approval decision (which moves the step out of
+		// awaiting_approval) flips this, so the snapshot re-emits on approve/reject
+		// even before the resumed worker changes the status.
+		if cr.ApprovedAt != nil {
+			b.WriteString(cr.ApprovedAt.Format(time.RFC3339Nano))
+		}
 	}
 	return b.String()
 }

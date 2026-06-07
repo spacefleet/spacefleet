@@ -44,6 +44,7 @@ type ComponentInput struct {
 	Config               map[string]string
 	DependsOn            []uuid.UUID
 	ContinueOnFailure    bool
+	RequiresApproval     bool
 	TargetClusterID      *uuid.UUID
 	TargetNamespace      string
 	ChartCredentialID    *uuid.UUID
@@ -183,6 +184,7 @@ func (s *Service) createComponent(ctx context.Context, tx *ent.Tx, orgID, appID 
 		SetConfig(nonNilStringMap(n.Config)).
 		SetDependsOn(nonNilIDs(n.DependsOn)).
 		SetContinueOnFailure(n.ContinueOnFailure).
+		SetRequiresApproval(n.RequiresApproval).
 		SetTargetNamespace(n.TargetNamespace).
 		SetPosition(nonNilFloatMap(n.Position))
 	if n.TargetClusterID != nil && *n.TargetClusterID != uuid.Nil {

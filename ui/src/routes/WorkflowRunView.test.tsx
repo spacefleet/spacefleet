@@ -72,6 +72,19 @@ const runningDetail = {
   ],
 };
 
+// A deploy run parked at a manual-approval gate: A (plan) succeeded, B (apply,
+// depends on A) is awaiting_approval. Non-terminal, so the stream stays open.
+const awaitingDetail = {
+  ...runDetail,
+  action: "deploy",
+  status: "awaiting_approval",
+  finished_at: undefined,
+  component_runs: [
+    { id: "cr-a", component_id: compA, name: "plan", type: "terraform", status: "succeeded" },
+    { id: "cr-b", component_id: compB, name: "apply", type: "terraform", status: "awaiting_approval" },
+  ],
+};
+
 beforeEach(() => {
   mockApi.GET.mockReset();
   mockApi.POST.mockReset();
@@ -176,6 +189,54 @@ describe("WorkflowRunView", () => {
     expect(
       screen.queryByRole("button", { name: /cancel run/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows Approve/Reject on a parked step and POSTs the approve endpoint", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: awaitingDetail, error: undefined });
+      if (path === "/api/applications/{id}/runs/{runId}/components/{componentRunId}")
+        return Promise.resolve({
+          data: {
+            id: "cr-b",
+            name: "apply",
+            type: "terraform",
+            status: "awaiting_approval",
+            logs: "tofu plan output",
+            has_changes: true,
+          },
+          error: undefined,
+        });
+      return Promise.resolve({ data: undefined, error: undefined });
+    });
+    mockApi.POST.mockResolvedValue({ data: awaitingDetail, error: undefined });
+    renderRunView();
+    // Open the parked apply step's panel.
+    fireEvent.click(await screen.findByText("apply"));
+    const approve = await screen.findByRole("button", { name: /approve/i });
+    expect(screen.getByRole("button", { name: /reject/i })).toBeInTheDocument();
+    fireEvent.click(approve);
+    await waitFor(() =>
+      expect(mockApi.POST).toHaveBeenCalledWith(
+        "/api/applications/{id}/runs/{runId}/components/{componentRunId}/approve",
+        { params: { path: { id: "app-1", runId: "run-1", componentRunId: "cr-b" } } },
+      ),
+    );
+  });
+
+  it("renders a distinct awaiting-approval run status badge", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: awaitingDetail, error: undefined });
+      return Promise.resolve({ data: undefined, error: undefined });
+    });
+    renderRunView();
+    // The humanized label appears (header badge + node label).
+    expect(
+      (await screen.findAllByText(/awaiting approval/i)).length,
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("re-fetches the component detail when its live status goes terminal", async () => {

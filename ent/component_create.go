@@ -88,6 +88,20 @@ func (_c *ComponentCreate) SetNillableContinueOnFailure(v *bool) *ComponentCreat
 	return _c
 }
 
+// SetRequiresApproval sets the "requires_approval" field.
+func (_c *ComponentCreate) SetRequiresApproval(v bool) *ComponentCreate {
+	_c.mutation.SetRequiresApproval(v)
+	return _c
+}
+
+// SetNillableRequiresApproval sets the "requires_approval" field if the given value is not nil.
+func (_c *ComponentCreate) SetNillableRequiresApproval(v *bool) *ComponentCreate {
+	if v != nil {
+		_c.SetRequiresApproval(*v)
+	}
+	return _c
+}
+
 // SetTargetClusterID sets the "target_cluster_id" field.
 func (_c *ComponentCreate) SetTargetClusterID(v uuid.UUID) *ComponentCreate {
 	_c.mutation.SetTargetClusterID(v)
@@ -279,6 +293,10 @@ func (_c *ComponentCreate) defaults() {
 		v := component.DefaultContinueOnFailure
 		_c.mutation.SetContinueOnFailure(v)
 	}
+	if _, ok := _c.mutation.RequiresApproval(); !ok {
+		v := component.DefaultRequiresApproval
+		_c.mutation.SetRequiresApproval(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := component.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -319,6 +337,9 @@ func (_c *ComponentCreate) check() error {
 	}
 	if _, ok := _c.mutation.ContinueOnFailure(); !ok {
 		return &ValidationError{Name: "continue_on_failure", err: errors.New(`ent: missing required field "Component.continue_on_failure"`)}
+	}
+	if _, ok := _c.mutation.RequiresApproval(); !ok {
+		return &ValidationError{Name: "requires_approval", err: errors.New(`ent: missing required field "Component.requires_approval"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Component.created_at"`)}
@@ -387,6 +408,10 @@ func (_c *ComponentCreate) createSpec() (*Component, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ContinueOnFailure(); ok {
 		_spec.SetField(component.FieldContinueOnFailure, field.TypeBool, value)
 		_node.ContinueOnFailure = value
+	}
+	if value, ok := _c.mutation.RequiresApproval(); ok {
+		_spec.SetField(component.FieldRequiresApproval, field.TypeBool, value)
+		_node.RequiresApproval = value
 	}
 	if value, ok := _c.mutation.TargetNamespace(); ok {
 		_spec.SetField(component.FieldTargetNamespace, field.TypeString, value)
@@ -627,6 +652,18 @@ func (u *ComponentUpsert) SetContinueOnFailure(v bool) *ComponentUpsert {
 // UpdateContinueOnFailure sets the "continue_on_failure" field to the value that was provided on create.
 func (u *ComponentUpsert) UpdateContinueOnFailure() *ComponentUpsert {
 	u.SetExcluded(component.FieldContinueOnFailure)
+	return u
+}
+
+// SetRequiresApproval sets the "requires_approval" field.
+func (u *ComponentUpsert) SetRequiresApproval(v bool) *ComponentUpsert {
+	u.Set(component.FieldRequiresApproval, v)
+	return u
+}
+
+// UpdateRequiresApproval sets the "requires_approval" field to the value that was provided on create.
+func (u *ComponentUpsert) UpdateRequiresApproval() *ComponentUpsert {
+	u.SetExcluded(component.FieldRequiresApproval)
 	return u
 }
 
@@ -888,6 +925,20 @@ func (u *ComponentUpsertOne) SetContinueOnFailure(v bool) *ComponentUpsertOne {
 func (u *ComponentUpsertOne) UpdateContinueOnFailure() *ComponentUpsertOne {
 	return u.Update(func(s *ComponentUpsert) {
 		s.UpdateContinueOnFailure()
+	})
+}
+
+// SetRequiresApproval sets the "requires_approval" field.
+func (u *ComponentUpsertOne) SetRequiresApproval(v bool) *ComponentUpsertOne {
+	return u.Update(func(s *ComponentUpsert) {
+		s.SetRequiresApproval(v)
+	})
+}
+
+// UpdateRequiresApproval sets the "requires_approval" field to the value that was provided on create.
+func (u *ComponentUpsertOne) UpdateRequiresApproval() *ComponentUpsertOne {
+	return u.Update(func(s *ComponentUpsert) {
+		s.UpdateRequiresApproval()
 	})
 }
 
@@ -1336,6 +1387,20 @@ func (u *ComponentUpsertBulk) SetContinueOnFailure(v bool) *ComponentUpsertBulk 
 func (u *ComponentUpsertBulk) UpdateContinueOnFailure() *ComponentUpsertBulk {
 	return u.Update(func(s *ComponentUpsert) {
 		s.UpdateContinueOnFailure()
+	})
+}
+
+// SetRequiresApproval sets the "requires_approval" field.
+func (u *ComponentUpsertBulk) SetRequiresApproval(v bool) *ComponentUpsertBulk {
+	return u.Update(func(s *ComponentUpsert) {
+		s.SetRequiresApproval(v)
+	})
+}
+
+// UpdateRequiresApproval sets the "requires_approval" field to the value that was provided on create.
+func (u *ComponentUpsertBulk) UpdateRequiresApproval() *ComponentUpsertBulk {
+	return u.Update(func(s *ComponentUpsert) {
+		s.UpdateRequiresApproval()
 	})
 }
 

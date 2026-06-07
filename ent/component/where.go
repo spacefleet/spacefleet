@@ -76,6 +76,11 @@ func ContinueOnFailure(v bool) predicate.Component {
 	return predicate.Component(sql.FieldEQ(FieldContinueOnFailure, v))
 }
 
+// RequiresApproval applies equality check predicate on the "requires_approval" field. It's identical to RequiresApprovalEQ.
+func RequiresApproval(v bool) predicate.Component {
+	return predicate.Component(sql.FieldEQ(FieldRequiresApproval, v))
+}
+
 // TargetClusterID applies equality check predicate on the "target_cluster_id" field. It's identical to TargetClusterIDEQ.
 func TargetClusterID(v uuid.UUID) predicate.Component {
 	return predicate.Component(sql.FieldEQ(FieldTargetClusterID, v))
@@ -264,6 +269,16 @@ func ContinueOnFailureEQ(v bool) predicate.Component {
 // ContinueOnFailureNEQ applies the NEQ predicate on the "continue_on_failure" field.
 func ContinueOnFailureNEQ(v bool) predicate.Component {
 	return predicate.Component(sql.FieldNEQ(FieldContinueOnFailure, v))
+}
+
+// RequiresApprovalEQ applies the EQ predicate on the "requires_approval" field.
+func RequiresApprovalEQ(v bool) predicate.Component {
+	return predicate.Component(sql.FieldEQ(FieldRequiresApproval, v))
+}
+
+// RequiresApprovalNEQ applies the NEQ predicate on the "requires_approval" field.
+func RequiresApprovalNEQ(v bool) predicate.Component {
+	return predicate.Component(sql.FieldNEQ(FieldRequiresApproval, v))
 }
 
 // TargetClusterIDEQ applies the EQ predicate on the "target_cluster_id" field.

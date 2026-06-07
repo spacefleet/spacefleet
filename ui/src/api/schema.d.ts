@@ -789,6 +789,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{id}/runs/{runId}/components/{componentRunId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a workflow run's manual-approval gate
+         * @description Org-scoped, editor or above. Approves a step parked at awaiting_approval
+         *     so the run resumes and the gated node runs. Returns 409 if the step is
+         *     not awaiting approval (nothing to decide) and 503 if the background
+         *     worker is not configured. The approver's identity is recorded on the
+         *     component run.
+         */
+        post: operations["approveComponentRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{id}/runs/{runId}/components/{componentRunId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject a workflow run's manual-approval gate
+         * @description Org-scoped, editor or above. Rejects a step parked at awaiting_approval:
+         *     the step settles failed and the run resumes to settle (its dependents
+         *     skip). Returns 409 if the step is not awaiting approval and 503 if the
+         *     background worker is not configured. The rejector's identity is recorded
+         *     on the component run.
+         */
+        post: operations["rejectComponentRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chart-credentials": {
         parameters: {
             query?: never;
@@ -1554,7 +1602,7 @@ export interface components {
          * @description The kind of step a workflow component runs.
          * @enum {string}
          */
-        ComponentType: "helm" | "manifest";
+        ComponentType: "helm" | "manifest" | "terraform";
         /**
          * @description One node of an application's deploy workflow (a DAG step). Edges are
          *     expressed by each node's depends_on. The secret-bearing config (the Helm
@@ -1580,6 +1628,12 @@ export interface components {
              *     fail the run (the run settles "partial" instead).
              */
             continue_on_failure: boolean;
+            /**
+             * @description When true, the run parks at this node (status awaiting_approval)
+             *     until a human approves it; the node only runs once approved. Used to
+             *     gate destructive or sensitive steps (e.g. an OpenTofu apply).
+             */
+            requires_approval?: boolean;
             /**
              * Format: uuid
              * @description Per-component override of the app's default target cluster.
@@ -1624,6 +1678,11 @@ export interface components {
             };
             depends_on?: string[];
             continue_on_failure?: boolean;
+            /**
+             * @description When true, the run parks at this node until a human approves it
+             *     (status awaiting_approval). Defaults to false.
+             */
+            requires_approval?: boolean;
             /** Format: uuid */
             target_cluster_id?: string | null;
             target_namespace?: string;
@@ -1703,10 +1762,12 @@ export interface components {
         RunAction: "deploy" | "uninstall" | "preview";
         /**
          * @description The run's lifecycle: pending → running → a terminal succeeded / failed /
-         *     partial (partial = only continue-on-failure nodes failed).
+         *     partial (partial = only continue-on-failure nodes failed). A run parked
+         *     at a manual-approval gate is awaiting_approval (a non-terminal pause)
+         *     until an approve/reject decision resumes it.
          * @enum {string}
          */
-        RunStatus: "pending" | "running" | "succeeded" | "failed" | "partial";
+        RunStatus: "pending" | "running" | "succeeded" | "failed" | "partial" | "awaiting_approval";
         RunStartRequest: {
             action: components["schemas"]["RunAction"];
             /**
@@ -1745,10 +1806,11 @@ export interface components {
         };
         /**
          * @description A step's lifecycle: pending → running → a terminal succeeded / failed /
-         *     skipped.
+         *     skipped. A gated step parks at awaiting_approval (a non-terminal pause)
+         *     until a human approves it, then moves back to pending and runs.
          * @enum {string}
          */
-        ComponentRunStatus: "pending" | "running" | "succeeded" | "failed" | "skipped";
+        ComponentRunStatus: "pending" | "running" | "succeeded" | "failed" | "skipped" | "awaiting_approval";
         /** @description The execution of one workflow node within a run. */
         ComponentRun: {
             /** Format: uuid */
@@ -1768,6 +1830,21 @@ export interface components {
             message?: string;
             /** @description The TaskRun name on the runner cluster for this step. */
             run_name?: string;
+            /**
+             * @description Whether this step is gated on manual approval (a snapshot of the
+             *     component's requires_approval at run start).
+             */
+            requires_approval?: boolean;
+            /**
+             * @description Email/identity of the user who approved or rejected the gate; empty
+             *     until a decision is made.
+             */
+            approved_by?: string;
+            /**
+             * Format: date-time
+             * @description When the approval/rejection decision was made; absent until then.
+             */
+            approved_at?: string | null;
             /** @description Git commit SHA the chart was resolved to (git sources only). */
             chart_revision?: string;
             /** @description Git commit SHAs the values sources were resolved to. */
@@ -2882,6 +2959,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ComponentRunDetail"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    approveComponentRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                runId: components["parameters"]["RunID"];
+                componentRunId: components["parameters"]["ComponentRunID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run, resuming */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRun"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    rejectComponentRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                runId: components["parameters"]["RunID"];
+                componentRunId: components["parameters"]["ComponentRunID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run, resuming */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRun"];
                 };
             };
             default: components["responses"]["Error"];

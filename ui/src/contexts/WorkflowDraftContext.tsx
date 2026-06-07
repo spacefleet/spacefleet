@@ -57,6 +57,7 @@ function toEditable(c: Component): EditableComponent {
     type: c.type,
     config: { ...c.config },
     continue_on_failure: c.continue_on_failure,
+    requires_approval: c.requires_approval ?? false,
     target_cluster_id: c.target_cluster_id ?? null,
     target_namespace: c.target_namespace ?? "",
     chart_credential_id: c.chart_credential_id ?? null,
@@ -91,6 +92,7 @@ interface WorkflowDraftValue {
   onNodeDragStop: (node: Node) => void;
 
   addComponent: (type: ComponentType) => void;
+  addTerraform: () => void;
   addGroup: () => void;
   updateComponent: (next: EditableComponent) => void;
   deleteNode: (id: string) => void;
@@ -317,6 +319,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       type,
       config: type === "helm" ? { chart_source: "http_repo" } : {},
       continue_on_failure: false,
+      requires_approval: false,
       target_cluster_id: null,
       target_namespace: "",
       chart_credential_id: null,
@@ -343,6 +346,68 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       },
       ];
     });
+    setSaved(false);
+  }, []);
+
+  // addTerraform adds a terraform deployment as TWO linked nodes — a plan node
+  // and an apply node that depends on it — plus the connecting edge (depends_on
+  // is derived from edges at save time, so the edge is what records the link).
+  // The apply node defaults to requires_approval=true so the run parks for a
+  // human to review the plan before applying. Both nodes are seeded with the
+  // same git source + backend so the user fills the repo details once on the
+  // plan node and copies them to apply (per-node config is the v1 tradeoff).
+  const addTerraform = useCallback(() => {
+    const planId = crypto.randomUUID();
+    const applyId = crypto.randomUUID();
+    const seed: Record<string, string> = {
+      repo_url: "",
+      git_ref: "",
+      path: "",
+      backend: "kubernetes",
+    };
+    const plan: EditableComponent = {
+      id: planId,
+      name: "terraform plan",
+      type: "terraform",
+      config: { ...seed, command: "plan" },
+      continue_on_failure: false,
+      requires_approval: false,
+      target_cluster_id: null,
+      target_namespace: "",
+      chart_credential_id: null,
+      github_installation_id: null,
+    };
+    const apply: EditableComponent = {
+      id: applyId,
+      name: "terraform apply",
+      type: "terraform",
+      config: { ...seed, command: "apply" },
+      continue_on_failure: false,
+      requires_approval: true,
+      target_cluster_id: null,
+      target_namespace: "",
+      chart_credential_id: null,
+      github_installation_id: null,
+    };
+    setNodes((ns) => {
+      const slot = ns.filter((n) => n.type === "component" && !n.parentId).length;
+      const x = 80 + (slot % 4) * 240;
+      const y = 80 + Math.floor(slot / 4) * 160;
+      const mk = (c: EditableComponent, dy: number): FlowNode => ({
+        id: c.id,
+        type: "component",
+        position: { x, y: y + dy },
+        data: {
+          name: c.name,
+          type: c.type,
+          continueOnFailure: c.continue_on_failure,
+          component: c,
+        },
+      });
+      return [...ns, mk(plan, 0), mk(apply, 160)];
+    });
+    // The edge plan -> apply is what buildPayload turns into apply.depends_on.
+    setEdges((es) => [...es, { id: `${planId}->${applyId}`, source: planId, target: applyId }]);
     setSaved(false);
   }, []);
 
@@ -460,6 +525,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
         config,
         depends_on: dependsByTarget.get(n.id) ?? [],
         continue_on_failure: c.continue_on_failure,
+        requires_approval: c.requires_approval,
         target_cluster_id: c.target_cluster_id,
         target_namespace: c.target_namespace,
         chart_credential_id: c.chart_credential_id,
@@ -548,6 +614,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       onConnect,
       onNodeDragStop,
       addComponent,
+      addTerraform,
       addGroup,
       updateComponent,
       deleteNode,
@@ -577,6 +644,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       onConnect,
       onNodeDragStop,
       addComponent,
+      addTerraform,
       addGroup,
       updateComponent,
       deleteNode,

@@ -132,6 +132,97 @@ func (s *Server) CancelRun(ctx context.Context, req CancelRunRequestObject) (Can
 	return CancelRun200JSONResponse(toAPIWorkflowRun(run)), nil
 }
 
+// ApproveComponentRun approves a step parked at a manual-approval gate, then
+// resumes the run. Editor or above; needs the background worker (503 otherwise).
+// A step not awaiting approval is a 409.
+func (s *Server) ApproveComponentRun(ctx context.Context, req ApproveComponentRunRequestObject) (ApproveComponentRunResponseObject, error) {
+	run, aerr, err := s.decideComponentRun(ctx, req.Id, req.RunId, req.ComponentRunId, workflows.DecisionApprove)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[ApproveComponentRundefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	return ApproveComponentRun200JSONResponse(toAPIWorkflowRun(run)), nil
+}
+
+// RejectComponentRun rejects a step parked at a manual-approval gate (the step
+// settles failed), then resumes the run so it settles. Editor or above; needs
+// the background worker (503 otherwise). A step not awaiting approval is a 409.
+func (s *Server) RejectComponentRun(ctx context.Context, req RejectComponentRunRequestObject) (RejectComponentRunResponseObject, error) {
+	run, aerr, err := s.decideComponentRun(ctx, req.Id, req.RunId, req.ComponentRunId, workflows.DecisionReject)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[RejectComponentRundefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	return RejectComponentRun200JSONResponse(toAPIWorkflowRun(run)), nil
+}
+
+// decideComponentRun is the shared approve/reject body: resolve + authorize
+// (editor or above), require the background worker, record the decision against
+// the authenticated user, then enqueue a resume job and record its id. Both
+// decisions enqueue a resume — approve so the gated node runs, reject so the run
+// settles (the rejected step is already failed, its dependents skip on resume).
+func (s *Server) decideComponentRun(ctx context.Context, appID, runID, crID uuid.UUID, decision string) (*ent.WorkflowRun, *apiError, error) {
+	orgID, aerr, err := s.resolveWorkflowWrite(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if aerr != nil {
+		return nil, aerr, nil
+	}
+	if s.jobQueue == nil {
+		return nil, &apiError{http.StatusServiceUnavailable, "unavailable", "background job worker not configured; cannot resume a run"}, nil
+	}
+	// The approver/rejector identity is the authenticated user; prefer their
+	// email (what an operator recognizes) and fall back to the id.
+	u, err := s.currentUser(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	approver := u.Email
+	if approver == "" {
+		approver = u.ID.String()
+	}
+
+	run, err := s.workflows.ApproveComponentRun(ctx, orgID, appID, runID, crID, approver, decision)
+	if err != nil {
+		switch {
+		case ent.IsNotFound(err):
+			return nil, &apiError{http.StatusNotFound, "not_found", "component run not found"}, nil
+		case errors.Is(err, workflows.ErrNotAwaitingApproval):
+			return nil, &apiError{http.StatusConflict, "conflict", err.Error()}, nil
+		case errors.Is(err, workflows.ErrInvalidDecision):
+			return nil, &apiError{http.StatusBadRequest, "bad_request", err.Error()}, nil
+		default:
+			return nil, nil, err
+		}
+	}
+
+	// Enqueue a fresh executor job to resume the run. The run is still
+	// awaiting_approval in the DB (ApproveComponentRun left it so); the resumed
+	// worker flips it back to running and re-drives the DAG — short-circuiting
+	// already-terminal nodes and re-evaluating the now-cleared gate. Mirrors
+	// StartRun: enqueue with the same ids/action, then record the new job id.
+	res, err := s.jobQueue.Insert(ctx, workflows.WorkflowRunArgs{
+		WorkflowRunID: run.ID,
+		OrgID:         orgID,
+		ApplicationID: appID,
+		Action:        string(run.Action),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	jobID := strconv.FormatInt(res.Job.ID, 10)
+	if err := s.workflows.SetRunJob(ctx, orgID, run.ID, jobID); err != nil {
+		return nil, nil, err
+	}
+	run.JobID = jobID
+	return run, nil, nil
+}
+
 // GetRun returns one workflow run with its component runs and graph snapshot.
 // Read access (viewer or above); secret-bearing config in the snapshot is
 // redacted below editor.
@@ -227,10 +318,14 @@ func toAPIComponentRun(cr *ent.ComponentRun) ComponentRun {
 		CreatedAt:      cr.CreatedAt,
 		StartedAt:      cr.StartedAt,
 		FinishedAt:     cr.FinishedAt,
+		ApprovedAt:     cr.ApprovedAt,
 	}
 	if cr.ComponentID != uuid.Nil {
 		id := cr.ComponentID
 		out.ComponentId = &id
+	}
+	if cr.ApprovedBy != "" {
+		out.ApprovedBy = &cr.ApprovedBy
 	}
 	return out
 }

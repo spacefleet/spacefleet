@@ -104,12 +104,16 @@ func init() {
 	componentDescContinueOnFailure := componentFields[7].Descriptor()
 	// component.DefaultContinueOnFailure holds the default value on creation for the continue_on_failure field.
 	component.DefaultContinueOnFailure = componentDescContinueOnFailure.Default.(bool)
+	// componentDescRequiresApproval is the schema descriptor for requires_approval field.
+	componentDescRequiresApproval := componentFields[8].Descriptor()
+	// component.DefaultRequiresApproval holds the default value on creation for the requires_approval field.
+	component.DefaultRequiresApproval = componentDescRequiresApproval.Default.(bool)
 	// componentDescCreatedAt is the schema descriptor for created_at field.
-	componentDescCreatedAt := componentFields[14].Descriptor()
+	componentDescCreatedAt := componentFields[15].Descriptor()
 	// component.DefaultCreatedAt holds the default value on creation for the created_at field.
 	component.DefaultCreatedAt = componentDescCreatedAt.Default.(func() time.Time)
 	// componentDescUpdatedAt is the schema descriptor for updated_at field.
-	componentDescUpdatedAt := componentFields[15].Descriptor()
+	componentDescUpdatedAt := componentFields[16].Descriptor()
 	// component.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	component.DefaultUpdatedAt = componentDescUpdatedAt.Default.(func() time.Time)
 	// component.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -140,12 +144,16 @@ func init() {
 	componentgroup.DefaultID = componentgroupDescID.Default.(func() uuid.UUID)
 	componentrunFields := schema.ComponentRun{}.Fields()
 	_ = componentrunFields
+	// componentrunDescApprovedBy is the schema descriptor for approved_by field.
+	componentrunDescApprovedBy := componentrunFields[10].Descriptor()
+	// componentrun.DefaultApprovedBy holds the default value on creation for the approved_by field.
+	componentrun.DefaultApprovedBy = componentrunDescApprovedBy.Default.(string)
 	// componentrunDescCreatedAt is the schema descriptor for created_at field.
-	componentrunDescCreatedAt := componentrunFields[12].Descriptor()
+	componentrunDescCreatedAt := componentrunFields[14].Descriptor()
 	// componentrun.DefaultCreatedAt holds the default value on creation for the created_at field.
 	componentrun.DefaultCreatedAt = componentrunDescCreatedAt.Default.(func() time.Time)
 	// componentrunDescUpdatedAt is the schema descriptor for updated_at field.
-	componentrunDescUpdatedAt := componentrunFields[15].Descriptor()
+	componentrunDescUpdatedAt := componentrunFields[17].Descriptor()
 	// componentrun.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	componentrun.DefaultUpdatedAt = componentrunDescUpdatedAt.Default.(func() time.Time)
 	// componentrun.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

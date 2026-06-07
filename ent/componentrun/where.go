@@ -96,6 +96,16 @@ func Logs(v string) predicate.ComponentRun {
 	return predicate.ComponentRun(sql.FieldEQ(FieldLogs, v))
 }
 
+// ApprovedBy applies equality check predicate on the "approved_by" field. It's identical to ApprovedByEQ.
+func ApprovedBy(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldEQ(FieldApprovedBy, v))
+}
+
+// ApprovedAt applies equality check predicate on the "approved_at" field. It's identical to ApprovedAtEQ.
+func ApprovedAt(v time.Time) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldEQ(FieldApprovedAt, v))
+}
+
 // ChartRevision applies equality check predicate on the "chart_revision" field. It's identical to ChartRevisionEQ.
 func ChartRevision(v string) predicate.ComponentRun {
 	return predicate.ComponentRun(sql.FieldEQ(FieldChartRevision, v))
@@ -609,6 +619,121 @@ func LogsEqualFold(v string) predicate.ComponentRun {
 // LogsContainsFold applies the ContainsFold predicate on the "logs" field.
 func LogsContainsFold(v string) predicate.ComponentRun {
 	return predicate.ComponentRun(sql.FieldContainsFold(FieldLogs, v))
+}
+
+// ApprovedByEQ applies the EQ predicate on the "approved_by" field.
+func ApprovedByEQ(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldEQ(FieldApprovedBy, v))
+}
+
+// ApprovedByNEQ applies the NEQ predicate on the "approved_by" field.
+func ApprovedByNEQ(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldNEQ(FieldApprovedBy, v))
+}
+
+// ApprovedByIn applies the In predicate on the "approved_by" field.
+func ApprovedByIn(vs ...string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldIn(FieldApprovedBy, vs...))
+}
+
+// ApprovedByNotIn applies the NotIn predicate on the "approved_by" field.
+func ApprovedByNotIn(vs ...string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldNotIn(FieldApprovedBy, vs...))
+}
+
+// ApprovedByGT applies the GT predicate on the "approved_by" field.
+func ApprovedByGT(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldGT(FieldApprovedBy, v))
+}
+
+// ApprovedByGTE applies the GTE predicate on the "approved_by" field.
+func ApprovedByGTE(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldGTE(FieldApprovedBy, v))
+}
+
+// ApprovedByLT applies the LT predicate on the "approved_by" field.
+func ApprovedByLT(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldLT(FieldApprovedBy, v))
+}
+
+// ApprovedByLTE applies the LTE predicate on the "approved_by" field.
+func ApprovedByLTE(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldLTE(FieldApprovedBy, v))
+}
+
+// ApprovedByContains applies the Contains predicate on the "approved_by" field.
+func ApprovedByContains(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldContains(FieldApprovedBy, v))
+}
+
+// ApprovedByHasPrefix applies the HasPrefix predicate on the "approved_by" field.
+func ApprovedByHasPrefix(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldHasPrefix(FieldApprovedBy, v))
+}
+
+// ApprovedByHasSuffix applies the HasSuffix predicate on the "approved_by" field.
+func ApprovedByHasSuffix(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldHasSuffix(FieldApprovedBy, v))
+}
+
+// ApprovedByEqualFold applies the EqualFold predicate on the "approved_by" field.
+func ApprovedByEqualFold(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldEqualFold(FieldApprovedBy, v))
+}
+
+// ApprovedByContainsFold applies the ContainsFold predicate on the "approved_by" field.
+func ApprovedByContainsFold(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldContainsFold(FieldApprovedBy, v))
+}
+
+// ApprovedAtEQ applies the EQ predicate on the "approved_at" field.
+func ApprovedAtEQ(v time.Time) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldEQ(FieldApprovedAt, v))
+}
+
+// ApprovedAtNEQ applies the NEQ predicate on the "approved_at" field.
+func ApprovedAtNEQ(v time.Time) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldNEQ(FieldApprovedAt, v))
+}
+
+// ApprovedAtIn applies the In predicate on the "approved_at" field.
+func ApprovedAtIn(vs ...time.Time) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldIn(FieldApprovedAt, vs...))
+}
+
+// ApprovedAtNotIn applies the NotIn predicate on the "approved_at" field.
+func ApprovedAtNotIn(vs ...time.Time) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldNotIn(FieldApprovedAt, vs...))
+}
+
+// ApprovedAtGT applies the GT predicate on the "approved_at" field.
+func ApprovedAtGT(v time.Time) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldGT(FieldApprovedAt, v))
+}
+
+// ApprovedAtGTE applies the GTE predicate on the "approved_at" field.
+func ApprovedAtGTE(v time.Time) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldGTE(FieldApprovedAt, v))
+}
+
+// ApprovedAtLT applies the LT predicate on the "approved_at" field.
+func ApprovedAtLT(v time.Time) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldLT(FieldApprovedAt, v))
+}
+
+// ApprovedAtLTE applies the LTE predicate on the "approved_at" field.
+func ApprovedAtLTE(v time.Time) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldLTE(FieldApprovedAt, v))
+}
+
+// ApprovedAtIsNil applies the IsNil predicate on the "approved_at" field.
+func ApprovedAtIsNil() predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldIsNull(FieldApprovedAt))
+}
+
+// ApprovedAtNotNil applies the NotNil predicate on the "approved_at" field.
+func ApprovedAtNotNil() predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldNotNull(FieldApprovedAt))
 }
 
 // ChartRevisionEQ applies the EQ predicate on the "chart_revision" field.

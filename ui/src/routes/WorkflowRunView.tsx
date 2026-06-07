@@ -8,7 +8,7 @@ import {
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { ArrowLeft, Ban, X } from "lucide-react";
+import { ArrowLeft, Ban, Check, X } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import { useObjectStream } from "../lib/useObjectStream";
@@ -49,8 +49,9 @@ const TERMINAL: RunStatus[] = ["succeeded", "failed", "partial"];
 // its detail (logs, and for preview runs a diff).
 export function WorkflowRunView() {
   const { appId = "", runId = "" } = useParams();
-  const { currentOrg } = useOrg();
+  const { currentOrg, currentRole } = useOrg();
   const navigate = useNavigate();
+  const canApprove = currentRole !== "viewer";
 
   const [run, setRun] = useState<WorkflowRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -261,6 +262,8 @@ export function WorkflowRunView() {
                     ?.status
                 }
                 isPreview={run.action === "preview"}
+                canApprove={canApprove}
+                onDecided={load}
                 onClose={() => setSelectedRunId(null)}
               />
             )}
@@ -279,6 +282,8 @@ function ComponentRunPanel({
   componentRunId,
   liveStatus,
   isPreview,
+  canApprove,
+  onDecided,
   onClose,
 }: {
   appId: string;
@@ -288,11 +293,47 @@ function ComponentRunPanel({
   // settles) the fetch effect re-runs so the detail (logs/diff) stays current.
   liveStatus?: ComponentRunStatus;
   isPreview: boolean;
+  // Editor+ may approve/reject a step parked at awaiting_approval.
+  canApprove: boolean;
+  // Called after an approve/reject so the parent reloads the run detail; the SSE
+  // stream also folds the resumed state in, which makes the buttons disappear.
+  onDecided: () => void;
   onClose: () => void;
 }) {
   const [detail, setDetail] = useState<ComponentRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deciding, setDeciding] = useState(false);
+  const [decideError, setDecideError] = useState<string | null>(null);
+
+  // The gate is live (open) only while the step is parked. Once the stream folds
+  // a resumed status in, liveStatus changes and the buttons drop away.
+  const awaitingApproval = liveStatus === "awaiting_approval";
+
+  const decide = useCallback(
+    async (decision: "approve" | "reject") => {
+      setDeciding(true);
+      setDecideError(null);
+      const params = { path: { id: appId, runId, componentRunId } };
+      const { error } =
+        decision === "approve"
+          ? await api.POST(
+              "/api/applications/{id}/runs/{runId}/components/{componentRunId}/approve",
+              { params },
+            )
+          : await api.POST(
+              "/api/applications/{id}/runs/{runId}/components/{componentRunId}/reject",
+              { params },
+            );
+      setDeciding(false);
+      if (error) {
+        setDecideError(error.message ?? "Could not record that decision");
+        return;
+      }
+      onDecided();
+    },
+    [appId, runId, componentRunId, onDecided],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -346,10 +387,58 @@ function ComponentRunPanel({
         ) : (
           <>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              <Row label="Status" value={detail.status} />
+              <Row label="Status" value={detail.status.replace(/_/g, " ")} />
               <Row label="Type" value={detail.type ?? "—"} />
+              {detail.approved_by && (
+                <Row label="Decided by" value={detail.approved_by} />
+              )}
               {detail.message && <Row label="Message" value={detail.message} wide />}
             </dl>
+
+            {/* Manual-approval gate. While the step is parked, an editor+ reviews
+                the plan logs below and approves or rejects; the SSE stream folds
+                the resumed state in, which clears awaitingApproval and hides
+                these buttons. */}
+            {awaitingApproval && (
+              <div className="border border-violet-300 bg-violet-50 p-3">
+                <p className="text-sm font-medium text-violet-900">
+                  Awaiting approval
+                </p>
+                <p className="mt-0.5 text-xs text-violet-800">
+                  Review the plan output below, then approve to apply or reject to
+                  fail the run.
+                </p>
+                {canApprove ? (
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void decide("approve")}
+                      disabled={deciding}
+                      className="inline-flex items-center gap-1.5 bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void decide("reject")}
+                      disabled={deciding}
+                      className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Reject
+                    </button>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs italic text-violet-700">
+                    Only an editor or admin can approve this step.
+                  </p>
+                )}
+                {decideError && (
+                  <p className="mt-2 text-xs text-red-600">{decideError}</p>
+                )}
+              </div>
+            )}
 
             {isPreview && (
               <div>

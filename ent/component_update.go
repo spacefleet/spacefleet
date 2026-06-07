@@ -106,6 +106,20 @@ func (_u *ComponentUpdate) SetNillableContinueOnFailure(v *bool) *ComponentUpdat
 	return _u
 }
 
+// SetRequiresApproval sets the "requires_approval" field.
+func (_u *ComponentUpdate) SetRequiresApproval(v bool) *ComponentUpdate {
+	_u.mutation.SetRequiresApproval(v)
+	return _u
+}
+
+// SetNillableRequiresApproval sets the "requires_approval" field if the given value is not nil.
+func (_u *ComponentUpdate) SetNillableRequiresApproval(v *bool) *ComponentUpdate {
+	if v != nil {
+		_u.SetRequiresApproval(*v)
+	}
+	return _u
+}
+
 // SetTargetClusterID sets the "target_cluster_id" field.
 func (_u *ComponentUpdate) SetTargetClusterID(v uuid.UUID) *ComponentUpdate {
 	_u.mutation.SetTargetClusterID(v)
@@ -368,6 +382,9 @@ func (_u *ComponentUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.ContinueOnFailure(); ok {
 		_spec.SetField(component.FieldContinueOnFailure, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.RequiresApproval(); ok {
+		_spec.SetField(component.FieldRequiresApproval, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.TargetNamespace(); ok {
 		_spec.SetField(component.FieldTargetNamespace, field.TypeString, value)
 	}
@@ -587,6 +604,20 @@ func (_u *ComponentUpdateOne) SetContinueOnFailure(v bool) *ComponentUpdateOne {
 func (_u *ComponentUpdateOne) SetNillableContinueOnFailure(v *bool) *ComponentUpdateOne {
 	if v != nil {
 		_u.SetContinueOnFailure(*v)
+	}
+	return _u
+}
+
+// SetRequiresApproval sets the "requires_approval" field.
+func (_u *ComponentUpdateOne) SetRequiresApproval(v bool) *ComponentUpdateOne {
+	_u.mutation.SetRequiresApproval(v)
+	return _u
+}
+
+// SetNillableRequiresApproval sets the "requires_approval" field if the given value is not nil.
+func (_u *ComponentUpdateOne) SetNillableRequiresApproval(v *bool) *ComponentUpdateOne {
+	if v != nil {
+		_u.SetRequiresApproval(*v)
 	}
 	return _u
 }
@@ -882,6 +913,9 @@ func (_u *ComponentUpdateOne) sqlSave(ctx context.Context) (_node *Component, er
 	}
 	if value, ok := _u.mutation.ContinueOnFailure(); ok {
 		_spec.SetField(component.FieldContinueOnFailure, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.RequiresApproval(); ok {
+		_spec.SetField(component.FieldRequiresApproval, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.TargetNamespace(); ok {
 		_spec.SetField(component.FieldTargetNamespace, field.TypeString, value)

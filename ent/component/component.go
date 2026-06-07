@@ -30,6 +30,8 @@ const (
 	FieldDependsOn = "depends_on"
 	// FieldContinueOnFailure holds the string denoting the continue_on_failure field in the database.
 	FieldContinueOnFailure = "continue_on_failure"
+	// FieldRequiresApproval holds the string denoting the requires_approval field in the database.
+	FieldRequiresApproval = "requires_approval"
 	// FieldTargetClusterID holds the string denoting the target_cluster_id field in the database.
 	FieldTargetClusterID = "target_cluster_id"
 	// FieldTargetNamespace holds the string denoting the target_namespace field in the database.
@@ -114,6 +116,7 @@ var Columns = []string{
 	FieldConfig,
 	FieldDependsOn,
 	FieldContinueOnFailure,
+	FieldRequiresApproval,
 	FieldTargetClusterID,
 	FieldTargetNamespace,
 	FieldChartCredentialID,
@@ -139,6 +142,8 @@ var (
 	NameValidator func(string) error
 	// DefaultContinueOnFailure holds the default value on creation for the "continue_on_failure" field.
 	DefaultContinueOnFailure bool
+	// DefaultRequiresApproval holds the default value on creation for the "requires_approval" field.
+	DefaultRequiresApproval bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -206,6 +211,11 @@ func ByType(opts ...sql.OrderTermOption) OrderOption {
 // ByContinueOnFailure orders the results by the continue_on_failure field.
 func ByContinueOnFailure(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldContinueOnFailure, opts...).ToFunc()
+}
+
+// ByRequiresApproval orders the results by the requires_approval field.
+func ByRequiresApproval(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRequiresApproval, opts...).ToFunc()
 }
 
 // ByTargetClusterID orders the results by the target_cluster_id field.
