@@ -161,31 +161,46 @@ var catalog = []Capability{
 
 // tektonInstallRules is the rule set the install_tekton capability requires: the
 // full create/read/update/delete lifecycle on every resource type the vendored
-// Tekton release manifest contains (see lib/tekton/release). The verbs are
-// identical on every type — server-side apply (install + upgrade) needs
-// get+create+patch, the uninstall sweep needs list+delete — so they are declared
-// once and fanned out across the resource list rather than repeated per row.
+// Tekton release manifest contains (see lib/tekton/release). Most types need the
+// same lifecycle verbs — server-side apply (install + upgrade) needs
+// get+create+patch, the uninstall sweep needs list+delete — declared once and
+// fanned out. The exceptions are clusterroles and roles: the release grants them
+// permissions this subject does not itself hold (the tekton.dev / resolution.tekton.dev
+// verbs on the controller's ClusterRole), so on top of the lifecycle the subject
+// also needs escalate (to write a role granting perms it lacks) and bind (to
+// reference that role from a binding). Without those two verbs the API server's
+// privilege-escalation guard rejects the apply with "attempting to grant RBAC
+// permissions not currently held" — the same forbidden error whether the subject
+// is the in-cluster pod SA or a token SA created from this generated manifest.
 var tektonInstallRules = func() []Rule {
 	lifecycle := []string{"get", "list", "create", "patch", "delete"}
-	resources := []struct{ group, resource string }{
-		{"", "namespaces"},
-		{"", "configmaps"},
-		{"", "services"},
-		{"", "serviceaccounts"},
-		{"", "secrets"},
-		{"apps", "deployments"},
-		{"autoscaling", "horizontalpodautoscalers"},
-		{"apiextensions.k8s.io", "customresourcedefinitions"},
-		{"rbac.authorization.k8s.io", "clusterroles"},
-		{"rbac.authorization.k8s.io", "clusterrolebindings"},
-		{"rbac.authorization.k8s.io", "roles"},
-		{"rbac.authorization.k8s.io", "rolebindings"},
-		{"admissionregistration.k8s.io", "validatingwebhookconfigurations"},
-		{"admissionregistration.k8s.io", "mutatingwebhookconfigurations"},
+	escalateBind := []string{"escalate", "bind"}
+	resources := []struct {
+		group, resource string
+		extra           []string
+	}{
+		{group: "", resource: "namespaces"},
+		{group: "", resource: "configmaps"},
+		{group: "", resource: "services"},
+		{group: "", resource: "serviceaccounts"},
+		{group: "", resource: "secrets"},
+		{group: "apps", resource: "deployments"},
+		{group: "autoscaling", resource: "horizontalpodautoscalers"},
+		{group: "apiextensions.k8s.io", resource: "customresourcedefinitions"},
+		{group: "rbac.authorization.k8s.io", resource: "clusterroles", extra: escalateBind},
+		{group: "rbac.authorization.k8s.io", resource: "clusterrolebindings"},
+		{group: "rbac.authorization.k8s.io", resource: "roles", extra: escalateBind},
+		{group: "rbac.authorization.k8s.io", resource: "rolebindings"},
+		{group: "admissionregistration.k8s.io", resource: "validatingwebhookconfigurations"},
+		{group: "admissionregistration.k8s.io", resource: "mutatingwebhookconfigurations"},
 	}
 	rules := make([]Rule, len(resources))
 	for i, r := range resources {
-		rules[i] = Rule{APIGroup: r.group, Resource: r.resource, Verbs: lifecycle, ClusterScoped: true}
+		verbs := lifecycle
+		if len(r.extra) > 0 {
+			verbs = append(append([]string{}, lifecycle...), r.extra...)
+		}
+		rules[i] = Rule{APIGroup: r.group, Resource: r.resource, Verbs: verbs, ClusterScoped: true}
 	}
 	return rules
 }()

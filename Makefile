@@ -125,7 +125,6 @@ helm-lint: helm-deps
 	cd $(CHART) && helm lint . -f ci/default-values.yaml
 	cd $(CHART) && helm lint . -f ci/external-values.yaml
 	cd $(CHART) && helm lint . -f ci/dex-values.yaml
-	cd $(CHART) && helm lint . -f ci/cluster-reader-values.yaml
 
 # Render the chart locally for inspection (bundled-datastore defaults).
 helm-template: helm-deps

@@ -218,23 +218,6 @@ serviceAccount:
   name: ""
   annotations: {}
 
-clusterReader:
-  # -- Render an OPT-IN, least-privilege cluster-scoped reader Role bound to the
-  # app's ServiceAccount. DEFAULT OFF on purpose: the cluster Spacefleet is
-  # INSTALLED INTO is often the multi-tenant control plane, and Spacefleet does
-  # not need to read it to operate (registered clusters are org-scoped resources
-  # carrying their own credentials). Enable ONLY if you intend the install
-  # (host) cluster to ALSO be a monitored workload cluster. When true, renders a
-  # ClusterRole granting get/list/watch on nodes, namespaces and pods plus get
-  # on pods/log, and a ClusterRoleBinding to the app ServiceAccount.
-  #
-  # Requires a real, chart-owned ServiceAccount: keep serviceAccount.create=true
-  # (or set serviceAccount.name). With serviceAccount.create=false and no
-  # serviceAccount.name, the subject resolves to the namespace "default" SA, so
-  # enabling this would grant cluster read to that SA instead — the chart fails
-  # fast in that case.
-  enabled: false
-
 # Pod- and container-level security. Defaults match the distroless/static
 # nonroot runtime image (uid/gid 65532, read-only rootfs, no privilege).
 podSecurityContext:
