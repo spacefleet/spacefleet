@@ -57,6 +57,18 @@ func (f ComponentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ComponentMutation", m)
 }
 
+// The ComponentGroupFunc type is an adapter to allow the use of ordinary
+// function as ComponentGroup mutator.
+type ComponentGroupFunc func(context.Context, *ent.ComponentGroupMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ComponentGroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ComponentGroupMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ComponentGroupMutation", m)
+}
+
 // The ComponentRunFunc type is an adapter to allow the use of ordinary
 // function as ComponentRun mutator.
 type ComponentRunFunc func(context.Context, *ent.ComponentRunMutation) (ent.Value, error)

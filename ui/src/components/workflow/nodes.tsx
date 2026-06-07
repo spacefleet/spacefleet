@@ -1,5 +1,5 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Package, FileCode, RefreshCw } from "lucide-react";
+import { Package, FileCode, RefreshCw, Boxes } from "lucide-react";
 import type { components } from "../../api/schema";
 import { ComponentStatusIcon } from "./status";
 import { componentStatusClasses } from "./statusClasses";
@@ -53,6 +53,43 @@ export function BuilderNode({ data, selected }: NodeProps) {
         <TypeBadge type={d.type} />
       </div>
       <Handle type="source" position={Position.Bottom} className="!bg-neutral-500" />
+    </div>
+  );
+}
+
+// GroupNodeData is the payload attached to a "group" container node: just the
+// group's display name. Members are real child nodes rendered inside it (via
+// React Flow parentId), so the group node itself only draws the labeled box.
+export interface GroupNodeData extends Record<string, unknown> {
+  name: string;
+}
+
+// GroupNode is the explicit parallel-group container: a labeled rectangular box
+// (sharp corners, neutral border, faint fill) that member component nodes render
+// inside. It carries source+target handles so an edge can be drawn to/from the
+// whole group ("the group depends on …" / "… depends on the group"). Rendered
+// behind its children by ordering group nodes first in the nodes array. Sized by
+// React Flow from the node's width/height.
+export function GroupNode({ data, selected }: NodeProps) {
+  const d = data as GroupNodeData;
+  return (
+    <div
+      className={`h-full w-full border bg-neutral-50/70 ${
+        selected ? "border-black ring-1 ring-black" : "border-neutral-300"
+      }`}
+    >
+      <Handle type="target" position={Position.Top} className="!bg-neutral-500" />
+      <div className="border-b border-neutral-200 bg-neutral-100/80 px-2 py-1">
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+          <Boxes className="h-3 w-3" />
+          {d.name || "group"}
+        </span>
+      </div>
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!bg-neutral-500"
+      />
     </div>
   );
 }

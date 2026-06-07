@@ -1,4 +1,3 @@
-import { Trash2, X } from "lucide-react";
 import type { components } from "../../api/schema";
 import { CHART_SOURCES } from "../chartSources";
 import {
@@ -14,7 +13,7 @@ type ChartCredential = components["schemas"]["ChartCredential"];
 type GitHubInstallation = components["schemas"]["GitHubInstallation"];
 
 // EditableComponent is the canvas's working copy of one node — the fields the
-// config panel edits. position/depends_on live on the React Flow node + edges,
+// editor edits. position/depends_on/group_id live on the React Flow node + edges,
 // not here, so the builder assembles them at save time.
 export interface EditableComponent {
   id: string;
@@ -28,32 +27,34 @@ export interface EditableComponent {
   github_installation_id: string | null;
 }
 
-interface ConfigPanelProps {
+interface ComponentFieldsProps {
   component: EditableComponent;
   onChange: (next: EditableComponent) => void;
-  onDelete: () => void;
-  onClose: () => void;
   clusters: Cluster[];
   credentials: ChartCredential[];
   installations: GitHubInstallation[];
   githubEnabled: boolean;
+  // When true the fields render read-only (a viewer opened the editor). Inputs
+  // are disabled rather than hidden so the configuration stays inspectable.
+  disabled?: boolean;
 }
 
-// ConfigPanel is the side panel for editing the selected node. Type-specific
-// config fields (helm: chart source + repo/chart/version/git + values + a
-// values-sources editor; manifest: repo/ref/path), continue-on-failure, target
-// overrides, and credential/installation pickers. Client-side validation is
-// intentionally light — the server (PUT /workflow) is the source of truth.
-export function ConfigPanel({
+// ComponentFields renders the editable form for one workflow node, independent
+// of any container (it was extracted from the old side panel so the full-page
+// NodeEditor can reuse it). Type-specific config (helm: chart source +
+// repo/chart/version/git + values + a values-sources editor; manifest:
+// repo/ref/path), continue-on-failure, target overrides, and
+// credential/installation pickers. Client-side validation is intentionally light
+// — the server (PUT /workflow) is the source of truth.
+export function ComponentFields({
   component,
   onChange,
-  onDelete,
-  onClose,
   clusters,
   credentials,
   installations,
   githubEnabled,
-}: ConfigPanelProps) {
+  disabled = false,
+}: ComponentFieldsProps) {
   function set<K extends keyof EditableComponent>(key: K, value: EditableComponent[K]) {
     onChange({ ...component, [key]: value });
   }
@@ -72,145 +73,120 @@ export function ConfigPanel({
   }
 
   return (
-    <aside className="flex h-full w-96 shrink-0 flex-col overflow-y-auto border-l border-neutral-200 bg-white">
-      <div className="flex items-start justify-between gap-2 border-b border-neutral-200 px-4 py-3">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-            {component.type} component
-          </p>
-          <h2 className="mt-0.5 text-sm font-semibold text-neutral-900">
-            Edit node
-          </h2>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close panel"
-          className="p-1 text-neutral-400 hover:text-neutral-900"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+    <div className="space-y-4">
+      <Field label="Name">
+        <input
+          className="w-full border border-neutral-300 px-3 py-2 text-sm"
+          value={component.name}
+          onChange={(e) => set("name", e.target.value)}
+          placeholder="component name"
+          disabled={disabled}
+        />
+      </Field>
 
-      <div className="flex-1 space-y-4 px-4 py-4">
-        <Field label="Name">
-          <input
-            className="w-full border border-neutral-300 px-3 py-2 text-sm"
-            value={component.name}
-            onChange={(e) => set("name", e.target.value)}
-            placeholder="component name"
-          />
-        </Field>
+      {component.type === "helm" ? (
+        <HelmConfig
+          config={component.config}
+          chartSource={chartSource}
+          setConfig={setConfig}
+          valuesRows={valuesRows}
+          setValuesRows={setValuesRows}
+          disabled={disabled}
+        />
+      ) : (
+        <ManifestConfig config={component.config} setConfig={setConfig} disabled={disabled} />
+      )}
 
-        {component.type === "helm" ? (
-          <HelmConfig
-            config={component.config}
-            chartSource={chartSource}
-            setConfig={setConfig}
-            valuesRows={valuesRows}
-            setValuesRows={setValuesRows}
-          />
-        ) : (
-          <ManifestConfig config={component.config} setConfig={setConfig} />
-        )}
-
-        {/* Credentials. Helm http_repo/oci take a chart credential; git sources
-            (helm git chart, or any git-sourced values, or a manifest) take a
-            GitHub installation for private clones. */}
-        {component.type === "helm" &&
-          (chartSource === "http_repo" || chartSource === "oci") && (
-            <Field
-              label="Chart credential"
-              help="Optional — only for a private repo/registry."
-            >
-              <select
-                className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
-                value={component.chart_credential_id ?? ""}
-                onChange={(e) => set("chart_credential_id", e.target.value || null)}
-              >
-                <option value="">None (public chart)</option>
-                {credentials.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          )}
-
-        {githubEnabled && (
+      {/* Credentials. Helm http_repo/oci take a chart credential; git sources
+          (helm git chart, or any git-sourced values, or a manifest) take a
+          GitHub installation for private clones. */}
+      {component.type === "helm" &&
+        (chartSource === "http_repo" || chartSource === "oci") && (
           <Field
-            label="GitHub installation"
-            help="Optional — only for a private Git source."
+            label="Chart credential"
+            help="Optional — only for a private repo/registry."
           >
             <select
               className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
-              value={component.github_installation_id ?? ""}
-              onChange={(e) => set("github_installation_id", e.target.value || null)}
+              value={component.chart_credential_id ?? ""}
+              onChange={(e) => set("chart_credential_id", e.target.value || null)}
+              disabled={disabled}
             >
-              <option value="">None (public repository)</option>
-              {installations.map((inst) => (
-                <option key={inst.id} value={inst.id}>
-                  {inst.account_login || inst.installation_id}
+              <option value="">None (public chart)</option>
+              {credentials.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
                 </option>
               ))}
             </select>
           </Field>
         )}
 
-        {/* Targeting overrides. Blank = the application's default target. */}
+      {githubEnabled && (
         <Field
-          label="Target cluster override"
-          help="Optional — defaults to the application's target cluster."
+          label="GitHub installation"
+          help="Optional — only for a private Git source."
         >
           <select
             className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
-            value={component.target_cluster_id ?? ""}
-            onChange={(e) => set("target_cluster_id", e.target.value || null)}
+            value={component.github_installation_id ?? ""}
+            onChange={(e) => set("github_installation_id", e.target.value || null)}
+            disabled={disabled}
           >
-            <option value="">App default</option>
-            {clusters.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
+            <option value="">None (public repository)</option>
+            {installations.map((inst) => (
+              <option key={inst.id} value={inst.id}>
+                {inst.account_login || inst.installation_id}
               </option>
             ))}
           </select>
         </Field>
+      )}
 
-        <Field
-          label="Target namespace override"
-          help="Optional — defaults to the application's target namespace."
+      {/* Targeting overrides. Blank = the application's default target. */}
+      <Field
+        label="Target cluster override"
+        help="Optional — defaults to the application's target cluster."
+      >
+        <select
+          className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+          value={component.target_cluster_id ?? ""}
+          onChange={(e) => set("target_cluster_id", e.target.value || null)}
+          disabled={disabled}
         >
-          <input
-            className="w-full border border-neutral-300 px-3 py-2 text-sm"
-            value={component.target_namespace}
-            onChange={(e) => set("target_namespace", e.target.value)}
-            placeholder="(app default)"
-          />
-        </Field>
+          <option value="">App default</option>
+          {clusters.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </Field>
 
-        <label className="flex items-center gap-2 text-sm text-neutral-700">
-          <input
-            type="checkbox"
-            className="h-4 w-4 accent-black"
-            checked={component.continue_on_failure}
-            onChange={(e) => set("continue_on_failure", e.target.checked)}
-          />
-          Continue on failure
-        </label>
-      </div>
+      <Field
+        label="Target namespace override"
+        help="Optional — defaults to the application's target namespace."
+      >
+        <input
+          className="w-full border border-neutral-300 px-3 py-2 text-sm"
+          value={component.target_namespace}
+          onChange={(e) => set("target_namespace", e.target.value)}
+          placeholder="(app default)"
+          disabled={disabled}
+        />
+      </Field>
 
-      <div className="border-t border-neutral-200 px-4 py-3">
-        <button
-          type="button"
-          onClick={onDelete}
-          className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-          Delete node
-        </button>
-      </div>
-    </aside>
+      <label className="flex items-center gap-2 text-sm text-neutral-700">
+        <input
+          type="checkbox"
+          className="h-4 w-4 accent-black"
+          checked={component.continue_on_failure}
+          onChange={(e) => set("continue_on_failure", e.target.checked)}
+          disabled={disabled}
+        />
+        Continue on failure
+      </label>
+    </div>
   );
 }
 
@@ -220,12 +196,14 @@ function HelmConfig({
   setConfig,
   valuesRows,
   setValuesRows,
+  disabled,
 }: {
   config: Record<string, string>;
   chartSource: ChartSource;
   setConfig: (key: string, value: string) => void;
   valuesRows: ValuesSourceRow[];
   setValuesRows: (rows: ValuesSourceRow[]) => void;
+  disabled: boolean;
 }) {
   const source = CHART_SOURCES.find((s) => s.value === chartSource) ?? CHART_SOURCES[0];
   return (
@@ -235,6 +213,7 @@ function HelmConfig({
           className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
           value={chartSource}
           onChange={(e) => setConfig("chart_source", e.target.value)}
+          disabled={disabled}
         >
           {CHART_SOURCES.map((s) => (
             <option key={s.value} value={s.value}>
@@ -252,6 +231,7 @@ function HelmConfig({
             placeholder={field.placeholder}
             value={config[field.key] ?? ""}
             onChange={(e) => setConfig(field.key, e.target.value)}
+            disabled={disabled}
           />
         </Field>
       ))}
@@ -263,6 +243,7 @@ function HelmConfig({
           placeholder="(defaults to name)"
           value={config.release_name ?? ""}
           onChange={(e) => setConfig("release_name", e.target.value)}
+          disabled={disabled}
         />
       </Field>
 
@@ -272,10 +253,15 @@ function HelmConfig({
           placeholder={"replicaCount: 2\n"}
           value={config.values ?? ""}
           onChange={(e) => setConfig("values", e.target.value)}
+          disabled={disabled}
         />
       </Field>
 
-      <ValuesSourcesEditor rows={valuesRows} onChange={setValuesRows} />
+      <ValuesSourcesEditor
+        rows={valuesRows}
+        onChange={setValuesRows}
+        disabled={disabled}
+      />
     </>
   );
 }
@@ -283,9 +269,11 @@ function HelmConfig({
 function ManifestConfig({
   config,
   setConfig,
+  disabled,
 }: {
   config: Record<string, string>;
   setConfig: (key: string, value: string) => void;
+  disabled: boolean;
 }) {
   return (
     <>
@@ -296,6 +284,7 @@ function ManifestConfig({
           placeholder="https://github.com/org/manifests.git"
           value={config.repo_url ?? ""}
           onChange={(e) => setConfig("repo_url", e.target.value)}
+          disabled={disabled}
         />
       </Field>
       <Field label="Branch or tag" help="Default branch if empty.">
@@ -305,6 +294,7 @@ function ManifestConfig({
           placeholder="(default branch)"
           value={config.git_ref ?? ""}
           onChange={(e) => setConfig("git_ref", e.target.value)}
+          disabled={disabled}
         />
       </Field>
       <Field label="Path" help="File or directory to kubectl apply.">
@@ -314,6 +304,7 @@ function ManifestConfig({
           placeholder="manifests/prod"
           value={config.path ?? ""}
           onChange={(e) => setConfig("path", e.target.value)}
+          disabled={disabled}
         />
       </Field>
     </>
@@ -325,9 +316,11 @@ function ManifestConfig({
 function ValuesSourcesEditor({
   rows,
   onChange,
+  disabled,
 }: {
   rows: ValuesSourceRow[];
   onChange: (rows: ValuesSourceRow[]) => void;
+  disabled: boolean;
 }) {
   function update(i: number, key: keyof ValuesSourceRow, value: string) {
     onChange(rows.map((r, j) => (j === i ? { ...r, [key]: value } : r)));
@@ -349,13 +342,15 @@ function ValuesSourcesEditor({
                 <span className="text-xs font-medium text-neutral-500">
                   Source {i + 1}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => onChange(rows.filter((_, j) => j !== i))}
-                  className="text-xs text-neutral-500 hover:text-red-600"
-                >
-                  Remove
-                </button>
+                {!disabled && (
+                  <button
+                    type="button"
+                    onClick={() => onChange(rows.filter((_, j) => j !== i))}
+                    className="text-xs text-neutral-500 hover:text-red-600"
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
               <input
                 type="text"
@@ -364,6 +359,7 @@ function ValuesSourcesEditor({
                 placeholder="https://github.com/org/config.git"
                 value={src.repo_url}
                 onChange={(e) => update(i, "repo_url", e.target.value)}
+                disabled={disabled}
               />
               <div className="flex gap-1">
                 <input
@@ -373,6 +369,7 @@ function ValuesSourcesEditor({
                   placeholder="ref"
                   value={src.git_ref ?? ""}
                   onChange={(e) => update(i, "git_ref", e.target.value)}
+                  disabled={disabled}
                 />
                 <input
                   type="text"
@@ -381,19 +378,22 @@ function ValuesSourcesEditor({
                   placeholder="envs/prod/values.yaml"
                   value={src.path}
                   onChange={(e) => update(i, "path", e.target.value)}
+                  disabled={disabled}
                 />
               </div>
             </li>
           ))}
         </ol>
       )}
-      <button
-        type="button"
-        onClick={() => onChange([...rows, { repo_url: "", path: "" }])}
-        className="mt-2 text-sm font-medium text-neutral-700 hover:text-black"
-      >
-        + Add values source
-      </button>
+      {!disabled && (
+        <button
+          type="button"
+          onClick={() => onChange([...rows, { repo_url: "", path: "" }])}
+          className="mt-2 text-sm font-medium text-neutral-700 hover:text-black"
+        >
+          + Add values source
+        </button>
+      )}
     </div>
   );
 }

@@ -236,6 +236,7 @@ export function WorkflowRunView() {
                 nodeTypes={nodeTypes}
                 nodesDraggable={false}
                 nodesConnectable={false}
+                proOptions={{ hideAttribution: true }}
                 onNodeClick={(_, n) => {
                   const crId = (n.data as { componentRunId?: string }).componentRunId;
                   if (crId) setSelectedRunId(crId);

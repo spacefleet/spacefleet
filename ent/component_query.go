@@ -16,6 +16,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
+	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/predicate"
@@ -33,6 +34,7 @@ type ComponentQuery struct {
 	withTargetCluster      *ClusterQuery
 	withChartCredential    *ChartCredentialQuery
 	withGithubInstallation *GitHubInstallationQuery
+	withGroup              *ComponentGroupQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -172,6 +174,28 @@ func (_q *ComponentQuery) QueryGithubInstallation() *GitHubInstallationQuery {
 			sqlgraph.From(component.Table, component.FieldID, selector),
 			sqlgraph.To(githubinstallation.Table, githubinstallation.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, false, component.GithubInstallationTable, component.GithubInstallationColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryGroup chains the current query on the "group" edge.
+func (_q *ComponentQuery) QueryGroup() *ComponentGroupQuery {
+	query := (&ComponentGroupClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(component.Table, component.FieldID, selector),
+			sqlgraph.To(componentgroup.Table, componentgroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, component.GroupTable, component.GroupColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -376,6 +400,7 @@ func (_q *ComponentQuery) Clone() *ComponentQuery {
 		withTargetCluster:      _q.withTargetCluster.Clone(),
 		withChartCredential:    _q.withChartCredential.Clone(),
 		withGithubInstallation: _q.withGithubInstallation.Clone(),
+		withGroup:              _q.withGroup.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -434,6 +459,17 @@ func (_q *ComponentQuery) WithGithubInstallation(opts ...func(*GitHubInstallatio
 		opt(query)
 	}
 	_q.withGithubInstallation = query
+	return _q
+}
+
+// WithGroup tells the query-builder to eager-load the nodes that are connected to
+// the "group" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ComponentQuery) WithGroup(opts ...func(*ComponentGroupQuery)) *ComponentQuery {
+	query := (&ComponentGroupClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withGroup = query
 	return _q
 }
 
@@ -515,12 +551,13 @@ func (_q *ComponentQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Co
 	var (
 		nodes       = []*Component{}
 		_spec       = _q.querySpec()
-		loadedTypes = [5]bool{
+		loadedTypes = [6]bool{
 			_q.withOrganization != nil,
 			_q.withApplication != nil,
 			_q.withTargetCluster != nil,
 			_q.withChartCredential != nil,
 			_q.withGithubInstallation != nil,
+			_q.withGroup != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -568,6 +605,12 @@ func (_q *ComponentQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Co
 	if query := _q.withGithubInstallation; query != nil {
 		if err := _q.loadGithubInstallation(ctx, query, nodes, nil,
 			func(n *Component, e *GitHubInstallation) { n.Edges.GithubInstallation = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withGroup; query != nil {
+		if err := _q.loadGroup(ctx, query, nodes, nil,
+			func(n *Component, e *ComponentGroup) { n.Edges.Group = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -719,6 +762,35 @@ func (_q *ComponentQuery) loadGithubInstallation(ctx context.Context, query *Git
 	}
 	return nil
 }
+func (_q *ComponentQuery) loadGroup(ctx context.Context, query *ComponentGroupQuery, nodes []*Component, init func(*Component), assign func(*Component, *ComponentGroup)) error {
+	ids := make([]uuid.UUID, 0, len(nodes))
+	nodeids := make(map[uuid.UUID][]*Component)
+	for i := range nodes {
+		fk := nodes[i].GroupID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(componentgroup.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "group_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
 
 func (_q *ComponentQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
@@ -759,6 +831,9 @@ func (_q *ComponentQuery) querySpec() *sqlgraph.QuerySpec {
 		}
 		if _q.withGithubInstallation != nil {
 			_spec.Node.AddColumnOnce(component.FieldGithubInstallationID)
+		}
+		if _q.withGroup != nil {
+			_spec.Node.AddColumnOnce(component.FieldGroupID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

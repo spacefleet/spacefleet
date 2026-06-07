@@ -17,6 +17,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
+	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/organization"
 )
@@ -149,6 +150,20 @@ func (_c *ComponentCreate) SetPosition(v map[string]float64) *ComponentCreate {
 	return _c
 }
 
+// SetGroupID sets the "group_id" field.
+func (_c *ComponentCreate) SetGroupID(v uuid.UUID) *ComponentCreate {
+	_c.mutation.SetGroupID(v)
+	return _c
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_c *ComponentCreate) SetNillableGroupID(v *uuid.UUID) *ComponentCreate {
+	if v != nil {
+		_c.SetGroupID(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *ComponentCreate) SetCreatedAt(v time.Time) *ComponentCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -214,6 +229,11 @@ func (_c *ComponentCreate) SetChartCredential(v *ChartCredential) *ComponentCrea
 // SetGithubInstallation sets the "github_installation" edge to the GitHubInstallation entity.
 func (_c *ComponentCreate) SetGithubInstallation(v *GitHubInstallation) *ComponentCreate {
 	return _c.SetGithubInstallationID(v.ID)
+}
+
+// SetGroup sets the "group" edge to the ComponentGroup entity.
+func (_c *ComponentCreate) SetGroup(v *ComponentGroup) *ComponentCreate {
+	return _c.SetGroupID(v.ID)
 }
 
 // Mutation returns the ComponentMutation object of the builder.
@@ -469,6 +489,23 @@ func (_c *ComponentCreate) createSpec() (*Component, *sqlgraph.CreateSpec) {
 		_node.GithubInstallationID = nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.GroupIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   component.GroupTable,
+			Columns: []string{component.GroupColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(componentgroup.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.GroupID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	return _node, _spec
 }
 
@@ -680,6 +717,24 @@ func (u *ComponentUpsert) UpdatePosition() *ComponentUpsert {
 // ClearPosition clears the value of the "position" field.
 func (u *ComponentUpsert) ClearPosition() *ComponentUpsert {
 	u.SetNull(component.FieldPosition)
+	return u
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *ComponentUpsert) SetGroupID(v uuid.UUID) *ComponentUpsert {
+	u.Set(component.FieldGroupID, v)
+	return u
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *ComponentUpsert) UpdateGroupID() *ComponentUpsert {
+	u.SetExcluded(component.FieldGroupID)
+	return u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *ComponentUpsert) ClearGroupID() *ComponentUpsert {
+	u.SetNull(component.FieldGroupID)
 	return u
 }
 
@@ -938,6 +993,27 @@ func (u *ComponentUpsertOne) UpdatePosition() *ComponentUpsertOne {
 func (u *ComponentUpsertOne) ClearPosition() *ComponentUpsertOne {
 	return u.Update(func(s *ComponentUpsert) {
 		s.ClearPosition()
+	})
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *ComponentUpsertOne) SetGroupID(v uuid.UUID) *ComponentUpsertOne {
+	return u.Update(func(s *ComponentUpsert) {
+		s.SetGroupID(v)
+	})
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *ComponentUpsertOne) UpdateGroupID() *ComponentUpsertOne {
+	return u.Update(func(s *ComponentUpsert) {
+		s.UpdateGroupID()
+	})
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *ComponentUpsertOne) ClearGroupID() *ComponentUpsertOne {
+	return u.Update(func(s *ComponentUpsert) {
+		s.ClearGroupID()
 	})
 }
 
@@ -1365,6 +1441,27 @@ func (u *ComponentUpsertBulk) UpdatePosition() *ComponentUpsertBulk {
 func (u *ComponentUpsertBulk) ClearPosition() *ComponentUpsertBulk {
 	return u.Update(func(s *ComponentUpsert) {
 		s.ClearPosition()
+	})
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *ComponentUpsertBulk) SetGroupID(v uuid.UUID) *ComponentUpsertBulk {
+	return u.Update(func(s *ComponentUpsert) {
+		s.SetGroupID(v)
+	})
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *ComponentUpsertBulk) UpdateGroupID() *ComponentUpsertBulk {
+	return u.Update(func(s *ComponentUpsert) {
+		s.UpdateGroupID()
+	})
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *ComponentUpsertBulk) ClearGroupID() *ComponentUpsertBulk {
+	return u.Update(func(s *ComponentUpsert) {
+		s.ClearGroupID()
 	})
 }
 

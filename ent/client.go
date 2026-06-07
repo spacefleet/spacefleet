@@ -20,6 +20,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
+	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/invitation"
@@ -43,6 +44,8 @@ type Client struct {
 	Cluster *ClusterClient
 	// Component is the client for interacting with the Component builders.
 	Component *ComponentClient
+	// ComponentGroup is the client for interacting with the ComponentGroup builders.
+	ComponentGroup *ComponentGroupClient
 	// ComponentRun is the client for interacting with the ComponentRun builders.
 	ComponentRun *ComponentRunClient
 	// GitHubInstallation is the client for interacting with the GitHubInstallation builders.
@@ -74,6 +77,7 @@ func (c *Client) init() {
 	c.ChartCredential = NewChartCredentialClient(c.config)
 	c.Cluster = NewClusterClient(c.config)
 	c.Component = NewComponentClient(c.config)
+	c.ComponentGroup = NewComponentGroupClient(c.config)
 	c.ComponentRun = NewComponentRunClient(c.config)
 	c.GitHubInstallation = NewGitHubInstallationClient(c.config)
 	c.Invitation = NewInvitationClient(c.config)
@@ -178,6 +182,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ChartCredential:    NewChartCredentialClient(cfg),
 		Cluster:            NewClusterClient(cfg),
 		Component:          NewComponentClient(cfg),
+		ComponentGroup:     NewComponentGroupClient(cfg),
 		ComponentRun:       NewComponentRunClient(cfg),
 		GitHubInstallation: NewGitHubInstallationClient(cfg),
 		Invitation:         NewInvitationClient(cfg),
@@ -209,6 +214,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ChartCredential:    NewChartCredentialClient(cfg),
 		Cluster:            NewClusterClient(cfg),
 		Component:          NewComponentClient(cfg),
+		ComponentGroup:     NewComponentGroupClient(cfg),
 		ComponentRun:       NewComponentRunClient(cfg),
 		GitHubInstallation: NewGitHubInstallationClient(cfg),
 		Invitation:         NewInvitationClient(cfg),
@@ -246,9 +252,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Application, c.ChartCredential, c.Cluster, c.Component, c.ComponentRun,
-		c.GitHubInstallation, c.Invitation, c.Membership, c.Organization,
-		c.TektonInstallation, c.User, c.WorkflowRun,
+		c.Application, c.ChartCredential, c.Cluster, c.Component, c.ComponentGroup,
+		c.ComponentRun, c.GitHubInstallation, c.Invitation, c.Membership,
+		c.Organization, c.TektonInstallation, c.User, c.WorkflowRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -258,9 +264,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Application, c.ChartCredential, c.Cluster, c.Component, c.ComponentRun,
-		c.GitHubInstallation, c.Invitation, c.Membership, c.Organization,
-		c.TektonInstallation, c.User, c.WorkflowRun,
+		c.Application, c.ChartCredential, c.Cluster, c.Component, c.ComponentGroup,
+		c.ComponentRun, c.GitHubInstallation, c.Invitation, c.Membership,
+		c.Organization, c.TektonInstallation, c.User, c.WorkflowRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -277,6 +283,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Cluster.mutate(ctx, m)
 	case *ComponentMutation:
 		return c.Component.mutate(ctx, m)
+	case *ComponentGroupMutation:
+		return c.ComponentGroup.mutate(ctx, m)
 	case *ComponentRunMutation:
 		return c.ComponentRun.mutate(ctx, m)
 	case *GitHubInstallationMutation:
@@ -981,6 +989,22 @@ func (c *ComponentClient) QueryGithubInstallation(_m *Component) *GitHubInstalla
 	return query
 }
 
+// QueryGroup queries the group edge of a Component.
+func (c *ComponentClient) QueryGroup(_m *Component) *ComponentGroupQuery {
+	query := (&ComponentGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(component.Table, component.FieldID, id),
+			sqlgraph.To(componentgroup.Table, componentgroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, component.GroupTable, component.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *ComponentClient) Hooks() []Hook {
 	return c.hooks.Component
@@ -1003,6 +1027,171 @@ func (c *ComponentClient) mutate(ctx context.Context, m *ComponentMutation) (Val
 		return (&ComponentDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Component mutation op: %q", m.Op())
+	}
+}
+
+// ComponentGroupClient is a client for the ComponentGroup schema.
+type ComponentGroupClient struct {
+	config
+}
+
+// NewComponentGroupClient returns a client for the ComponentGroup from the given config.
+func NewComponentGroupClient(c config) *ComponentGroupClient {
+	return &ComponentGroupClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `componentgroup.Hooks(f(g(h())))`.
+func (c *ComponentGroupClient) Use(hooks ...Hook) {
+	c.hooks.ComponentGroup = append(c.hooks.ComponentGroup, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `componentgroup.Intercept(f(g(h())))`.
+func (c *ComponentGroupClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ComponentGroup = append(c.inters.ComponentGroup, interceptors...)
+}
+
+// Create returns a builder for creating a ComponentGroup entity.
+func (c *ComponentGroupClient) Create() *ComponentGroupCreate {
+	mutation := newComponentGroupMutation(c.config, OpCreate)
+	return &ComponentGroupCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ComponentGroup entities.
+func (c *ComponentGroupClient) CreateBulk(builders ...*ComponentGroupCreate) *ComponentGroupCreateBulk {
+	return &ComponentGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ComponentGroupClient) MapCreateBulk(slice any, setFunc func(*ComponentGroupCreate, int)) *ComponentGroupCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ComponentGroupCreateBulk{err: fmt.Errorf("calling to ComponentGroupClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ComponentGroupCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ComponentGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ComponentGroup.
+func (c *ComponentGroupClient) Update() *ComponentGroupUpdate {
+	mutation := newComponentGroupMutation(c.config, OpUpdate)
+	return &ComponentGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ComponentGroupClient) UpdateOne(_m *ComponentGroup) *ComponentGroupUpdateOne {
+	mutation := newComponentGroupMutation(c.config, OpUpdateOne, withComponentGroup(_m))
+	return &ComponentGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ComponentGroupClient) UpdateOneID(id uuid.UUID) *ComponentGroupUpdateOne {
+	mutation := newComponentGroupMutation(c.config, OpUpdateOne, withComponentGroupID(id))
+	return &ComponentGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ComponentGroup.
+func (c *ComponentGroupClient) Delete() *ComponentGroupDelete {
+	mutation := newComponentGroupMutation(c.config, OpDelete)
+	return &ComponentGroupDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ComponentGroupClient) DeleteOne(_m *ComponentGroup) *ComponentGroupDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ComponentGroupClient) DeleteOneID(id uuid.UUID) *ComponentGroupDeleteOne {
+	builder := c.Delete().Where(componentgroup.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ComponentGroupDeleteOne{builder}
+}
+
+// Query returns a query builder for ComponentGroup.
+func (c *ComponentGroupClient) Query() *ComponentGroupQuery {
+	return &ComponentGroupQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeComponentGroup},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ComponentGroup entity by its id.
+func (c *ComponentGroupClient) Get(ctx context.Context, id uuid.UUID) (*ComponentGroup, error) {
+	return c.Query().Where(componentgroup.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ComponentGroupClient) GetX(ctx context.Context, id uuid.UUID) *ComponentGroup {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryOrganization queries the organization edge of a ComponentGroup.
+func (c *ComponentGroupClient) QueryOrganization(_m *ComponentGroup) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(componentgroup.Table, componentgroup.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, componentgroup.OrganizationTable, componentgroup.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryApplication queries the application edge of a ComponentGroup.
+func (c *ComponentGroupClient) QueryApplication(_m *ComponentGroup) *ApplicationQuery {
+	query := (&ApplicationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(componentgroup.Table, componentgroup.FieldID, id),
+			sqlgraph.To(application.Table, application.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, componentgroup.ApplicationTable, componentgroup.ApplicationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ComponentGroupClient) Hooks() []Hook {
+	return c.hooks.ComponentGroup
+}
+
+// Interceptors returns the client interceptors.
+func (c *ComponentGroupClient) Interceptors() []Interceptor {
+	return c.inters.ComponentGroup
+}
+
+func (c *ComponentGroupClient) mutate(ctx context.Context, m *ComponentGroupMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ComponentGroupCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ComponentGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ComponentGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ComponentGroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ComponentGroup mutation op: %q", m.Op())
 	}
 }
 
@@ -2281,12 +2470,12 @@ func (c *WorkflowRunClient) mutate(ctx context.Context, m *WorkflowRunMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Application, ChartCredential, Cluster, Component, ComponentRun,
+		Application, ChartCredential, Cluster, Component, ComponentGroup, ComponentRun,
 		GitHubInstallation, Invitation, Membership, Organization, TektonInstallation,
 		User, WorkflowRun []ent.Hook
 	}
 	inters struct {
-		Application, ChartCredential, Cluster, Component, ComponentRun,
+		Application, ChartCredential, Cluster, Component, ComponentGroup, ComponentRun,
 		GitHubInstallation, Invitation, Membership, Organization, TektonInstallation,
 		User, WorkflowRun []ent.Interceptor
 	}

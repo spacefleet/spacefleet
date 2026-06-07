@@ -50,7 +50,14 @@ func (s *Server) GetApplicationWorkflow(ctx context.Context, req GetApplicationW
 		}
 		return nil, err
 	}
-	return GetApplicationWorkflow200JSONResponse(toAPIWorkflow(comps, canSeeSecrets)), nil
+	groups, err := s.workflows.ListGroups(ctx, orgID, req.Id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return errResp[GetApplicationWorkflowdefaultJSONResponse](http.StatusNotFound, "not_found", "application not found"), nil
+		}
+		return nil, err
+	}
+	return GetApplicationWorkflow200JSONResponse(toAPIWorkflow(comps, groups, canSeeSecrets)), nil
 }
 
 // ReplaceApplicationWorkflow validates the proposed DAG and atomically replaces
@@ -71,7 +78,14 @@ func (s *Server) ReplaceApplicationWorkflow(ctx context.Context, req ReplaceAppl
 	for i, c := range req.Body.Components {
 		nodes[i] = toComponentInput(c)
 	}
-	comps, err := s.workflows.ReplaceWorkflow(ctx, orgID, req.Id, nodes)
+	var groups []workflows.GroupInput
+	if req.Body.Groups != nil {
+		groups = make([]workflows.GroupInput, len(*req.Body.Groups))
+		for i, g := range *req.Body.Groups {
+			groups[i] = toGroupInput(g)
+		}
+	}
+	comps, grps, err := s.workflows.ReplaceWorkflow(ctx, orgID, req.Id, nodes, groups)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return errResp[ReplaceApplicationWorkflowdefaultJSONResponse](http.StatusNotFound, "not_found", "application not found"), nil
@@ -83,7 +97,7 @@ func (s *Server) ReplaceApplicationWorkflow(ctx context.Context, req ReplaceAppl
 	}
 	// The writer is editor-or-above, so the round-tripped components are returned
 	// unredacted (canSee=true), keeping the canvas edit form populated.
-	return ReplaceApplicationWorkflow200JSONResponse(toAPIWorkflow(comps, true)), nil
+	return ReplaceApplicationWorkflow200JSONResponse(toAPIWorkflow(comps, grps, true)), nil
 }
 
 // isWorkflowValidation reports whether err is one of the DAG/config validation
@@ -96,6 +110,7 @@ func isWorkflowValidation(err error) bool {
 		errors.Is(err, workflows.ErrSelfDependency) ||
 		errors.Is(err, workflows.ErrCycle) ||
 		errors.Is(err, workflows.ErrInvalidConfig) ||
+		errors.Is(err, workflows.ErrUnknownGroup) ||
 		errors.Is(err, workflows.ErrInvalidAction)
 }
 
@@ -119,6 +134,7 @@ func toComponentInput(c ComponentInput) workflows.ComponentInput {
 		ChartCredentialID:    c.ChartCredentialId,
 		GitHubInstallationID: c.GithubInstallationId,
 		Position:             float32MapToFloat64(c.Position),
+		GroupID:              c.GroupId,
 	}
 	if c.DependsOn != nil {
 		in.DependsOn = *c.DependsOn
@@ -126,12 +142,53 @@ func toComponentInput(c ComponentInput) workflows.ComponentInput {
 	return in
 }
 
-// toAPIWorkflow maps the application's component rows to the API workflow,
-// redacting secret-bearing config for callers below editor (canSee=false).
-func toAPIWorkflow(comps []*ent.Component, canSee bool) Workflow {
-	out := Workflow{Components: make([]Component, len(comps))}
+// toGroupInput maps an API ComponentGroupInput to the service input. The canvas
+// sends a stable client-provided id so component group_id refs and depends_on
+// edges survive the replace.
+func toGroupInput(g ComponentGroupInput) workflows.GroupInput {
+	in := workflows.GroupInput{
+		ID:       g.Id,
+		Name:     strings.TrimSpace(g.Name),
+		Position: float32MapToFloat64(g.Position),
+		Size:     float32MapToFloat64(g.Size),
+	}
+	if g.DependsOn != nil {
+		in.DependsOn = *g.DependsOn
+	}
+	return in
+}
+
+// toAPIWorkflow maps the application's component and group rows to the API
+// workflow, redacting secret-bearing config for callers below editor
+// (canSee=false).
+func toAPIWorkflow(comps []*ent.Component, groups []*ent.ComponentGroup, canSee bool) Workflow {
+	out := Workflow{
+		Components: make([]Component, len(comps)),
+		Groups:     make([]ComponentGroup, len(groups)),
+	}
 	for i, c := range comps {
 		out.Components[i] = toAPIComponent(c, canSee)
+	}
+	for i, g := range groups {
+		out.Groups[i] = toAPIGroup(g)
+	}
+	return out
+}
+
+// toAPIGroup maps one group row to the API type.
+func toAPIGroup(g *ent.ComponentGroup) ComponentGroup {
+	out := ComponentGroup{
+		Id:        g.ID,
+		Name:      g.Name,
+		DependsOn: nonNilUUIDs(g.DependsOn),
+	}
+	if len(g.Position) > 0 {
+		pos := float64MapToFloat32(g.Position)
+		out.Position = &pos
+	}
+	if len(g.Size) > 0 {
+		size := float64MapToFloat32(g.Size)
+		out.Size = &size
 	}
 	return out
 }
@@ -167,6 +224,10 @@ func toAPIComponent(c *ent.Component, canSee bool) Component {
 	if len(c.Position) > 0 {
 		pos := float64MapToFloat32(c.Position)
 		out.Position = &pos
+	}
+	if c.GroupID != uuid.Nil {
+		id := c.GroupID
+		out.GroupId = &id
 	}
 	return out
 }

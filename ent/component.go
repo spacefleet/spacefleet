@@ -15,6 +15,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
+	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/organization"
 )
@@ -48,6 +49,8 @@ type Component struct {
 	GithubInstallationID uuid.UUID `json:"github_installation_id,omitempty"`
 	// Position holds the value of the "position" field.
 	Position map[string]float64 `json:"position,omitempty"`
+	// GroupID holds the value of the "group_id" field.
+	GroupID uuid.UUID `json:"group_id,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -70,9 +73,11 @@ type ComponentEdges struct {
 	ChartCredential *ChartCredential `json:"chart_credential,omitempty"`
 	// GithubInstallation holds the value of the github_installation edge.
 	GithubInstallation *GitHubInstallation `json:"github_installation,omitempty"`
+	// Group holds the value of the group edge.
+	Group *ComponentGroup `json:"group,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [5]bool
+	loadedTypes [6]bool
 }
 
 // OrganizationOrErr returns the Organization value or an error if the edge
@@ -130,6 +135,17 @@ func (e ComponentEdges) GithubInstallationOrErr() (*GitHubInstallation, error) {
 	return nil, &NotLoadedError{edge: "github_installation"}
 }
 
+// GroupOrErr returns the Group value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ComponentEdges) GroupOrErr() (*ComponentGroup, error) {
+	if e.Group != nil {
+		return e.Group, nil
+	} else if e.loadedTypes[5] {
+		return nil, &NotFoundError{label: componentgroup.Label}
+	}
+	return nil, &NotLoadedError{edge: "group"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*Component) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
@@ -143,7 +159,7 @@ func (*Component) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullString)
 		case component.FieldCreatedAt, component.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
-		case component.FieldID, component.FieldOrganizationID, component.FieldApplicationID, component.FieldTargetClusterID, component.FieldChartCredentialID, component.FieldGithubInstallationID:
+		case component.FieldID, component.FieldOrganizationID, component.FieldApplicationID, component.FieldTargetClusterID, component.FieldChartCredentialID, component.FieldGithubInstallationID, component.FieldGroupID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -244,6 +260,12 @@ func (_m *Component) assignValues(columns []string, values []any) error {
 					return fmt.Errorf("unmarshal field position: %w", err)
 				}
 			}
+		case component.FieldGroupID:
+			if value, ok := values[i].(*uuid.UUID); !ok {
+				return fmt.Errorf("unexpected type %T for field group_id", values[i])
+			} else if value != nil {
+				_m.GroupID = *value
+			}
 		case component.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -292,6 +314,11 @@ func (_m *Component) QueryChartCredential() *ChartCredentialQuery {
 // QueryGithubInstallation queries the "github_installation" edge of the Component entity.
 func (_m *Component) QueryGithubInstallation() *GitHubInstallationQuery {
 	return NewComponentClient(_m.config).QueryGithubInstallation(_m)
+}
+
+// QueryGroup queries the "group" edge of the Component entity.
+func (_m *Component) QueryGroup() *ComponentGroupQuery {
+	return NewComponentClient(_m.config).QueryGroup(_m)
 }
 
 // Update returns a builder for updating this Component.
@@ -352,6 +379,9 @@ func (_m *Component) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("position=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Position))
+	builder.WriteString(", ")
+	builder.WriteString("group_id=")
+	builder.WriteString(fmt.Sprintf("%v", _m.GroupID))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

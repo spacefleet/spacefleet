@@ -20,6 +20,8 @@ type Tx struct {
 	Cluster *ClusterClient
 	// Component is the client for interacting with the Component builders.
 	Component *ComponentClient
+	// ComponentGroup is the client for interacting with the ComponentGroup builders.
+	ComponentGroup *ComponentGroupClient
 	// ComponentRun is the client for interacting with the ComponentRun builders.
 	ComponentRun *ComponentRunClient
 	// GitHubInstallation is the client for interacting with the GitHubInstallation builders.
@@ -171,6 +173,7 @@ func (tx *Tx) init() {
 	tx.ChartCredential = NewChartCredentialClient(tx.config)
 	tx.Cluster = NewClusterClient(tx.config)
 	tx.Component = NewComponentClient(tx.config)
+	tx.ComponentGroup = NewComponentGroupClient(tx.config)
 	tx.ComponentRun = NewComponentRunClient(tx.config)
 	tx.GitHubInstallation = NewGitHubInstallationClient(tx.config)
 	tx.Invitation = NewInvitationClient(tx.config)

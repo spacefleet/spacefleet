@@ -26,6 +26,9 @@ var (
 	// ErrInvalidConfig is returned when a node's per-type config is missing a
 	// required key or names an invalid value.
 	ErrInvalidConfig = errors.New("workflows: invalid component config")
+	// ErrUnknownGroup is returned when a component's group_id names a group that
+	// is not among the input groups.
+	ErrUnknownGroup = errors.New("workflows: unknown group")
 	// ErrInvalidAction is returned by BeginRun for a run action that isn't one of
 	// deploy / uninstall / preview. A handler maps it to 400.
 	ErrInvalidAction = errors.New("workflows: invalid run action")
@@ -39,61 +42,34 @@ const (
 	TypeManifest = "manifest"
 )
 
-// validateDAG checks a proposed workflow is a well-formed DAG with valid per-type
-// config: every node has a distinct non-zero id, every depends_on references an
-// existing node, no node depends on itself, there are no cycles, and each node's
-// config satisfies its type. It is a pure function (no ent, no I/O) so it is unit
-// tested without a database. Errors wrap the sentinels above with the offending
-// node for context.
+// validateDAG checks a proposed workflow (components only, no group containers)
+// is a well-formed DAG with valid per-type config. It is the no-groups special
+// case of validateWorkflow, kept as a thin alias so existing callers/tests read
+// unchanged. It is a pure function (no ent, no I/O).
 func validateDAG(nodes []ComponentInput) error {
-	ids := make(map[uuid.UUID]struct{}, len(nodes))
-	for _, n := range nodes {
-		if n.ID == uuid.Nil {
-			return fmt.Errorf("%w: node %q", ErrMissingID, n.Name)
-		}
-		if _, dup := ids[n.ID]; dup {
-			return fmt.Errorf("%w: %s", ErrDuplicateID, n.ID)
-		}
-		ids[n.ID] = struct{}{}
-	}
-
-	for _, n := range nodes {
-		for _, dep := range n.DependsOn {
-			if dep == n.ID {
-				return fmt.Errorf("%w: %s (%q)", ErrSelfDependency, n.ID, n.Name)
-			}
-			if _, ok := ids[dep]; !ok {
-				return fmt.Errorf("%w: node %q depends on %s", ErrUnknownDependency, n.Name, dep)
-			}
-		}
-		if err := validateConfig(n); err != nil {
-			return err
-		}
-	}
-
-	if err := detectCycle(nodes); err != nil {
-		return err
-	}
-	return nil
+	return validateWorkflow(nodes, nil)
 }
 
-// detectCycle reports ErrCycle if the depends_on edges form a cycle, using Kahn's
-// algorithm: repeatedly remove nodes with no remaining unmet dependency; if any
-// node never becomes removable, the graph has a cycle. Assumes ids are unique and
-// dependencies all resolve (validateDAG checks those first).
-func detectCycle(nodes []ComponentInput) error {
+// detectCycleAdj reports ErrCycle if the dependency edges in an already-expanded
+// component-level adjacency map (node id → ids it depends on) form a cycle, using
+// Kahn's algorithm: repeatedly remove nodes with no remaining unmet dependency;
+// if any node never becomes removable, the graph has a cycle. Assumes the map's
+// keys are the full node set and every dependency resolves to a key
+// (validateWorkflow checks those first; expandDependencies yields only
+// component ids, all of which are keys).
+func detectCycleAdj(deps map[uuid.UUID][]uuid.UUID) error {
 	// indegree[id] = number of this node's dependencies still unsatisfied.
-	indegree := make(map[uuid.UUID]int, len(nodes))
+	indegree := make(map[uuid.UUID]int, len(deps))
 	// dependents[id] = nodes that depend on id (the reverse edges).
-	dependents := make(map[uuid.UUID][]uuid.UUID, len(nodes))
-	for _, n := range nodes {
-		indegree[n.ID] = len(n.DependsOn)
-		for _, dep := range n.DependsOn {
-			dependents[dep] = append(dependents[dep], n.ID)
+	dependents := make(map[uuid.UUID][]uuid.UUID, len(deps))
+	for id, ds := range deps {
+		indegree[id] = len(ds)
+		for _, dep := range ds {
+			dependents[dep] = append(dependents[dep], id)
 		}
 	}
 
-	queue := make([]uuid.UUID, 0, len(nodes))
+	queue := make([]uuid.UUID, 0, len(deps))
 	for id, deg := range indegree {
 		if deg == 0 {
 			queue = append(queue, id)
@@ -113,7 +89,7 @@ func detectCycle(nodes []ComponentInput) error {
 		}
 	}
 
-	if resolved != len(nodes) {
+	if resolved != len(deps) {
 		return ErrCycle
 	}
 	return nil

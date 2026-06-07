@@ -16,6 +16,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
+	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/predicate"
 )
@@ -197,6 +198,26 @@ func (_u *ComponentUpdate) ClearPosition() *ComponentUpdate {
 	return _u
 }
 
+// SetGroupID sets the "group_id" field.
+func (_u *ComponentUpdate) SetGroupID(v uuid.UUID) *ComponentUpdate {
+	_u.mutation.SetGroupID(v)
+	return _u
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_u *ComponentUpdate) SetNillableGroupID(v *uuid.UUID) *ComponentUpdate {
+	if v != nil {
+		_u.SetGroupID(*v)
+	}
+	return _u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (_u *ComponentUpdate) ClearGroupID() *ComponentUpdate {
+	_u.mutation.ClearGroupID()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ComponentUpdate) SetUpdatedAt(v time.Time) *ComponentUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -216,6 +237,11 @@ func (_u *ComponentUpdate) SetChartCredential(v *ChartCredential) *ComponentUpda
 // SetGithubInstallation sets the "github_installation" edge to the GitHubInstallation entity.
 func (_u *ComponentUpdate) SetGithubInstallation(v *GitHubInstallation) *ComponentUpdate {
 	return _u.SetGithubInstallationID(v.ID)
+}
+
+// SetGroup sets the "group" edge to the ComponentGroup entity.
+func (_u *ComponentUpdate) SetGroup(v *ComponentGroup) *ComponentUpdate {
+	return _u.SetGroupID(v.ID)
 }
 
 // Mutation returns the ComponentMutation object of the builder.
@@ -238,6 +264,12 @@ func (_u *ComponentUpdate) ClearChartCredential() *ComponentUpdate {
 // ClearGithubInstallation clears the "github_installation" edge to the GitHubInstallation entity.
 func (_u *ComponentUpdate) ClearGithubInstallation() *ComponentUpdate {
 	_u.mutation.ClearGithubInstallation()
+	return _u
+}
+
+// ClearGroup clears the "group" edge to the ComponentGroup entity.
+func (_u *ComponentUpdate) ClearGroup() *ComponentUpdate {
+	_u.mutation.ClearGroup()
 	return _u
 }
 
@@ -438,6 +470,35 @@ func (_u *ComponentUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.GroupCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   component.GroupTable,
+			Columns: []string{component.GroupColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(componentgroup.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GroupIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   component.GroupTable,
+			Columns: []string{component.GroupColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(componentgroup.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{component.Label}
@@ -622,6 +683,26 @@ func (_u *ComponentUpdateOne) ClearPosition() *ComponentUpdateOne {
 	return _u
 }
 
+// SetGroupID sets the "group_id" field.
+func (_u *ComponentUpdateOne) SetGroupID(v uuid.UUID) *ComponentUpdateOne {
+	_u.mutation.SetGroupID(v)
+	return _u
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_u *ComponentUpdateOne) SetNillableGroupID(v *uuid.UUID) *ComponentUpdateOne {
+	if v != nil {
+		_u.SetGroupID(*v)
+	}
+	return _u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (_u *ComponentUpdateOne) ClearGroupID() *ComponentUpdateOne {
+	_u.mutation.ClearGroupID()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ComponentUpdateOne) SetUpdatedAt(v time.Time) *ComponentUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -641,6 +722,11 @@ func (_u *ComponentUpdateOne) SetChartCredential(v *ChartCredential) *ComponentU
 // SetGithubInstallation sets the "github_installation" edge to the GitHubInstallation entity.
 func (_u *ComponentUpdateOne) SetGithubInstallation(v *GitHubInstallation) *ComponentUpdateOne {
 	return _u.SetGithubInstallationID(v.ID)
+}
+
+// SetGroup sets the "group" edge to the ComponentGroup entity.
+func (_u *ComponentUpdateOne) SetGroup(v *ComponentGroup) *ComponentUpdateOne {
+	return _u.SetGroupID(v.ID)
 }
 
 // Mutation returns the ComponentMutation object of the builder.
@@ -663,6 +749,12 @@ func (_u *ComponentUpdateOne) ClearChartCredential() *ComponentUpdateOne {
 // ClearGithubInstallation clears the "github_installation" edge to the GitHubInstallation entity.
 func (_u *ComponentUpdateOne) ClearGithubInstallation() *ComponentUpdateOne {
 	_u.mutation.ClearGithubInstallation()
+	return _u
+}
+
+// ClearGroup clears the "group" edge to the ComponentGroup entity.
+func (_u *ComponentUpdateOne) ClearGroup() *ComponentUpdateOne {
+	_u.mutation.ClearGroup()
 	return _u
 }
 
@@ -886,6 +978,35 @@ func (_u *ComponentUpdateOne) sqlSave(ctx context.Context) (_node *Component, er
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(githubinstallation.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GroupCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   component.GroupTable,
+			Columns: []string{component.GroupColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(componentgroup.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GroupIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   component.GroupTable,
+			Columns: []string{component.GroupColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(componentgroup.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

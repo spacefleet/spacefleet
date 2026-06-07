@@ -31,13 +31,22 @@ const (
 // nodes (with their as-run config and targeting) so an in-flight run is immune
 // to later edits and a past run stays auditable. The executor (next phase) reads
 // it back; the run-detail handler exposes it (with secret config redacted).
+//
+// Group containers are a builder concept the scheduler never sees: each node's
+// depends_on is already the *expanded*, pure component-level edge set (groups
+// desugared away), so the executor consumes it directly. Groups carries the
+// authored boxes purely so a future run view can render them; it is not used by
+// the scheduler.
 type GraphSnapshot struct {
-	Nodes []GraphNode `json:"nodes"`
+	Nodes  []GraphNode  `json:"nodes"`
+	Groups []GraphGroup `json:"groups,omitempty"`
 }
 
 // GraphNode is one node of a snapshot: the component as it was when the run
 // began. Config is the type-specific param map (the "values" key may carry
-// secrets — redacted before it reaches a viewer). depends_on are the edges.
+// secrets — redacted before it reaches a viewer). depends_on are the *expanded*
+// component-level edges (group references desugared into member ids). group_id
+// records the authored group membership for the run view only.
 type GraphNode struct {
 	ID                   uuid.UUID         `json:"id"`
 	Name                 string            `json:"name"`
@@ -49,6 +58,18 @@ type GraphNode struct {
 	TargetNamespace      string            `json:"target_namespace,omitempty"`
 	ChartCredentialID    *uuid.UUID        `json:"chart_credential_id,omitempty"`
 	GitHubInstallationID *uuid.UUID        `json:"github_installation_id,omitempty"`
+	GroupID              *uuid.UUID        `json:"group_id,omitempty"`
+}
+
+// GraphGroup is one authored group container in a snapshot, retained so a future
+// run view can draw the boxes. The scheduler ignores it — node edges are already
+// expanded. Members are the component ids whose group_id is this group.
+type GraphGroup struct {
+	ID       uuid.UUID          `json:"id"`
+	Name     string             `json:"name"`
+	Members  []uuid.UUID        `json:"members"`
+	Position map[string]float64 `json:"position,omitempty"`
+	Size     map[string]float64 `json:"size,omitempty"`
 }
 
 // validAction reports whether action is one of the run actions.
@@ -102,8 +123,12 @@ func (s *Service) BeginRun(ctx context.Context, orgID, appID uuid.UUID, action s
 	if err != nil {
 		return nil, err
 	}
+	groups, err := s.listGroups(ctx, orgID, appID)
+	if err != nil {
+		return nil, err
+	}
 
-	snapshot := snapshotComponents(comps)
+	snapshot := snapshotComponents(comps, groups)
 	graphJSON, err := json.Marshal(snapshot)
 	if err != nil {
 		return nil, err
@@ -144,10 +169,31 @@ func (s *Service) BeginRun(ctx context.Context, orgID, appID uuid.UUID, action s
 	return run, nil
 }
 
-// snapshotComponents builds the graph snapshot from the live components, copying
-// each node's as-run config and targeting. Optional FK fields are emitted only
-// when set (non-zero), so a snapshot reads cleanly.
-func snapshotComponents(comps []*ent.Component) GraphSnapshot {
+// snapshotComponents builds the graph snapshot from the live components and group
+// containers, copying each node's as-run config and targeting. Group references
+// are desugared away: each node's depends_on is the *expanded* component-level
+// edge set (a dependency on a group becomes a dependency on every member), so the
+// scheduler — which never sees a group — consumes it directly. The authored
+// groups are retained on the snapshot (with member ids) only so a future run view
+// can render the boxes. Optional FK fields are emitted only when set (non-zero),
+// so a snapshot reads cleanly.
+func snapshotComponents(comps []*ent.Component, groups []*ent.ComponentGroup) GraphSnapshot {
+	// Reuse the pure expansion: build the inputs from the live rows.
+	compInputs := make([]ComponentInput, 0, len(comps))
+	for _, c := range comps {
+		in := ComponentInput{ID: c.ID, DependsOn: c.DependsOn}
+		if c.GroupID != uuid.Nil {
+			gid := c.GroupID
+			in.GroupID = &gid
+		}
+		compInputs = append(compInputs, in)
+	}
+	groupInputs := make([]GroupInput, 0, len(groups))
+	for _, g := range groups {
+		groupInputs = append(groupInputs, GroupInput{ID: g.ID, DependsOn: g.DependsOn})
+	}
+	expanded := expandDependencies(compInputs, groupInputs)
+
 	nodes := make([]GraphNode, 0, len(comps))
 	for _, c := range comps {
 		n := GraphNode{
@@ -155,7 +201,7 @@ func snapshotComponents(comps []*ent.Component) GraphSnapshot {
 			Name:              c.Name,
 			Type:              string(c.Type),
 			Config:            nonNilStringMap(c.Config),
-			DependsOn:         nonNilIDs(c.DependsOn),
+			DependsOn:         nonNilIDs(expanded[c.ID]),
 			ContinueOnFailure: c.ContinueOnFailure,
 			TargetNamespace:   c.TargetNamespace,
 		}
@@ -171,9 +217,36 @@ func snapshotComponents(comps []*ent.Component) GraphSnapshot {
 			id := c.GithubInstallationID
 			n.GitHubInstallationID = &id
 		}
+		if c.GroupID != uuid.Nil {
+			id := c.GroupID
+			n.GroupID = &id
+		}
 		nodes = append(nodes, n)
 	}
-	return GraphSnapshot{Nodes: nodes}
+
+	// members[g] = component ids whose group_id == g, for the run-view boxes.
+	members := make(map[uuid.UUID][]uuid.UUID, len(groups))
+	for _, c := range comps {
+		if c.GroupID != uuid.Nil {
+			members[c.GroupID] = append(members[c.GroupID], c.ID)
+		}
+	}
+	var graphGroups []GraphGroup
+	for _, g := range groups {
+		gg := GraphGroup{
+			ID:      g.ID,
+			Name:    g.Name,
+			Members: nonNilIDs(members[g.ID]),
+		}
+		if len(g.Position) > 0 {
+			gg.Position = g.Position
+		}
+		if len(g.Size) > 0 {
+			gg.Size = g.Size
+		}
+		graphGroups = append(graphGroups, gg)
+	}
+	return GraphSnapshot{Nodes: nodes, Groups: graphGroups}
 }
 
 // SetRunJob records the River job id driving a run, after the handler enqueues

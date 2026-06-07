@@ -96,6 +96,11 @@ func GithubInstallationID(v uuid.UUID) predicate.Component {
 	return predicate.Component(sql.FieldEQ(FieldGithubInstallationID, v))
 }
 
+// GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
+func GroupID(v uuid.UUID) predicate.Component {
+	return predicate.Component(sql.FieldEQ(FieldGroupID, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Component {
 	return predicate.Component(sql.FieldEQ(FieldCreatedAt, v))
@@ -436,6 +441,36 @@ func PositionNotNil() predicate.Component {
 	return predicate.Component(sql.FieldNotNull(FieldPosition))
 }
 
+// GroupIDEQ applies the EQ predicate on the "group_id" field.
+func GroupIDEQ(v uuid.UUID) predicate.Component {
+	return predicate.Component(sql.FieldEQ(FieldGroupID, v))
+}
+
+// GroupIDNEQ applies the NEQ predicate on the "group_id" field.
+func GroupIDNEQ(v uuid.UUID) predicate.Component {
+	return predicate.Component(sql.FieldNEQ(FieldGroupID, v))
+}
+
+// GroupIDIn applies the In predicate on the "group_id" field.
+func GroupIDIn(vs ...uuid.UUID) predicate.Component {
+	return predicate.Component(sql.FieldIn(FieldGroupID, vs...))
+}
+
+// GroupIDNotIn applies the NotIn predicate on the "group_id" field.
+func GroupIDNotIn(vs ...uuid.UUID) predicate.Component {
+	return predicate.Component(sql.FieldNotIn(FieldGroupID, vs...))
+}
+
+// GroupIDIsNil applies the IsNil predicate on the "group_id" field.
+func GroupIDIsNil() predicate.Component {
+	return predicate.Component(sql.FieldIsNull(FieldGroupID))
+}
+
+// GroupIDNotNil applies the NotNil predicate on the "group_id" field.
+func GroupIDNotNil() predicate.Component {
+	return predicate.Component(sql.FieldNotNull(FieldGroupID))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Component {
 	return predicate.Component(sql.FieldEQ(FieldCreatedAt, v))
@@ -623,6 +658,29 @@ func HasGithubInstallation() predicate.Component {
 func HasGithubInstallationWith(preds ...predicate.GitHubInstallation) predicate.Component {
 	return predicate.Component(func(s *sql.Selector) {
 		step := newGithubInstallationStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasGroup applies the HasEdge predicate on the "group" edge.
+func HasGroup() predicate.Component {
+	return predicate.Component(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, GroupTable, GroupColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasGroupWith applies the HasEdge predicate on the "group" edge with a given conditions (other predicates).
+func HasGroupWith(preds ...predicate.ComponentGroup) predicate.Component {
+	return predicate.Component(func(s *sql.Selector) {
+		step := newGroupStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

@@ -10,6 +10,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
+	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/invitation"
@@ -104,11 +105,11 @@ func init() {
 	// component.DefaultContinueOnFailure holds the default value on creation for the continue_on_failure field.
 	component.DefaultContinueOnFailure = componentDescContinueOnFailure.Default.(bool)
 	// componentDescCreatedAt is the schema descriptor for created_at field.
-	componentDescCreatedAt := componentFields[13].Descriptor()
+	componentDescCreatedAt := componentFields[14].Descriptor()
 	// component.DefaultCreatedAt holds the default value on creation for the created_at field.
 	component.DefaultCreatedAt = componentDescCreatedAt.Default.(func() time.Time)
 	// componentDescUpdatedAt is the schema descriptor for updated_at field.
-	componentDescUpdatedAt := componentFields[14].Descriptor()
+	componentDescUpdatedAt := componentFields[15].Descriptor()
 	// component.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	component.DefaultUpdatedAt = componentDescUpdatedAt.Default.(func() time.Time)
 	// component.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -117,6 +118,26 @@ func init() {
 	componentDescID := componentFields[0].Descriptor()
 	// component.DefaultID holds the default value on creation for the id field.
 	component.DefaultID = componentDescID.Default.(func() uuid.UUID)
+	componentgroupFields := schema.ComponentGroup{}.Fields()
+	_ = componentgroupFields
+	// componentgroupDescName is the schema descriptor for name field.
+	componentgroupDescName := componentgroupFields[3].Descriptor()
+	// componentgroup.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	componentgroup.NameValidator = componentgroupDescName.Validators[0].(func(string) error)
+	// componentgroupDescCreatedAt is the schema descriptor for created_at field.
+	componentgroupDescCreatedAt := componentgroupFields[7].Descriptor()
+	// componentgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
+	componentgroup.DefaultCreatedAt = componentgroupDescCreatedAt.Default.(func() time.Time)
+	// componentgroupDescUpdatedAt is the schema descriptor for updated_at field.
+	componentgroupDescUpdatedAt := componentgroupFields[8].Descriptor()
+	// componentgroup.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	componentgroup.DefaultUpdatedAt = componentgroupDescUpdatedAt.Default.(func() time.Time)
+	// componentgroup.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	componentgroup.UpdateDefaultUpdatedAt = componentgroupDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// componentgroupDescID is the schema descriptor for id field.
+	componentgroupDescID := componentgroupFields[0].Descriptor()
+	// componentgroup.DefaultID holds the default value on creation for the id field.
+	componentgroup.DefaultID = componentgroupDescID.Default.(func() uuid.UUID)
 	componentrunFields := schema.ComponentRun{}.Fields()
 	_ = componentrunFields
 	// componentrunDescCreatedAt is the schema descriptor for created_at field.

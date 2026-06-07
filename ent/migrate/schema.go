@@ -154,6 +154,7 @@ var (
 		{Name: "target_cluster_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "chart_credential_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "github_installation_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "group_id", Type: field.TypeUUID, Nullable: true},
 	}
 	// ComponentsTable holds the schema information for the "components" table.
 	ComponentsTable = &schema.Table{
@@ -191,6 +192,12 @@ var (
 				RefColumns: []*schema.Column{GithubInstallationsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
+			{
+				Symbol:     "components_component_groups_group",
+				Columns:    []*schema.Column{ComponentsColumns[15]},
+				RefColumns: []*schema.Column{ComponentGroupsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
 		},
 		Indexes: []*schema.Index{
 			{
@@ -202,6 +209,50 @@ var (
 				Name:    "component_application_id",
 				Unique:  false,
 				Columns: []*schema.Column{ComponentsColumns[11]},
+			},
+		},
+	}
+	// ComponentGroupsColumns holds the columns for the "component_groups" table.
+	ComponentGroupsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "depends_on", Type: field.TypeJSON, Nullable: true},
+		{Name: "position", Type: field.TypeJSON, Nullable: true},
+		{Name: "size", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+		{Name: "application_id", Type: field.TypeUUID},
+	}
+	// ComponentGroupsTable holds the schema information for the "component_groups" table.
+	ComponentGroupsTable = &schema.Table{
+		Name:       "component_groups",
+		Columns:    ComponentGroupsColumns,
+		PrimaryKey: []*schema.Column{ComponentGroupsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "component_groups_organizations_organization",
+				Columns:    []*schema.Column{ComponentGroupsColumns[7]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "component_groups_applications_application",
+				Columns:    []*schema.Column{ComponentGroupsColumns[8]},
+				RefColumns: []*schema.Column{ApplicationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "componentgroup_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{ComponentGroupsColumns[7]},
+			},
+			{
+				Name:    "componentgroup_application_id",
+				Unique:  false,
+				Columns: []*schema.Column{ComponentGroupsColumns[8]},
 			},
 		},
 	}
@@ -480,6 +531,7 @@ var (
 		ChartCredentialsTable,
 		ClustersTable,
 		ComponentsTable,
+		ComponentGroupsTable,
 		ComponentRunsTable,
 		GithubInstallationsTable,
 		InvitationsTable,
@@ -502,6 +554,9 @@ func init() {
 	ComponentsTable.ForeignKeys[2].RefTable = ClustersTable
 	ComponentsTable.ForeignKeys[3].RefTable = ChartCredentialsTable
 	ComponentsTable.ForeignKeys[4].RefTable = GithubInstallationsTable
+	ComponentsTable.ForeignKeys[5].RefTable = ComponentGroupsTable
+	ComponentGroupsTable.ForeignKeys[0].RefTable = OrganizationsTable
+	ComponentGroupsTable.ForeignKeys[1].RefTable = ApplicationsTable
 	ComponentRunsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ComponentRunsTable.ForeignKeys[1].RefTable = WorkflowRunsTable
 	GithubInstallationsTable.ForeignKeys[0].RefTable = OrganizationsTable

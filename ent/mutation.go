@@ -16,6 +16,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
+	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/invitation"
@@ -40,6 +41,7 @@ const (
 	TypeChartCredential    = "ChartCredential"
 	TypeCluster            = "Cluster"
 	TypeComponent          = "Component"
+	TypeComponentGroup     = "ComponentGroup"
 	TypeComponentRun       = "ComponentRun"
 	TypeGitHubInstallation = "GitHubInstallation"
 	TypeInvitation         = "Invitation"
@@ -2786,6 +2788,8 @@ type ComponentMutation struct {
 	clearedchart_credential    bool
 	github_installation        *uuid.UUID
 	clearedgithub_installation bool
+	group                      *uuid.UUID
+	clearedgroup               bool
 	done                       bool
 	oldValue                   func(context.Context) (*Component, error)
 	predicates                 []predicate.Component
@@ -3434,6 +3438,55 @@ func (m *ComponentMutation) ResetPosition() {
 	delete(m.clearedFields, component.FieldPosition)
 }
 
+// SetGroupID sets the "group_id" field.
+func (m *ComponentMutation) SetGroupID(u uuid.UUID) {
+	m.group = &u
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *ComponentMutation) GroupID() (r uuid.UUID, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the Component entity.
+// If the Component object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComponentMutation) OldGroupID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (m *ComponentMutation) ClearGroupID() {
+	m.group = nil
+	m.clearedFields[component.FieldGroupID] = struct{}{}
+}
+
+// GroupIDCleared returns if the "group_id" field was cleared in this mutation.
+func (m *ComponentMutation) GroupIDCleared() bool {
+	_, ok := m.clearedFields[component.FieldGroupID]
+	return ok
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *ComponentMutation) ResetGroupID() {
+	m.group = nil
+	delete(m.clearedFields, component.FieldGroupID)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *ComponentMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -3641,6 +3694,33 @@ func (m *ComponentMutation) ResetGithubInstallation() {
 	m.clearedgithub_installation = false
 }
 
+// ClearGroup clears the "group" edge to the ComponentGroup entity.
+func (m *ComponentMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[component.FieldGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the ComponentGroup entity was cleared.
+func (m *ComponentMutation) GroupCleared() bool {
+	return m.GroupIDCleared() || m.clearedgroup
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *ComponentMutation) GroupIDs() (ids []uuid.UUID) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *ComponentMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
 // Where appends a list predicates to the ComponentMutation builder.
 func (m *ComponentMutation) Where(ps ...predicate.Component) {
 	m.predicates = append(m.predicates, ps...)
@@ -3675,7 +3755,7 @@ func (m *ComponentMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ComponentMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 15)
 	if m.organization != nil {
 		fields = append(fields, component.FieldOrganizationID)
 	}
@@ -3711,6 +3791,9 @@ func (m *ComponentMutation) Fields() []string {
 	}
 	if m.position != nil {
 		fields = append(fields, component.FieldPosition)
+	}
+	if m.group != nil {
+		fields = append(fields, component.FieldGroupID)
 	}
 	if m.created_at != nil {
 		fields = append(fields, component.FieldCreatedAt)
@@ -3750,6 +3833,8 @@ func (m *ComponentMutation) Field(name string) (ent.Value, bool) {
 		return m.GithubInstallationID()
 	case component.FieldPosition:
 		return m.Position()
+	case component.FieldGroupID:
+		return m.GroupID()
 	case component.FieldCreatedAt:
 		return m.CreatedAt()
 	case component.FieldUpdatedAt:
@@ -3787,6 +3872,8 @@ func (m *ComponentMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldGithubInstallationID(ctx)
 	case component.FieldPosition:
 		return m.OldPosition(ctx)
+	case component.FieldGroupID:
+		return m.OldGroupID(ctx)
 	case component.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case component.FieldUpdatedAt:
@@ -3884,6 +3971,13 @@ func (m *ComponentMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetPosition(v)
 		return nil
+	case component.FieldGroupID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
 	case component.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -3949,6 +4043,9 @@ func (m *ComponentMutation) ClearedFields() []string {
 	if m.FieldCleared(component.FieldPosition) {
 		fields = append(fields, component.FieldPosition)
 	}
+	if m.FieldCleared(component.FieldGroupID) {
+		fields = append(fields, component.FieldGroupID)
+	}
 	return fields
 }
 
@@ -3983,6 +4080,9 @@ func (m *ComponentMutation) ClearField(name string) error {
 		return nil
 	case component.FieldPosition:
 		m.ClearPosition()
+		return nil
+	case component.FieldGroupID:
+		m.ClearGroupID()
 		return nil
 	}
 	return fmt.Errorf("unknown Component nullable field %s", name)
@@ -4028,6 +4128,9 @@ func (m *ComponentMutation) ResetField(name string) error {
 	case component.FieldPosition:
 		m.ResetPosition()
 		return nil
+	case component.FieldGroupID:
+		m.ResetGroupID()
+		return nil
 	case component.FieldCreatedAt:
 		m.ResetCreatedAt()
 		return nil
@@ -4040,7 +4143,7 @@ func (m *ComponentMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ComponentMutation) AddedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.organization != nil {
 		edges = append(edges, component.EdgeOrganization)
 	}
@@ -4055,6 +4158,9 @@ func (m *ComponentMutation) AddedEdges() []string {
 	}
 	if m.github_installation != nil {
 		edges = append(edges, component.EdgeGithubInstallation)
+	}
+	if m.group != nil {
+		edges = append(edges, component.EdgeGroup)
 	}
 	return edges
 }
@@ -4083,13 +4189,17 @@ func (m *ComponentMutation) AddedIDs(name string) []ent.Value {
 		if id := m.github_installation; id != nil {
 			return []ent.Value{*id}
 		}
+	case component.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ComponentMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	return edges
 }
 
@@ -4101,7 +4211,7 @@ func (m *ComponentMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ComponentMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.clearedorganization {
 		edges = append(edges, component.EdgeOrganization)
 	}
@@ -4116,6 +4226,9 @@ func (m *ComponentMutation) ClearedEdges() []string {
 	}
 	if m.clearedgithub_installation {
 		edges = append(edges, component.EdgeGithubInstallation)
+	}
+	if m.clearedgroup {
+		edges = append(edges, component.EdgeGroup)
 	}
 	return edges
 }
@@ -4134,6 +4247,8 @@ func (m *ComponentMutation) EdgeCleared(name string) bool {
 		return m.clearedchart_credential
 	case component.EdgeGithubInstallation:
 		return m.clearedgithub_installation
+	case component.EdgeGroup:
+		return m.clearedgroup
 	}
 	return false
 }
@@ -4156,6 +4271,9 @@ func (m *ComponentMutation) ClearEdge(name string) error {
 		return nil
 	case component.EdgeGithubInstallation:
 		m.ClearGithubInstallation()
+		return nil
+	case component.EdgeGroup:
+		m.ClearGroup()
 		return nil
 	}
 	return fmt.Errorf("unknown Component unique edge %s", name)
@@ -4180,8 +4298,898 @@ func (m *ComponentMutation) ResetEdge(name string) error {
 	case component.EdgeGithubInstallation:
 		m.ResetGithubInstallation()
 		return nil
+	case component.EdgeGroup:
+		m.ResetGroup()
+		return nil
 	}
 	return fmt.Errorf("unknown Component edge %s", name)
+}
+
+// ComponentGroupMutation represents an operation that mutates the ComponentGroup nodes in the graph.
+type ComponentGroupMutation struct {
+	config
+	op                  Op
+	typ                 string
+	id                  *uuid.UUID
+	name                *string
+	depends_on          *[]uuid.UUID
+	appenddepends_on    []uuid.UUID
+	position            *map[string]float64
+	size                *map[string]float64
+	created_at          *time.Time
+	updated_at          *time.Time
+	clearedFields       map[string]struct{}
+	organization        *uuid.UUID
+	clearedorganization bool
+	application         *uuid.UUID
+	clearedapplication  bool
+	done                bool
+	oldValue            func(context.Context) (*ComponentGroup, error)
+	predicates          []predicate.ComponentGroup
+}
+
+var _ ent.Mutation = (*ComponentGroupMutation)(nil)
+
+// componentgroupOption allows management of the mutation configuration using functional options.
+type componentgroupOption func(*ComponentGroupMutation)
+
+// newComponentGroupMutation creates new mutation for the ComponentGroup entity.
+func newComponentGroupMutation(c config, op Op, opts ...componentgroupOption) *ComponentGroupMutation {
+	m := &ComponentGroupMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeComponentGroup,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withComponentGroupID sets the ID field of the mutation.
+func withComponentGroupID(id uuid.UUID) componentgroupOption {
+	return func(m *ComponentGroupMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ComponentGroup
+		)
+		m.oldValue = func(ctx context.Context) (*ComponentGroup, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ComponentGroup.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withComponentGroup sets the old ComponentGroup of the mutation.
+func withComponentGroup(node *ComponentGroup) componentgroupOption {
+	return func(m *ComponentGroupMutation) {
+		m.oldValue = func(context.Context) (*ComponentGroup, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ComponentGroupMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ComponentGroupMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ComponentGroup entities.
+func (m *ComponentGroupMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ComponentGroupMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ComponentGroupMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ComponentGroup.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (m *ComponentGroupMutation) SetOrganizationID(u uuid.UUID) {
+	m.organization = &u
+}
+
+// OrganizationID returns the value of the "organization_id" field in the mutation.
+func (m *ComponentGroupMutation) OrganizationID() (r uuid.UUID, exists bool) {
+	v := m.organization
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrganizationID returns the old "organization_id" field's value of the ComponentGroup entity.
+// If the ComponentGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComponentGroupMutation) OldOrganizationID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrganizationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrganizationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrganizationID: %w", err)
+	}
+	return oldValue.OrganizationID, nil
+}
+
+// ResetOrganizationID resets all changes to the "organization_id" field.
+func (m *ComponentGroupMutation) ResetOrganizationID() {
+	m.organization = nil
+}
+
+// SetApplicationID sets the "application_id" field.
+func (m *ComponentGroupMutation) SetApplicationID(u uuid.UUID) {
+	m.application = &u
+}
+
+// ApplicationID returns the value of the "application_id" field in the mutation.
+func (m *ComponentGroupMutation) ApplicationID() (r uuid.UUID, exists bool) {
+	v := m.application
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldApplicationID returns the old "application_id" field's value of the ComponentGroup entity.
+// If the ComponentGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComponentGroupMutation) OldApplicationID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldApplicationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldApplicationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldApplicationID: %w", err)
+	}
+	return oldValue.ApplicationID, nil
+}
+
+// ResetApplicationID resets all changes to the "application_id" field.
+func (m *ComponentGroupMutation) ResetApplicationID() {
+	m.application = nil
+}
+
+// SetName sets the "name" field.
+func (m *ComponentGroupMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *ComponentGroupMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the ComponentGroup entity.
+// If the ComponentGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComponentGroupMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *ComponentGroupMutation) ResetName() {
+	m.name = nil
+}
+
+// SetDependsOn sets the "depends_on" field.
+func (m *ComponentGroupMutation) SetDependsOn(u []uuid.UUID) {
+	m.depends_on = &u
+	m.appenddepends_on = nil
+}
+
+// DependsOn returns the value of the "depends_on" field in the mutation.
+func (m *ComponentGroupMutation) DependsOn() (r []uuid.UUID, exists bool) {
+	v := m.depends_on
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDependsOn returns the old "depends_on" field's value of the ComponentGroup entity.
+// If the ComponentGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComponentGroupMutation) OldDependsOn(ctx context.Context) (v []uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDependsOn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDependsOn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDependsOn: %w", err)
+	}
+	return oldValue.DependsOn, nil
+}
+
+// AppendDependsOn adds u to the "depends_on" field.
+func (m *ComponentGroupMutation) AppendDependsOn(u []uuid.UUID) {
+	m.appenddepends_on = append(m.appenddepends_on, u...)
+}
+
+// AppendedDependsOn returns the list of values that were appended to the "depends_on" field in this mutation.
+func (m *ComponentGroupMutation) AppendedDependsOn() ([]uuid.UUID, bool) {
+	if len(m.appenddepends_on) == 0 {
+		return nil, false
+	}
+	return m.appenddepends_on, true
+}
+
+// ClearDependsOn clears the value of the "depends_on" field.
+func (m *ComponentGroupMutation) ClearDependsOn() {
+	m.depends_on = nil
+	m.appenddepends_on = nil
+	m.clearedFields[componentgroup.FieldDependsOn] = struct{}{}
+}
+
+// DependsOnCleared returns if the "depends_on" field was cleared in this mutation.
+func (m *ComponentGroupMutation) DependsOnCleared() bool {
+	_, ok := m.clearedFields[componentgroup.FieldDependsOn]
+	return ok
+}
+
+// ResetDependsOn resets all changes to the "depends_on" field.
+func (m *ComponentGroupMutation) ResetDependsOn() {
+	m.depends_on = nil
+	m.appenddepends_on = nil
+	delete(m.clearedFields, componentgroup.FieldDependsOn)
+}
+
+// SetPosition sets the "position" field.
+func (m *ComponentGroupMutation) SetPosition(value map[string]float64) {
+	m.position = &value
+}
+
+// Position returns the value of the "position" field in the mutation.
+func (m *ComponentGroupMutation) Position() (r map[string]float64, exists bool) {
+	v := m.position
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPosition returns the old "position" field's value of the ComponentGroup entity.
+// If the ComponentGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComponentGroupMutation) OldPosition(ctx context.Context) (v map[string]float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPosition is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPosition requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPosition: %w", err)
+	}
+	return oldValue.Position, nil
+}
+
+// ClearPosition clears the value of the "position" field.
+func (m *ComponentGroupMutation) ClearPosition() {
+	m.position = nil
+	m.clearedFields[componentgroup.FieldPosition] = struct{}{}
+}
+
+// PositionCleared returns if the "position" field was cleared in this mutation.
+func (m *ComponentGroupMutation) PositionCleared() bool {
+	_, ok := m.clearedFields[componentgroup.FieldPosition]
+	return ok
+}
+
+// ResetPosition resets all changes to the "position" field.
+func (m *ComponentGroupMutation) ResetPosition() {
+	m.position = nil
+	delete(m.clearedFields, componentgroup.FieldPosition)
+}
+
+// SetSize sets the "size" field.
+func (m *ComponentGroupMutation) SetSize(value map[string]float64) {
+	m.size = &value
+}
+
+// Size returns the value of the "size" field in the mutation.
+func (m *ComponentGroupMutation) Size() (r map[string]float64, exists bool) {
+	v := m.size
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSize returns the old "size" field's value of the ComponentGroup entity.
+// If the ComponentGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComponentGroupMutation) OldSize(ctx context.Context) (v map[string]float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSize is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSize requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSize: %w", err)
+	}
+	return oldValue.Size, nil
+}
+
+// ClearSize clears the value of the "size" field.
+func (m *ComponentGroupMutation) ClearSize() {
+	m.size = nil
+	m.clearedFields[componentgroup.FieldSize] = struct{}{}
+}
+
+// SizeCleared returns if the "size" field was cleared in this mutation.
+func (m *ComponentGroupMutation) SizeCleared() bool {
+	_, ok := m.clearedFields[componentgroup.FieldSize]
+	return ok
+}
+
+// ResetSize resets all changes to the "size" field.
+func (m *ComponentGroupMutation) ResetSize() {
+	m.size = nil
+	delete(m.clearedFields, componentgroup.FieldSize)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ComponentGroupMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ComponentGroupMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ComponentGroup entity.
+// If the ComponentGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComponentGroupMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ComponentGroupMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ComponentGroupMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ComponentGroupMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the ComponentGroup entity.
+// If the ComponentGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComponentGroupMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ComponentGroupMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearOrganization clears the "organization" edge to the Organization entity.
+func (m *ComponentGroupMutation) ClearOrganization() {
+	m.clearedorganization = true
+	m.clearedFields[componentgroup.FieldOrganizationID] = struct{}{}
+}
+
+// OrganizationCleared reports if the "organization" edge to the Organization entity was cleared.
+func (m *ComponentGroupMutation) OrganizationCleared() bool {
+	return m.clearedorganization
+}
+
+// OrganizationIDs returns the "organization" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OrganizationID instead. It exists only for internal usage by the builders.
+func (m *ComponentGroupMutation) OrganizationIDs() (ids []uuid.UUID) {
+	if id := m.organization; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOrganization resets all changes to the "organization" edge.
+func (m *ComponentGroupMutation) ResetOrganization() {
+	m.organization = nil
+	m.clearedorganization = false
+}
+
+// ClearApplication clears the "application" edge to the Application entity.
+func (m *ComponentGroupMutation) ClearApplication() {
+	m.clearedapplication = true
+	m.clearedFields[componentgroup.FieldApplicationID] = struct{}{}
+}
+
+// ApplicationCleared reports if the "application" edge to the Application entity was cleared.
+func (m *ComponentGroupMutation) ApplicationCleared() bool {
+	return m.clearedapplication
+}
+
+// ApplicationIDs returns the "application" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ApplicationID instead. It exists only for internal usage by the builders.
+func (m *ComponentGroupMutation) ApplicationIDs() (ids []uuid.UUID) {
+	if id := m.application; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetApplication resets all changes to the "application" edge.
+func (m *ComponentGroupMutation) ResetApplication() {
+	m.application = nil
+	m.clearedapplication = false
+}
+
+// Where appends a list predicates to the ComponentGroupMutation builder.
+func (m *ComponentGroupMutation) Where(ps ...predicate.ComponentGroup) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ComponentGroupMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ComponentGroupMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ComponentGroup, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ComponentGroupMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ComponentGroupMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ComponentGroup).
+func (m *ComponentGroupMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ComponentGroupMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.organization != nil {
+		fields = append(fields, componentgroup.FieldOrganizationID)
+	}
+	if m.application != nil {
+		fields = append(fields, componentgroup.FieldApplicationID)
+	}
+	if m.name != nil {
+		fields = append(fields, componentgroup.FieldName)
+	}
+	if m.depends_on != nil {
+		fields = append(fields, componentgroup.FieldDependsOn)
+	}
+	if m.position != nil {
+		fields = append(fields, componentgroup.FieldPosition)
+	}
+	if m.size != nil {
+		fields = append(fields, componentgroup.FieldSize)
+	}
+	if m.created_at != nil {
+		fields = append(fields, componentgroup.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, componentgroup.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ComponentGroupMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case componentgroup.FieldOrganizationID:
+		return m.OrganizationID()
+	case componentgroup.FieldApplicationID:
+		return m.ApplicationID()
+	case componentgroup.FieldName:
+		return m.Name()
+	case componentgroup.FieldDependsOn:
+		return m.DependsOn()
+	case componentgroup.FieldPosition:
+		return m.Position()
+	case componentgroup.FieldSize:
+		return m.Size()
+	case componentgroup.FieldCreatedAt:
+		return m.CreatedAt()
+	case componentgroup.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ComponentGroupMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case componentgroup.FieldOrganizationID:
+		return m.OldOrganizationID(ctx)
+	case componentgroup.FieldApplicationID:
+		return m.OldApplicationID(ctx)
+	case componentgroup.FieldName:
+		return m.OldName(ctx)
+	case componentgroup.FieldDependsOn:
+		return m.OldDependsOn(ctx)
+	case componentgroup.FieldPosition:
+		return m.OldPosition(ctx)
+	case componentgroup.FieldSize:
+		return m.OldSize(ctx)
+	case componentgroup.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case componentgroup.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ComponentGroup field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ComponentGroupMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case componentgroup.FieldOrganizationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrganizationID(v)
+		return nil
+	case componentgroup.FieldApplicationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetApplicationID(v)
+		return nil
+	case componentgroup.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case componentgroup.FieldDependsOn:
+		v, ok := value.([]uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDependsOn(v)
+		return nil
+	case componentgroup.FieldPosition:
+		v, ok := value.(map[string]float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPosition(v)
+		return nil
+	case componentgroup.FieldSize:
+		v, ok := value.(map[string]float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSize(v)
+		return nil
+	case componentgroup.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case componentgroup.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ComponentGroup field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ComponentGroupMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ComponentGroupMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ComponentGroupMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown ComponentGroup numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ComponentGroupMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(componentgroup.FieldDependsOn) {
+		fields = append(fields, componentgroup.FieldDependsOn)
+	}
+	if m.FieldCleared(componentgroup.FieldPosition) {
+		fields = append(fields, componentgroup.FieldPosition)
+	}
+	if m.FieldCleared(componentgroup.FieldSize) {
+		fields = append(fields, componentgroup.FieldSize)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ComponentGroupMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ComponentGroupMutation) ClearField(name string) error {
+	switch name {
+	case componentgroup.FieldDependsOn:
+		m.ClearDependsOn()
+		return nil
+	case componentgroup.FieldPosition:
+		m.ClearPosition()
+		return nil
+	case componentgroup.FieldSize:
+		m.ClearSize()
+		return nil
+	}
+	return fmt.Errorf("unknown ComponentGroup nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ComponentGroupMutation) ResetField(name string) error {
+	switch name {
+	case componentgroup.FieldOrganizationID:
+		m.ResetOrganizationID()
+		return nil
+	case componentgroup.FieldApplicationID:
+		m.ResetApplicationID()
+		return nil
+	case componentgroup.FieldName:
+		m.ResetName()
+		return nil
+	case componentgroup.FieldDependsOn:
+		m.ResetDependsOn()
+		return nil
+	case componentgroup.FieldPosition:
+		m.ResetPosition()
+		return nil
+	case componentgroup.FieldSize:
+		m.ResetSize()
+		return nil
+	case componentgroup.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case componentgroup.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ComponentGroup field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ComponentGroupMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.organization != nil {
+		edges = append(edges, componentgroup.EdgeOrganization)
+	}
+	if m.application != nil {
+		edges = append(edges, componentgroup.EdgeApplication)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ComponentGroupMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case componentgroup.EdgeOrganization:
+		if id := m.organization; id != nil {
+			return []ent.Value{*id}
+		}
+	case componentgroup.EdgeApplication:
+		if id := m.application; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ComponentGroupMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ComponentGroupMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ComponentGroupMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedorganization {
+		edges = append(edges, componentgroup.EdgeOrganization)
+	}
+	if m.clearedapplication {
+		edges = append(edges, componentgroup.EdgeApplication)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ComponentGroupMutation) EdgeCleared(name string) bool {
+	switch name {
+	case componentgroup.EdgeOrganization:
+		return m.clearedorganization
+	case componentgroup.EdgeApplication:
+		return m.clearedapplication
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ComponentGroupMutation) ClearEdge(name string) error {
+	switch name {
+	case componentgroup.EdgeOrganization:
+		m.ClearOrganization()
+		return nil
+	case componentgroup.EdgeApplication:
+		m.ClearApplication()
+		return nil
+	}
+	return fmt.Errorf("unknown ComponentGroup unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ComponentGroupMutation) ResetEdge(name string) error {
+	switch name {
+	case componentgroup.EdgeOrganization:
+		m.ResetOrganization()
+		return nil
+	case componentgroup.EdgeApplication:
+		m.ResetApplication()
+		return nil
+	}
+	return fmt.Errorf("unknown ComponentGroup edge %s", name)
 }
 
 // ComponentRunMutation represents an operation that mutates the ComponentRun nodes in the graph.

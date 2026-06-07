@@ -83,6 +83,12 @@ func (Component) Fields() []ent.Field {
 		field.UUID("github_installation_id", uuid.UUID{}).Optional(),
 		// Canvas coordinates {x, y} for the workflow builder UI.
 		field.JSON("position", map[string]float64{}).Optional(),
+		// Optional membership in an explicit group container. When set, this
+		// component is a parallel member of the group; the service desugars the
+		// group's depends_on onto the member and expands group references at
+		// validate/snapshot time. Bound to the group edge below; ON DELETE SET NULL
+		// in the migration (deleting a group ungroups its members).
+		field.UUID("group_id", uuid.UUID{}).Optional(),
 		field.Time("created_at").Default(time.Now).Immutable(),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}
@@ -115,6 +121,12 @@ func (Component) Edges() []ent.Edge {
 		// RESTRICT in the migration.
 		edge.To("github_installation", GitHubInstallation.Type).
 			Field("github_installation_id").
+			Unique(),
+		// Optional membership in an explicit group container. ON DELETE SET NULL in
+		// the migration: deleting a group ungroups its members rather than deleting
+		// them (the migration, not this edge, is the source of truth for that).
+		edge.To("group", ComponentGroup.Type).
+			Field("group_id").
 			Unique(),
 	}
 }

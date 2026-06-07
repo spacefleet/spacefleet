@@ -1601,6 +1601,13 @@ export interface components {
             position?: {
                 [key: string]: number;
             };
+            /**
+             * Format: uuid
+             * @description Id of the explicit group container this component is a parallel
+             *     member of, or null when ungrouped. A node that depends on a group
+             *     waits for all of its members.
+             */
+            group_id?: string | null;
         };
         /**
          * @description One proposed workflow node, supplied by the canvas. id is client-provided
@@ -1627,14 +1634,67 @@ export interface components {
             position?: {
                 [key: string]: number;
             };
+            /** Format: uuid */
+            group_id?: string | null;
         };
-        /** @description An application's deploy workflow — the list of its components. */
+        /**
+         * @description An explicit group container in an application's deploy workflow — a named
+         *     box holding components that run in parallel. A node that depends on the
+         *     group waits for all of its members (all-must-complete); a group's
+         *     depends_on makes every member wait on those refs. Groups are a builder
+         *     concept that desugar into component-level depends_on; the scheduler never
+         *     sees a group.
+         */
+        ComponentGroup: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /**
+             * @description Ids of the components/groups the whole group waits on (entries may
+             *     reference a component or a sibling group).
+             */
+            depends_on: string[];
+            /** @description Canvas coordinates {x, y} for the workflow builder UI. */
+            position?: {
+                [key: string]: number;
+            };
+            /** @description Canvas dimensions {w, h} for the workflow builder UI. */
+            size?: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * @description One proposed group container, supplied by the canvas. id is
+         *     client-provided (a stable uuid per group) so component group_id refs and
+         *     depends_on edges survive a replace.
+         */
+        ComponentGroupInput: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            depends_on?: string[];
+            position?: {
+                [key: string]: number;
+            };
+            size?: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * @description An application's deploy workflow — its components plus any explicit group
+         *     containers.
+         */
         Workflow: {
             components: components["schemas"]["Component"][];
+            groups: components["schemas"]["ComponentGroup"][];
         };
-        /** @description The full set of components to replace the workflow with. */
+        /**
+         * @description The full set of components and group containers to replace the workflow
+         *     with.
+         */
         WorkflowReplaceRequest: {
             components: components["schemas"]["ComponentInput"][];
+            groups?: components["schemas"]["ComponentGroupInput"][];
         };
         /**
          * @description What a workflow run does across the whole DAG.

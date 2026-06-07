@@ -16,6 +16,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
+	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/invitation"
@@ -88,6 +89,7 @@ func checkColumn(t, c string) error {
 			chartcredential.Table:    chartcredential.ValidColumn,
 			cluster.Table:            cluster.ValidColumn,
 			component.Table:          component.ValidColumn,
+			componentgroup.Table:     componentgroup.ValidColumn,
 			componentrun.Table:       componentrun.ValidColumn,
 			githubinstallation.Table: githubinstallation.ValidColumn,
 			invitation.Table:         invitation.ValidColumn,

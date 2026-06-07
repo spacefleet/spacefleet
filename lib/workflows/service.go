@@ -20,6 +20,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/component"
+	"github.com/spacefleet/spacefleet/ent/componentgroup"
 )
 
 // Service is a thin wrapper over the ent client.
@@ -48,6 +49,10 @@ type ComponentInput struct {
 	ChartCredentialID    *uuid.UUID
 	GitHubInstallationID *uuid.UUID
 	Position             map[string]float64
+	// GroupID is the explicit group container this component is a member of, or
+	// nil when ungrouped. Members of a group run in parallel and a node depending
+	// on the group waits for all of them.
+	GroupID *uuid.UUID
 }
 
 // ListComponents returns an application's workflow nodes, scoped to the
@@ -64,45 +69,105 @@ func (s *Service) ListComponents(ctx context.Context, orgID, appID uuid.UUID) ([
 		All(ctx)
 }
 
-// ReplaceWorkflow validates the proposed DAG and atomically replaces the
-// application's components with it: in one transaction it deletes the app's
-// existing components and recreates them from nodes, preserving each input's
-// client-provided id (so depends_on edges and canvas identity are stable across an
-// edit). A validation failure (see validateDAG) is returned before any write. The
-// application must belong to the organization.
-func (s *Service) ReplaceWorkflow(ctx context.Context, orgID, appID uuid.UUID, nodes []ComponentInput) ([]*ent.Component, error) {
+// ReplaceWorkflow validates the proposed authored graph (components + explicit
+// group containers) and atomically replaces the application's workflow with it:
+// in one transaction it deletes the app's existing groups and components and
+// recreates them, preserving each input's client-provided id (so depends_on
+// edges, group_id refs, and canvas identity are stable across an edit). Groups
+// are deleted/recreated before components because components carry a group_id FK
+// to component_groups. A validation failure (see validateWorkflow) is returned
+// before any write. The application must belong to the organization.
+//
+// Returns the persisted components and groups (created-order), reloaded outside
+// the transaction.
+func (s *Service) ReplaceWorkflow(ctx context.Context, orgID, appID uuid.UUID, nodes []ComponentInput, groups []GroupInput) ([]*ent.Component, []*ent.ComponentGroup, error) {
 	if _, err := s.getApp(ctx, orgID, appID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if err := validateDAG(nodes); err != nil {
-		return nil, err
+	if err := validateWorkflow(nodes, groups); err != nil {
+		return nil, nil, err
 	}
 
 	tx, err := s.ent.Tx(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
+	// Delete components first (they FK group_id → component_groups), then groups.
 	if _, err := tx.Component.Delete().
 		Where(component.OrganizationID(orgID), component.ApplicationID(appID)).
 		Exec(ctx); err != nil {
-		return nil, rollback(tx, err)
+		return nil, nil, rollback(tx, err)
+	}
+	if _, err := tx.ComponentGroup.Delete().
+		Where(componentgroup.OrganizationID(orgID), componentgroup.ApplicationID(appID)).
+		Exec(ctx); err != nil {
+		return nil, nil, rollback(tx, err)
 	}
 
+	// Recreate groups before components, since a component's group_id references a
+	// group row.
+	for _, g := range groups {
+		if err := s.createGroup(ctx, tx, orgID, appID, g); err != nil {
+			return nil, nil, rollback(tx, err)
+		}
+	}
 	for _, n := range nodes {
 		if err := s.createComponent(ctx, tx, orgID, appID, n); err != nil {
-			return nil, rollback(tx, err)
+			return nil, nil, rollback(tx, err)
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Reload outside the transaction so callers see the persisted rows in order.
-	return s.ent.Component.Query().
+	comps, err := s.ent.Component.Query().
 		Where(component.OrganizationID(orgID), component.ApplicationID(appID)).
 		Order(ent.Asc(component.FieldCreatedAt)).
 		All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	grps, err := s.listGroups(ctx, orgID, appID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return comps, grps, nil
+}
+
+// ListGroups returns an application's group containers, scoped to the
+// organization. It first confirms the application belongs to the org; a missing
+// application surfaces as ent's NotFoundError.
+func (s *Service) ListGroups(ctx context.Context, orgID, appID uuid.UUID) ([]*ent.ComponentGroup, error) {
+	if _, err := s.getApp(ctx, orgID, appID); err != nil {
+		return nil, err
+	}
+	return s.listGroups(ctx, orgID, appID)
+}
+
+// listGroups is the unguarded org-scoped query, shared by ListGroups (which adds
+// the application-membership check) and ReplaceWorkflow (which already confirmed
+// the app).
+func (s *Service) listGroups(ctx context.Context, orgID, appID uuid.UUID) ([]*ent.ComponentGroup, error) {
+	return s.ent.ComponentGroup.Query().
+		Where(componentgroup.OrganizationID(orgID), componentgroup.ApplicationID(appID)).
+		Order(ent.Asc(componentgroup.FieldCreatedAt)).
+		All(ctx)
+}
+
+// createGroup persists one validated group container within the replace
+// transaction, keeping its client-provided id.
+func (s *Service) createGroup(ctx context.Context, tx *ent.Tx, orgID, appID uuid.UUID, g GroupInput) error {
+	return tx.ComponentGroup.Create().
+		SetID(g.ID).
+		SetOrganizationID(orgID).
+		SetApplicationID(appID).
+		SetName(g.Name).
+		SetDependsOn(nonNilIDs(g.DependsOn)).
+		SetPosition(nonNilFloatMap(g.Position)).
+		SetSize(nonNilFloatMap(g.Size)).
+		Exec(ctx)
 }
 
 // createComponent persists one validated node within the replace transaction,
@@ -128,6 +193,9 @@ func (s *Service) createComponent(ctx context.Context, tx *ent.Tx, orgID, appID 
 	}
 	if n.GitHubInstallationID != nil && *n.GitHubInstallationID != uuid.Nil {
 		create.SetGithubInstallationID(*n.GitHubInstallationID)
+	}
+	if n.GroupID != nil && *n.GroupID != uuid.Nil {
+		create.SetGroupID(*n.GroupID)
 	}
 	return create.Exec(ctx)
 }

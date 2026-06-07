@@ -1,8 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { WorkflowBuilder } from "./WorkflowBuilder";
+import { WorkflowLayout } from "./WorkflowLayout";
+import { WorkflowCanvas } from "./WorkflowCanvas";
+import { NodeEditor } from "./NodeEditor";
 import { api } from "../api/client";
 
 vi.mock("../api/client", () => ({
@@ -45,14 +47,14 @@ const apply = {
   position: { x: 100, y: 300 },
 };
 
-function renderBuilder() {
+function renderWorkflow() {
   return render(
     <MemoryRouter initialEntries={["/applications/app-1/workflow"]}>
       <Routes>
-        <Route
-          path="/applications/:appId/workflow"
-          element={<WorkflowBuilder />}
-        />
+        <Route path="/applications/:appId/workflow" element={<WorkflowLayout />}>
+          <Route index element={<WorkflowCanvas />} />
+          <Route path="nodes/:nodeId" element={<NodeEditor />} />
+        </Route>
         <Route
           path="/applications/:appId/runs/:runId"
           element={<div>run view</div>}
@@ -62,10 +64,10 @@ function renderBuilder() {
   );
 }
 
-function defaultGets(components: unknown[]) {
+function defaultGets(comps: unknown[], groups: unknown[] = []) {
   mockApi.GET.mockImplementation((path: string) => {
     if (path === "/api/applications/{id}/workflow")
-      return Promise.resolve({ data: { components }, error: undefined });
+      return Promise.resolve({ data: { components: comps, groups }, error: undefined });
     if (path === "/api/clusters")
       return Promise.resolve({ data: [{ id: "c1", name: "prod" }], error: undefined });
     if (path === "/api/chart-credentials")
@@ -82,31 +84,35 @@ beforeEach(() => {
   mockApi.POST.mockReset();
 });
 
-describe("WorkflowBuilder", () => {
+describe("WorkflowCanvas", () => {
   it("renders nodes loaded from the workflow", async () => {
     defaultGets([release, apply]);
-    renderBuilder();
+    renderWorkflow();
     expect(await screen.findByText("release")).toBeInTheDocument();
     expect(screen.getByText("apply")).toBeInTheDocument();
   });
 
-  it("Save PUTs the assembled components with depends_on derived from edges", async () => {
+  it("Save PUTs components (depends_on from edges) and a groups array", async () => {
     defaultGets([release, apply]);
-    mockApi.PUT.mockResolvedValue({ data: { components: [] }, error: undefined });
-    renderBuilder();
+    mockApi.PUT.mockResolvedValue({
+      data: { components: [], groups: [] },
+      error: undefined,
+    });
+    renderWorkflow();
     await screen.findByText("release");
 
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(mockApi.PUT).toHaveBeenCalled());
     const body = mockApi.PUT.mock.calls[0][1].body as {
-      components: { id: string; depends_on: string[] }[];
+      components: { id: string; depends_on: string[]; group_id: string | null }[];
+      groups: unknown[];
     };
     const sent = Object.fromEntries(body.components.map((c) => [c.id, c]));
-    // The dependent's depends_on is derived from the loaded edge release->apply.
     expect(sent[apply.id].depends_on).toEqual([release.id]);
     expect(sent[release.id].depends_on).toEqual([]);
-    // Positions are persisted.
+    expect(sent[apply.id].group_id).toBeNull();
+    expect(Array.isArray(body.groups)).toBe(true);
     const sentApply = body.components.find((c) => c.id === apply.id) as unknown as {
       position: { x: number; y: number };
     };
@@ -119,7 +125,7 @@ describe("WorkflowBuilder", () => {
       data: undefined,
       error: { message: "workflow has a cycle" },
     });
-    renderBuilder();
+    renderWorkflow();
     await screen.findByText("release");
     await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
     expect(await screen.findByText("workflow has a cycle")).toBeInTheDocument();
@@ -132,7 +138,7 @@ describe("WorkflowBuilder", () => {
       error: undefined,
       response: { status: 202 },
     });
-    renderBuilder();
+    renderWorkflow();
     await screen.findByText("release");
     await userEvent.click(screen.getByRole("button", { name: /deploy/i }));
     expect(await screen.findByText("run view")).toBeInTheDocument();
@@ -149,7 +155,7 @@ describe("WorkflowBuilder", () => {
       error: undefined,
       response: { status: 202 },
     });
-    renderBuilder();
+    renderWorkflow();
     await screen.findByText("release");
     await userEvent.click(
       screen.getByRole("checkbox", { name: /force workload roll/i }),
@@ -169,7 +175,7 @@ describe("WorkflowBuilder", () => {
       error: { message: "conflict" },
       response: { status: 409 },
     });
-    renderBuilder();
+    renderWorkflow();
     await screen.findByText("release");
     await userEvent.click(screen.getByRole("button", { name: /deploy/i }));
     expect(
@@ -177,13 +183,38 @@ describe("WorkflowBuilder", () => {
     ).toBeInTheDocument();
   });
 
-  it("adds a node via the Helm toolbar button", async () => {
+  it("the + Add dropdown lists Helm, Manifest, and Group and can add a node", async () => {
     defaultGets([]);
-    renderBuilder();
+    renderWorkflow();
     await screen.findByText(/no components yet/i);
-    await userEvent.click(screen.getByRole("button", { name: /^helm$/i }));
-    // The new node appears with its default name, and the config panel opens.
+
+    await userEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    // The menu lists every addable type, driven by the items array.
+    expect(screen.getByRole("menuitem", { name: /helm/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /manifest/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /group/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("menuitem", { name: /helm/i }));
     expect(await screen.findByText("helm release")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /delete node/i })).toBeInTheDocument();
+  });
+
+  it("selecting a node and clicking Edit navigates to the node editor route", async () => {
+    defaultGets([release]);
+    renderWorkflow();
+    await screen.findByText("release");
+    // fireEvent.click avoids the user-event pointer sequence that triggers React
+    // Flow's d3-drag mousedown handler (which throws in jsdom); a plain click is
+    // all the canvas's onNodeClick needs to select the node.
+    const node = document.querySelector(".react-flow__node") as HTMLElement;
+    fireEvent.click(node);
+    await userEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+    // The full-page editor renders ComponentFields (the Name field + Delete node).
+    expect(
+      await screen.findByRole("button", { name: /back to workflow/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /delete node/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue("release")).toBeInTheDocument();
   });
 });

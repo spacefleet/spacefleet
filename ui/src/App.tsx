@@ -11,7 +11,9 @@ import { Applications } from "./routes/Applications";
 import { ApplicationForm } from "./routes/ApplicationForm";
 import { ImportApplication } from "./routes/ImportApplication";
 import { ApplicationDetail } from "./routes/ApplicationDetail";
-import { WorkflowBuilder } from "./routes/WorkflowBuilder";
+import { WorkflowLayout } from "./routes/WorkflowLayout";
+import { WorkflowCanvas } from "./routes/WorkflowCanvas";
+import { NodeEditor } from "./routes/NodeEditor";
 import { WorkflowRuns } from "./routes/WorkflowRuns";
 import { WorkflowRunView } from "./routes/WorkflowRunView";
 import { Clusters } from "./routes/Clusters";
@@ -108,15 +110,18 @@ export function App() {
                   path="/applications/:appId/edit"
                   element={<ApplicationForm />}
                 />
-                {/* Workflow canvas: the interactive DAG builder for an app's
-                    deploy workflow. Listed before the ":appId" detail route so
-                    the "/workflow" segment isn't swallowed (it can't be — the
-                    detail route has no trailing segment — but kept adjacent for
-                    clarity). */}
+                {/* Workflow builder: a layout route owning the in-memory draft
+                    (so unsaved edits survive canvas↔editor navigation), with the
+                    DAG canvas at the index and the full-page node editor under
+                    nodes/:nodeId. Listed before the ":appId" detail route so the
+                    "/workflow" segment isn't swallowed. */}
                 <Route
                   path="/applications/:appId/workflow"
-                  element={<WorkflowBuilder />}
-                />
+                  element={<WorkflowLayout />}
+                >
+                  <Route index element={<WorkflowCanvas />} />
+                  <Route path="nodes/:nodeId" element={<NodeEditor />} />
+                </Route>
                 {/* Workflow run history (a CI-like list of runs). */}
                 <Route
                   path="/applications/:appId/runs"
