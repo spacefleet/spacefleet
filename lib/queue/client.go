@@ -33,6 +33,55 @@ func (c *Client) Insert(ctx context.Context, args river.JobArgs) (*rivertype.Job
 	return res, nil
 }
 
+// JobLive reports whether the job with the given id is still live — in a state
+// that could still settle (available, scheduled, running, retryable, pending) —
+// as opposed to gone (completed, cancelled, discarded, or no longer in the
+// table). It's the reaper's "is a worker still on this?" probe: River's ErrNotFound
+// means the job is gone (returns false, nil); any other error is surfaced so the
+// caller can stay conservative and not reap on a transient DB hiccup.
+func (c *Client) JobLive(ctx context.Context, id int64) (bool, error) {
+	if c == nil {
+		return false, errors.New("queue: nil client")
+	}
+	row, err := c.inner.JobGet(ctx, id)
+	if err != nil {
+		if errors.Is(err, river.ErrNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("queue: job get %d: %w", id, err)
+	}
+	switch row.State {
+	case rivertype.JobStateAvailable,
+		rivertype.JobStateScheduled,
+		rivertype.JobStateRunning,
+		rivertype.JobStateRetryable,
+		rivertype.JobStatePending:
+		return true, nil
+	default:
+		// Completed, cancelled, discarded — the job will never settle the run.
+		return false, nil
+	}
+}
+
+// JobCancel cancels the job with the given id: River marks it cancelled (a
+// terminal state, so it will not be retried) and, if an attempt is currently
+// running — possibly in another process — cancels that attempt's context via
+// River's notifier so the worker stops promptly. A job that is already gone or
+// finished (ErrNotFound) is treated as a no-op. It's the run-cancel path's way to
+// actually stop an in-flight workflow run, not just rewrite its DB rows.
+func (c *Client) JobCancel(ctx context.Context, id int64) error {
+	if c == nil {
+		return errors.New("queue: nil client")
+	}
+	if _, err := c.inner.JobCancel(ctx, id); err != nil {
+		if errors.Is(err, river.ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("queue: job cancel %d: %w", id, err)
+	}
+	return nil
+}
+
 // Start begins fetching and working jobs. Returns an error if the
 // client wasn't built with WorkerMode. The caller's ctx is what River
 // passes to each Worker.Work — cancel ctx to drain.

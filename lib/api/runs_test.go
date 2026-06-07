@@ -26,7 +26,7 @@ func TestComponentRunDetailParsesPreviewDiff(t *testing.T) {
 		Status: "succeeded",
 		Logs:   logs,
 	}
-	out := toAPIComponentRunDetail(cr)
+	out := toAPIComponentRunDetail(cr, true)
 
 	if out.Logs == nil || *out.Logs != logs {
 		t.Errorf("logs field not preserved")
@@ -53,12 +53,44 @@ func TestComponentRunDetailNonPreviewHasNoDiff(t *testing.T) {
 		Status: "succeeded",
 		Logs:   "Release \"web\" has been upgraded. Happy Helming!\n",
 	}
-	out := toAPIComponentRunDetail(cr)
+	out := toAPIComponentRunDetail(cr, true)
 
 	if out.Diff != nil {
 		t.Errorf("non-preview run should have no diff, got %q", *out.Diff)
 	}
 	if out.HasChanges != nil {
 		t.Errorf("non-preview run should have no has_changes, got %v", *out.HasChanges)
+	}
+}
+
+// TestComponentRunDetailRedactsBelowEditor verifies that a viewer (canSee=false)
+// gets neither the captured logs nor the parsed diff — both can echo the
+// component's rendered values / applied manifests, the same secret-bearing
+// free-text the snapshot graph and component config redact. has_changes is a
+// non-secret boolean and is still surfaced.
+func TestComponentRunDetailRedactsBelowEditor(t *testing.T) {
+	t.Parallel()
+
+	logs := "cloning...\n" +
+		helm.DiffBeginMarker + "\n" +
+		"- old\n+ new\n" +
+		helm.DiffEndMarker + "\n" +
+		helm.DiffChangesPrefix + "true\n"
+
+	cr := &ent.ComponentRun{
+		ID:     uuid.New(),
+		Status: "succeeded",
+		Logs:   logs,
+	}
+	out := toAPIComponentRunDetail(cr, false)
+
+	if out.Logs != nil {
+		t.Errorf("logs should be withheld below editor, got %q", *out.Logs)
+	}
+	if out.Diff != nil {
+		t.Errorf("diff should be withheld below editor, got %q", *out.Diff)
+	}
+	if out.HasChanges == nil || !*out.HasChanges {
+		t.Errorf("has_changes is non-secret and should still be surfaced")
 	}
 }

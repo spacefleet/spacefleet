@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -129,6 +130,24 @@ func runWorker(_ []string) {
 		log.Fatalf("worker: start: %v", err)
 	}
 	log.Printf("worker: started (concurrency=%d)", cfg.WorkerConcurrency)
+
+	// Reaper: settle workflow runs left stuck "running" by a hard kill (SIGKILL,
+	// node loss, OOM) that unwound the worker before its panic-recovery defer could
+	// mark them failed — the one case the in-process recovery can't cover. It runs a
+	// startup sweep then on a ticker, checking each stuck run's River job via the
+	// queue client's JobLive probe; only a run whose job is positively gone is
+	// reaped, so a worker still finishing a run is never robbed of it. Wired here
+	// (not as a River periodic job) so the probe and the loop live in the one process
+	// that owns the River client. liveJob bridges the string job id stored on the run
+	// to the int64 River expects; a non-numeric id can't match a River job, so it's
+	// treated as gone.
+	go workflowsSvc.RunReaper(ctx, func(ctx context.Context, jobID string) (bool, error) {
+		id, perr := strconv.ParseInt(jobID, 10, 64)
+		if perr != nil {
+			return false, nil
+		}
+		return client.JobLive(ctx, id)
+	})
 
 	// Heartbeat loop: emit an info-level log every 30s so deployments
 	// without health checks still have a clear "this worker is alive"

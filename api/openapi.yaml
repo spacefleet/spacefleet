@@ -869,6 +869,30 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/applications/{id}/runs/{runId}/cancel:
+    post:
+      summary: Cancel an in-flight workflow run
+      description: |
+        Org-scoped, editor or above. Marks an in-flight (pending or running) run
+        failed and settles its non-terminal component runs, clearing the
+        application's in-flight gate so a new run can start. Returns 409 if the
+        run is already terminal (nothing to cancel). The background executor's
+        own retries short-circuit on the now-terminal rows, so cancellation is a
+        durable stop, not just a UI affordance.
+      operationId: cancelRun
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+        - $ref: "#/components/parameters/RunID"
+      responses:
+        "200":
+          description: The cancelled run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowRun"
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/applications/{id}/runs/{runId}:
     get:
       summary: Get one workflow run, with its component runs and graph snapshot
@@ -2286,6 +2310,13 @@ components:
       properties:
         action:
           $ref: "#/components/schemas/RunAction"
+        force:
+          type: boolean
+          description: |
+            Force a workload roll on a deploy: run the Helm step as a forced
+            `helm upgrade --install --force` so pods churn even when the rendered
+            manifests are unchanged. Only meaningful for the deploy action; the
+            planner ignores it for uninstall and preview. Defaults to false.
 
     WorkflowRun:
       type: object

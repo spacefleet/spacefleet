@@ -8,7 +8,7 @@ import {
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { ArrowLeft, X } from "lucide-react";
+import { ArrowLeft, Ban, X } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import { useObjectStream } from "../lib/useObjectStream";
@@ -22,6 +22,7 @@ type WorkflowRunDetail = components["schemas"]["WorkflowRunDetail"];
 type ComponentRun = components["schemas"]["ComponentRun"];
 type ComponentRunDetail = components["schemas"]["ComponentRunDetail"];
 type ComponentType = components["schemas"]["ComponentType"];
+type ComponentRunStatus = components["schemas"]["ComponentRunStatus"];
 type RunStatus = components["schemas"]["RunStatus"];
 
 const nodeTypes = { run: RunNode };
@@ -55,6 +56,8 @@ export function WorkflowRunView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -87,6 +90,25 @@ export function WorkflowRunView() {
   useEffect(() => {
     if (streamed) setRun(streamed);
   }, [streamed]);
+
+  // Cancel an in-flight run: marks it failed server-side. The stream then folds
+  // the terminal state in (or the reaper would have, eventually) — here we also
+  // fold the returned run so the view settles immediately.
+  const cancel = useCallback(async () => {
+    setCancelling(true);
+    setCancelError(null);
+    const { data, error } = await api.POST(
+      "/api/applications/{id}/runs/{runId}/cancel",
+      { params: { path: { id: appId, runId } } },
+    );
+    setCancelling(false);
+    if (error || !data) {
+      setCancelError(error?.message ?? "Could not cancel this run");
+      return;
+    }
+    // Re-load the full detail so the component-run rows reflect the cancellation.
+    void load();
+  }, [appId, runId, load]);
 
   // Component runs keyed by their source component id, so a snapshot node can
   // find its run status. Falls back to matching by id directly.
@@ -179,6 +201,18 @@ export function WorkflowRunView() {
               </h1>
             </div>
             <div className="flex flex-wrap items-center gap-3">
+              {inFlight && (
+                <button
+                  type="button"
+                  onClick={() => void cancel()}
+                  disabled={cancelling}
+                  title="Cancel this run"
+                  className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+                >
+                  <Ban className="h-3.5 w-3.5" />
+                  {cancelling ? "Cancelling…" : "Cancel run"}
+                </button>
+              )}
               <RunStatusBadge status={run.status} />
               <span className="text-xs text-neutral-500">
                 started {new Date(run.created_at).toLocaleString()} ·{" "}
@@ -189,6 +223,9 @@ export function WorkflowRunView() {
 
           {run.message && (
             <p className="pb-2 text-sm text-neutral-500">{run.message}</p>
+          )}
+          {cancelError && (
+            <p className="pb-2 text-sm text-red-600">{cancelError}</p>
           )}
 
           <div className="flex min-h-0 flex-1 border border-neutral-200">
@@ -214,6 +251,14 @@ export function WorkflowRunView() {
                 appId={appId}
                 runId={runId}
                 componentRunId={selectedRunId}
+                // The live status of the selected component run, folded from the
+                // run stream. Passing it as a key into the panel's fetch effect
+                // forces a re-fetch when the step transitions (e.g. to a terminal
+                // state), so logs/diff populate without a manual close/reopen.
+                liveStatus={
+                  run.component_runs?.find((cr) => cr.id === selectedRunId)
+                    ?.status
+                }
                 isPreview={run.action === "preview"}
                 onClose={() => setSelectedRunId(null)}
               />
@@ -231,12 +276,16 @@ function ComponentRunPanel({
   appId,
   runId,
   componentRunId,
+  liveStatus,
   isPreview,
   onClose,
 }: {
   appId: string;
   runId: string;
   componentRunId: string;
+  // The live status from the run stream; when it changes (notably as the step
+  // settles) the fetch effect re-runs so the detail (logs/diff) stays current.
+  liveStatus?: ComponentRunStatus;
   isPreview: boolean;
   onClose: () => void;
 }) {
@@ -265,7 +314,7 @@ function ComponentRunPanel({
     return () => {
       cancelled = true;
     };
-  }, [appId, runId, componentRunId]);
+  }, [appId, runId, componentRunId, liveStatus]);
 
   return (
     <aside className="flex h-full w-[28rem] shrink-0 flex-col overflow-y-auto border-l border-neutral-200 bg-white">

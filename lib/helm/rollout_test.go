@@ -318,6 +318,34 @@ func TestScriptValuesFromGitWithToken(t *testing.T) {
 	}
 }
 
+func TestScriptValuesSourceMissingRepoWarns(t *testing.T) {
+	// A values source with a blank repo_url should never reach here (write-time
+	// validation rejects it), but if one slips through the script must not drop it
+	// silently: it emits a visible stderr warning naming the source index, and
+	// clones nothing for it.
+	s := Script(Rollout{
+		Action:      ActionDeploy,
+		ChartSource: SourceHTTPRepo,
+		Config: map[string]string{
+			ConfigRepoURL: "https://charts.example.com",
+			ConfigChart:   "nginx",
+		},
+		ValuesSources: []map[string]string{
+			valuesSource("", "", "values.yaml"),
+		},
+		ReleaseName:     "web",
+		TargetNamespace: "apps",
+		WaitTimeout:     30 * time.Minute,
+	})
+	if !strings.Contains(s, "echo 'warning: skipping values source 0: missing repo_url' >&2") {
+		t.Errorf("script missing the dropped-values-source warning:\n%s", s)
+	}
+	// The blank source produces no clone and no -f for /values/0.
+	if strings.Contains(s, "/values/0") {
+		t.Errorf("a blank values source must not be cloned or layered:\n%s", s)
+	}
+}
+
 func TestScriptUninstallSkipsValuesClone(t *testing.T) {
 	s := Script(Rollout{
 		Action:      ActionUninstall,

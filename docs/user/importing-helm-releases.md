@@ -3,13 +3,14 @@
 If you already have Helm releases running on a cluster — installed with the
 `helm` CLI or by another tool — you can adopt them into Spacefleet as managed
 **applications** without redeploying them. Spacefleet reads the release's
-current state from the cluster, pre-fills an application from it, and lets you
-fill in the few details Helm doesn't record (where the chart comes from) before
-adopting it.
+current state from the cluster and pre-fills the application's basics from it, so
+you can start managing the workload through a deploy workflow.
 
 Adopting a release **does not redeploy it**. The release keeps running exactly
-as it is; Spacefleet just starts tracking it so you can upgrade, diff, and
-uninstall it from the app's page later.
+as it is; Spacefleet just starts tracking it as an application. You then build
+the application's **deploy workflow** on the canvas — and from then on you
+deploy, preview, and uninstall it the same way as any other application. (See
+[Deploying with workflows](deploy-workflows.md).)
 
 ## Discover the releases on a cluster
 
@@ -34,49 +35,47 @@ stored another way (for example with a ConfigMap or SQL backend) won't appear.
 
 1. In the results, select **Import** on the release you want to manage.
 2. Spacefleet opens the application form, pre-filled from the live release:
-   - **Name**, **release name**, **target namespace**, and **target cluster** are
-     taken from the release. The release name, namespace, and cluster are locked
-     — they identify the live release.
-   - The **values** are the release's current user-supplied values, pulled live
-     from the cluster. **Review them before importing** — values passed at
-     install time can contain secrets, and they're stored with the application.
-   - The **chart name** and **version** are pre-filled where known.
-3. Tell Spacefleet **where the chart comes from** — this is the part Helm doesn't
-   record. Pick the chart source and complete its fields:
-   - an **HTTP Helm repository** (repository URL + chart name),
-   - an **OCI registry** reference, or
-   - a **Git repository** the chart lives in (and, optionally, values files
-     pulled from a Git repository).
+   - **Name**, **target namespace**, and **target cluster** are taken from the
+     release.
+   - Choose a **runner cluster** — a job-running (Tekton-enabled) cluster that
+     will run this application's deploys, previews, and uninstalls. (See
+     [Running jobs in a cluster](running-jobs.md).)
+3. Select **Import release**.
 
-   For a private chart or repository, attach a chart credential or GitHub App
-   installation as you would for any application.
-4. Choose a **runner cluster** — a job-running (Tekton-enabled) cluster that will
-   perform future upgrades and diffs. (See
-   [Running jobs in a cluster](running-jobs.md).)
-5. Select **Import release**.
+The application is created as an **imported** application — nothing is deployed,
+the live release keeps running untouched — and Spacefleet takes you to the
+**workflow canvas** to build its deploy steps.
 
-The application is created in the **deployed** state — no rollout runs.
+## Build its workflow
 
-## Confirm the chart source matches
+An imported application starts with an empty workflow. Add a **Helm** component
+for the release and tell Spacefleet **where the chart comes from** — the part
+Helm doesn't record on the cluster:
 
-If a job runner is available, Spacefleet **refreshes** the application
-automatically right after importing: it runs a `helm diff` comparing the chart
-source and values you configured against what's actually running on the cluster.
+- an **HTTP Helm repository** (repository URL + chart name),
+- an **OCI registry** reference, or
+- a **Git repository** the chart lives in (and, optionally, values files pulled
+  from a Git repository).
 
-A refresh runs as a job on the runner cluster you chose, so it only happens when
-a job runner is configured and reachable. **If no job runner is available**, the
-import still succeeds but the comparison doesn't run — the application's sync
-status stays **unknown** until you run a refresh. Once a runner is configured,
-select **Refresh** on the application's page to run the comparison.
+Set the **release name** to match the live release, and fill in the **values**
+the release was installed with. (Values passed at install time can contain
+secrets; they're stored with the application and shown only to members who can
+edit it.) For a private chart or repository, attach a chart credential or GitHub
+App installation. See [Deploying with workflows](deploy-workflows.md) for the
+full builder walkthrough.
 
-When the comparison runs, it reports one of:
+## Confirm the workflow matches before deploying
 
-- **In sync** — the source you configured reproduces the live release, so you're
-  ready to manage it (an upgrade will change only what you intend).
-- **Out of sync** — the configured source produces something different from
-  what's running. Open the diff to see what differs and adjust the chart source,
-  version, or values until a refresh comes back in sync **before** your first
-  upgrade.
+Before your first **Deploy**, run a **Preview** from the builder. A preview is a
+dry run — it changes nothing on the cluster — and reports the **diff** each
+component *would* apply. Use it to confirm the chart source, version, and values
+you entered reproduce the live release:
 
-You can re-run the comparison any time with **Refresh** on the application's
-page (this also requires a job runner).
+- An **empty diff** means the workflow reproduces what's already running, so your
+  first deploy will change only what you intend.
+- A **non-empty diff** means the workflow would change the live release. Open the
+  diff to see what differs, then adjust the chart source, version, or values and
+  preview again until it comes back empty.
+
+Previews and deploys both run on the runner cluster you chose, so they need a job
+runner that's configured and reachable.

@@ -90,6 +90,9 @@ export function WorkflowBuilder() {
   const [saved, setSaved] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  // Force a workload roll on the next deploy (helm upgrade --install --force).
+  // Only meaningful for deploy; the planner ignores it for preview/uninstall.
+  const [forceRoll, setForceRoll] = useState(false);
 
   // Load the workflow and lay nodes out from each component's persisted
   // position (falling back to a simple stagger when unset).
@@ -286,9 +289,13 @@ export function WorkflowBuilder() {
   async function startRun(action: RunAction) {
     setRunning(true);
     setRunError(null);
+    // force only applies to deploy; the planner ignores it otherwise, but we
+    // keep the body minimal and only send it where it's meaningful.
+    const body =
+      action === "deploy" ? { action, force: forceRoll } : { action };
     const { data, error, response } = await api.POST(
       "/api/applications/{id}/runs",
-      { params: { path: { id: appId } }, body: { action } },
+      { params: { path: { id: appId } }, body },
     );
     setRunning(false);
     if (error || !data) {
@@ -370,6 +377,18 @@ export function WorkflowBuilder() {
                 <Trash2 className="h-3.5 w-3.5" />
                 Uninstall
               </button>
+              <label
+                title="Run the deploy's Helm step as a forced upgrade so pods roll even when the rendered manifests are unchanged"
+                className="inline-flex items-center gap-1.5 text-sm text-neutral-600"
+              >
+                <input
+                  type="checkbox"
+                  checked={forceRoll}
+                  onChange={(e) => setForceRoll(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-black"
+                />
+                Force workload roll
+              </label>
               <button
                 type="button"
                 onClick={() => void startRun("deploy")}

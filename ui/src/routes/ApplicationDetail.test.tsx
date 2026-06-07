@@ -4,9 +4,14 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApplicationDetail } from "./ApplicationDetail";
 import { api } from "../api/client";
+import { useObjectStream } from "../lib/useObjectStream";
 
 vi.mock("../api/client", () => ({
   api: { GET: vi.fn(), POST: vi.fn(), DELETE: vi.fn() },
+}));
+
+vi.mock("../lib/useObjectStream", () => ({
+  useObjectStream: vi.fn(),
 }));
 
 vi.mock("../contexts/OrgContext", () => ({
@@ -21,6 +26,7 @@ const mockApi = api as unknown as {
   POST: ReturnType<typeof vi.fn>;
   DELETE: ReturnType<typeof vi.fn>;
 };
+const mockStream = useObjectStream as unknown as ReturnType<typeof vi.fn>;
 
 const app = {
   id: "app-1",
@@ -64,6 +70,8 @@ beforeEach(() => {
   mockApi.GET.mockReset();
   mockApi.POST.mockReset();
   mockApi.DELETE.mockReset();
+  mockStream.mockReset();
+  mockStream.mockReturnValue({ value: null, status: "connecting", error: null });
   mockApi.GET.mockImplementation((path: string) => {
     if (path === "/api/applications/{id}")
       return Promise.resolve({ data: app, error: undefined });
@@ -102,6 +110,46 @@ describe("ApplicationDetail overview", () => {
     renderDetail();
     await userEvent.click(await screen.findByText("deploy"));
     expect(await screen.findByText("run view")).toBeInTheDocument();
+  });
+
+  it("does not open the run stream when the latest run is terminal", async () => {
+    renderDetail();
+    await screen.findByText("succeeded");
+    // succeeded is terminal — the stream is gated off (enabled=false).
+    expect(mockStream).toHaveBeenLastCalledWith(
+      "/api/applications/app-1/runs/run-2/stream",
+      false,
+    );
+  });
+
+  it("follows the run stream and updates the badge for a non-terminal run", async () => {
+    const running = { ...run, status: "running", finished_at: undefined };
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}")
+        return Promise.resolve({ data: app, error: undefined });
+      if (path === "/api/applications/{id}/runs")
+        return Promise.resolve({ data: { runs: [running] }, error: undefined });
+      if (path === "/api/clusters")
+        return Promise.resolve({
+          data: [{ id: "c1", name: "prod" }],
+          error: undefined,
+        });
+      return Promise.resolve({ data: undefined, error: undefined });
+    });
+    // The stream reports the run has since succeeded.
+    mockStream.mockReturnValue({
+      value: { ...running, status: "succeeded" },
+      status: "live",
+      error: null,
+    });
+    renderDetail();
+    // The badge reflects the streamed terminal status, not the fetched "running".
+    expect(await screen.findByText("succeeded")).toBeInTheDocument();
+    // The stream was enabled while in flight.
+    expect(mockStream).toHaveBeenCalledWith(
+      "/api/applications/app-1/runs/run-2/stream",
+      true,
+    );
   });
 
   it("shows the empty state when there are no runs", async () => {

@@ -69,16 +69,25 @@ func (s *Server) StartRun(ctx context.Context, req StartRunRequestObject) (Start
 			return nil, err
 		}
 	}
-	// Best-effort, non-atomic by design (the queue isn't part of the ent tx),
-	// mirroring beginRollout: enqueue then record the job id. A failure after the
-	// run row exists leaves a pending run the worker can still pick up by id.
+	// force is the per-run forced-roll opt-in; only meaningful for deploy (the
+	// planner ignores it for uninstall/preview) but carried on the job args so a
+	// River retry re-plans identically. Defaults to false when absent.
+	force := req.Body.Force != nil && *req.Body.Force
+	// Enqueueing is non-atomic by design (the queue isn't part of the ent tx),
+	// mirroring beginRollout: BeginRun commits the pending run, then we enqueue and
+	// record the job id. The pending run is what arms the application's in-flight
+	// gate, so if the Insert fails we must not leave the run pending — that would
+	// wedge the gate and refuse every future run. Mark the run failed before
+	// returning so the gate clears; the caller can retry.
 	res, err := s.jobQueue.Insert(ctx, workflows.WorkflowRunArgs{
 		WorkflowRunID: run.ID,
 		OrgID:         orgID,
 		ApplicationID: req.Id,
 		Action:        action,
+		Force:         force,
 	})
 	if err != nil {
+		_ = s.workflows.MarkRun(ctx, orgID, run.ID, "failed", "failed to enqueue run: "+err.Error())
 		return nil, err
 	}
 	jobID := strconv.FormatInt(res.Job.ID, 10)
@@ -87,6 +96,40 @@ func (s *Server) StartRun(ctx context.Context, req StartRunRequestObject) (Start
 	}
 	run.JobID = jobID
 	return StartRun202JSONResponse(toAPIWorkflowRun(run)), nil
+}
+
+// CancelRun marks an in-flight run failed and settles its non-terminal component
+// runs, clearing the application's in-flight gate. Editor or above. A run already
+// terminal is a 409 (nothing to cancel); a run not in the org/app is a 404.
+func (s *Server) CancelRun(ctx context.Context, req CancelRunRequestObject) (CancelRunResponseObject, error) {
+	orgID, aerr, err := s.resolveWorkflowWrite(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[CancelRundefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	run, err := s.workflows.CancelRun(ctx, orgID, req.Id, req.RunId)
+	if err != nil {
+		switch {
+		case ent.IsNotFound(err):
+			return errResp[CancelRundefaultJSONResponse](http.StatusNotFound, "not_found", "run not found"), nil
+		case errors.Is(err, workflows.ErrRunNotInFlight):
+			return errResp[CancelRundefaultJSONResponse](http.StatusConflict, "conflict", err.Error()), nil
+		default:
+			return nil, err
+		}
+	}
+	// CancelRun made the cancel durable in the DB; now stop the run's River job so a
+	// worker actively executing the DAG halts (and won't retry) rather than running
+	// to completion and racing the cancelled status. Best-effort: a missing/finished
+	// job is a no-op, and a pending run with no job id simply has nothing to cancel.
+	if s.jobQueue != nil && run.JobID != "" {
+		if jobID, perr := strconv.ParseInt(run.JobID, 10, 64); perr == nil {
+			_ = s.jobQueue.JobCancel(ctx, jobID)
+		}
+	}
+	return CancelRun200JSONResponse(toAPIWorkflowRun(run)), nil
 }
 
 // GetRun returns one workflow run with its component runs and graph snapshot.
@@ -113,7 +156,7 @@ func (s *Server) GetRun(ctx context.Context, req GetRunRequestObject) (GetRunRes
 // GetComponentRun returns one component run within a run, with its logs. Read
 // access (viewer or above).
 func (s *Server) GetComponentRun(ctx context.Context, req GetComponentRunRequestObject) (GetComponentRunResponseObject, error) {
-	orgID, _, aerr, err := s.resolveWorkflowRead(ctx)
+	orgID, canSeeSecrets, aerr, err := s.resolveWorkflowRead(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +170,7 @@ func (s *Server) GetComponentRun(ctx context.Context, req GetComponentRunRequest
 		}
 		return nil, err
 	}
-	return GetComponentRun200JSONResponse(toAPIComponentRunDetail(cr)), nil
+	return GetComponentRun200JSONResponse(toAPIComponentRunDetail(cr, canSeeSecrets)), nil
 }
 
 // toAPIWorkflowRun maps a run row to the API list/summary type. started_at /
@@ -193,15 +236,20 @@ func toAPIComponentRun(cr *ent.ComponentRun) ComponentRun {
 }
 
 // toAPIComponentRunDetail is toAPIComponentRun plus the captured logs and the
-// parsed preview diff. The diff is derived from the same captured logs via
-// helm.ParseDiff (the single parser for both helm and manifest previews, which
-// emit identical sentinels): for a preview run it yields the diff body + whether
-// deploying would change the cluster; a non-preview run has no markers, so it
-// yields an empty body / false — the diff field is then simply omitted. The diff
-// is dry-run output, not a stored secret, and rides in the same logs we already
-// return here, so it inherits the existing logs gating (read access) — no extra
-// redaction is applied or needed.
-func toAPIComponentRunDetail(cr *ent.ComponentRun) ComponentRunDetail {
+// parsed preview diff. Both are derived from the run's captured pod logs, which
+// echo the component's rendered Helm `values` / applied manifests — the same
+// secret-bearing free-text the snapshot graph and component config redact below
+// editor. So Logs and Diff are gated on canSee (editor-or-above): a viewer gets
+// neither, matching redactGraph / redactConfig, rather than reading secrets out
+// the side door of a component run.
+//
+// The diff is derived from the captured logs via helm.ParseDiff (the single
+// parser for both helm and manifest previews, which emit identical sentinels):
+// for a preview run it yields the diff body + whether deploying would change the
+// cluster; a non-preview run has no markers, so it yields an empty body / false —
+// the diff field is then simply omitted. has_changes is a non-secret boolean, so
+// it is surfaced regardless of canSee.
+func toAPIComponentRunDetail(cr *ent.ComponentRun, canSee bool) ComponentRunDetail {
 	b := toAPIComponentRun(cr)
 	out := ComponentRunDetail{
 		Id:             b.Id,
@@ -216,12 +264,14 @@ func toAPIComponentRunDetail(cr *ent.ComponentRun) ComponentRunDetail {
 		CreatedAt:      b.CreatedAt,
 		StartedAt:      b.StartedAt,
 		FinishedAt:     b.FinishedAt,
-		Logs:           optStr(cr.Logs),
 	}
 	diff := helm.ParseDiff(cr.Logs)
-	if diff.Body != "" {
-		body := diff.Body
-		out.Diff = &body
+	if canSee {
+		out.Logs = optStr(cr.Logs)
+		if diff.Body != "" {
+			body := diff.Body
+			out.Diff = &body
+		}
 	}
 	if diff.HasChanges {
 		hc := true

@@ -258,9 +258,21 @@ func (s *Service) GetComponentRun(ctx context.Context, orgID, appID, runID, comp
 // started_at on the first move to running and finished_at on a terminal status.
 // status is one of the WorkflowRun status strings; message is set when non-empty.
 // Org-scoped; a run not in the org updates zero rows and surfaces as NotFound.
+//
+// The update is guarded to only transition a run that is still in flight
+// (pending/running): once a run has settled it is frozen. This makes a terminal
+// status durable — the worker's final MarkRun(final) at the end of a run can no
+// longer resurrect a run that CancelRun or the reaper already failed (it becomes
+// a no-op), closing the cancel-vs-executor race. The legitimate transitions the
+// executor drives (pending→running, running→terminal) all start from an in-flight
+// state, so they are unaffected.
 func (s *Service) MarkRun(ctx context.Context, orgID, runID uuid.UUID, status, message string) error {
 	upd := s.ent.WorkflowRun.Update().
-		Where(workflowrun.OrganizationID(orgID), workflowrun.ID(runID)).
+		Where(
+			workflowrun.OrganizationID(orgID),
+			workflowrun.ID(runID),
+			workflowrun.StatusIn(workflowrun.StatusPending, workflowrun.StatusRunning),
+		).
 		SetStatus(workflowrun.Status(status))
 	if message != "" {
 		upd.SetMessage(message)

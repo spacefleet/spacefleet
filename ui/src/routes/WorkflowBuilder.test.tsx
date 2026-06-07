@@ -138,7 +138,27 @@ describe("WorkflowBuilder", () => {
     expect(await screen.findByText("run view")).toBeInTheDocument();
     expect(mockApi.POST).toHaveBeenCalledWith(
       "/api/applications/{id}/runs",
-      expect.objectContaining({ body: { action: "deploy" } }),
+      expect.objectContaining({ body: { action: "deploy", force: false } }),
+    );
+  });
+
+  it("sends force=true on deploy when the Force workload roll toggle is on", async () => {
+    defaultGets([release]);
+    mockApi.POST.mockResolvedValue({
+      data: { id: "run-9" },
+      error: undefined,
+      response: { status: 202 },
+    });
+    renderBuilder();
+    await screen.findByText("release");
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /force workload roll/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /deploy/i }));
+    expect(await screen.findByText("run view")).toBeInTheDocument();
+    expect(mockApi.POST).toHaveBeenCalledWith(
+      "/api/applications/{id}/runs",
+      expect.objectContaining({ body: { action: "deploy", force: true } }),
     );
   });
 

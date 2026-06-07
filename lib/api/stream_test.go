@@ -8,9 +8,10 @@ import (
 // The SSE handlers in stream.go are mounted raw on the mux (they bypass
 // oapi-codegen), so they're tested by serving the handler tree directly. These
 // pre-stream nil-service paths need no database — they short-circuit in the
-// resolve preamble — so they run in the plain `go test` pass. The not-found /
-// 409 classifications and the snapshot-then-close happy path (which need real
-// rows) live in stream_integration_test.go.
+// resolve preamble — so they run in the plain `go test` pass. The not-found
+// classification and the workflow-run snapshot/redaction/terminal-close happy
+// paths (which need real rows) live in stream_integration_test.go behind the
+// integration build tag.
 
 const zeroUUID = "00000000-0000-0000-0000-000000000000"
 

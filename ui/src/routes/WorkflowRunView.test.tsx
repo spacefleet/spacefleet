@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkflowRunView } from "./WorkflowRunView";
@@ -6,7 +6,7 @@ import { api } from "../api/client";
 import { useObjectStream } from "../lib/useObjectStream";
 
 vi.mock("../api/client", () => ({
-  api: { GET: vi.fn() },
+  api: { GET: vi.fn(), POST: vi.fn() },
 }));
 
 vi.mock("../contexts/OrgContext", () => ({
@@ -17,7 +17,10 @@ vi.mock("../lib/useObjectStream", () => ({
   useObjectStream: vi.fn(),
 }));
 
-const mockApi = api as unknown as { GET: ReturnType<typeof vi.fn> };
+const mockApi = api as unknown as {
+  GET: ReturnType<typeof vi.fn>;
+  POST: ReturnType<typeof vi.fn>;
+};
 const mockStream = useObjectStream as unknown as ReturnType<typeof vi.fn>;
 
 const compA = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -57,8 +60,21 @@ function renderRunView() {
   );
 }
 
+// A still-running preview: A succeeded, B is running. Non-terminal, so the
+// stream stays open.
+const runningDetail = {
+  ...runDetail,
+  status: "running",
+  finished_at: undefined,
+  component_runs: [
+    { id: "cr-a", component_id: compA, name: "release", type: "helm", status: "succeeded" },
+    { id: "cr-b", component_id: compB, name: "apply", type: "manifest", status: "running" },
+  ],
+};
+
 beforeEach(() => {
   mockApi.GET.mockReset();
+  mockApi.POST.mockReset();
   mockStream.mockReset();
   mockStream.mockReturnValue({ value: null, status: "connecting", error: null });
 });
@@ -124,5 +140,99 @@ describe("WorkflowRunView", () => {
     expect(await screen.findByText("helm upgrade output here")).toBeInTheDocument();
     expect(screen.getByText("+ added line")).toBeInTheDocument();
     expect(screen.getByText("changes")).toBeInTheDocument();
+  });
+
+  it("shows a Cancel run button only while in flight and POSTs cancel", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: runningDetail, error: undefined });
+      return Promise.resolve({ data: undefined, error: undefined });
+    });
+    mockApi.POST.mockResolvedValue({
+      data: { ...runningDetail, status: "failed" },
+      error: undefined,
+    });
+    renderRunView();
+    await screen.findByText("release");
+    const btn = await screen.findByRole("button", { name: /cancel run/i });
+    fireEvent.click(btn);
+    await waitFor(() =>
+      expect(mockApi.POST).toHaveBeenCalledWith(
+        "/api/applications/{id}/runs/{runId}/cancel",
+        { params: { path: { id: "app-1", runId: "run-1" } } },
+      ),
+    );
+  });
+
+  it("hides the Cancel run button for a terminal run", async () => {
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: runDetail, error: undefined });
+      return Promise.resolve({ data: undefined, error: undefined });
+    });
+    renderRunView();
+    await screen.findByText("release");
+    expect(
+      screen.queryByRole("button", { name: /cancel run/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("re-fetches the component detail when its live status goes terminal", async () => {
+    // Start running; the panel opens on the running step B and fetches detail
+    // (empty logs). When the stream reports B succeeded, the live status changes
+    // and the panel must re-fetch — now with logs.
+    let componentCalls = 0;
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: runningDetail, error: undefined });
+      if (
+        path === "/api/applications/{id}/runs/{runId}/components/{componentRunId}"
+      ) {
+        componentCalls += 1;
+        return Promise.resolve({
+          data: {
+            id: "cr-b",
+            name: "apply",
+            type: "manifest",
+            status: componentCalls === 1 ? "running" : "succeeded",
+            logs: componentCalls === 1 ? "" : "final logs captured",
+            has_changes: false,
+          },
+          error: undefined,
+        });
+      }
+      return Promise.resolve({ data: undefined, error: undefined });
+    });
+    const { rerender } = renderRunView();
+    fireEvent.click(await screen.findByText("apply"));
+    // First fetch: running, no logs.
+    await screen.findByText("No logs were captured for this step.");
+    expect(componentCalls).toBe(1);
+
+    // The stream now reports B succeeded; folding it changes the panel's live
+    // status, which re-runs the fetch effect.
+    const settled = {
+      ...runningDetail,
+      status: "partial",
+      component_runs: [
+        runningDetail.component_runs[0],
+        { ...runningDetail.component_runs[1], status: "succeeded" },
+      ],
+    };
+    mockStream.mockReturnValue({ value: settled, status: "live", error: null });
+    rerender(
+      <MemoryRouter initialEntries={["/applications/app-1/runs/run-1"]}>
+        <Routes>
+          <Route
+            path="/applications/:appId/runs/:runId"
+            element={<WorkflowRunView />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("final logs captured")).toBeInTheDocument();
+    expect(componentCalls).toBe(2);
   });
 });

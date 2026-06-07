@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router";
 import { ArrowLeft, History, Pencil, Trash2, Workflow } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
+import { useObjectStream } from "../lib/useObjectStream";
 import type { components } from "../api/schema";
 import { DeleteApplicationDialog } from "../components/DeleteApplicationDialog";
 import { RunStatusBadge } from "../components/workflow/status";
@@ -10,6 +11,12 @@ import { formatDuration } from "../lib/duration";
 
 type Application = components["schemas"]["Application"];
 type WorkflowRun = components["schemas"]["WorkflowRun"];
+type WorkflowRunDetail = components["schemas"]["WorkflowRunDetail"];
+type RunStatus = components["schemas"]["RunStatus"];
+
+// A run is terminal once it settles; only then is the badge final and the stream
+// closed. Mirrors WorkflowRunView's inFlight gating.
+const TERMINAL: RunStatus[] = ["succeeded", "failed", "partial"];
 
 // ApplicationDetail is the per-app overview (route /applications/:appId). An
 // application owns a deploy workflow (a DAG of components); this page shows the
@@ -67,6 +74,25 @@ export function ApplicationDetail() {
       setLatestRun(data?.runs?.[0] ?? null);
     })();
   }, [appId, currentOrg?.id]);
+
+  // The badge is fetched once above; if that run is still in flight, follow its
+  // stream so the status stays current without polling (mirrors WorkflowRunView).
+  // The stream emits the full WorkflowRunDetail on each change.
+  const inFlight =
+    latestRun != null && !TERMINAL.includes(latestRun.status);
+  const { value: streamed } = useObjectStream<WorkflowRunDetail>(
+    `/api/applications/${appId}/runs/${latestRun?.id}/stream`,
+    inFlight,
+  );
+
+  // The run shown by the badge: the fetched run, with the streamed fields folded
+  // in when the stream is for that same run. Deriving it (rather than mutating
+  // state in an effect) avoids racing the initial fetch and keeps the badge
+  // current as the stream progresses.
+  const displayRun: WorkflowRun | null =
+    latestRun && streamed && streamed.id === latestRun.id
+      ? { ...latestRun, ...streamed }
+      : latestRun;
 
   return (
     <div>
@@ -169,7 +195,7 @@ export function ApplicationDetail() {
                 Latest run
               </h2>
             </div>
-            {!latestRun ? (
+            {!displayRun ? (
               <p className="px-4 py-6 text-sm text-neutral-500">
                 No runs yet. Build the deploy workflow and start a run.
               </p>
@@ -177,21 +203,21 @@ export function ApplicationDetail() {
               <button
                 type="button"
                 onClick={() =>
-                  navigate(`/applications/${appId}/runs/${latestRun.id}`)
+                  navigate(`/applications/${appId}/runs/${displayRun.id}`)
                 }
                 className="flex w-full items-center justify-between px-4 py-3 text-left text-sm hover:bg-neutral-50"
               >
                 <span className="flex items-center gap-3">
                   <span className="capitalize text-neutral-700">
-                    {latestRun.action}
+                    {displayRun.action}
                   </span>
-                  <RunStatusBadge status={latestRun.status} />
+                  <RunStatusBadge status={displayRun.status} />
                 </span>
                 <span className="text-neutral-500">
-                  {new Date(latestRun.created_at).toLocaleString()} ·{" "}
+                  {new Date(displayRun.created_at).toLocaleString()} ·{" "}
                   {formatDuration(
-                    latestRun.created_at,
-                    latestRun.finished_at ?? undefined,
+                    displayRun.created_at,
+                    displayRun.finished_at ?? undefined,
                   )}
                 </span>
               </button>

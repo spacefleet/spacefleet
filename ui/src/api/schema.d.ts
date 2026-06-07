@@ -730,6 +730,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{id}/runs/{runId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an in-flight workflow run
+         * @description Org-scoped, editor or above. Marks an in-flight (pending or running) run
+         *     failed and settles its non-terminal component runs, clearing the
+         *     application's in-flight gate so a new run can start. Returns 409 if the
+         *     run is already terminal (nothing to cancel). The background executor's
+         *     own retries short-circuit on the now-terminal rows, so cancellation is a
+         *     durable stop, not just a UI affordance.
+         */
+        post: operations["cancelRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{id}/runs/{runId}": {
         parameters: {
             query?: never;
@@ -1624,6 +1649,13 @@ export interface components {
         RunStatus: "pending" | "running" | "succeeded" | "failed" | "partial";
         RunStartRequest: {
             action: components["schemas"]["RunAction"];
+            /**
+             * @description Force a workload roll on a deploy: run the Helm step as a forced
+             *     `helm upgrade --install --force` so pods churn even when the rendered
+             *     manifests are unchanged. Only meaningful for the deploy action; the
+             *     planner ignores it for uninstall and preview. Defaults to false.
+             */
+            force?: boolean;
         };
         /** @description One logical run of an application's deploy workflow. */
         WorkflowRun: {
@@ -2712,6 +2744,30 @@ export interface operations {
         responses: {
             /** @description Run accepted; the job is in progress */
             202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRun"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    cancelRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                runId: components["parameters"]["RunID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cancelled run */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

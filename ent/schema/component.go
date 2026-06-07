@@ -28,6 +28,18 @@ import (
 //
 // Like every resource it carries organization_id so every service query is
 // org-scoped (the tenancy boundary), not via the application join alone.
+//
+// ON DELETE: the hand-written SQL migration in db/migrations is the source of
+// truth for foreign-key delete behavior, not these edges. ent's auto-migration
+// would emit ON DELETE SET NULL for the optional edges below (target_cluster,
+// chart_credential, github_installation); the migration deliberately uses
+// RESTRICT instead, so a cluster or credential a component points at can't be
+// deleted out from under an in-flight or historical workflow. That divergence is
+// intentional and harmless: ent auto-migrate is never run here — migrations are
+// applied only by the `migrate` subcommand from the SQL files — so the schema
+// the database actually enforces is the migration's, and these edge annotations
+// exist only to generate the Go client (column names, types, loaders), not the
+// DDL.
 type Component struct {
 	ent.Schema
 }
