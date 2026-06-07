@@ -293,3 +293,146 @@ func TestStreamRunCrossOrgNotFound(t *testing.T) {
 		t.Fatalf("cross-org stream status = %d, want 404", resp.StatusCode)
 	}
 }
+
+// collectOrgRuns opens the org-wide runs stream and reads up to `want` events.
+// Unlike the per-run stream it never closes on terminal, so this reads exactly
+// the events it needs, then cancels the request. `trigger`, if set, runs shortly
+// after the stream opens to drive a change that produces a second snapshot.
+func (f *streamFixture) collectOrgRuns(token string, orgID uuid.UUID, want int, trigger func()) []sseEvent {
+	f.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	url := f.server.URL + "/api/runs/stream"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		f.t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Organization-ID", orgID.String())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		f.t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		f.t.Fatalf("stream status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		f.t.Fatalf("content-type = %q, want text/event-stream", ct)
+	}
+	if trigger != nil {
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			trigger()
+		}()
+	}
+	br := bufio.NewReader(resp.Body)
+	var (
+		events []sseEvent
+		cur    sseEvent
+	)
+	for len(events) < want {
+		line, err := br.ReadString('\n')
+		if line != "" {
+			switch {
+			case strings.HasPrefix(line, "event: "):
+				cur.name = strings.TrimSpace(strings.TrimPrefix(line, "event: "))
+			case strings.HasPrefix(line, "data: "):
+				cur.data = strings.TrimSpace(strings.TrimPrefix(line, "data: "))
+			case line == "\n":
+				if cur.name != "" {
+					events = append(events, cur)
+					cur = sseEvent{}
+				}
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+	return events
+}
+
+// TestStreamOrgRunsEmitsSnapshotsAcrossApps proves the org-wide stream emits an
+// initial snapshot of all the org's runs and a fresh snapshot when any run
+// changes, carrying a RunList payload. The stream stays open across the change
+// (it does not close on a terminal run, unlike the per-run stream).
+func TestStreamOrgRunsEmitsSnapshotsAcrossApps(t *testing.T) {
+	f := newStreamFixture(t)
+	token, orgID := f.member("editor", membership.RoleEditor)
+	appID := f.seedApp(orgID)
+
+	run, err := f.workflows.BeginRun(context.Background(), orgID, appID, workflows.ActionDeploy)
+	if err != nil {
+		t.Fatalf("BeginRun: %v", err)
+	}
+
+	// Open the stream and, once it's up, move the run to running to force a second
+	// snapshot. Collect exactly the initial + the change.
+	events := f.collectOrgRuns(token, orgID, 2, func() {
+		_ = f.workflows.MarkRun(context.Background(), orgID, run.ID, string(workflowrun.StatusRunning), "")
+	})
+	if len(events) < 2 {
+		t.Fatalf("got %d events, want >=2 (initial + a change): %+v", len(events), events)
+	}
+	for _, ev := range events {
+		if ev.name != "snapshot" {
+			t.Errorf("event name = %q, want snapshot", ev.name)
+		}
+	}
+	var list RunList
+	if err := json.Unmarshal([]byte(events[len(events)-1].data), &list); err != nil {
+		t.Fatalf("decode final snapshot %q: %v", events[len(events)-1].data, err)
+	}
+	if len(list.Runs) != 1 || list.Runs[0].Id != run.ID {
+		t.Fatalf("snapshot runs = %+v, want the one org run %v", list.Runs, run.ID)
+	}
+	if list.Runs[0].Status != RunStatusRunning {
+		t.Errorf("final run status = %q, want running", list.Runs[0].Status)
+	}
+}
+
+// TestListAllRunsIsOrgScoped proves GET /api/runs returns the caller's org runs
+// across every application and never another org's.
+func TestListAllRunsIsOrgScoped(t *testing.T) {
+	f := newStreamFixture(t)
+	tokenA, orgA := f.member("alice", membership.RoleViewer)
+	tokenB, orgB := f.member("bob", membership.RoleViewer)
+	appID := f.seedApp(orgA)
+	run, err := f.workflows.BeginRun(context.Background(), orgA, appID, workflows.ActionDeploy)
+	if err != nil {
+		t.Fatalf("BeginRun: %v", err)
+	}
+
+	// Org A (a viewer) sees its run.
+	listA := f.getRuns(tokenA, orgA)
+	if len(listA.Runs) != 1 || listA.Runs[0].Id != run.ID {
+		t.Fatalf("org A runs = %+v, want the one run %v", listA.Runs, run.ID)
+	}
+	// Org B sees nothing — the run is another tenant's.
+	listB := f.getRuns(tokenB, orgB)
+	if len(listB.Runs) != 0 {
+		t.Errorf("org B runs = %+v, want empty (cross-org isolation)", listB.Runs)
+	}
+}
+
+// getRuns GETs /api/runs as token/org and decodes the RunList.
+func (f *streamFixture) getRuns(token string, orgID uuid.UUID) RunList {
+	f.t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, f.server.URL+"/api/runs", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Organization-ID", orgID.String())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		f.t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		f.t.Fatalf("GET /api/runs status = %d, want 200", resp.StatusCode)
+	}
+	var list RunList
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		f.t.Fatalf("decode RunList: %v", err)
+	}
+	return list
+}

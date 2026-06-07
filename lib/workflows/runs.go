@@ -390,6 +390,20 @@ func (s *Service) ListRuns(ctx context.Context, orgID, appID uuid.UUID) ([]*ent.
 		All(ctx)
 }
 
+// ListOrgRuns returns the organization's workflow runs across all applications,
+// newest-first, capped at limit. It powers the global run-history index (and its
+// stream): a single place to see deploy history across the whole stack. Strictly
+// org-scoped — a run belonging to another org never appears. The cap bounds the
+// payload (and the stream snapshot) for an org with a long history; the caller
+// passes MaxOrgRuns.
+func (s *Service) ListOrgRuns(ctx context.Context, orgID uuid.UUID, limit int) ([]*ent.WorkflowRun, error) {
+	return s.ent.WorkflowRun.Query().
+		Where(workflowrun.OrganizationID(orgID)).
+		Order(ent.Desc(workflowrun.FieldCreatedAt)).
+		Limit(limit).
+		All(ctx)
+}
+
 // GetRun returns one workflow run and its component runs (created-order),
 // strictly org-scoped and verified to belong to the application. A run not in
 // the org/app surfaces as a NotFoundError.

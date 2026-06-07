@@ -368,6 +368,119 @@ func (s *Server) StreamApplicationRun(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// StreamOrgRuns streams the organization's workflow runs across all applications
+// as Server-Sent Events: an initial `snapshot` event with the full (capped,
+// newest-first) list, then a `snapshot` event whenever any run's surfaced state
+// changes, until the client disconnects or the stream's deadline passes. It
+// powers the live global run-history index. Unlike StreamApplicationRun it never
+// closes on a terminal status — many runs share the stream and new ones start at
+// any time, so it stays open for the session lifetime. Like the per-run stream
+// this is the cross-process realtime path (the worker writes progress to
+// Postgres; serve tails it) and reuses the org-membership auth path, so it is not
+// a security side door. Each run carries only its application_id, so there is
+// nothing to redact.
+func (s *Server) StreamOrgRuns(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if s.workflows == nil {
+		writeStreamError(w, http.StatusServiceUnavailable, "unavailable", "workflows service not configured")
+		return
+	}
+	orgID, _, aerr, err := s.resolveAppRead(ctx)
+	if err != nil {
+		writeStreamError(w, http.StatusInternalServerError, "internal", "internal error")
+		return
+	}
+	if aerr != nil {
+		writeStreamError(w, aerr.status, aerr.code, aerr.msg)
+		return
+	}
+
+	// The initial read doubles as a reachability check, so a DB error surfaces as
+	// a normal HTTP error rather than a half-open stream.
+	runs, err := s.workflows.ListOrgRuns(ctx, orgID, maxOrgRuns)
+	if err != nil {
+		writeStreamError(w, http.StatusInternalServerError, "internal", "internal error")
+		return
+	}
+
+	ctx, cancel := context.WithDeadline(ctx, streamDeadline(ctx))
+	defer cancel()
+
+	sse, ok := newSSEWriter(w)
+	if !ok {
+		writeStreamError(w, http.StatusInternalServerError, "internal", "streaming unsupported")
+		return
+	}
+	if err := sse.event("snapshot", toAPIRunList(runs)); err != nil {
+		return
+	}
+
+	prev := orgRunsStateKey(runs)
+	poll := time.NewTicker(time.Second)
+	defer poll.Stop()
+	heartbeat := time.NewTicker(streamHeartbeat)
+	defer heartbeat.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-heartbeat.C:
+			if err := sse.comment("ping"); err != nil {
+				return
+			}
+		case <-poll.C:
+			runs, err := s.workflows.ListOrgRuns(ctx, orgID, maxOrgRuns)
+			if err != nil {
+				return
+			}
+			key := orgRunsStateKey(runs)
+			if key == prev {
+				continue
+			}
+			prev = key
+			if err := sse.event("snapshot", toAPIRunList(runs)); err != nil {
+				return
+			}
+		}
+	}
+}
+
+// toAPIRunList maps run rows to the RunList payload the index stream/endpoint
+// return.
+func toAPIRunList(runs []*ent.WorkflowRun) RunList {
+	out := make([]WorkflowRun, len(runs))
+	for i, r := range runs {
+		out[i] = toAPIWorkflowRun(r)
+	}
+	return RunList{Runs: out}
+}
+
+// orgRunsStateKey is a change key over the surfaced fields of every run in the
+// list, so a no-op poll doesn't emit a redundant event but any run's progress
+// (status/message change, a new or finished run) does. The list is already in a
+// stable order (newest-first), so the key reflects membership order too.
+func orgRunsStateKey(runs []*ent.WorkflowRun) string {
+	var b strings.Builder
+	for _, run := range runs {
+		b.WriteString(run.ID.String())
+		b.WriteByte(':')
+		b.WriteString(string(run.Status))
+		b.WriteByte(':')
+		b.WriteString(run.Message)
+		b.WriteByte(':')
+		if run.StartedAt != nil {
+			b.WriteString(run.StartedAt.Format(time.RFC3339Nano))
+		}
+		b.WriteByte(':')
+		if run.FinishedAt != nil {
+			b.WriteString(run.FinishedAt.Format(time.RFC3339Nano))
+		}
+		b.WriteByte(0)
+	}
+	return b.String()
+}
+
 // runStateKey is a change key over the run + its component runs' surfaced fields,
 // so a no-op poll doesn't emit a redundant event but any step's progress does.
 func runStateKey(run *ent.WorkflowRun, steps []*ent.ComponentRun) string {

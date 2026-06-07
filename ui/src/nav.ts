@@ -48,7 +48,10 @@ export const navSections: NavSection[] = [
   {
     label: "Applications",
     icon: AppWindow,
-    items: [{ label: "All Apps", path: "/applications" }],
+    items: [
+      { label: "All Apps", path: "/applications" },
+      { label: "Workflow Runs", path: "/runs" },
+    ],
   },
   {
     label: "Infrastructure",

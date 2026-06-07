@@ -57,6 +57,7 @@ func newTestHandler(deps ServerDeps) http.Handler {
 	mux.Handle("GET /api/clusters/{id}/tekton/stream", stream(srv.StreamClusterTekton))
 	mux.Handle("GET /api/clusters/{id}/tekton/runs/{name}/stream", stream(srv.StreamClusterTektonRun))
 	mux.Handle("GET /api/applications/{id}/runs/{runId}/stream", stream(srv.StreamApplicationRun))
+	mux.Handle("GET /api/runs/stream", stream(srv.StreamOrgRuns))
 
 	return mux
 }

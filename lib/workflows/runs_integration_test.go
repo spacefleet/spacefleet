@@ -247,6 +247,76 @@ func TestRunReadsAreCrossOrgIsolated(t *testing.T) {
 	}
 }
 
+// TestListOrgRuns proves the global run-history query returns every application's
+// runs in the org, newest-first, capped by limit, and strictly org-scoped — a
+// second org's runs never appear. It powers the cross-application runs index.
+func TestListOrgRuns(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	orgA := newOrg(t, client, "A")
+	orgB := newOrg(t, client, "B")
+	web := newApp(t, client, orgA.ID, "web")
+	api := newApp(t, client, orgA.ID, "api")
+	addComponent(t, client, orgA.ID, web.ID, "c", nil)
+	addComponent(t, client, orgA.ID, api.ID, "c", nil)
+	other := newApp(t, client, orgB.ID, "other")
+	addComponent(t, client, orgB.ID, other.ID, "c", nil)
+
+	// Three runs in org A across two apps, plus one in org B. created_at is set by
+	// ent on insert, so begin them in a known order; the query returns newest-first.
+	r1, err := svc.BeginRun(ctx, orgA.ID, web.ID, ActionDeploy)
+	if err != nil {
+		t.Fatalf("BeginRun web: %v", err)
+	}
+	// The app's in-flight gate refuses a second run while r1 is pending, so settle
+	// it before starting another run on the same app.
+	if err := svc.MarkRun(ctx, orgA.ID, r1.ID, "succeeded", "done"); err != nil {
+		t.Fatalf("MarkRun r1: %v", err)
+	}
+	// created_at is the only sort key; small gaps keep the newest-first order
+	// deterministic rather than relying on sub-millisecond insert timing.
+	time.Sleep(2 * time.Millisecond)
+	r2, err := svc.BeginRun(ctx, orgA.ID, api.ID, ActionPreview)
+	if err != nil {
+		t.Fatalf("BeginRun api: %v", err)
+	}
+	time.Sleep(2 * time.Millisecond)
+	r3, err := svc.BeginRun(ctx, orgA.ID, web.ID, ActionDeploy)
+	if err != nil {
+		t.Fatalf("BeginRun web #2: %v", err)
+	}
+	time.Sleep(2 * time.Millisecond)
+	if _, err := svc.BeginRun(ctx, orgB.ID, other.ID, ActionDeploy); err != nil {
+		t.Fatalf("BeginRun other: %v", err)
+	}
+
+	runs, err := svc.ListOrgRuns(ctx, orgA.ID, 100)
+	if err != nil {
+		t.Fatalf("ListOrgRuns: %v", err)
+	}
+	if len(runs) != 3 {
+		t.Fatalf("org A runs = %d, want 3 (org B's run must not leak)", len(runs))
+	}
+	// Newest-first: r3, then r2, then r1.
+	wantOrder := []uuid.UUID{r3.ID, r2.ID, r1.ID}
+	for i, want := range wantOrder {
+		if runs[i].ID != want {
+			t.Errorf("runs[%d] = %v, want %v (newest-first across apps)", i, runs[i].ID, want)
+		}
+	}
+
+	// The limit caps the result to the newest N.
+	capped, err := svc.ListOrgRuns(ctx, orgA.ID, 2)
+	if err != nil {
+		t.Fatalf("ListOrgRuns capped: %v", err)
+	}
+	if len(capped) != 2 || capped[0].ID != r3.ID || capped[1].ID != r2.ID {
+		t.Errorf("capped runs = %v, want newest two [%v %v]", capped, r3.ID, r2.ID)
+	}
+}
+
 // TestCancelRunIsDurableAgainstExecutorWrites locks in the regression fix: a
 // cancelled run must stay failed even if the worker (which may be mid-flight when
 // the cancel lands) subsequently calls MarkRun with a terminal status. The guard

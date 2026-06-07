@@ -16,6 +16,7 @@ import { WorkflowCanvas } from "./routes/WorkflowCanvas";
 import { NodeEditor } from "./routes/NodeEditor";
 import { WorkflowRuns } from "./routes/WorkflowRuns";
 import { WorkflowRunView } from "./routes/WorkflowRunView";
+import { RunsIndex } from "./routes/RunsIndex";
 import { Clusters } from "./routes/Clusters";
 import { ClusterDetail } from "./routes/ClusterDetail";
 import { CreateOrganization } from "./routes/CreateOrganization";
@@ -39,6 +40,7 @@ import { navLeaves } from "./nav";
 // scaffolded Placeholder — swap entries in as pages are built.
 const pageComponents: Record<string, ReactNode> = {
   "/applications": <Applications />,
+  "/runs": <RunsIndex />,
   "/admin/clusters": <Clusters />,
   "/infrastructure/nodes": <Nodes />,
   "/infrastructure/namespaces": <Namespaces />,

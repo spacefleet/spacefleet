@@ -56,6 +56,10 @@ func registerRoutes(mux *http.ServeMux, cfg *config.Config, deps api.ServerDeps,
 		auth.RequireAuth(publicAPIPaths, verifier)(auth.OrgContext(http.HandlerFunc(srv.StreamClusterTektonRun))))
 	mux.Handle("GET /api/applications/{id}/runs/{runId}/stream",
 		auth.RequireAuth(publicAPIPaths, verifier)(auth.OrgContext(http.HandlerFunc(srv.StreamApplicationRun))))
+	// Org-wide run-history stream (all applications). More specific than the
+	// generated GET /api/runs, so mux precedence keeps them distinct.
+	mux.Handle("GET /api/runs/stream",
+		auth.RequireAuth(publicAPIPaths, verifier)(auth.OrgContext(http.HandlerFunc(srv.StreamOrgRuns))))
 
 	// Public config exposed to the browser as `window.appConfig`. Only
 	// pre-approved, non-secret values go here — it ships to every client.

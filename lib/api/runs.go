@@ -14,6 +14,37 @@ import (
 	"github.com/spacefleet/spacefleet/lib/workflows"
 )
 
+// maxOrgRuns caps the global run-history list (and its stream snapshot): the
+// newest N runs across all applications in the org. It bounds the payload for an
+// org with a long deploy history; the index is a recent-history view, not a
+// paginated archive.
+const maxOrgRuns = 200
+
+// ListAllRuns returns every application's workflow runs in the organization
+// (newest first, capped at maxOrgRuns), for the global run-history index. Read
+// access (viewer or above); each run carries only its application_id (no graph or
+// component config), so there is nothing to redact here. The client resolves
+// application and cluster names and filters by them. A live version is at
+// /api/runs/stream (StreamOrgRuns).
+func (s *Server) ListAllRuns(ctx context.Context, _ ListAllRunsRequestObject) (ListAllRunsResponseObject, error) {
+	orgID, _, aerr, err := s.resolveWorkflowRead(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[ListAllRunsdefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	list, err := s.workflows.ListOrgRuns(ctx, orgID, maxOrgRuns)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WorkflowRun, len(list))
+	for i, r := range list {
+		out[i] = toAPIWorkflowRun(r)
+	}
+	return ListAllRuns200JSONResponse(RunList{Runs: out}), nil
+}
+
 // ListRuns returns an application's workflow runs (newest first). Read access
 // (viewer or above).
 func (s *Server) ListRuns(ctx context.Context, req ListRunsRequestObject) (ListRunsResponseObject, error) {

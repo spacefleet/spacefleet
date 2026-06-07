@@ -593,6 +593,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all workflow runs in the current organization
+         * @description Org-scoped. Returns workflow runs across every application in the
+         *     organization, newest-first, for a global deploy-history view. The list is
+         *     capped (newest runs); filtering by application or cluster is done by the
+         *     client. Each run carries its application_id; component runs and the graph
+         *     snapshot are not included — fetch a single run for those. A live stream of
+         *     the same list is available at /api/runs/stream (Server-Sent Events).
+         */
+        get: operations["listAllRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications": {
         parameters: {
             query?: never;
@@ -2644,6 +2669,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TektonRun"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAllRuns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's workflow runs, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunList"];
                 };
             };
             default: components["responses"]["Error"];

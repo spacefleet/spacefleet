@@ -137,7 +137,7 @@ export function ApplicationDetail() {
               </button>
               <button
                 type="button"
-                onClick={() => navigate(`/applications/${appId}/runs`)}
+                onClick={() => navigate(`/runs?application=${appId}`)}
                 title="View this application's run history"
                 className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
               >

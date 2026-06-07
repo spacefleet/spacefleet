@@ -658,6 +658,27 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/runs:
+    get:
+      summary: List all workflow runs in the current organization
+      description: |
+        Org-scoped. Returns workflow runs across every application in the
+        organization, newest-first, for a global deploy-history view. The list is
+        capped (newest runs); filtering by application or cluster is done by the
+        client. Each run carries its application_id; component runs and the graph
+        snapshot are not included — fetch a single run for those. A live stream of
+        the same list is available at /api/runs/stream (Server-Sent Events).
+      operationId: listAllRuns
+      responses:
+        "200":
+          description: The organization's workflow runs, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunList"
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/applications:
     get:
       summary: List the applications in the current organization
