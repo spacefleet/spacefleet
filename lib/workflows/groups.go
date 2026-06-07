@@ -190,5 +190,47 @@ func validateWorkflow(components []ComponentInput, groups []GroupInput) error {
 	if err := detectCycleAdj(expanded); err != nil {
 		return err
 	}
+
+	// A terraform apply node must consume a plan node's planfile: it applies the
+	// exact reviewed plan rather than re-planning, so it must depend on exactly one
+	// upstream terraform plan node (which supplies that planfile). Checked on the
+	// expanded graph so a dependency routed through a group still counts.
+	if err := validateTerraformApplyDeps(components, expanded); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateTerraformApplyDeps enforces that every terraform apply node depends on
+// exactly one terraform plan node. Zero is rejected (an apply has no preapproved
+// planfile to apply); more than one is rejected (ambiguous which plan to apply).
+// Other dependencies (helm/manifest gates, a second non-plan terraform node) are
+// allowed. Failures wrap ErrInvalidConfig so a handler maps them to a 400.
+func validateTerraformApplyDeps(components []ComponentInput, expanded map[uuid.UUID][]uuid.UUID) error {
+	byID := make(map[uuid.UUID]ComponentInput, len(components))
+	for _, c := range components {
+		byID[c.ID] = c
+	}
+	isTofuPlan := func(id uuid.UUID) bool {
+		c, ok := byID[id]
+		return ok && c.Type == TypeTerraform && c.Config[terraformConfigCommand] == terraformCommandPlan
+	}
+	for _, c := range components {
+		if c.Type != TypeTerraform || c.Config[terraformConfigCommand] != terraformCommandApply {
+			continue
+		}
+		plans := 0
+		for _, dep := range expanded[c.ID] {
+			if isTofuPlan(dep) {
+				plans++
+			}
+		}
+		switch {
+		case plans == 0:
+			return fmt.Errorf("%w: node %q (terraform apply) must depend on a terraform plan node to supply its planfile", ErrInvalidConfig, c.Name)
+		case plans > 1:
+			return fmt.Errorf("%w: node %q (terraform apply) depends on %d terraform plan nodes; it must depend on exactly one", ErrInvalidConfig, c.Name, plans)
+		}
+	}
 	return nil
 }

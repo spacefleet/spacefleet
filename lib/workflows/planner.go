@@ -41,7 +41,7 @@ const (
 // per-component dry-run (helm diff / kubectl diff), and the worker clears the
 // scheduler deps for a preview run so every component's dry-run is independently
 // runnable and they preview concurrently rather than gating on upstream "passes".
-func (w *WorkflowRunWorker) planComponent(ctx context.Context, app *ent.Application, node GraphNode, action string, force bool, existingRun string) (tekton.RunRequest, error) {
+func (w *WorkflowRunWorker) planComponent(ctx context.Context, app *ent.Application, node GraphNode, action string, force bool, existingRun string, runID uuid.UUID, byID map[uuid.UUID]GraphNode) (tekton.RunRequest, error) {
 	switch node.Type {
 	case TypeHelm:
 		return w.planHelm(ctx, app, node, action, force, existingRun)
@@ -50,8 +50,10 @@ func (w *WorkflowRunWorker) planComponent(ctx context.Context, app *ent.Applicat
 		// equivalent, so it's intentionally not threaded into planManifest.
 		return w.planManifest(ctx, app, node, action, existingRun)
 	case TypeTerraform:
-		// force is helm-only; a terraform plan/apply has no equivalent.
-		return w.planTofu(ctx, app, node, action, existingRun)
+		// force is helm-only; a terraform plan/apply has no equivalent. runID + byID
+		// let planTofu derive the planfile-handover Secret and the shared backend
+		// state identity it shares with its plan node.
+		return w.planTofu(ctx, app, node, action, existingRun, runID, byID)
 	default:
 		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q has unsupported type %q for execution", node.Name, node.Type)
 	}
@@ -137,13 +139,35 @@ func (w *WorkflowRunWorker) planManifest(ctx context.Context, app *ent.Applicati
 // `tofu destroy` that still needs state + git), so PullsChart is true here
 // regardless of action, and a private-repo git token is honored the same way.
 //
-// The plan node's output is the review material captured as the component_run
-// logs; the apply node re-plans (the plan artifact does not cross pods) — see
-// the tofu package doc for the re-plan-on-apply caveat.
-func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, node GraphNode, action, existingRun string) (tekton.RunRequest, error) {
+// The plan node's stdout is the review material captured as the component_run
+// logs; the apply node applies the EXACT planfile the plan node produced,
+// handed over through a Kubernetes Secret rather than re-planning — see the tofu
+// package doc. The handover Secret and the backend state identity are both keyed
+// off the plan node's id, so an apply node resolves its upstream plan node (via
+// byID) and shares the plan's state and planfile.
+func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, node GraphNode, action, existingRun string, runID uuid.UUID, byID map[uuid.UUID]GraphNode) (tekton.RunRequest, error) {
 	tofuAction, err := tofuActionFor(action)
 	if err != nil {
 		return tekton.RunRequest{}, err
+	}
+
+	// Resolve the plan node id this component is bound to: a plan node is its own
+	// reference; an apply node points at its single upstream terraform plan node
+	// (guaranteed by validateWorkflow). Both the backend state Secret and the
+	// planfile-handover Secret are keyed off it so plan and apply share state and
+	// the apply applies the plan's saved planfile.
+	planID := node.ID
+	if node.Config[terraformConfigCommand] == terraformCommandApply {
+		planID = upstreamTofuPlanID(node, byID)
+	}
+
+	// The planfile-handover Secret name. Left empty for a preview (read-only, no
+	// planfile) or when an apply node has no upstream plan (defensive: the script
+	// then fails closed). Per-run so concurrent runs don't collide, and stable
+	// across an approval pause (the run id is unchanged on resume).
+	var planArtifactSecret string
+	if action != ActionPreview && planID != uuid.Nil {
+		planArtifactSecret = tofuPlanArtifactSecret(runID, planID)
 	}
 
 	// Runner is always app-level; target cluster takes the per-component override
@@ -185,18 +209,19 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 	}
 
 	script := tofu.Script(tofu.Apply{
-		Command:       node.Config[terraformConfigCommand],
-		Action:        tofuAction,
-		RepoURL:       node.Config[helm.ConfigRepoURL],
-		GitRef:        node.Config[helm.ConfigGitRef],
-		Path:          node.Config[manifestConfigPath],
-		Backend:       node.Config[terraformConfigBackend],
-		BackendConfig: backendConfig,
-		SecretSuffix:  tofuSecretSuffix(app, node),
-		Namespace:     helm.RunNamespace,
-		HasGitToken:   resolved.HasGitToken,
-		BackendMode:   backendMode,
-		HasCloudAuth:  resolved.HasCloudAuth,
+		Command:            node.Config[terraformConfigCommand],
+		Action:             tofuAction,
+		RepoURL:            node.Config[helm.ConfigRepoURL],
+		GitRef:             node.Config[helm.ConfigGitRef],
+		Path:               node.Config[manifestConfigPath],
+		Backend:            node.Config[terraformConfigBackend],
+		BackendConfig:      backendConfig,
+		SecretSuffix:       tofuSecretSuffix(app, planID),
+		Namespace:          helm.RunNamespace,
+		HasGitToken:        resolved.HasGitToken,
+		BackendMode:        backendMode,
+		HasCloudAuth:       resolved.HasCloudAuth,
+		PlanArtifactSecret: planArtifactSecret,
 	})
 
 	return tekton.RunRequest{
@@ -250,11 +275,40 @@ func decodeBackendConfig(encoded string) (map[string]string, error) {
 }
 
 // tofuSecretSuffix derives the Kubernetes-backend state Secret suffix for a
-// terraform component, per application + component id, so two components (and
-// two apps) never share state. The backend names its Secret
-// tfstate-default-<suffix>, which must be a DNS-1123 label.
-func tofuSecretSuffix(app *ent.Application, node GraphNode) string {
-	return sanitizeLabel(app.ID.String() + "-" + node.ID.String())
+// terraform deployment, per application + PLAN-node id. A plan node passes its
+// own id and its apply node passes the same (its upstream plan node's id), so
+// the pair shares one state Secret — required for `tofu apply tfplan` to apply
+// the plan node's saved plan (a saved plan is bound to the state it was planned
+// against). Two distinct deployments (and two apps) never share state. The
+// backend names its Secret tfstate-default-<suffix>, which must be a DNS-1123
+// label.
+func tofuSecretSuffix(app *ent.Application, planID uuid.UUID) string {
+	return sanitizeLabel(app.ID.String() + "-" + planID.String())
+}
+
+// tofuPlanArtifactSecret is the name of the Kubernetes Secret the plan node
+// hands its saved planfile to its apply node through, per workflow run + plan
+// node id. Keying on the run id isolates concurrent/sequential runs from each
+// other and stays stable across an approval pause (the run id is unchanged when
+// the run resumes), so the apply node — possibly in a later worker after the
+// resume — reads exactly the plan node's planfile. Must be a DNS-1123 label.
+func tofuPlanArtifactSecret(runID, planID uuid.UUID) string {
+	return sanitizeLabel("tfplan-" + runID.String() + "-" + planID.String())
+}
+
+// upstreamTofuPlanID returns the id of the terraform plan node an apply node
+// depends on (its expanded depends_on holds component-level edges, with groups
+// already desugared). validateWorkflow guarantees an apply node has exactly one
+// such upstream plan node; a missing one (defensive) yields uuid.Nil, which
+// leaves the planfile Secret unset so the apply script fails closed.
+func upstreamTofuPlanID(node GraphNode, byID map[uuid.UUID]GraphNode) uuid.UUID {
+	for _, dep := range node.DependsOn {
+		d, ok := byID[dep]
+		if ok && d.Type == TypeTerraform && d.Config[terraformConfigCommand] == terraformCommandPlan {
+			return d.ID
+		}
+	}
+	return uuid.Nil
 }
 
 // tofuRunPrefix is the TaskRun generateName prefix for a terraform component (a

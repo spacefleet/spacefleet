@@ -11,16 +11,22 @@
 // lib/manifest/apply.go's Script.
 //
 // A terraform deployment is modelled in the DAG as two nodes — a plan node
-// (Command="plan", whose output is the review material) and an apply node
+// (Command="plan", whose stdout is the review material) and an apply node
 // (Command="apply") that depends on the plan node and is gated by
-// requires_approval. The plan node's `-out` plan artifact does NOT survive into
-// the apply node's pod (separate TaskRuns, separate workspaces), so the apply
-// node re-plans implicitly: `tofu apply -auto-approve` plans-then-applies
-// against the SHARED backend state. This re-plan-on-apply is the accepted v1
-// behavior — between the human's approval of the plan node's output and the
-// apply node running, drift is possible, but the shared state keeps the apply
-// consistent with reality. Pinning the exact reviewed plan is a documented
-// follow-up.
+// requires_approval. The plan node's `-out` planfile cannot survive into the
+// apply node's pod via the filesystem (separate TaskRuns, separate ephemeral
+// workspaces), so the planfile is handed over through a Kubernetes Secret: the
+// plan node writes `tofu plan -out=tfplan` and stores tfplan in a Secret
+// (PlanArtifactSecret) in the run namespace using the injected kubeconfig; the
+// apply node fetches that Secret and runs `tofu apply tfplan`, applying the
+// EXACT reviewed plan rather than re-planning. Because a saved plan is bound to
+// the state lineage/serial it was planned against, the plan and apply nodes
+// must share the same backend state identity (the planner keys both off the
+// plan node's id); if state drifted between plan and apply, `tofu apply tfplan`
+// fails loudly (stale plan) instead of silently applying something different.
+// kubectl is not in the base image, so the store/fetch paths `apk add` it
+// first (the script already does network I/O for the clone and provider
+// downloads).
 package tofu
 
 import (
@@ -91,6 +97,12 @@ const (
 	ActionPreview   = "preview"
 )
 
+// PlanfileName is the local filename the plan node saves its planfile to
+// (`tofu plan -out=tfplan`) and the apply node restores it to before
+// `tofu apply tfplan`. It is also the key the planfile is stored under inside
+// the PlanArtifactSecret.
+const PlanfileName = "tfplan"
+
 // DefaultBackend is the OpenTofu state backend used when none is configured:
 // the Kubernetes backend, storing state as Secrets in the runner cluster using
 // the injected kubeconfig — zero extra config.
@@ -150,6 +162,14 @@ type Apply struct {
 	// and providers authenticate from the process env. The values never appear in
 	// the script string or manifest.
 	HasCloudAuth bool
+	// PlanArtifactSecret is the name of the Kubernetes Secret (in Namespace, on
+	// the cluster the injected kubeconfig points at) the planfile is handed over
+	// through. The plan node stores `tofu plan -out=tfplan` into it; the apply
+	// node restores it and runs `tofu apply tfplan`. Empty disables the planfile
+	// path: a plan node just plans (the read-only review case, e.g. preview) and
+	// an apply node has no reviewed plan to apply, so it fails closed. The planner
+	// sets it (keyed off the plan node's id) for non-preview plan/apply nodes.
+	PlanArtifactSecret string
 }
 
 // Script renders the /bin/sh script the terraform step runs. It clones the root
@@ -157,22 +177,22 @@ type Apply struct {
 // (the Kubernetes backend by default, or a custom backend from Backend +
 // BackendConfig), runs `tofu init`, then plans or applies per Command/Action:
 //
-//   - Command=plan, deploy:    tofu plan -no-color
-//   - Command=plan, uninstall: tofu plan -destroy -no-color
-//   - Command=apply, deploy:   tofu apply -auto-approve -no-color
-//   - Command=apply, uninstall: tofu destroy -auto-approve -no-color
+//   - Command=plan, deploy:    tofu plan -out=tfplan -no-color, then store tfplan
+//   - Command=plan, uninstall: tofu plan -destroy -out=tfplan -no-color, then store
+//   - Command=apply, deploy/uninstall: restore tfplan, tofu apply tfplan (the
+//     saved plan already encodes deploy-vs-destroy), then delete the Secret
 //   - Action=preview (any Command): tofu plan -no-color (read-only; preview
-//     never mutates, so it is always a plan even on an apply node)
+//     never mutates and produces no planfile, so it is always a plain plan even
+//     on an apply node)
 //
 // The plan output IS the review material — it is captured as the component_run
-// logs the human reads before approving the apply node. `set -e` makes any
-// intermediate failure fail the step. The git token is never written into the
-// script — only via the mounted credentials file + a credential helper, exactly
-// as lib/helm and lib/manifest do.
-//
-// Re-plan-on-apply caveat: see the package doc. The apply node re-plans (the
-// plan node's artifact does not cross pods); the shared backend state keeps it
-// consistent.
+// logs the human reads before approving the apply node. When PlanArtifactSecret
+// is set the plan node additionally hands the binary planfile to the apply node
+// through that Kubernetes Secret (see the package doc), and the apply node
+// applies it verbatim instead of re-planning. `set -e` makes any intermediate
+// failure fail the step. The git token is never written into the script — only
+// via the mounted credentials file + a credential helper, exactly as lib/helm
+// and lib/manifest do.
 func Script(a Apply) string {
 	var b strings.Builder
 	b.WriteString("#!/bin/sh\nset -e\n")
@@ -252,24 +272,83 @@ func Script(a Apply) string {
 
 	switch {
 	case a.Command == CommandApply && !preview:
-		// apply node: re-plan-and-apply (the reviewed plan artifact does not cross
-		// pods; shared state keeps it consistent — see the package doc caveat).
-		if destroy {
-			b.WriteString("tofu destroy -auto-approve -no-color\n")
-		} else {
-			b.WriteString("tofu apply -auto-approve -no-color\n")
+		// apply node: apply the EXACT planfile the plan node produced and the human
+		// reviewed, restored from the handover Secret — never a fresh re-plan. The
+		// saved plan already encodes deploy-vs-destroy, so there is no -destroy here.
+		if a.PlanArtifactSecret == "" {
+			// No reviewed plan to apply. The DAG validation makes an apply node
+			// without an upstream plan node invalid, so this is a defensive guard:
+			// fail closed rather than silently re-planning.
+			b.WriteString("echo 'no reviewed planfile to apply (no upstream plan node)' >&2\nexit 1\n")
+			return b.String()
 		}
+		b.WriteString(restorePlanfile(a))
+		fmt.Fprintf(&b, "tofu apply -no-color %s\n", PlanfileName)
+		b.WriteString(deletePlanfileSecret(a))
 	default:
-		// plan node, or any preview: a read-only plan. The output is the review
-		// material captured as the component_run logs.
+		// plan node, or any preview: a read-only plan. The stdout is the review
+		// material captured as the component_run logs. A non-preview plan node also
+		// saves the planfile and hands it to its apply node through the Secret.
+		if preview {
+			if destroy {
+				b.WriteString("tofu plan -destroy -no-color\n")
+			} else {
+				b.WriteString("tofu plan -no-color\n")
+			}
+			break
+		}
 		if destroy {
-			b.WriteString("tofu plan -destroy -no-color\n")
+			fmt.Fprintf(&b, "tofu plan -destroy -out=%s -no-color\n", PlanfileName)
 		} else {
-			b.WriteString("tofu plan -no-color\n")
+			fmt.Fprintf(&b, "tofu plan -out=%s -no-color\n", PlanfileName)
+		}
+		if a.PlanArtifactSecret != "" {
+			b.WriteString(storePlanfile(a))
 		}
 	}
 
 	return b.String()
+}
+
+// kubectlInstall emits the line that makes kubectl available in the tofu step.
+// The OpenTofu image is Alpine without kubectl; `apk add` pulls it from the
+// already-enabled community repo. Emitted only on the planfile store/fetch
+// paths (network I/O is already expected there — the clone and provider
+// downloads), never for a read-only preview.
+const kubectlInstall = "apk add --no-cache kubectl\n"
+
+// storePlanfile emits the lines a non-preview plan node runs to hand its saved
+// planfile to the apply node: install kubectl, then upsert the planfile into the
+// PlanArtifactSecret (create-or-update via a client-side apply, idempotent so an
+// approval-resume re-run is safe). Uses the already-exported KUBECONFIG, so the
+// Secret lands on the same cluster+namespace as the Kubernetes-backend state.
+func storePlanfile(a Apply) string {
+	var b strings.Builder
+	b.WriteString(kubectlInstall)
+	fmt.Fprintf(&b, "kubectl create secret generic %s --namespace %s --from-file=%s=%s --dry-run=client -o yaml | kubectl apply --namespace %s -f -\n",
+		shQuote(a.PlanArtifactSecret), shQuote(a.Namespace), PlanfileName, PlanfileName, shQuote(a.Namespace))
+	return b.String()
+}
+
+// restorePlanfile emits the lines an apply node runs to fetch and decode the
+// planfile its plan node stored, before `tofu apply tfplan`. The Secret stores
+// the planfile base64-encoded under the PlanfileName key; jsonpath returns that
+// base64 and `base64 -d` (busybox) restores the binary planfile.
+func restorePlanfile(a Apply) string {
+	var b strings.Builder
+	b.WriteString(kubectlInstall)
+	fmt.Fprintf(&b, "kubectl get secret %s --namespace %s -o %s | base64 -d > %s\n",
+		shQuote(a.PlanArtifactSecret), shQuote(a.Namespace), shQuote("jsonpath={.data."+PlanfileName+"}"), PlanfileName)
+	return b.String()
+}
+
+// deletePlanfileSecret emits the best-effort cleanup an apply node runs after a
+// successful apply — the planfile has served its purpose. --ignore-not-found
+// keeps it idempotent; cleanup failure does not fail the step (the apply already
+// succeeded), so a future run's upsert simply overwrites a stray Secret.
+func deletePlanfileSecret(a Apply) string {
+	return fmt.Sprintf("kubectl delete secret %s --namespace %s --ignore-not-found || true\n",
+		shQuote(a.PlanArtifactSecret), shQuote(a.Namespace))
 }
 
 // backendOverride renders the backend_override.tf the step writes before init.

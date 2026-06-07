@@ -26,7 +26,7 @@ func TestScriptPlanDeployKubernetesBackend(t *testing.T) {
 		"namespace        = \"default\"",
 		"in_cluster_config = false",
 		"tofu init -no-color",
-		"tofu plan -no-color",
+		"tofu plan -out=tfplan -no-color",
 	}
 	for _, w := range wantContains {
 		if !strings.Contains(s, w) {
@@ -45,6 +45,11 @@ func TestScriptPlanDeployKubernetesBackend(t *testing.T) {
 	if strings.Contains(s, "credential.helper") {
 		t.Error("no token, should not wire a credential helper")
 	}
+	// No PlanArtifactSecret set: the plan still produces a planfile but does not
+	// store it (the read-only case), so no kubectl handover.
+	if strings.Contains(s, "kubectl") || strings.Contains(s, "apk add") {
+		t.Error("no PlanArtifactSecret, plan node must not store via kubectl")
+	}
 }
 
 func TestScriptPlanUninstallDestroy(t *testing.T) {
@@ -55,15 +60,110 @@ func TestScriptPlanUninstallDestroy(t *testing.T) {
 		Path:         "p",
 		SecretSuffix: "s",
 	})
-	if !strings.Contains(s, "tofu plan -destroy -no-color") {
-		t.Errorf("uninstall plan must be a destroy plan\n---\n%s", s)
+	if !strings.Contains(s, "tofu plan -destroy -out=tfplan -no-color") {
+		t.Errorf("uninstall plan must be a destroy plan saved to a planfile\n---\n%s", s)
 	}
 	if strings.Contains(s, "tofu apply") || strings.Contains(s, "tofu destroy") {
 		t.Errorf("plan node must not mutate\n---\n%s", s)
 	}
 }
 
-func TestScriptApplyDeploy(t *testing.T) {
+func TestScriptPlanStoresPlanfileSecret(t *testing.T) {
+	// A non-preview plan node with a PlanArtifactSecret hands its saved planfile to
+	// the apply node: install kubectl, then upsert the planfile into the Secret.
+	s := Script(Apply{
+		Command:            CommandPlan,
+		Action:             ActionDeploy,
+		RepoURL:            "r",
+		Path:               "p",
+		SecretSuffix:       "s",
+		Namespace:          "default",
+		PlanArtifactSecret: "tfplan-run1-plan1",
+	})
+	wantContains := []string{
+		"tofu plan -out=tfplan -no-color",
+		"apk add --no-cache kubectl",
+		"kubectl create secret generic 'tfplan-run1-plan1' --namespace 'default' --from-file=tfplan=tfplan --dry-run=client -o yaml | kubectl apply --namespace 'default' -f -",
+	}
+	for _, w := range wantContains {
+		if !strings.Contains(s, w) {
+			t.Errorf("plan store script missing %q\n---\n%s", w, s)
+		}
+	}
+	// The plan node stores; it must not fetch, apply, or delete the Secret.
+	if strings.Contains(s, "tofu apply") || strings.Contains(s, "kubectl get secret") || strings.Contains(s, "kubectl delete secret") {
+		t.Errorf("plan node must only store the planfile\n---\n%s", s)
+	}
+	// The store must come after the plan produced the file.
+	if i, j := strings.Index(s, "tofu plan -out=tfplan"), strings.Index(s, "kubectl create secret"); i < 0 || j < 0 || i >= j {
+		t.Errorf("store must follow the plan (i=%d j=%d)\n---\n%s", i, j, s)
+	}
+}
+
+func TestScriptApplyDeployUsesPlanfile(t *testing.T) {
+	s := Script(Apply{
+		Command:            CommandApply,
+		Action:             ActionDeploy,
+		RepoURL:            "r",
+		Path:               "p",
+		SecretSuffix:       "s",
+		Namespace:          "default",
+		PlanArtifactSecret: "tfplan-run1-plan1",
+	})
+	wantContains := []string{
+		"apk add --no-cache kubectl",
+		"kubectl get secret 'tfplan-run1-plan1' --namespace 'default' -o 'jsonpath={.data.tfplan}' | base64 -d > tfplan",
+		"tofu apply -no-color tfplan",
+		"kubectl delete secret 'tfplan-run1-plan1' --namespace 'default' --ignore-not-found || true",
+	}
+	for _, w := range wantContains {
+		if !strings.Contains(s, w) {
+			t.Errorf("apply script missing %q\n---\n%s", w, s)
+		}
+	}
+	if strings.Contains(s, "-auto-approve") {
+		t.Error("apply must apply the saved planfile, not auto-approve a fresh plan")
+	}
+	if strings.Contains(s, "tofu plan") {
+		t.Error("apply node must not run a standalone plan (it applies the saved plan)")
+	}
+	if strings.Contains(s, "tofu destroy") {
+		t.Error("deploy apply must not destroy")
+	}
+	// Fetch must precede apply, which must precede the cleanup delete.
+	fetch, apply, del := strings.Index(s, "kubectl get secret"), strings.Index(s, "tofu apply"), strings.Index(s, "kubectl delete secret")
+	if fetch < 0 || fetch >= apply || apply >= del {
+		t.Errorf("expected fetch < apply < delete (fetch=%d apply=%d del=%d)\n---\n%s", fetch, apply, del, s)
+	}
+}
+
+func TestScriptApplyUninstallAppliesDestroyPlanfile(t *testing.T) {
+	// An uninstall apply applies the saved DESTROY plan the plan node produced —
+	// the same `tofu apply tfplan`; the destroy intent is encoded in the planfile,
+	// so there is no separate `tofu destroy`.
+	s := Script(Apply{
+		Command:            CommandApply,
+		Action:             ActionUninstall,
+		RepoURL:            "r",
+		Path:               "p",
+		SecretSuffix:       "s",
+		Namespace:          "default",
+		PlanArtifactSecret: "tfplan-run1-plan1",
+	})
+	if !strings.Contains(s, "tofu apply -no-color tfplan") {
+		t.Errorf("uninstall apply must apply the saved destroy planfile\n---\n%s", s)
+	}
+	if strings.Contains(s, "tofu destroy") {
+		t.Error("uninstall must apply the destroy planfile, not run tofu destroy")
+	}
+	if strings.Contains(s, "-auto-approve") {
+		t.Error("uninstall apply must not auto-approve a fresh plan")
+	}
+}
+
+func TestScriptApplyWithoutPlanfileFailsClosed(t *testing.T) {
+	// Defense behind the DAG validation: an apply node with no plan artifact must
+	// fail rather than silently re-plan.
 	s := Script(Apply{
 		Command:      CommandApply,
 		Action:       ActionDeploy,
@@ -71,30 +171,11 @@ func TestScriptApplyDeploy(t *testing.T) {
 		Path:         "p",
 		SecretSuffix: "s",
 	})
-	if !strings.Contains(s, "tofu apply -auto-approve -no-color") {
-		t.Errorf("apply/deploy must auto-approve apply\n---\n%s", s)
-	}
-	if strings.Contains(s, "tofu destroy") {
-		t.Error("deploy apply must not destroy")
-	}
-	if strings.Contains(s, "tofu plan") {
-		t.Error("apply node should not run a standalone plan (apply re-plans implicitly)")
-	}
-}
-
-func TestScriptApplyUninstallDestroy(t *testing.T) {
-	s := Script(Apply{
-		Command:      CommandApply,
-		Action:       ActionUninstall,
-		RepoURL:      "r",
-		Path:         "p",
-		SecretSuffix: "s",
-	})
-	if !strings.Contains(s, "tofu destroy -auto-approve -no-color") {
-		t.Errorf("apply/uninstall must auto-approve destroy\n---\n%s", s)
+	if !strings.Contains(s, "exit 1") || !strings.Contains(s, "no reviewed planfile") {
+		t.Errorf("apply without a planfile must fail closed\n---\n%s", s)
 	}
 	if strings.Contains(s, "tofu apply") {
-		t.Error("uninstall must not apply")
+		t.Error("apply without a planfile must not run tofu apply")
 	}
 }
 
@@ -113,6 +194,11 @@ func TestScriptPreviewIsAlwaysPlan(t *testing.T) {
 	if strings.Contains(s, "tofu apply") || strings.Contains(s, "tofu destroy") {
 		t.Errorf("preview must not mutate\n---\n%s", s)
 	}
+	// Preview produces no planfile and no handover (the planner leaves
+	// PlanArtifactSecret empty for preview).
+	if strings.Contains(s, "-out=tfplan") || strings.Contains(s, "kubectl") || strings.Contains(s, "apk add") {
+		t.Errorf("preview must not save or hand over a planfile\n---\n%s", s)
+	}
 }
 
 func TestScriptCustomBackend(t *testing.T) {
@@ -127,6 +213,7 @@ func TestScriptCustomBackend(t *testing.T) {
 			"region": "us-east-1",
 			"key":    "prod/terraform.tfstate",
 		},
+		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
 	wantContains := []string{
 		"backend \"s3\" {",
@@ -134,7 +221,7 @@ func TestScriptCustomBackend(t *testing.T) {
 		"bucket = \"my-state\"",
 		"key = \"prod/terraform.tfstate\"",
 		"region = \"us-east-1\"",
-		"tofu apply -auto-approve -no-color",
+		"tofu apply -no-color tfplan",
 	}
 	for _, w := range wantContains {
 		if !strings.Contains(s, w) {
@@ -183,7 +270,7 @@ func TestScriptTokenWiresCredentialHelper(t *testing.T) {
 func TestScriptTokenWiredForUninstall(t *testing.T) {
 	// An uninstall (tofu destroy) still clones the root module, so the token wiring
 	// is honored regardless of action.
-	s := Script(Apply{Command: CommandApply, Action: ActionUninstall, RepoURL: "r", Path: "p", SecretSuffix: "s", HasGitToken: true})
+	s := Script(Apply{Command: CommandApply, Action: ActionUninstall, RepoURL: "r", Path: "p", SecretSuffix: "s", HasGitToken: true, PlanArtifactSecret: "tfplan-run1-plan1"})
 	if !strings.Contains(s, "credential.helper 'store --file=/workspace/creds/git-credentials'") {
 		t.Errorf("uninstall must still wire the credential helper to clone\n---\n%s", s)
 	}
@@ -214,11 +301,12 @@ func TestScriptRejectsPathTraversal(t *testing.T) {
 
 func TestScriptBYONoBackendOverride(t *testing.T) {
 	s := Script(Apply{
-		Command:     CommandApply,
-		Action:      ActionDeploy,
-		RepoURL:     "r",
-		Path:        "p",
-		BackendMode: ModeBYO,
+		Command:            CommandApply,
+		Action:             ActionDeploy,
+		RepoURL:            "r",
+		Path:               "p",
+		BackendMode:        ModeBYO,
+		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
 	if strings.Contains(s, "backend_override.tf") || strings.Contains(s, "cat > backend_override.tf") {
 		t.Errorf("byo mode must not write a backend override\n---\n%s", s)
@@ -233,12 +321,13 @@ func TestScriptBYONoBackendOverride(t *testing.T) {
 
 func TestScriptBYOCloudAuthSourcesEnvFile(t *testing.T) {
 	s := Script(Apply{
-		Command:      CommandApply,
-		Action:       ActionDeploy,
-		RepoURL:      "r",
-		Path:         "p",
-		BackendMode:  ModeBYO,
-		HasCloudAuth: true,
+		Command:            CommandApply,
+		Action:             ActionDeploy,
+		RepoURL:            "r",
+		Path:               "p",
+		BackendMode:        ModeBYO,
+		HasCloudAuth:       true,
+		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
 	const srcLine = ". /workspace/creds/aws.env"
 	if !strings.Contains(s, srcLine) {
@@ -252,11 +341,12 @@ func TestScriptBYOCloudAuthSourcesEnvFile(t *testing.T) {
 
 func TestScriptBYONoCloudAuthNoEnvFile(t *testing.T) {
 	s := Script(Apply{
-		Command:     CommandApply,
-		Action:      ActionDeploy,
-		RepoURL:     "r",
-		Path:        "p",
-		BackendMode: ModeBYO,
+		Command:            CommandApply,
+		Action:             ActionDeploy,
+		RepoURL:            "r",
+		Path:               "p",
+		BackendMode:        ModeBYO,
+		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
 	if strings.Contains(s, "aws.env") {
 		t.Errorf("no cloud auth must not source an env file\n---\n%s", s)
@@ -275,6 +365,7 @@ func TestScriptBYOBackendConfigFlags(t *testing.T) {
 			"region": "us-east-1",
 			"key":    "prod/terraform.tfstate",
 		},
+		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
 	want := "tofu init -no-color -backend-config='bucket=my-state' -backend-config='key=prod/terraform.tfstate' -backend-config='region=us-east-1'\n"
 	if !strings.Contains(s, want) {
@@ -287,11 +378,12 @@ func TestScriptBYOBackendConfigFlags(t *testing.T) {
 
 func TestScriptBYOEmptyBackendConfigPlainInit(t *testing.T) {
 	s := Script(Apply{
-		Command:     CommandApply,
-		Action:      ActionDeploy,
-		RepoURL:     "r",
-		Path:        "p",
-		BackendMode: ModeBYO,
+		Command:            CommandApply,
+		Action:             ActionDeploy,
+		RepoURL:            "r",
+		Path:               "p",
+		BackendMode:        ModeBYO,
+		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
 	if !strings.Contains(s, "tofu init -no-color\n") {
 		t.Errorf("empty backend config must yield a plain init\n---\n%s", s)
@@ -327,7 +419,7 @@ func TestScriptManagedUnchanged(t *testing.T) {
 		"}\n" +
 		"EOF\n" +
 		"tofu init -no-color\n" +
-		"tofu plan -no-color\n"
+		"tofu plan -out=tfplan -no-color\n"
 	if s != want {
 		t.Errorf("managed output changed\n got: %q\nwant: %q", s, want)
 	}

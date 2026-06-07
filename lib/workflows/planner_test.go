@@ -4,6 +4,9 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/google/uuid"
+
+	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/manifest"
 )
@@ -143,5 +146,66 @@ func TestComponentReleaseNameAndPrefix(t *testing.T) {
 	}
 	if got := componentRunPrefix(n2); got != "helm-my-app" {
 		t.Fatalf("prefix fallback: got %q", got)
+	}
+}
+
+func TestUpstreamTofuPlanID(t *testing.T) {
+	t.Parallel()
+	planID := uuid.New()
+	helmID := uuid.New()
+	plan := GraphNode{ID: planID, Type: TypeTerraform, Config: map[string]string{terraformConfigCommand: terraformCommandPlan}}
+	helmDep := GraphNode{ID: helmID, Type: TypeHelm, Config: map[string]string{}}
+	byID := map[uuid.UUID]GraphNode{planID: plan, helmID: helmDep}
+
+	// Apply depending on a helm gate AND its plan resolves to the plan id.
+	apply := GraphNode{ID: uuid.New(), Type: TypeTerraform, DependsOn: []uuid.UUID{helmID, planID}, Config: map[string]string{terraformConfigCommand: terraformCommandApply}}
+	if got := upstreamTofuPlanID(apply, byID); got != planID {
+		t.Errorf("upstream plan id: got %s, want %s", got, planID)
+	}
+
+	// No upstream plan → uuid.Nil (the script then fails closed).
+	orphan := GraphNode{ID: uuid.New(), Type: TypeTerraform, DependsOn: []uuid.UUID{helmID}, Config: map[string]string{terraformConfigCommand: terraformCommandApply}}
+	if got := upstreamTofuPlanID(orphan, byID); got != uuid.Nil {
+		t.Errorf("no upstream plan: got %s, want Nil", got)
+	}
+}
+
+func TestTofuSecretSuffixSharedByPair(t *testing.T) {
+	t.Parallel()
+	app := &ent.Application{ID: uuid.New()}
+	planID := uuid.New()
+	// A plan node keys state off its own id; its apply node keys off the SAME
+	// (its upstream plan's) id — so the pair shares one backend state Secret, the
+	// precondition for `tofu apply tfplan` to apply the plan node's saved plan.
+	planSuffix := tofuSecretSuffix(app, planID)
+	applySuffix := tofuSecretSuffix(app, planID)
+	if planSuffix != applySuffix {
+		t.Fatalf("plan and apply must share a state suffix: %q vs %q", planSuffix, applySuffix)
+	}
+	// A different deployment (different plan id) does not share state.
+	if other := tofuSecretSuffix(app, uuid.New()); other == planSuffix {
+		t.Fatalf("distinct plan ids must not collide: %q", other)
+	}
+	// The result is a DNS-1123 label (lowercase, hyphen-separated).
+	if planSuffix == "" || planSuffix != sanitizeLabel(planSuffix) {
+		t.Fatalf("suffix is not a sanitized label: %q", planSuffix)
+	}
+}
+
+func TestTofuPlanArtifactSecret(t *testing.T) {
+	t.Parallel()
+	runID, planID := uuid.New(), uuid.New()
+	name := tofuPlanArtifactSecret(runID, planID)
+	// Stable for the same (run, plan) — so plan stores and apply fetches the same
+	// Secret, including across an approval pause (same run id on resume).
+	if again := tofuPlanArtifactSecret(runID, planID); again != name {
+		t.Fatalf("not stable: %q vs %q", name, again)
+	}
+	// Per-run: a different run id yields a different Secret.
+	if other := tofuPlanArtifactSecret(uuid.New(), planID); other == name {
+		t.Fatalf("different runs must not share a planfile Secret: %q", other)
+	}
+	if name == "" || name != sanitizeLabel(name) {
+		t.Fatalf("secret name is not a sanitized label: %q", name)
 	}
 }

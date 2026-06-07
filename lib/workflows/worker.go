@@ -189,7 +189,7 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 		if !ok {
 			return nodeResult{Status: statusFailed, Err: fmt.Errorf("workflows: component run for node %s missing", sn.ID)}
 		}
-		res := w.runComponent(ctx, a, app, node, cr)
+		res := w.runComponent(ctx, a, app, node, cr, nodeByID)
 		if res.Status == statusFailed && res.Retryable {
 			ranMu.Lock()
 			retryable = true
@@ -288,7 +288,7 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 // not re-run a succeeded component), marks it running, builds the RunSpec via the
 // planner, executes the TaskRun crash-safely (re-attaching by the per-component
 // label), captures logs + revisions, and marks the terminal status.
-func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs, app *ent.Application, node GraphNode, cr *ent.ComponentRun) nodeResult {
+func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs, app *ent.Application, node GraphNode, cr *ent.ComponentRun, byID map[uuid.UUID]GraphNode) nodeResult {
 	// Retry short-circuit: a component already settled in a prior attempt is not
 	// re-run; its stored status drives the scheduler so dependents see the same
 	// outcome. Skipped is treated as a non-pass terminal too.
@@ -303,7 +303,7 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 
 	_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "running", "starting "+a.Action, "")
 
-	req, err := w.planComponent(ctx, app, node, a.Action, a.Force, cr.RunName)
+	req, err := w.planComponent(ctx, app, node, a.Action, a.Force, cr.RunName, a.WorkflowRunID, byID)
 	if err != nil {
 		_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "failed", err.Error(), "")
 		return nodeResult{Status: statusFailed, Err: err}
