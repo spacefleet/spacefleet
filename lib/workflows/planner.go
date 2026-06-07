@@ -160,6 +160,12 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q: %w", node.Name, err)
 	}
 
+	// Backend mode + an optional cloud credential (byo mode). Validation already
+	// gated these at write time, so a blank cloud_credential_id parses to uuid.Nil
+	// and any parse error is ignored here (it can't occur for a validated config).
+	backendMode := node.Config[terraformConfigBackendMode]
+	cloudCredentialID, _ := uuid.Parse(node.Config[terraformConfigCloudCredentialID])
+
 	// Always inject the target kubeconfig (the Kubernetes backend uses it) and,
 	// for a private github.com repo, the git-credentials file — for every action,
 	// since even an uninstall (tofu destroy) needs state + the root module.
@@ -171,6 +177,7 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		Values:               "",
 		ChartCredentialID:    uuid.Nil,
 		GitHubInstallationID: deref(node.GitHubInstallationID),
+		CloudCredentialID:    cloudCredentialID,
 		PullsChart:           pullsChart,
 	})
 	if err != nil {
@@ -188,6 +195,8 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		SecretSuffix:  tofuSecretSuffix(app, node),
 		Namespace:     helm.RunNamespace,
 		HasGitToken:   resolved.HasGitToken,
+		BackendMode:   backendMode,
+		HasCloudAuth:  resolved.HasCloudAuth,
 	})
 
 	return tekton.RunRequest{
@@ -199,6 +208,7 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 			Image:  tofu.DefaultImage,
 			Script: script,
 			Files:  resolved.Files,
+			Env:    resolved.Env,
 		},
 	}, nil
 }

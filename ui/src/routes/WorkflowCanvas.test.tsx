@@ -64,7 +64,11 @@ function renderWorkflow() {
   );
 }
 
-function defaultGets(comps: unknown[], groups: unknown[] = []) {
+function defaultGets(
+  comps: unknown[],
+  groups: unknown[] = [],
+  cloudCreds: unknown[] = [],
+) {
   mockApi.GET.mockImplementation((path: string) => {
     if (path === "/api/applications/{id}/workflow")
       return Promise.resolve({ data: { components: comps, groups }, error: undefined });
@@ -72,6 +76,8 @@ function defaultGets(comps: unknown[], groups: unknown[] = []) {
       return Promise.resolve({ data: [{ id: "c1", name: "prod" }], error: undefined });
     if (path === "/api/chart-credentials")
       return Promise.resolve({ data: [], error: undefined });
+    if (path === "/api/cloud-credentials")
+      return Promise.resolve({ data: cloudCreds, error: undefined });
     if (path === "/api/github/installations")
       return Promise.resolve({ data: [], error: undefined });
     return Promise.resolve({ data: undefined, error: undefined });
@@ -244,6 +250,81 @@ describe("WorkflowCanvas", () => {
     expect(apply.config.command).toBe("apply");
     expect(apply.requires_approval).toBe(true);
     expect(apply.depends_on).toEqual([plan.id]);
+  });
+
+  // A terraform plan node already loaded in the workflow, so we can open it in
+  // the node editor and exercise the backend-mode control directly.
+  const tfPlan = {
+    id: "33333333-3333-3333-3333-333333333333",
+    name: "terraform plan",
+    type: "terraform",
+    config: { command: "plan", backend: "kubernetes" },
+    depends_on: [],
+    continue_on_failure: false,
+    target_namespace: "",
+    position: { x: 100, y: 100 },
+  };
+
+  async function openTerraformEditor() {
+    renderWorkflow();
+    await screen.findByText("terraform plan");
+    const node = document.querySelector(".react-flow__node") as HTMLElement;
+    fireEvent.click(node);
+    await userEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+    await screen.findByRole("button", { name: /back to workflow/i });
+  }
+
+  // The Field helper renders an adjacent <label> (not linked via htmlFor), so the
+  // selects are located through their option text rather than getByLabelText.
+  function selectWithOption(text: RegExp): HTMLSelectElement {
+    const combos = screen.getAllByRole("combobox") as HTMLSelectElement[];
+    const found = combos.find((c) =>
+      Array.from(c.options).some((o) => text.test(o.textContent ?? "")),
+    );
+    if (!found) throw new Error(`no select with option matching ${text}`);
+    return found;
+  }
+  function querySelectWithOption(text: RegExp): HTMLSelectElement | undefined {
+    const combos = screen.queryAllByRole("combobox") as HTMLSelectElement[];
+    return combos.find((c) =>
+      Array.from(c.options).some((o) => text.test(o.textContent ?? "")),
+    );
+  }
+
+  it("byo backend mode shows the cloud-credential picker; managed hides it and shows the state backend", async () => {
+    defaultGets([tfPlan], [], [
+      { id: "cc-aws", name: "prod-aws", provider: "aws", config: {} },
+    ]);
+    await openTerraformEditor();
+
+    const backendSelect = selectWithOption(/bring your own/i);
+    // Managed by default: State backend select present, no Cloud credential picker.
+    expect(querySelectWithOption(/kubernetes \(default\)/i)).toBeDefined();
+    expect(querySelectWithOption(/use instance role/i)).toBeUndefined();
+
+    await userEvent.selectOptions(backendSelect, "byo");
+    expect(querySelectWithOption(/use instance role/i)).toBeDefined();
+    expect(querySelectWithOption(/kubernetes \(default\)/i)).toBeUndefined();
+
+    await userEvent.selectOptions(backendSelect, "managed");
+    expect(querySelectWithOption(/use instance role/i)).toBeUndefined();
+    expect(querySelectWithOption(/kubernetes \(default\)/i)).toBeDefined();
+  });
+
+  it("the cloud-credential picker lists only aws-provider credentials", async () => {
+    defaultGets([tfPlan], [], [
+      { id: "cc-aws", name: "prod-aws", provider: "aws", config: {} },
+      { id: "cc-gcp", name: "prod-gcp", provider: "gcp", config: {} },
+    ]);
+    await openTerraformEditor();
+
+    await userEvent.selectOptions(selectWithOption(/bring your own/i), "byo");
+    const picker = selectWithOption(/use instance role/i);
+    const optionLabels = Array.from(picker.options).map((o) => o.textContent);
+    expect(optionLabels).toContain("prod-aws");
+    expect(optionLabels).not.toContain("prod-gcp");
+    // The instance-role default is always offered.
+    expect(optionLabels).toContain("(none — use instance role)");
   });
 
   it("selecting a node and clicking Edit navigates to the node editor route", async () => {

@@ -12,6 +12,7 @@ type ComponentType = components["schemas"]["ComponentType"];
 type ChartSource = components["schemas"]["ChartSource"];
 type Cluster = components["schemas"]["Cluster"];
 type ChartCredential = components["schemas"]["ChartCredential"];
+type CloudCredential = components["schemas"]["CloudCredential"];
 type GitHubInstallation = components["schemas"]["GitHubInstallation"];
 type GitHubRepository = components["schemas"]["GitHubRepository"];
 
@@ -39,6 +40,7 @@ interface ComponentFieldsProps {
   onChange: (next: EditableComponent) => void;
   clusters: Cluster[];
   credentials: ChartCredential[];
+  cloudCredentials: CloudCredential[];
   installations: GitHubInstallation[];
   githubEnabled: boolean;
   // When true the fields render read-only (a viewer opened the editor). Inputs
@@ -58,6 +60,7 @@ export function ComponentFields({
   onChange,
   clusters,
   credentials,
+  cloudCredentials,
   installations,
   githubEnabled,
   disabled = false,
@@ -145,6 +148,7 @@ export function ComponentFields({
           config={component.config}
           setConfig={setConfig}
           repoUrlPicker={repoUrlPicker}
+          cloudCredentials={cloudCredentials}
           disabled={disabled}
         />
       ) : (
@@ -419,24 +423,40 @@ function ManifestConfig({
 
 // TerraformConfig edits an OpenTofu node: the git source (repo_url/ref/path),
 // the tofu command (plan/apply — set by addTerraform, shown read-only so the
-// two-node shape stays intact), the state backend, and for a custom backend an
-// editor for the backend_config JSON object. Secret backend values get the same
-// redaction treatment as helm inline values (see lib/api workflow secret keys).
+// two-node shape stays intact), and the backend.
+//
+// Backend mode (config.backend_mode, default "managed") splits two worlds:
+//   - managed: Spacefleet manages state (Kubernetes default, or a custom
+//     backend it configures) — the existing State backend select + backend_config.
+//   - byo ("bring your own"): the module's own backend {} block is used and
+//     Spacefleet signs in with an aws cloud credential (config.cloud_credential_id,
+//     empty = instance role). backend_config becomes optional partial
+//     -backend-config settings.
+// Secret backend values get the same redaction treatment as helm inline values
+// (see lib/api workflow secret keys).
 function TerraformConfig({
   config,
   setConfig,
   repoUrlPicker,
+  cloudCredentials,
   disabled,
 }: {
   config: Record<string, string>;
   setConfig: (key: string, value: string) => void;
   repoUrlPicker: ReactNode;
+  cloudCredentials: CloudCredential[];
   disabled: boolean;
 }) {
+  // Missing/empty backend_mode means the original managed behavior (back-compat).
+  const backendMode = config.backend_mode === "byo" ? "byo" : "managed";
+  const isByo = backendMode === "byo";
   const backend = config.backend || "kubernetes";
   const isCustom = backend !== "kubernetes";
   const command = config.command || "plan";
   const backendRows = parseBackendConfig(config.backend_config);
+
+  // Only aws credentials can be injected into the OpenTofu run for now.
+  const awsCredentials = cloudCredentials.filter((c) => c.provider === "aws");
 
   function setBackend(next: string) {
     // Switching back to the Kubernetes default drops any custom backend_config.
@@ -491,37 +511,91 @@ function TerraformConfig({
       </Field>
 
       <Field
-        label="State backend"
-        help="Kubernetes (default) stores state as Secrets in the target cluster — zero config. Choose Custom to point at S3/GCS/azurerm/pg/etc."
+        label="Backend"
+        help={
+          isByo
+            ? "Spacefleet uses the backend declared in your module and signs in with this credential. Run plan first — a no changes result confirms your existing state was read."
+            : undefined
+        }
       >
         <select
           className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
-          value={isCustom ? "custom" : "kubernetes"}
-          onChange={(e) =>
-            setBackend(e.target.value === "custom" ? "s3" : "kubernetes")
-          }
+          value={backendMode}
+          onChange={(e) => setConfig("backend_mode", e.target.value)}
           disabled={disabled}
         >
-          <option value="kubernetes">Kubernetes (default)</option>
-          <option value="custom">Custom</option>
+          <option value="managed">Managed (Kubernetes)</option>
+          <option value="byo">Bring your own (from code)</option>
         </select>
       </Field>
 
-      {isCustom && (
-        <>
-          <Field
-            label="Backend type"
-            help="The OpenTofu backend name, e.g. s3, gcs, azurerm, pg."
+      {!isByo && (
+        <Field
+          label="State backend"
+          help="Kubernetes (default) stores state as Secrets in the target cluster — zero config. Choose Custom to point at S3/GCS/azurerm/pg/etc."
+        >
+          <select
+            className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+            value={isCustom ? "custom" : "kubernetes"}
+            onChange={(e) =>
+              setBackend(e.target.value === "custom" ? "s3" : "kubernetes")
+            }
+            disabled={disabled}
           >
-            <input
-              type="text"
-              className="w-full border border-neutral-300 px-3 py-2 text-sm"
-              placeholder="s3"
-              value={backend}
-              onChange={(e) => setConfig("backend", e.target.value)}
-              disabled={disabled}
-            />
-          </Field>
+            <option value="kubernetes">Kubernetes (default)</option>
+            <option value="custom">Custom</option>
+          </select>
+        </Field>
+      )}
+
+      {isByo && (
+        <Field
+          label="Cloud credential"
+          help="Optional — the AWS credential Spacefleet signs in with. Leave as instance role to use the runner's own role."
+        >
+          <select
+            className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+            value={config.cloud_credential_id ?? ""}
+            onChange={(e) => setConfig("cloud_credential_id", e.target.value)}
+            disabled={disabled}
+          >
+            <option value="">(none — use instance role)</option>
+            {awsCredentials.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+
+      {!isByo && isCustom && (
+        <Field
+          label="Backend type"
+          help="The OpenTofu backend name, e.g. s3, gcs, azurerm, pg."
+        >
+          <input
+            type="text"
+            className="w-full border border-neutral-300 px-3 py-2 text-sm"
+            placeholder="s3"
+            value={backend}
+            onChange={(e) => setConfig("backend", e.target.value)}
+            disabled={disabled}
+          />
+        </Field>
+      )}
+
+      {isByo ? (
+        <KeyValueEditor
+          label="Partial backend settings (-backend-config)"
+          help="Optional. These fill a partial backend {} block in your module at init — e.g. bucket, key, region left out of code. Secret values are redacted from non-editors."
+          addLabel="+ Add backend setting"
+          rows={backendRows}
+          onChange={setBackendRows}
+          disabled={disabled}
+        />
+      ) : (
+        isCustom && (
           <KeyValueEditor
             label="Backend configuration"
             help="Keys passed to the backend (e.g. bucket, region). Secret values are redacted from non-editors."
@@ -530,7 +604,7 @@ function TerraformConfig({
             onChange={setBackendRows}
             disabled={disabled}
           />
-        </>
+        )
       )}
     </>
   );

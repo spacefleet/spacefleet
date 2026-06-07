@@ -33,6 +33,7 @@ type ComponentType = components["schemas"]["ComponentType"];
 type RunAction = components["schemas"]["RunAction"];
 type Cluster = components["schemas"]["Cluster"];
 type ChartCredential = components["schemas"]["ChartCredential"];
+type CloudCredential = components["schemas"]["CloudCredential"];
 type GitHubInstallation = components["schemas"]["GitHubInstallation"];
 
 // A component (type "component") node carries the editable component as its data;
@@ -74,6 +75,7 @@ interface WorkflowDraftValue {
   edges: Edge[];
   clusters: Cluster[];
   credentials: ChartCredential[];
+  cloudCredentials: CloudCredential[];
   installations: GitHubInstallation[];
 
   loading: boolean;
@@ -132,6 +134,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
 
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [credentials, setCredentials] = useState<ChartCredential[]>([]);
+  const [cloudCredentials, setCloudCredentials] = useState<CloudCredential[]>([]);
   const [installations, setInstallations] = useState<GitHubInstallation[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -233,6 +236,10 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const { data } = await api.GET("/api/chart-credentials");
       setCredentials(data ?? []);
+    })();
+    void (async () => {
+      const { data } = await api.GET("/api/cloud-credentials");
+      setCloudCredentials(data ?? []);
     })();
     if (githubEnabled) {
       void (async () => {
@@ -599,6 +606,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       edges,
       clusters,
       credentials,
+      cloudCredentials,
       installations,
       loading,
       error,
@@ -630,6 +638,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       edges,
       clusters,
       credentials,
+      cloudCredentials,
       installations,
       loading,
       error,

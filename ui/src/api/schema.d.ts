@@ -1816,7 +1816,14 @@ export interface components {
             /**
              * @description Type-specific, non-secret parameters (helm: chart_source/repo_url/
              *     chart/version/git_ref/git_path/values/…; manifest: repo_url/git_ref/
-             *     path). The `values` key is redacted for callers below editor.
+             *     path; terraform: repo_url/git_ref/path/command/backend/backend_config/
+             *     backend_mode/cloud_credential_id). `backend_mode` is `managed`
+             *     (default — Spacefleet generates the state backend override) or `byo`
+             *     (use the module's own backend block; `backend_config` entries are
+             *     passed as `tofu init -backend-config` flags). `cloud_credential_id`
+             *     is the UUID of an AWS cloud credential used to authenticate a `byo`
+             *     backend run. The `values` and `backend_config` keys are redacted for
+             *     callers below editor.
              */
             config: {
                 [key: string]: string;

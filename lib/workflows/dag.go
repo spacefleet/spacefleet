@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/spacefleet/spacefleet/lib/helm"
+	"github.com/spacefleet/spacefleet/lib/tofu"
 )
 
 // Sentinel errors the DAG validation returns, wrapped with detail, so a handler
@@ -190,6 +191,16 @@ const (
 	// backend_override.tf. Secret values here get the same redaction treatment as
 	// helm inline values (see lib/api/workflow.go secretConfigKeys).
 	terraformConfigBackendConfig = "backend_config"
+	// terraformConfigBackendMode selects how the state backend is wired:
+	// tofu.ModeManaged (default, also when empty) generates a backend_override.tf;
+	// tofu.ModeBYO uses the module's own backend block and passes backend_config
+	// entries as `-backend-config` init flags.
+	terraformConfigBackendMode = "backend_mode"
+	// terraformConfigCloudCredentialID names an org-scoped cloud credential
+	// (an aws credential id, a UUID) used to authenticate a byo-backend run to
+	// the cloud. Optional even in byo mode (a backend may use an instance/IRSA
+	// role instead). Not a secret — not redacted in lib/api/workflow.go.
+	terraformConfigCloudCredentialID = "cloud_credential_id"
 )
 
 // Terraform command values.
@@ -219,6 +230,20 @@ func validateTerraformConfig(n ComponentInput) error {
 		var obj map[string]any
 		if err := json.Unmarshal([]byte(raw), &obj); err != nil {
 			return fmt.Errorf("%w: node %q (terraform) %s must be a JSON object: %v", ErrInvalidConfig, n.Name, terraformConfigBackendConfig, err)
+		}
+	}
+	if mode := n.Config[terraformConfigBackendMode]; mode != "" {
+		switch mode {
+		case tofu.ModeManaged, tofu.ModeBYO:
+		default:
+			return fmt.Errorf("%w: node %q (terraform) %s has unknown value %q (one of %q, %q)", ErrInvalidConfig, n.Name, terraformConfigBackendMode, mode, tofu.ModeManaged, tofu.ModeBYO)
+		}
+	}
+	// A cloud credential is optional even in byo mode — a backend may authenticate
+	// via an instance/IRSA role — but when present it must be a valid UUID.
+	if id := n.Config[terraformConfigCloudCredentialID]; id != "" {
+		if _, err := uuid.Parse(id); err != nil {
+			return fmt.Errorf("%w: node %q (terraform) %s must be a UUID: %v", ErrInvalidConfig, n.Name, terraformConfigCloudCredentialID, err)
 		}
 	}
 	return nil

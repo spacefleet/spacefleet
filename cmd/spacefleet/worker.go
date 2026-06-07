@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/spacefleet/spacefleet/lib/chartcredentials"
+	"github.com/spacefleet/spacefleet/lib/cloudcredentials"
 	"github.com/spacefleet/spacefleet/lib/clusters"
 	"github.com/spacefleet/spacefleet/lib/config"
 	"github.com/spacefleet/spacefleet/lib/db"
@@ -82,6 +83,7 @@ func runWorker(_ []string) {
 	}
 	clustersSvc := clusters.NewService(entClient, sealer)
 	chartCredsSvc := chartcredentials.NewService(entClient, sealer)
+	cloudCredsSvc := cloudcredentials.NewService(entClient, sealer)
 
 	// GitHub App authenticator + installations service, so a Helm rollout can mint
 	// a short-lived token to pull a private-Git chart. Token minting happens here,
@@ -98,11 +100,11 @@ func runWorker(_ []string) {
 	githubInstallsSvc := githubinstallations.NewService(entClient, ghAuth)
 
 	// The workflow run worker resolves each component's run inputs through the
-	// shared lib/deploy resolver, built over three deps: the clusters connection
-	// resolver, the chart-credentials resolver, and the GitHub installations token
-	// minter.
+	// shared lib/deploy resolver, built over four deps: the clusters connection
+	// resolver, the chart-credentials resolver, the GitHub installations token
+	// minter, and the cloud-credentials resolver (for a terraform byo-backend run).
 	workflowsSvc := workflows.NewService(entClient)
-	runResolver := deploy.NewResolver(clustersSvc, chartCredsSvc, githubInstallsSvc)
+	runResolver := deploy.NewResolver(clustersSvc, chartCredsSvc, githubInstallsSvc, cloudCredsSvc)
 
 	// Register job workers:
 	//   - invite-email: sends org invitation emails (Sender is SMTP when

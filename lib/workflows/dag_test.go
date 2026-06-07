@@ -226,3 +226,57 @@ func TestValidateConfig_UnknownType(t *testing.T) {
 		t.Fatalf("expected ErrInvalidConfig for unknown type, got %v", err)
 	}
 }
+
+// tfNode builds a minimal valid terraform plan node, overlaying any extra
+// config keys, so a test can focus on the key under test.
+func tfNode(extra map[string]string) ComponentInput {
+	cfg := map[string]string{
+		helm.ConfigRepoURL:     "https://github.com/acme/infra",
+		manifestConfigPath:     "envs/prod",
+		terraformConfigCommand: terraformCommandPlan,
+	}
+	for k, v := range extra {
+		cfg[k] = v
+	}
+	return ComponentInput{ID: uuid.New(), Name: "tf", Type: TypeTerraform, Config: cfg}
+}
+
+func TestValidateTerraformConfig_BackendModeAndCloudCredential(t *testing.T) {
+	t.Parallel()
+
+	// Valid backend modes (managed, byo) and absent (defaults managed).
+	for _, mode := range []string{"", "managed", "byo"} {
+		n := tfNode(map[string]string{terraformConfigBackendMode: mode})
+		if err := validateDAG([]ComponentInput{n}); err != nil {
+			t.Errorf("backend_mode=%q: unexpected error %v", mode, err)
+		}
+	}
+
+	// Invalid backend mode → ErrInvalidConfig.
+	bad := tfNode(map[string]string{terraformConfigBackendMode: "nonsense"})
+	if err := validateDAG([]ComponentInput{bad}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("bad backend_mode: expected ErrInvalidConfig, got %v", err)
+	}
+
+	// byo mode WITHOUT a cloud credential is valid (an instance/IRSA role may
+	// authenticate the backend).
+	byoNoCred := tfNode(map[string]string{terraformConfigBackendMode: "byo"})
+	if err := validateDAG([]ComponentInput{byoNoCred}); err != nil {
+		t.Errorf("byo without credential: unexpected error %v", err)
+	}
+
+	// Valid cloud_credential_id UUID.
+	goodCred := tfNode(map[string]string{
+		terraformConfigBackendMode:       "byo",
+		terraformConfigCloudCredentialID: uuid.New().String(),
+	})
+	if err := validateDAG([]ComponentInput{goodCred}); err != nil {
+		t.Errorf("valid cloud_credential_id: unexpected error %v", err)
+	}
+
+	// Non-UUID cloud_credential_id → ErrInvalidConfig.
+	badCred := tfNode(map[string]string{terraformConfigCloudCredentialID: "not-a-uuid"})
+	if err := validateDAG([]ComponentInput{badCred}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("bad cloud_credential_id: expected ErrInvalidConfig, got %v", err)
+	}
+}

@@ -1,6 +1,8 @@
 // Package tofu renders the shell script an OpenTofu (Terraform) workflow
-// component runs: clone a git repo at a ref, cd into the root module, write a
-// generated backend_override.tf, `tofu init`, then `tofu plan` or `tofu apply`
+// component runs: clone a git repo at a ref, cd into the root module, configure
+// the state backend (a generated backend_override.tf in managed mode, or the
+// module's own backend block plus `-backend-config` flags in byo mode),
+// `tofu init`, then `tofu plan` or `tofu apply`
 // against the target. Like lib/helm and lib/manifest, Go never runs tofu itself
 // — it only emits the /bin/sh script and lets lib/tekton inject the credential
 // files (the target kubeconfig the Kubernetes backend uses, and, for a private
@@ -63,6 +65,12 @@ const (
 	// from the mounted file at runtime and never lands in the script string, the
 	// clone's argv, the TaskRun manifest, or the workspace's .git/config.
 	GitCredentialsFile = "git-credentials"
+	// AWSEnvFile carries `export K='V'` lines for cloud (AWS) authentication in
+	// the byo backend mode. When Apply.HasCloudAuth is set the script sources it
+	// (`. <mount>/aws.env`) before `tofu init`, so the credential values live only
+	// in the mounted file + the step's process env — never in the script string
+	// or the TaskRun manifest, exactly as the kubeconfig/git-credentials files do.
+	AWSEnvFile = "aws.env"
 )
 
 // Commands a terraform component runs. plan produces the review material
@@ -87,6 +95,17 @@ const (
 // the Kubernetes backend, storing state as Secrets in the runner cluster using
 // the injected kubeconfig — zero extra config.
 const DefaultBackend = "kubernetes"
+
+// Backend modes select how state backend configuration is wired. Managed (the
+// default, also when empty) generates a backend_override.tf so state lands where
+// we decide. BYO ("bring your own") uses the module's OWN backend block
+// untouched — no override is written; any partial-backend values are passed as
+// `tofu init -backend-config=k=v` flags and cloud auth is sourced from the
+// mounted AWSEnvFile.
+const (
+	ModeManaged = "managed"
+	ModeBYO     = "byo"
+)
 
 // Apply is the inputs Script needs to render the terraform shell script.
 type Apply struct {
@@ -121,6 +140,16 @@ type Apply struct {
 	// GitCredentialsFile + a credential helper, set by the resolver when the
 	// component has a GitHub App installation attached.
 	HasGitToken bool
+	// BackendMode selects how the state backend is wired: "" or ModeManaged
+	// generate a backend_override.tf (the current behavior); ModeBYO uses the
+	// module's own backend block, writing no override and passing BackendConfig
+	// entries as `tofu init -backend-config=k=v` flags.
+	BackendMode string
+	// HasCloudAuth, when set, sources the mounted AWSEnvFile (cloud/AWS
+	// credentials as `export K='V'` lines) before `tofu init` so the byo backend
+	// and providers authenticate from the process env. The values never appear in
+	// the script string or manifest.
+	HasCloudAuth bool
 }
 
 // Script renders the /bin/sh script the terraform step runs. It clones the root
@@ -186,13 +215,37 @@ func Script(a Apply) string {
 	kubeconfig := tekton.CredsMountPath + "/" + KubeconfigFile
 	fmt.Fprintf(&b, "export KUBECONFIG=%s\n", shQuote(kubeconfig))
 
-	// Generate the backend override so the root module's state lands where we
-	// decide regardless of any backend block it ships with. backend_override.tf
-	// is read by tofu init alongside the module's own .tf files; an *_override.tf
-	// file merges over a matching block, so this wins.
-	b.WriteString(backendOverride(a))
+	// In byo mode with cloud auth, source the mounted AWS env file so the
+	// credential values enter the process env before init — they live only in the
+	// mounted file + env, never in the script string or the TaskRun manifest. `. `
+	// is the POSIX `source` builtin for /bin/sh.
+	if a.HasCloudAuth {
+		fmt.Fprintf(&b, ". %s\n", tekton.CredsMountPath+"/"+AWSEnvFile)
+	}
 
-	b.WriteString("tofu init -no-color\n")
+	if a.BackendMode == ModeBYO {
+		// BYO mode: use the module's own backend block — write no override. Pass
+		// any partial-backend values as `-backend-config=k=v` flags in sorted key
+		// order (stable output), each whole token shell-quoted, matching how a real
+		// partial backend is filled at init time.
+		b.WriteString("tofu init -no-color")
+		keys := make([]string, 0, len(a.BackendConfig))
+		for k := range a.BackendConfig {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Fprintf(&b, " -backend-config=%s", shQuote(k+"="+a.BackendConfig[k]))
+		}
+		b.WriteString("\n")
+	} else {
+		// Managed mode: generate the backend override so the root module's state
+		// lands where we decide regardless of any backend block it ships with.
+		// backend_override.tf is read by tofu init alongside the module's own .tf
+		// files; an *_override.tf file merges over a matching block, so this wins.
+		b.WriteString(backendOverride(a))
+		b.WriteString("tofu init -no-color\n")
+	}
 
 	preview := a.Action == ActionPreview
 	destroy := a.Action == ActionUninstall

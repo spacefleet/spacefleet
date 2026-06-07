@@ -19,6 +19,7 @@ export function NodeEditor() {
     error,
     clusters,
     credentials,
+    cloudCredentials,
     installations,
     githubEnabled,
     getComponent,
@@ -99,6 +100,7 @@ export function NodeEditor() {
               onChange={updateComponent}
               clusters={clusters}
               credentials={credentials}
+              cloudCredentials={cloudCredentials}
               installations={installations}
               githubEnabled={githubEnabled}
               disabled={!canEdit}

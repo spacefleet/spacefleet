@@ -17,12 +17,17 @@ package deploy
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/spacefleet/spacefleet/lib/chartcredentials"
+	"github.com/spacefleet/spacefleet/lib/cloudauth"
+	"github.com/spacefleet/spacefleet/lib/cloudcredentials"
 	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/k8s"
+	"github.com/spacefleet/spacefleet/lib/tofu"
 )
 
 // ConnResolver resolves the decrypted connection for an org-scoped cluster. It is
@@ -47,20 +52,30 @@ type GitTokenResolver interface {
 	InstallationToken(ctx context.Context, orgID, id uuid.UUID) (string, error)
 }
 
-// Resolver holds the three run-time dependencies (connection / credential / git
-// token) and is the single implementation of the run input resolution. Construct
-// it with the same deps the applications service already holds.
-type Resolver struct {
-	conns     ConnResolver
-	creds     CredentialResolver
-	gitTokens GitTokenResolver
+// CloudCredentialResolver decrypts an org-scoped cloud credential (AWS, etc.),
+// for a terraform component running in byo backend mode that authenticates to
+// the cloud. May be nil (no cloud-credentials service wired), in which case a
+// run referencing a credential fails with a clear error.
+type CloudCredentialResolver interface {
+	Resolve(ctx context.Context, orgID, id uuid.UUID) (cloudcredentials.Resolved, error)
 }
 
-// NewResolver builds a Resolver over the connection, credential, and git-token
-// resolvers. creds/gitTokens may be nil; a run that references one then fails
-// with a clear "not configured" error.
-func NewResolver(conns ConnResolver, creds CredentialResolver, gitTokens GitTokenResolver) *Resolver {
-	return &Resolver{conns: conns, creds: creds, gitTokens: gitTokens}
+// Resolver holds the run-time dependencies (connection / credential / git token
+// / cloud credential) and is the single implementation of the run input
+// resolution. Construct it with the same deps the applications service already
+// holds.
+type Resolver struct {
+	conns      ConnResolver
+	creds      CredentialResolver
+	gitTokens  GitTokenResolver
+	cloudCreds CloudCredentialResolver
+}
+
+// NewResolver builds a Resolver over the connection, credential, git-token, and
+// cloud-credential resolvers. creds/gitTokens/cloudCreds may be nil; a run that
+// references one then fails with a clear "not configured" error.
+func NewResolver(conns ConnResolver, creds CredentialResolver, gitTokens GitTokenResolver, cloudCreds CloudCredentialResolver) *Resolver {
+	return &Resolver{conns: conns, creds: creds, gitTokens: gitTokens, cloudCreds: cloudCreds}
 }
 
 // RunInputs is the generic description of one helm run the resolver needs,
@@ -77,6 +92,9 @@ type RunInputs struct {
 	// ChartCredentialID / GitHubInstallationID are uuid.Nil when not attached.
 	ChartCredentialID    uuid.UUID
 	GitHubInstallationID uuid.UUID
+	// CloudCredentialID is the org-scoped cloud credential to authenticate a
+	// terraform byo-backend run to the cloud (AWS). uuid.Nil when none.
+	CloudCredentialID uuid.UUID
 	// PullsChart is false only for uninstall (which pulls nothing), so the chart
 	// credential and git token are skipped.
 	PullsChart bool
@@ -91,6 +109,13 @@ type Resolved struct {
 	Files         map[string]string
 	HasCredential bool
 	HasGitToken   bool
+	// HasCloudAuth is set when a cloud credential was resolved and its env file
+	// injected (out.Files[tofu.AWSEnvFile]); the terraform script sources it.
+	HasCloudAuth bool
+	// Env is non-secret environment the step exports (e.g. AWS_REGION). The
+	// planner threads it into the RunSpec.Env. Secret credential keys NEVER go
+	// here — only into the mounted Files[tofu.AWSEnvFile].
+	Env map[string]string
 }
 
 // Resolve resolves the runner connection, builds the target cluster's kubeconfig
@@ -159,5 +184,60 @@ func (r *Resolver) Resolve(ctx context.Context, in RunInputs) (Resolved, error) 
 		out.Files[helm.GitCredentialsFile] = "https://x-access-token:" + token + "@github.com"
 		out.HasGitToken = true
 	}
+
+	// Attach a cloud credential, when one is set (terraform byo backend mode):
+	// resolve (decrypt) it, materialize the AWS env (pre-assuming any role via
+	// STS), and write the secret keys into a sourceable env file as `export
+	// K='V'` lines. The keys (access/secret/token) land ONLY in the mounted file
+	// — never in out.Env, the script string, or the TaskRun manifest, exactly as
+	// the chart password and git token do. Only the non-secret region is routed
+	// to out.Env so the planner can put it on the pod env block. Unlike the
+	// chart-credential and git-token blocks above, this is NOT gated on PullsChart:
+	// a terraform uninstall (tofu destroy) still reads remote state and so still
+	// needs backend auth, so the credential is honored for every action.
+	if in.CloudCredentialID != uuid.Nil {
+		if r.cloudCreds == nil {
+			return Resolved{}, fmt.Errorf("deploy: a cloud credential is referenced but the cloud-credentials service is not configured")
+		}
+		resolved, err := r.cloudCreds.Resolve(ctx, in.OrgID, in.CloudCredentialID)
+		if err != nil {
+			return Resolved{}, err
+		}
+		secretEnv, region, err := cloudauth.AWSEnv(ctx, resolved)
+		if err != nil {
+			return Resolved{}, err
+		}
+		out.Files[tofu.AWSEnvFile] = renderEnvFile(secretEnv)
+		if region != "" {
+			if out.Env == nil {
+				out.Env = map[string]string{}
+			}
+			out.Env["AWS_REGION"] = region
+		}
+		out.HasCloudAuth = true
+	}
 	return out, nil
+}
+
+// renderEnvFile builds a sourceable /bin/sh file with one `export K='V'` line
+// per entry, in sorted key order for stable output, single-quoting (and
+// escaping embedded single quotes in) each value so the credential values are
+// safe to source.
+func renderEnvFile(env map[string]string) string {
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		fmt.Fprintf(&b, "export %s=%s\n", k, shQuote(env[k]))
+	}
+	return b.String()
+}
+
+// shQuote single-quotes a value for safe sourcing in a /bin/sh env file,
+// escaping any embedded single quote as '\”. Mirrors lib/tofu's shQuote.
+func shQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
