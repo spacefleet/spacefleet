@@ -94,6 +94,31 @@ function absPos(ns: FlowNode[], n: FlowNode): { x: number; y: number } {
   };
 }
 
+// provisionalBatch returns the set of still-provisional node ids reachable from
+// `id` through edges (id itself included). Nodes added as a connected unit — the
+// terraform plan + apply pair — commit or discard together, so the editor acts
+// on the whole batch, not just the node it happens to be showing. Traversal
+// stops at any non-provisional node, so an already-saved neighbor is never
+// dragged in.
+function provisionalBatch(
+  id: string,
+  edges: Edge[],
+  provisional: Set<string>,
+): Set<string> {
+  const batch = new Set<string>();
+  const stack = [id];
+  while (stack.length > 0) {
+    const cur = stack.pop() as string;
+    if (batch.has(cur) || !provisional.has(cur)) continue;
+    batch.add(cur);
+    for (const e of edges) {
+      if (e.source === cur) stack.push(e.target);
+      if (e.target === cur) stack.push(e.source);
+    }
+  }
+  return batch;
+}
+
 // toEditable strips position/depends_on/group_id (which live on the node + edges)
 // off a loaded Component into the working shape the editor edits.
 function toEditable(c: Component): EditableComponent {
@@ -153,6 +178,13 @@ interface WorkflowDraftValue {
   deleteNode: (id: string) => void;
   getComponent: (id: string) => EditableComponent | null;
 
+  // A freshly added node is "provisional": it shows on the canvas but is excluded
+  // from the saved payload until the editor commits it, so backing out of the
+  // editor leaves nothing behind. The node editor drives these.
+  isProvisional: (id: string) => boolean;
+  commitComponent: (next: EditableComponent) => void;
+  discardNewNode: (id: string) => void;
+
   save: () => Promise<void>;
   startRun: (action: RunAction) => Promise<void>;
 }
@@ -184,6 +216,11 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
 
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
+
+  // Ids of newly added nodes the editor hasn't committed yet (see isProvisional /
+  // commitComponent / discardNewNode). They render on the canvas but are kept out
+  // of the save payload until committed, so an abandoned add never persists.
+  const [provisional, setProvisional] = useState<Set<string>>(() => new Set());
 
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [credentials, setCredentials] = useState<ChartCredential[]>([]);
@@ -299,6 +336,8 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     // Group nodes first so they render behind their children.
     setNodes([...groupNodes, ...componentNodes]);
     setEdges(flowEdges);
+    // Everything just loaded matches the server, so nothing is pending.
+    setProvisional(new Set());
     // The freshly loaded draft matches the server, so it's clean — important so
     // auto-save doesn't fire on load (the initial saved=false is just the
     // pre-load placeholder).
@@ -480,12 +519,14 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       },
       ];
     });
-    markDirty();
+    // Provisional until the editor commits it — no markDirty, so an abandoned add
+    // never auto-saves (the node is excluded from the payload while provisional).
+    setProvisional((p) => new Set(p).add(id));
     // Go straight to the node's editor so the user fills it in immediately,
     // rather than landing on a half-configured node on the canvas. (No
     // requestFocus: we're navigating off the canvas, so there's nothing to fit.)
     navigate(`/applications/${appId}/workflow/nodes/${id}`);
-  }, [appId, navigate, markDirty]);
+  }, [appId, navigate]);
 
   // addTerraform adds a terraform deployment as TWO linked nodes — a plan node
   // and an apply node that depends on it — plus the connecting edge (depends_on
@@ -546,11 +587,18 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     });
     // The edge plan -> apply is what buildPayload turns into apply.depends_on.
     setEdges((es) => [...es, { id: `${planId}->${applyId}`, source: planId, target: applyId }]);
-    markDirty();
+    // Both nodes are provisional (committed/discarded as a unit — see
+    // provisionalBatch); saving the plan persists the pair, backing out drops it.
+    setProvisional((p) => {
+      const n = new Set(p);
+      n.add(planId);
+      n.add(applyId);
+      return n;
+    });
     // Open the plan node's editor first — the user fills the repo/source there,
     // then copies it to apply (per-node config is the v1 tradeoff).
     navigate(`/applications/${appId}/workflow/nodes/${planId}`);
-  }, [appId, navigate, markDirty]);
+  }, [appId, navigate]);
 
   const addGroup = useCallback(() => {
     const id = crypto.randomUUID();
@@ -661,6 +709,50 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     markDirty();
   }, [markDirty]);
 
+  const isProvisional = useCallback(
+    (id: string) => provisional.has(id),
+    [provisional],
+  );
+
+  // commitComponent is the editor's Save: it writes the working copy back into
+  // the draft and clears the provisional flag for the node (and any siblings
+  // added with it), so the node now travels in the save payload and the debounced
+  // auto-save persists it.
+  const commitComponent = useCallback(
+    (next: EditableComponent) => {
+      updateComponent(next);
+      if (!provisional.has(next.id)) return;
+      const batch = provisionalBatch(next.id, edges, provisional);
+      setProvisional((prev) => {
+        const n = new Set(prev);
+        for (const id of batch) n.delete(id);
+        return n;
+      });
+    },
+    [updateComponent, provisional, edges],
+  );
+
+  // discardNewNode is the editor's Cancel for a node that was never committed: it
+  // removes the node (and any provisional siblings) and their edges from the
+  // draft. A no-op for an already-committed node — backing out of those just
+  // drops the editor's local edits without touching the draft.
+  const discardNewNode = useCallback(
+    (id: string) => {
+      if (!provisional.has(id)) return;
+      const batch = provisionalBatch(id, edges, provisional);
+      setNodes((ns) => ns.filter((n) => !batch.has(n.id)));
+      setEdges((es) =>
+        es.filter((e) => !batch.has(e.source) && !batch.has(e.target)),
+      );
+      setProvisional((prev) => {
+        const n = new Set(prev);
+        for (const x of batch) n.delete(x);
+        return n;
+      });
+    },
+    [provisional, edges],
+  );
+
   const deleteNode = useCallback((id: string) => {
     setNodes((ns) => {
       // Detach any children of a deleted group so they aren't orphaned (React
@@ -707,15 +799,21 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   } => {
     const groupIds = new Set(nodes.filter(isGroupNode).map((n) => n.id));
 
-    // depends_on per target id, built from inbound edges.
+    // depends_on per target id, built from inbound edges. Edges that touch a
+    // provisional (uncommitted) node are skipped — that node isn't persisted, so
+    // a dependency on it would dangle.
     const dependsByTarget = new Map<string, string[]>();
     for (const e of edges) {
+      if (provisional.has(e.source) || provisional.has(e.target)) continue;
       const arr = dependsByTarget.get(e.target) ?? [];
       arr.push(e.source);
       dependsByTarget.set(e.target, arr);
     }
 
-    const componentNodes = nodes.filter((n) => n.type === "component");
+    // Provisional component nodes are excluded until the editor commits them.
+    const componentNodes = nodes.filter(
+      (n) => n.type === "component" && !provisional.has(n.id),
+    );
     const groupNodes = nodes.filter(isGroupNode);
 
     const components: ComponentInput[] = componentNodes.map((n) => {
@@ -755,7 +853,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     }));
 
     return { components, groups };
-  }, [nodes, edges]);
+  }, [nodes, edges, provisional]);
 
   const save = useCallback(async () => {
     const rev = revision.current;
@@ -843,6 +941,9 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       updateComponent,
       deleteNode,
       getComponent,
+      isProvisional,
+      commitComponent,
+      discardNewNode,
       save,
       startRun,
     }),
@@ -877,6 +978,9 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       updateComponent,
       deleteNode,
       getComponent,
+      isProvisional,
+      commitComponent,
+      discardNewNode,
       save,
       startRun,
     ],

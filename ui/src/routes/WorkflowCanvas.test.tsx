@@ -219,17 +219,32 @@ describe("WorkflowCanvas", () => {
     await userEvent.click(screen.getByRole("button", { name: /^add$/i }));
     await userEvent.click(screen.getByRole("menuitem", { name: /opentofu/i }));
 
-    // Adding opens the plan node's editor directly; go back to the canvas to see
-    // both nodes, named for their stage.
+    // Adding opens the plan node's editor directly. The pair is provisional until
+    // saved, so commit it with Save node — that returns to the canvas where both
+    // nodes, named for their stage, are now shown.
     await screen.findByText("terraform plan");
-    await userEvent.click(
-      screen.getByRole("button", { name: /back to workflow/i }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: /save node/i }));
     expect(await screen.findByText("terraform plan")).toBeInTheDocument();
     expect(screen.getByText("terraform apply")).toBeInTheDocument();
   });
 
-  it("OpenTofu apply node depends on the plan node and is gated by default (auto-saved)", async () => {
+  it("backing out of a freshly added node without saving discards it", async () => {
+    defaultGets([]);
+    renderWorkflow();
+    await screen.findByText(/no components yet/i);
+
+    await userEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /helm/i }));
+
+    // The editor opens on the new (provisional) node; Cancel drops it.
+    await screen.findByRole("button", { name: /save node/i });
+    await userEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+    // Back on the canvas, nothing was added.
+    expect(await screen.findByText(/no components yet/i)).toBeInTheDocument();
+  });
+
+  it("OpenTofu apply node depends on the plan node and is gated by default (saved on commit)", async () => {
     defaultGets([]);
     renderWorkflow();
     await screen.findByText(/no components yet/i);
@@ -238,7 +253,9 @@ describe("WorkflowCanvas", () => {
     await userEvent.click(screen.getByRole("menuitem", { name: /opentofu/i }));
     await screen.findByText("terraform plan");
 
-    // No manual save: the debounced auto-save persists the new nodes.
+    // The new pair is provisional until committed; Save node commits it, after
+    // which the debounced auto-save persists both nodes.
+    await userEvent.click(screen.getByRole("button", { name: /save node/i }));
     await waitFor(() => expect(mockApi.PUT).toHaveBeenCalled(), {
       timeout: 2000,
     });
