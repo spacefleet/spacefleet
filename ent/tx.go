@@ -38,6 +38,8 @@ type Tx struct {
 	TektonInstallation *TektonInstallationClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
+	// Variable is the client for interacting with the Variable builders.
+	Variable *VariableClient
 	// WorkflowRun is the client for interacting with the WorkflowRun builders.
 	WorkflowRun *WorkflowRunClient
 
@@ -184,6 +186,7 @@ func (tx *Tx) init() {
 	tx.Organization = NewOrganizationClient(tx.config)
 	tx.TektonInstallation = NewTektonInstallationClient(tx.config)
 	tx.User = NewUserClient(tx.config)
+	tx.Variable = NewVariableClient(tx.config)
 	tx.WorkflowRun = NewWorkflowRunClient(tx.config)
 }
 

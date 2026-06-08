@@ -60,6 +60,15 @@ type CloudCredentialResolver interface {
 	Resolve(ctx context.Context, orgID, id uuid.UUID) (cloudcredentials.Resolved, error)
 }
 
+// VariableResolver resolves the merged environment variables for one component
+// job: the app-level variables overlaid by the component's own. It returns two
+// disjoint maps — non-secret values (plain) and decrypted sensitive values
+// (secret). May be nil (no variables service wired), in which case no variables
+// are injected.
+type VariableResolver interface {
+	ResolveEnv(ctx context.Context, orgID, appID, componentID uuid.UUID) (plain map[string]string, secret map[string]string, err error)
+}
+
 // Resolver holds the run-time dependencies (connection / credential / git token
 // / cloud credential) and is the single implementation of the run input
 // resolution. Construct it with the same deps the applications service already
@@ -69,13 +78,16 @@ type Resolver struct {
 	creds      CredentialResolver
 	gitTokens  GitTokenResolver
 	cloudCreds CloudCredentialResolver
+	vars       VariableResolver
 }
 
-// NewResolver builds a Resolver over the connection, credential, git-token, and
-// cloud-credential resolvers. creds/gitTokens/cloudCreds may be nil; a run that
-// references one then fails with a clear "not configured" error.
-func NewResolver(conns ConnResolver, creds CredentialResolver, gitTokens GitTokenResolver, cloudCreds CloudCredentialResolver) *Resolver {
-	return &Resolver{conns: conns, creds: creds, gitTokens: gitTokens, cloudCreds: cloudCreds}
+// NewResolver builds a Resolver over the connection, credential, git-token,
+// cloud-credential, and variable resolvers. creds/gitTokens/cloudCreds/vars may
+// be nil; a run that references a missing credential service fails with a clear
+// "not configured" error, and a nil variable resolver simply injects no
+// variables.
+func NewResolver(conns ConnResolver, creds CredentialResolver, gitTokens GitTokenResolver, cloudCreds CloudCredentialResolver, vars VariableResolver) *Resolver {
+	return &Resolver{conns: conns, creds: creds, gitTokens: gitTokens, cloudCreds: cloudCreds, vars: vars}
 }
 
 // RunInputs is the generic description of one helm run the resolver needs,
@@ -83,6 +95,11 @@ func NewResolver(conns ConnResolver, creds CredentialResolver, gitTokens GitToke
 // from its own model.
 type RunInputs struct {
 	OrgID uuid.UUID
+	// ApplicationID + ComponentID locate the variables to inject as the job's
+	// environment (app-level overlaid by the component's own). ComponentID is
+	// uuid.Nil for a run with no component scope (app-level variables only).
+	ApplicationID uuid.UUID
+	ComponentID   uuid.UUID
 	// RunnerClusterID is the cluster the TaskRun runs on; TargetClusterID is the
 	// cluster the release lands on (they may be the same).
 	RunnerClusterID uuid.UUID
@@ -112,10 +129,14 @@ type Resolved struct {
 	// HasCloudAuth is set when a cloud credential was resolved and its env file
 	// injected (out.Files[tofu.AWSEnvFile]); the terraform script sources it.
 	HasCloudAuth bool
-	// Env is non-secret environment the step exports (e.g. AWS_REGION). The
-	// planner threads it into the RunSpec.Env. Secret credential keys NEVER go
-	// here — only into the mounted Files[tofu.AWSEnvFile].
+	// Env is non-secret environment the step exports (e.g. AWS_REGION and the
+	// non-sensitive variables). The planner threads it into RunSpec.Env. Secret
+	// credential keys NEVER go here — only into the mounted Files[tofu.AWSEnvFile].
 	Env map[string]string
+	// SecretEnv is the sensitive variables (decrypted), injected into the step as
+	// env vars sourced from the per-run creds Secret (never inline in the TaskRun
+	// manifest). The planner threads it into RunSpec.SecretEnv.
+	SecretEnv map[string]string
 }
 
 // Resolve resolves the runner connection, builds the target cluster's kubeconfig
@@ -147,6 +168,24 @@ func (r *Resolver) Resolve(ctx context.Context, in RunInputs) (Resolved, error) 
 			helm.KubeconfigFile: string(kubeconfig),
 			helm.ValuesFile:     in.Values,
 		},
+	}
+
+	// Inject the application's variables (app-level overlaid by the component's
+	// own) as the job's environment: non-secret values inline, sensitive ones via
+	// the per-run Secret. Merged first so a credential-derived key (AWS_REGION
+	// below) wins over a same-named variable; a final reconciliation keeps the two
+	// maps disjoint.
+	if r.vars != nil && in.ApplicationID != uuid.Nil {
+		plain, secret, err := r.vars.ResolveEnv(ctx, in.OrgID, in.ApplicationID, in.ComponentID)
+		if err != nil {
+			return Resolved{}, err
+		}
+		if len(plain) > 0 {
+			out.Env = plain
+		}
+		if len(secret) > 0 {
+			out.SecretEnv = secret
+		}
 	}
 
 	// Attach a private-chart credential, when one is set: resolve (decrypt) it and
@@ -215,6 +254,13 @@ func (r *Resolver) Resolve(ctx context.Context, in RunInputs) (Resolved, error) 
 			out.Env["AWS_REGION"] = region
 		}
 		out.HasCloudAuth = true
+	}
+
+	// Keep Env and SecretEnv disjoint: a credential-injected or non-secret key
+	// (in Env) wins over a sensitive variable of the same name, so the step never
+	// gets two env entries for one name.
+	for k := range out.Env {
+		delete(out.SecretEnv, k)
 	}
 	return out, nil
 }

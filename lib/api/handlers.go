@@ -20,6 +20,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/organizations"
 	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/users"
+	"github.com/spacefleet/spacefleet/lib/variables"
 	"github.com/spacefleet/spacefleet/lib/workflows"
 )
 
@@ -33,6 +34,7 @@ type Server struct {
 	githubInstallations *githubinstallations.Service
 	invites             *invitations.Service
 	workflows           *workflows.Service
+	variables           *variables.Service
 
 	// githubAppSlug is the operator's GitHub App URL slug, used to build the
 	// install link returned by GetGitHubConnectUrl. secretKey signs the
@@ -76,6 +78,7 @@ type ServerDeps struct {
 	GitHubInstallations *githubinstallations.Service
 	Invites             *invitations.Service
 	Workflows           *workflows.Service
+	Variables           *variables.Service
 	AllowOrgCreation    bool
 	ExternalURL         string
 	EmailEnabled        bool
@@ -96,6 +99,7 @@ func NewServer(d ServerDeps) *Server {
 		githubInstallations: d.GitHubInstallations,
 		invites:             d.Invites,
 		workflows:           d.Workflows,
+		variables:           d.Variables,
 		allowOrgCreation:    d.AllowOrgCreation,
 		externalURL:         d.ExternalURL,
 		emailEnabled:        d.EmailEnabled,

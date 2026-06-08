@@ -165,6 +165,18 @@ func (f UserFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error)
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserMutation", m)
 }
 
+// The VariableFunc type is an adapter to allow the use of ordinary
+// function as Variable mutator.
+type VariableFunc func(context.Context, *ent.VariableMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f VariableFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.VariableMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.VariableMutation", m)
+}
+
 // The WorkflowRunFunc type is an adapter to allow the use of ordinary
 // function as WorkflowRun mutator.
 type WorkflowRunFunc func(context.Context, *ent.WorkflowRunMutation) (ent.Value, error)

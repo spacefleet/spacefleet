@@ -94,6 +94,8 @@ func (w *WorkflowRunWorker) planManifest(ctx context.Context, app *ent.Applicati
 	pullsChart := node.GitHubInstallationID != nil && *node.GitHubInstallationID != uuid.Nil
 	resolved, err := w.resolver.Resolve(ctx, deploy.RunInputs{
 		OrgID:                app.OrganizationID,
+		ApplicationID:        app.ID,
+		ComponentID:          node.ID,
 		RunnerClusterID:      app.RunnerClusterID,
 		TargetClusterID:      targetClusterID,
 		Values:               "",
@@ -118,10 +120,12 @@ func (w *WorkflowRunWorker) planManifest(ctx context.Context, app *ent.Applicati
 		Namespace:   helm.RunNamespace,
 		ExistingRun: existingRun,
 		Spec: tekton.RunSpec{
-			Name:   manifestRunPrefix(node),
-			Image:  helm.DefaultImage,
-			Script: script,
-			Files:  resolved.Files,
+			Name:      manifestRunPrefix(node),
+			Image:     helm.DefaultImage,
+			Script:    script,
+			Files:     resolved.Files,
+			Env:       resolved.Env,
+			SecretEnv: resolved.SecretEnv,
 		},
 	}, nil
 }
@@ -196,6 +200,8 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 	pullsChart := true
 	resolved, err := w.resolver.Resolve(ctx, deploy.RunInputs{
 		OrgID:                app.OrganizationID,
+		ApplicationID:        app.ID,
+		ComponentID:          node.ID,
 		RunnerClusterID:      app.RunnerClusterID,
 		TargetClusterID:      targetClusterID,
 		Values:               "",
@@ -229,11 +235,12 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		Namespace:   helm.RunNamespace,
 		ExistingRun: existingRun,
 		Spec: tekton.RunSpec{
-			Name:   tofuRunPrefix(node),
-			Image:  tofu.DefaultImage,
-			Script: script,
-			Files:  resolved.Files,
-			Env:    resolved.Env,
+			Name:      tofuRunPrefix(node),
+			Image:     tofu.DefaultImage,
+			Script:    script,
+			Files:     resolved.Files,
+			Env:       resolved.Env,
+			SecretEnv: resolved.SecretEnv,
 		},
 	}, nil
 }
@@ -373,6 +380,8 @@ func (w *WorkflowRunWorker) planHelm(ctx context.Context, app *ent.Application, 
 	pullsChart := helmAction != helm.ActionUninstall
 	resolved, err := w.resolver.Resolve(ctx, deploy.RunInputs{
 		OrgID:                app.OrganizationID,
+		ApplicationID:        app.ID,
+		ComponentID:          node.ID,
 		RunnerClusterID:      app.RunnerClusterID,
 		TargetClusterID:      targetClusterID,
 		Values:               node.Config[helmConfigValues],
@@ -407,10 +416,12 @@ func (w *WorkflowRunWorker) planHelm(ctx context.Context, app *ent.Application, 
 		Namespace:   helm.RunNamespace,
 		ExistingRun: existingRun,
 		Spec: tekton.RunSpec{
-			Name:   componentRunPrefix(node),
-			Image:  helm.DefaultImage,
-			Script: script,
-			Files:  resolved.Files,
+			Name:      componentRunPrefix(node),
+			Image:     helm.DefaultImage,
+			Script:    script,
+			Files:     resolved.Files,
+			Env:       resolved.Env,
+			SecretEnv: resolved.SecretEnv,
 		},
 	}, nil
 }

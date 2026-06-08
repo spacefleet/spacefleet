@@ -39,6 +39,73 @@ func (f fakeCloudCreds) Resolve(_ context.Context, _, _ uuid.UUID) (cloudcredent
 	return f.resolved, nil
 }
 
+// fakeVars returns a fixed plain/secret split for any scope.
+type fakeVars struct {
+	plain  map[string]string
+	secret map[string]string
+}
+
+func (f fakeVars) ResolveEnv(_ context.Context, _, _, _ uuid.UUID) (map[string]string, map[string]string, error) {
+	return f.plain, f.secret, nil
+}
+
+// TestResolve_Variables confirms variables are injected: non-secret into Env,
+// sensitive into SecretEnv, and the two maps are kept disjoint (a name present
+// in Env is removed from SecretEnv).
+func TestResolve_Variables(t *testing.T) {
+	t.Parallel()
+
+	vars := fakeVars{
+		plain:  map[string]string{"FOO": "bar"},
+		secret: map[string]string{"TOKEN": "s3cret", "FOO": "should-be-dropped"},
+	}
+	r := NewResolver(fakeConns{}, nil, nil, nil, vars)
+
+	clusterID := uuid.New()
+	out, err := r.Resolve(context.Background(), RunInputs{
+		OrgID:           uuid.New(),
+		ApplicationID:   uuid.New(),
+		ComponentID:     uuid.New(),
+		RunnerClusterID: clusterID,
+		TargetClusterID: clusterID,
+		PullsChart:      true,
+	})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if out.Env["FOO"] != "bar" {
+		t.Errorf("Env[FOO] = %q, want bar", out.Env["FOO"])
+	}
+	if out.SecretEnv["TOKEN"] != "s3cret" {
+		t.Errorf("SecretEnv[TOKEN] = %q, want s3cret", out.SecretEnv["TOKEN"])
+	}
+	// FOO is in Env, so it must not also be in SecretEnv.
+	if _, ok := out.SecretEnv["FOO"]; ok {
+		t.Errorf("FOO present in both Env and SecretEnv; Env should win")
+	}
+}
+
+// TestResolve_VariablesNilResolver confirms a nil variable resolver injects
+// nothing (the feature degrades cleanly).
+func TestResolve_VariablesNilResolver(t *testing.T) {
+	t.Parallel()
+	r := NewResolver(fakeConns{}, nil, nil, nil, nil)
+	clusterID := uuid.New()
+	out, err := r.Resolve(context.Background(), RunInputs{
+		OrgID:           uuid.New(),
+		ApplicationID:   uuid.New(),
+		RunnerClusterID: clusterID,
+		TargetClusterID: clusterID,
+		PullsChart:      true,
+	})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if len(out.Env) != 0 || len(out.SecretEnv) != 0 {
+		t.Errorf("nil variable resolver injected env: %v / %v", out.Env, out.SecretEnv)
+	}
+}
+
 func TestResolve_CloudCredential(t *testing.T) {
 	t.Parallel()
 
@@ -51,7 +118,7 @@ func TestResolve_CloudCredential(t *testing.T) {
 		},
 	}}
 
-	r := NewResolver(fakeConns{}, nil, nil, cloud)
+	r := NewResolver(fakeConns{}, nil, nil, cloud, nil)
 
 	clusterID := uuid.New()
 	out, err := r.Resolve(context.Background(), RunInputs{
@@ -101,7 +168,7 @@ func TestResolve_CloudCredential_NotConfigured(t *testing.T) {
 	t.Parallel()
 
 	// cloudCreds is nil but a credential is referenced → clear error.
-	r := NewResolver(fakeConns{}, nil, nil, nil)
+	r := NewResolver(fakeConns{}, nil, nil, nil, nil)
 
 	clusterID := uuid.New()
 	_, err := r.Resolve(context.Background(), RunInputs{
@@ -124,7 +191,7 @@ func TestResolve_NoCloudCredential(t *testing.T) {
 
 	// No CloudCredentialID set → no cloud auth, no env file, even with a nil
 	// cloudCreds resolver.
-	r := NewResolver(fakeConns{}, nil, nil, nil)
+	r := NewResolver(fakeConns{}, nil, nil, nil, nil)
 
 	clusterID := uuid.New()
 	out, err := r.Resolve(context.Background(), RunInputs{

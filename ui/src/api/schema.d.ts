@@ -724,6 +724,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{id}/variables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an application's app-level variables
+         * @description Org-scoped. App-level variables are passed to every component job of the
+         *     application as environment variables. A sensitive variable's value is
+         *     sealed and never returned (only `sensitive: true` and the name).
+         */
+        get: operations["listApplicationVariables"];
+        put?: never;
+        /**
+         * Add an app-level variable
+         * @description Org-scoped, editor or above. A sensitive variable's value is sealed at
+         *     rest and never returned (requires an encryption key,
+         *     SPACEFLEET_SECRET_KEY). Names are a shell-safe identifier and unique
+         *     among the application's app-level variables.
+         */
+        post: operations["createApplicationVariable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{id}/variables/{variableId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete an app-level variable */
+        delete: operations["deleteApplicationVariable"];
+        options?: never;
+        head?: never;
+        /**
+         * Update an app-level variable
+         * @description Org-scoped, editor or above. Renames and/or replaces the value. Omit
+         *     `value` to leave it unchanged (the only way to keep a sensitive value,
+         *     which is never returned). The sensitive flag is fixed at creation.
+         */
+        patch: operations["updateApplicationVariable"];
+        trace?: never;
+    };
+    "/api/applications/{id}/components/{componentId}/variables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a component's variables
+         * @description Org-scoped. Component-level variables are passed to that one component's
+         *     job and override an app-level variable of the same name. A sensitive
+         *     variable's value is sealed and never returned.
+         */
+        get: operations["listComponentVariables"];
+        put?: never;
+        /**
+         * Add a component-level variable
+         * @description Org-scoped, editor or above. Overrides an app-level variable of the same
+         *     name for this component. A sensitive variable's value is sealed at rest
+         *     and never returned. The component must already exist (save the workflow
+         *     first). Names are unique among the component's variables.
+         */
+        post: operations["createComponentVariable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{id}/components/{componentId}/variables/{variableId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a component-level variable */
+        delete: operations["deleteComponentVariable"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a component-level variable
+         * @description Org-scoped, editor or above. Renames and/or replaces the value. Omit
+         *     `value` to leave it unchanged. The sensitive flag is fixed at creation.
+         */
+        patch: operations["updateComponentVariable"];
+        trace?: never;
+    };
     "/api/applications/{id}/runs": {
         parameters: {
             query?: never;
@@ -2096,6 +2199,56 @@ export interface components {
              */
             graph?: string;
         };
+        /**
+         * @description A named key/value passed to component jobs as an environment variable,
+         *     defined at the app level (every component) or the component level
+         *     (overriding an app-level variable of the same name). A sensitive
+         *     variable's value is sealed at rest and never returned — only its name and
+         *     the sensitive flag are.
+         */
+        Variable: {
+            /** Format: uuid */
+            id: string;
+            /** @description The environment variable name (a shell-safe identifier). */
+            name: string;
+            /**
+             * @description When true, the value is sealed at rest and never returned (write-only,
+             *     it can only be replaced).
+             */
+            sensitive: boolean;
+            /**
+             * @description The plaintext value. Present only for non-sensitive variables; a
+             *     sensitive variable's value is never returned.
+             */
+            value?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        VariableCreateRequest: {
+            /** @description A shell-safe identifier, unique within the variable's scope. */
+            name: string;
+            /**
+             * @description When true, the value is sealed at rest and never returned. Fixed at
+             *     creation (delete and recreate to change).
+             */
+            sensitive: boolean;
+            /**
+             * @description The value. Required (a sensitive variable's must be non-empty); for a
+             *     non-sensitive variable an empty string is allowed.
+             */
+            value: string;
+        };
+        /**
+         * @description All fields optional. Omit `value` to leave it unchanged — the only way to
+         *     keep a sensitive value, which is never returned. The sensitive flag is
+         *     fixed at creation.
+         */
+        VariableUpdateRequest: {
+            name?: string;
+            value?: string;
+        };
     };
     responses: {
         /** @description Error response */
@@ -2117,6 +2270,8 @@ export interface components {
         GitHubInstallationID: string;
         RunID: string;
         ComponentRunID: string;
+        ComponentID: string;
+        VariableID: string;
         MemberUserID: string;
         InvitationID: string;
         InviteToken: string;
@@ -3065,6 +3220,210 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listApplicationVariables: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The application's app-level variables */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Variable"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createApplicationVariable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VariableCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Variable created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Variable"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteApplicationVariable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                variableId: components["parameters"]["VariableID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Variable deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateApplicationVariable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                variableId: components["parameters"]["VariableID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VariableUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Variable updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Variable"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listComponentVariables: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                componentId: components["parameters"]["ComponentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The component's variables */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Variable"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createComponentVariable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                componentId: components["parameters"]["ComponentID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VariableCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Variable created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Variable"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteComponentVariable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                componentId: components["parameters"]["ComponentID"];
+                variableId: components["parameters"]["VariableID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Variable deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateComponentVariable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                componentId: components["parameters"]["ComponentID"];
+                variableId: components["parameters"]["VariableID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VariableUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Variable updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Variable"];
                 };
             };
             default: components["responses"]["Error"];

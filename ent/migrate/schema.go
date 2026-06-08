@@ -514,6 +514,51 @@ var (
 		Columns:    UsersColumns,
 		PrimaryKey: []*schema.Column{UsersColumns[0]},
 	}
+	// VariablesColumns holds the columns for the "variables" table.
+	VariablesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "component_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "name", Type: field.TypeString},
+		{Name: "sensitive", Type: field.TypeBool, Default: false},
+		{Name: "value", Type: field.TypeString, Nullable: true},
+		{Name: "encrypted_value", Type: field.TypeBytes, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+		{Name: "application_id", Type: field.TypeUUID},
+	}
+	// VariablesTable holds the schema information for the "variables" table.
+	VariablesTable = &schema.Table{
+		Name:       "variables",
+		Columns:    VariablesColumns,
+		PrimaryKey: []*schema.Column{VariablesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "variables_organizations_organization",
+				Columns:    []*schema.Column{VariablesColumns[8]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "variables_applications_application",
+				Columns:    []*schema.Column{VariablesColumns[9]},
+				RefColumns: []*schema.Column{ApplicationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "variable_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{VariablesColumns[8]},
+			},
+			{
+				Name:    "variable_application_id_component_id",
+				Unique:  false,
+				Columns: []*schema.Column{VariablesColumns[9], VariablesColumns[1]},
+			},
+		},
+	}
 	// WorkflowRunsColumns holds the columns for the "workflow_runs" table.
 	WorkflowRunsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -581,6 +626,7 @@ var (
 		OrganizationsTable,
 		TektonInstallationsTable,
 		UsersTable,
+		VariablesTable,
 		WorkflowRunsTable,
 	}
 )
@@ -610,6 +656,8 @@ func init() {
 	MembershipsTable.ForeignKeys[0].RefTable = UsersTable
 	MembershipsTable.ForeignKeys[1].RefTable = OrganizationsTable
 	TektonInstallationsTable.ForeignKeys[0].RefTable = ClustersTable
+	VariablesTable.ForeignKeys[0].RefTable = OrganizationsTable
+	VariablesTable.ForeignKeys[1].RefTable = ApplicationsTable
 	WorkflowRunsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	WorkflowRunsTable.ForeignKeys[1].RefTable = ApplicationsTable
 }

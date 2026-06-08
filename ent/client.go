@@ -29,6 +29,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/user"
+	"github.com/spacefleet/spacefleet/ent/variable"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
 )
 
@@ -63,6 +64,8 @@ type Client struct {
 	TektonInstallation *TektonInstallationClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
+	// Variable is the client for interacting with the Variable builders.
+	Variable *VariableClient
 	// WorkflowRun is the client for interacting with the WorkflowRun builders.
 	WorkflowRun *WorkflowRunClient
 }
@@ -89,6 +92,7 @@ func (c *Client) init() {
 	c.Organization = NewOrganizationClient(c.config)
 	c.TektonInstallation = NewTektonInstallationClient(c.config)
 	c.User = NewUserClient(c.config)
+	c.Variable = NewVariableClient(c.config)
 	c.WorkflowRun = NewWorkflowRunClient(c.config)
 }
 
@@ -195,6 +199,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Organization:       NewOrganizationClient(cfg),
 		TektonInstallation: NewTektonInstallationClient(cfg),
 		User:               NewUserClient(cfg),
+		Variable:           NewVariableClient(cfg),
 		WorkflowRun:        NewWorkflowRunClient(cfg),
 	}, nil
 }
@@ -228,6 +233,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Organization:       NewOrganizationClient(cfg),
 		TektonInstallation: NewTektonInstallationClient(cfg),
 		User:               NewUserClient(cfg),
+		Variable:           NewVariableClient(cfg),
 		WorkflowRun:        NewWorkflowRunClient(cfg),
 	}, nil
 }
@@ -260,7 +266,8 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Application, c.ChartCredential, c.CloudCredential, c.Cluster, c.Component,
 		c.ComponentGroup, c.ComponentRun, c.GitHubInstallation, c.Invitation,
-		c.Membership, c.Organization, c.TektonInstallation, c.User, c.WorkflowRun,
+		c.Membership, c.Organization, c.TektonInstallation, c.User, c.Variable,
+		c.WorkflowRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -272,7 +279,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Application, c.ChartCredential, c.CloudCredential, c.Cluster, c.Component,
 		c.ComponentGroup, c.ComponentRun, c.GitHubInstallation, c.Invitation,
-		c.Membership, c.Organization, c.TektonInstallation, c.User, c.WorkflowRun,
+		c.Membership, c.Organization, c.TektonInstallation, c.User, c.Variable,
+		c.WorkflowRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -307,6 +315,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.TektonInstallation.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
+	case *VariableMutation:
+		return c.Variable.mutate(ctx, m)
 	case *WorkflowRunMutation:
 		return c.WorkflowRun.mutate(ctx, m)
 	default:
@@ -2459,6 +2469,171 @@ func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error)
 	}
 }
 
+// VariableClient is a client for the Variable schema.
+type VariableClient struct {
+	config
+}
+
+// NewVariableClient returns a client for the Variable from the given config.
+func NewVariableClient(c config) *VariableClient {
+	return &VariableClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `variable.Hooks(f(g(h())))`.
+func (c *VariableClient) Use(hooks ...Hook) {
+	c.hooks.Variable = append(c.hooks.Variable, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `variable.Intercept(f(g(h())))`.
+func (c *VariableClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Variable = append(c.inters.Variable, interceptors...)
+}
+
+// Create returns a builder for creating a Variable entity.
+func (c *VariableClient) Create() *VariableCreate {
+	mutation := newVariableMutation(c.config, OpCreate)
+	return &VariableCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Variable entities.
+func (c *VariableClient) CreateBulk(builders ...*VariableCreate) *VariableCreateBulk {
+	return &VariableCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *VariableClient) MapCreateBulk(slice any, setFunc func(*VariableCreate, int)) *VariableCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &VariableCreateBulk{err: fmt.Errorf("calling to VariableClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*VariableCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &VariableCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Variable.
+func (c *VariableClient) Update() *VariableUpdate {
+	mutation := newVariableMutation(c.config, OpUpdate)
+	return &VariableUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *VariableClient) UpdateOne(_m *Variable) *VariableUpdateOne {
+	mutation := newVariableMutation(c.config, OpUpdateOne, withVariable(_m))
+	return &VariableUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *VariableClient) UpdateOneID(id uuid.UUID) *VariableUpdateOne {
+	mutation := newVariableMutation(c.config, OpUpdateOne, withVariableID(id))
+	return &VariableUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Variable.
+func (c *VariableClient) Delete() *VariableDelete {
+	mutation := newVariableMutation(c.config, OpDelete)
+	return &VariableDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *VariableClient) DeleteOne(_m *Variable) *VariableDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *VariableClient) DeleteOneID(id uuid.UUID) *VariableDeleteOne {
+	builder := c.Delete().Where(variable.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &VariableDeleteOne{builder}
+}
+
+// Query returns a query builder for Variable.
+func (c *VariableClient) Query() *VariableQuery {
+	return &VariableQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeVariable},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Variable entity by its id.
+func (c *VariableClient) Get(ctx context.Context, id uuid.UUID) (*Variable, error) {
+	return c.Query().Where(variable.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *VariableClient) GetX(ctx context.Context, id uuid.UUID) *Variable {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryOrganization queries the organization edge of a Variable.
+func (c *VariableClient) QueryOrganization(_m *Variable) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(variable.Table, variable.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, variable.OrganizationTable, variable.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryApplication queries the application edge of a Variable.
+func (c *VariableClient) QueryApplication(_m *Variable) *ApplicationQuery {
+	query := (&ApplicationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(variable.Table, variable.FieldID, id),
+			sqlgraph.To(application.Table, application.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, variable.ApplicationTable, variable.ApplicationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *VariableClient) Hooks() []Hook {
+	return c.hooks.Variable
+}
+
+// Interceptors returns the client interceptors.
+func (c *VariableClient) Interceptors() []Interceptor {
+	return c.inters.Variable
+}
+
+func (c *VariableClient) mutate(ctx context.Context, m *VariableMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&VariableCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&VariableUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&VariableUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&VariableDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Variable mutation op: %q", m.Op())
+	}
+}
+
 // WorkflowRunClient is a client for the WorkflowRun schema.
 type WorkflowRunClient struct {
 	config
@@ -2629,11 +2804,11 @@ type (
 	hooks struct {
 		Application, ChartCredential, CloudCredential, Cluster, Component,
 		ComponentGroup, ComponentRun, GitHubInstallation, Invitation, Membership,
-		Organization, TektonInstallation, User, WorkflowRun []ent.Hook
+		Organization, TektonInstallation, User, Variable, WorkflowRun []ent.Hook
 	}
 	inters struct {
 		Application, ChartCredential, CloudCredential, Cluster, Component,
 		ComponentGroup, ComponentRun, GitHubInstallation, Invitation, Membership,
-		Organization, TektonInstallation, User, WorkflowRun []ent.Interceptor
+		Organization, TektonInstallation, User, Variable, WorkflowRun []ent.Interceptor
 	}
 )

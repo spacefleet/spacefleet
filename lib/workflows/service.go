@@ -21,6 +21,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/component"
 	"github.com/spacefleet/spacefleet/ent/componentgroup"
+	"github.com/spacefleet/spacefleet/ent/variable"
 )
 
 // Service is a thin wrapper over the ent client.
@@ -117,6 +118,28 @@ func (s *Service) ReplaceWorkflow(ctx context.Context, orgID, appID uuid.UUID, n
 		if err := s.createComponent(ctx, tx, orgID, appID, n); err != nil {
 			return nil, nil, rollback(tx, err)
 		}
+	}
+
+	// Reconcile component-scoped variables: drop those whose component is no
+	// longer in the workflow. Component variables aren't FK'd to components (the
+	// components are deleted + recreated above with stable ids), so a variable
+	// whose component_id is absent from the new node set belongs to a removed
+	// component and must be cleaned up. Components that persist keep their id, so
+	// their variables survive untouched.
+	del := tx.Variable.Delete().Where(
+		variable.OrganizationID(orgID),
+		variable.ApplicationID(appID),
+		variable.ComponentIDNotNil(),
+	)
+	if len(nodes) > 0 {
+		keep := make([]uuid.UUID, len(nodes))
+		for i, n := range nodes {
+			keep[i] = n.ID
+		}
+		del = del.Where(variable.ComponentIDNotIn(keep...))
+	}
+	if _, err := del.Exec(ctx); err != nil {
+		return nil, nil, rollback(tx, err)
 	}
 
 	if err := tx.Commit(); err != nil {

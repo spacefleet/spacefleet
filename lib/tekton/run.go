@@ -65,8 +65,15 @@ type RunSpec struct {
 	Image string
 	// Script is the shell script the step executes.
 	Script string
-	// Env is the step's environment variables (name → value). Optional.
+	// Env is the step's environment variables (name → value), rendered inline in
+	// the TaskRun. For non-secret values only. Optional.
 	Env map[string]string
+	// SecretEnv is the step's sensitive environment variables (name → value).
+	// Their values are stored in the per-run creds Secret and referenced from the
+	// step via env.valueFrom.secretKeyRef, so they never appear inline in the
+	// TaskRun manifest. Optional. When set (even without Files), a Secret is
+	// created. Names must be disjoint from Env.
+	SecretEnv map[string]string
 	// Files are mounted into the step at CredsMountPath via a secret-backed
 	// volume (filename → contents). Optional. Used to inject the target
 	// kubeconfig + values.yaml into a Helm rollout without leaking multi-line
@@ -128,7 +135,9 @@ func SubmitTaskRun(ctx context.Context, conn k8s.Connection, namespace string, s
 // detect). When spec carries Files it creates the creds Secret, then the
 // TaskRun, then patches the Secret's ownerReferences with the TaskRun UID.
 func submitTaskRun(ctx context.Context, taskruns dynamic.ResourceInterface, secrets typedcorev1.SecretInterface, namespace string, spec RunSpec) (*RunStatus, error) {
-	if len(spec.Files) == 0 {
+	// A Secret is needed when the step has mounted Files or sensitive env vars
+	// (whose values live in the Secret and are referenced via secretKeyRef).
+	if len(spec.Files) == 0 && len(spec.SecretEnv) == 0 {
 		created, err := taskruns.Create(ctx, buildTaskRun(namespace, "", spec), metav1.CreateOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("tekton: create taskrun: %w", err)
@@ -141,7 +150,7 @@ func submitTaskRun(ctx context.Context, taskruns dynamic.ResourceInterface, secr
 	// Create the Secret first so the volume the TaskRun references already exists.
 	// It carries the same per-org/per-job labels as the TaskRun so it is scoped
 	// and swept alongside it.
-	secret := buildCredsSecret(namespace, secretName, spec.Files)
+	secret := buildCredsSecret(namespace, secretName, spec)
 	if len(spec.Labels) > 0 {
 		secret.Labels = spec.Labels
 	}
@@ -180,12 +189,14 @@ func buildTaskRun(namespace, secretName string, spec RunSpec) *unstructured.Unst
 		"image":  spec.Image,
 		"script": spec.Script,
 	}
-	if len(spec.Env) > 0 {
-		step["env"] = envVars(spec.Env)
+	if env := envVars(spec.Env, spec.SecretEnv, secretName); len(env) > 0 {
+		step["env"] = env
 	}
 	taskSpec := map[string]any{"steps": []any{step}}
 	generateName := spec.Name + "-"
-	if secretName != "" {
+	// A volume mount is only needed for mounted Files; secret-backed env uses
+	// secretKeyRef and needs no mount.
+	if len(spec.Files) > 0 {
 		step["volumeMounts"] = []any{map[string]any{
 			"name":      credsVolumeName,
 			"mountPath": CredsMountPath,
@@ -221,15 +232,28 @@ func labelsToAny(labels map[string]string) map[string]any {
 	return out
 }
 
-// buildCredsSecret builds the Opaque Secret carrying the run's Files (keyed by
-// filename), mounted into the step as a volume.
-func buildCredsSecret(namespace, name string, files map[string]string) *corev1.Secret {
+// buildCredsSecret builds the Opaque Secret carrying the run's mounted Files
+// (keyed by filename) and its sensitive env values (keyed by secretEnvDataKey),
+// so the step can mount the files and reference the env values via secretKeyRef.
+func buildCredsSecret(namespace, name string, spec RunSpec) *corev1.Secret {
+	data := make(map[string]string, len(spec.Files)+len(spec.SecretEnv))
+	for k, v := range spec.Files {
+		data[k] = v
+	}
+	for k, v := range spec.SecretEnv {
+		data[secretEnvDataKey(k)] = v
+	}
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
 		Type:       corev1.SecretTypeOpaque,
-		StringData: files,
+		StringData: data,
 	}
 }
+
+// secretEnvDataKey is the creds-Secret data key holding a sensitive env value.
+// The "env-" prefix namespaces it away from any mounted-file key (filenames
+// don't carry it), and the result is a valid Secret data key.
+func secretEnvDataKey(name string) string { return "env-" + name }
 
 // ownerRefPatch is a JSON merge patch that sets a Secret's single ownerReference
 // to the named TaskRun, or nil if the UID isn't known (so we skip the patch).
@@ -243,16 +267,34 @@ func ownerRefPatch(taskRunName string, uid types.UID) []byte {
 	))
 }
 
-// envVars maps an env map to the TaskRun step's env list, sorted by name so the
-// rendered spec is stable (deterministic across submits and easy to assert).
-func envVars(env map[string]string) []any {
-	names := make([]string, 0, len(env))
+// envVars builds the TaskRun step's env list from the inline (non-secret) env
+// and the secret env (whose values live in the creds Secret named secretName and
+// are referenced via secretKeyRef). Entries are sorted by name across both maps
+// so the rendered spec is stable (deterministic across submits and easy to
+// assert); env and secretEnv names are expected to be disjoint.
+func envVars(env, secretEnv map[string]string, secretName string) []any {
+	names := make([]string, 0, len(env)+len(secretEnv))
 	for k := range env {
 		names = append(names, k)
 	}
+	for k := range secretEnv {
+		names = append(names, k)
+	}
 	sort.Strings(names)
-	out := make([]any, 0, len(env))
+	out := make([]any, 0, len(names))
 	for _, k := range names {
+		if _, ok := secretEnv[k]; ok {
+			out = append(out, map[string]any{
+				"name": k,
+				"valueFrom": map[string]any{
+					"secretKeyRef": map[string]any{
+						"name": secretName,
+						"key":  secretEnvDataKey(k),
+					},
+				},
+			})
+			continue
+		}
 		out = append(out, map[string]any{"name": k, "value": env[k]})
 	}
 	return out

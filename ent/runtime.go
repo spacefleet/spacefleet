@@ -20,6 +20,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/schema"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/user"
+	"github.com/spacefleet/spacefleet/ent/variable"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
 )
 
@@ -283,6 +284,30 @@ func init() {
 	userDescID := userFields[0].Descriptor()
 	// user.DefaultID holds the default value on creation for the id field.
 	user.DefaultID = userDescID.Default.(func() uuid.UUID)
+	variableFields := schema.Variable{}.Fields()
+	_ = variableFields
+	// variableDescName is the schema descriptor for name field.
+	variableDescName := variableFields[4].Descriptor()
+	// variable.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	variable.NameValidator = variableDescName.Validators[0].(func(string) error)
+	// variableDescSensitive is the schema descriptor for sensitive field.
+	variableDescSensitive := variableFields[5].Descriptor()
+	// variable.DefaultSensitive holds the default value on creation for the sensitive field.
+	variable.DefaultSensitive = variableDescSensitive.Default.(bool)
+	// variableDescCreatedAt is the schema descriptor for created_at field.
+	variableDescCreatedAt := variableFields[8].Descriptor()
+	// variable.DefaultCreatedAt holds the default value on creation for the created_at field.
+	variable.DefaultCreatedAt = variableDescCreatedAt.Default.(func() time.Time)
+	// variableDescUpdatedAt is the schema descriptor for updated_at field.
+	variableDescUpdatedAt := variableFields[9].Descriptor()
+	// variable.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	variable.DefaultUpdatedAt = variableDescUpdatedAt.Default.(func() time.Time)
+	// variable.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	variable.UpdateDefaultUpdatedAt = variableDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// variableDescID is the schema descriptor for id field.
+	variableDescID := variableFields[0].Descriptor()
+	// variable.DefaultID holds the default value on creation for the id field.
+	variable.DefaultID = variableDescID.Default.(func() uuid.UUID)
 	workflowrunFields := schema.WorkflowRun{}.Fields()
 	_ = workflowrunFields
 	// workflowrunDescCreatedAt is the schema descriptor for created_at field.

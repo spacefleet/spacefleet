@@ -24,6 +24,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/secrets"
 	"github.com/spacefleet/spacefleet/lib/tekton"
+	"github.com/spacefleet/spacefleet/lib/variables"
 	"github.com/spacefleet/spacefleet/lib/workflows"
 )
 
@@ -100,11 +101,13 @@ func runWorker(_ []string) {
 	githubInstallsSvc := githubinstallations.NewService(entClient, ghAuth)
 
 	// The workflow run worker resolves each component's run inputs through the
-	// shared lib/deploy resolver, built over four deps: the clusters connection
+	// shared lib/deploy resolver, built over five deps: the clusters connection
 	// resolver, the chart-credentials resolver, the GitHub installations token
-	// minter, and the cloud-credentials resolver (for a terraform byo-backend run).
+	// minter, the cloud-credentials resolver (for a terraform byo-backend run),
+	// and the variables resolver (the env injected into every component job).
 	workflowsSvc := workflows.NewService(entClient)
-	runResolver := deploy.NewResolver(clustersSvc, chartCredsSvc, githubInstallsSvc, cloudCredsSvc)
+	variablesSvc := variables.NewService(entClient, sealer)
+	runResolver := deploy.NewResolver(clustersSvc, chartCredsSvc, githubInstallsSvc, cloudCredsSvc, variablesSvc)
 
 	// Register job workers:
 	//   - invite-email: sends org invitation emails (Sender is SMTP when

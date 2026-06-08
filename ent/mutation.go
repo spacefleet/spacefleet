@@ -26,6 +26,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/predicate"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/user"
+	"github.com/spacefleet/spacefleet/ent/variable"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
 )
 
@@ -51,6 +52,7 @@ const (
 	TypeOrganization       = "Organization"
 	TypeTektonInstallation = "TektonInstallation"
 	TypeUser               = "User"
+	TypeVariable           = "Variable"
 	TypeWorkflowRun        = "WorkflowRun"
 )
 
@@ -11947,6 +11949,930 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown User edge %s", name)
+}
+
+// VariableMutation represents an operation that mutates the Variable nodes in the graph.
+type VariableMutation struct {
+	config
+	op                  Op
+	typ                 string
+	id                  *uuid.UUID
+	component_id        *uuid.UUID
+	name                *string
+	sensitive           *bool
+	value               *string
+	encrypted_value     *[]byte
+	created_at          *time.Time
+	updated_at          *time.Time
+	clearedFields       map[string]struct{}
+	organization        *uuid.UUID
+	clearedorganization bool
+	application         *uuid.UUID
+	clearedapplication  bool
+	done                bool
+	oldValue            func(context.Context) (*Variable, error)
+	predicates          []predicate.Variable
+}
+
+var _ ent.Mutation = (*VariableMutation)(nil)
+
+// variableOption allows management of the mutation configuration using functional options.
+type variableOption func(*VariableMutation)
+
+// newVariableMutation creates new mutation for the Variable entity.
+func newVariableMutation(c config, op Op, opts ...variableOption) *VariableMutation {
+	m := &VariableMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeVariable,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withVariableID sets the ID field of the mutation.
+func withVariableID(id uuid.UUID) variableOption {
+	return func(m *VariableMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Variable
+		)
+		m.oldValue = func(ctx context.Context) (*Variable, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Variable.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withVariable sets the old Variable of the mutation.
+func withVariable(node *Variable) variableOption {
+	return func(m *VariableMutation) {
+		m.oldValue = func(context.Context) (*Variable, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m VariableMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m VariableMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Variable entities.
+func (m *VariableMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *VariableMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *VariableMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Variable.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (m *VariableMutation) SetOrganizationID(u uuid.UUID) {
+	m.organization = &u
+}
+
+// OrganizationID returns the value of the "organization_id" field in the mutation.
+func (m *VariableMutation) OrganizationID() (r uuid.UUID, exists bool) {
+	v := m.organization
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrganizationID returns the old "organization_id" field's value of the Variable entity.
+// If the Variable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VariableMutation) OldOrganizationID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrganizationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrganizationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrganizationID: %w", err)
+	}
+	return oldValue.OrganizationID, nil
+}
+
+// ResetOrganizationID resets all changes to the "organization_id" field.
+func (m *VariableMutation) ResetOrganizationID() {
+	m.organization = nil
+}
+
+// SetApplicationID sets the "application_id" field.
+func (m *VariableMutation) SetApplicationID(u uuid.UUID) {
+	m.application = &u
+}
+
+// ApplicationID returns the value of the "application_id" field in the mutation.
+func (m *VariableMutation) ApplicationID() (r uuid.UUID, exists bool) {
+	v := m.application
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldApplicationID returns the old "application_id" field's value of the Variable entity.
+// If the Variable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VariableMutation) OldApplicationID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldApplicationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldApplicationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldApplicationID: %w", err)
+	}
+	return oldValue.ApplicationID, nil
+}
+
+// ResetApplicationID resets all changes to the "application_id" field.
+func (m *VariableMutation) ResetApplicationID() {
+	m.application = nil
+}
+
+// SetComponentID sets the "component_id" field.
+func (m *VariableMutation) SetComponentID(u uuid.UUID) {
+	m.component_id = &u
+}
+
+// ComponentID returns the value of the "component_id" field in the mutation.
+func (m *VariableMutation) ComponentID() (r uuid.UUID, exists bool) {
+	v := m.component_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldComponentID returns the old "component_id" field's value of the Variable entity.
+// If the Variable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VariableMutation) OldComponentID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldComponentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldComponentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldComponentID: %w", err)
+	}
+	return oldValue.ComponentID, nil
+}
+
+// ClearComponentID clears the value of the "component_id" field.
+func (m *VariableMutation) ClearComponentID() {
+	m.component_id = nil
+	m.clearedFields[variable.FieldComponentID] = struct{}{}
+}
+
+// ComponentIDCleared returns if the "component_id" field was cleared in this mutation.
+func (m *VariableMutation) ComponentIDCleared() bool {
+	_, ok := m.clearedFields[variable.FieldComponentID]
+	return ok
+}
+
+// ResetComponentID resets all changes to the "component_id" field.
+func (m *VariableMutation) ResetComponentID() {
+	m.component_id = nil
+	delete(m.clearedFields, variable.FieldComponentID)
+}
+
+// SetName sets the "name" field.
+func (m *VariableMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *VariableMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the Variable entity.
+// If the Variable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VariableMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *VariableMutation) ResetName() {
+	m.name = nil
+}
+
+// SetSensitive sets the "sensitive" field.
+func (m *VariableMutation) SetSensitive(b bool) {
+	m.sensitive = &b
+}
+
+// Sensitive returns the value of the "sensitive" field in the mutation.
+func (m *VariableMutation) Sensitive() (r bool, exists bool) {
+	v := m.sensitive
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSensitive returns the old "sensitive" field's value of the Variable entity.
+// If the Variable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VariableMutation) OldSensitive(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSensitive is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSensitive requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSensitive: %w", err)
+	}
+	return oldValue.Sensitive, nil
+}
+
+// ResetSensitive resets all changes to the "sensitive" field.
+func (m *VariableMutation) ResetSensitive() {
+	m.sensitive = nil
+}
+
+// SetValue sets the "value" field.
+func (m *VariableMutation) SetValue(s string) {
+	m.value = &s
+}
+
+// Value returns the value of the "value" field in the mutation.
+func (m *VariableMutation) Value() (r string, exists bool) {
+	v := m.value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValue returns the old "value" field's value of the Variable entity.
+// If the Variable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VariableMutation) OldValue(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValue is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValue requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValue: %w", err)
+	}
+	return oldValue.Value, nil
+}
+
+// ClearValue clears the value of the "value" field.
+func (m *VariableMutation) ClearValue() {
+	m.value = nil
+	m.clearedFields[variable.FieldValue] = struct{}{}
+}
+
+// ValueCleared returns if the "value" field was cleared in this mutation.
+func (m *VariableMutation) ValueCleared() bool {
+	_, ok := m.clearedFields[variable.FieldValue]
+	return ok
+}
+
+// ResetValue resets all changes to the "value" field.
+func (m *VariableMutation) ResetValue() {
+	m.value = nil
+	delete(m.clearedFields, variable.FieldValue)
+}
+
+// SetEncryptedValue sets the "encrypted_value" field.
+func (m *VariableMutation) SetEncryptedValue(b []byte) {
+	m.encrypted_value = &b
+}
+
+// EncryptedValue returns the value of the "encrypted_value" field in the mutation.
+func (m *VariableMutation) EncryptedValue() (r []byte, exists bool) {
+	v := m.encrypted_value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEncryptedValue returns the old "encrypted_value" field's value of the Variable entity.
+// If the Variable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VariableMutation) OldEncryptedValue(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEncryptedValue is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEncryptedValue requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEncryptedValue: %w", err)
+	}
+	return oldValue.EncryptedValue, nil
+}
+
+// ClearEncryptedValue clears the value of the "encrypted_value" field.
+func (m *VariableMutation) ClearEncryptedValue() {
+	m.encrypted_value = nil
+	m.clearedFields[variable.FieldEncryptedValue] = struct{}{}
+}
+
+// EncryptedValueCleared returns if the "encrypted_value" field was cleared in this mutation.
+func (m *VariableMutation) EncryptedValueCleared() bool {
+	_, ok := m.clearedFields[variable.FieldEncryptedValue]
+	return ok
+}
+
+// ResetEncryptedValue resets all changes to the "encrypted_value" field.
+func (m *VariableMutation) ResetEncryptedValue() {
+	m.encrypted_value = nil
+	delete(m.clearedFields, variable.FieldEncryptedValue)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *VariableMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *VariableMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Variable entity.
+// If the Variable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VariableMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *VariableMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *VariableMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *VariableMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the Variable entity.
+// If the Variable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VariableMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *VariableMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearOrganization clears the "organization" edge to the Organization entity.
+func (m *VariableMutation) ClearOrganization() {
+	m.clearedorganization = true
+	m.clearedFields[variable.FieldOrganizationID] = struct{}{}
+}
+
+// OrganizationCleared reports if the "organization" edge to the Organization entity was cleared.
+func (m *VariableMutation) OrganizationCleared() bool {
+	return m.clearedorganization
+}
+
+// OrganizationIDs returns the "organization" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OrganizationID instead. It exists only for internal usage by the builders.
+func (m *VariableMutation) OrganizationIDs() (ids []uuid.UUID) {
+	if id := m.organization; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOrganization resets all changes to the "organization" edge.
+func (m *VariableMutation) ResetOrganization() {
+	m.organization = nil
+	m.clearedorganization = false
+}
+
+// ClearApplication clears the "application" edge to the Application entity.
+func (m *VariableMutation) ClearApplication() {
+	m.clearedapplication = true
+	m.clearedFields[variable.FieldApplicationID] = struct{}{}
+}
+
+// ApplicationCleared reports if the "application" edge to the Application entity was cleared.
+func (m *VariableMutation) ApplicationCleared() bool {
+	return m.clearedapplication
+}
+
+// ApplicationIDs returns the "application" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ApplicationID instead. It exists only for internal usage by the builders.
+func (m *VariableMutation) ApplicationIDs() (ids []uuid.UUID) {
+	if id := m.application; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetApplication resets all changes to the "application" edge.
+func (m *VariableMutation) ResetApplication() {
+	m.application = nil
+	m.clearedapplication = false
+}
+
+// Where appends a list predicates to the VariableMutation builder.
+func (m *VariableMutation) Where(ps ...predicate.Variable) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the VariableMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *VariableMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Variable, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *VariableMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *VariableMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Variable).
+func (m *VariableMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *VariableMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.organization != nil {
+		fields = append(fields, variable.FieldOrganizationID)
+	}
+	if m.application != nil {
+		fields = append(fields, variable.FieldApplicationID)
+	}
+	if m.component_id != nil {
+		fields = append(fields, variable.FieldComponentID)
+	}
+	if m.name != nil {
+		fields = append(fields, variable.FieldName)
+	}
+	if m.sensitive != nil {
+		fields = append(fields, variable.FieldSensitive)
+	}
+	if m.value != nil {
+		fields = append(fields, variable.FieldValue)
+	}
+	if m.encrypted_value != nil {
+		fields = append(fields, variable.FieldEncryptedValue)
+	}
+	if m.created_at != nil {
+		fields = append(fields, variable.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, variable.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *VariableMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case variable.FieldOrganizationID:
+		return m.OrganizationID()
+	case variable.FieldApplicationID:
+		return m.ApplicationID()
+	case variable.FieldComponentID:
+		return m.ComponentID()
+	case variable.FieldName:
+		return m.Name()
+	case variable.FieldSensitive:
+		return m.Sensitive()
+	case variable.FieldValue:
+		return m.Value()
+	case variable.FieldEncryptedValue:
+		return m.EncryptedValue()
+	case variable.FieldCreatedAt:
+		return m.CreatedAt()
+	case variable.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *VariableMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case variable.FieldOrganizationID:
+		return m.OldOrganizationID(ctx)
+	case variable.FieldApplicationID:
+		return m.OldApplicationID(ctx)
+	case variable.FieldComponentID:
+		return m.OldComponentID(ctx)
+	case variable.FieldName:
+		return m.OldName(ctx)
+	case variable.FieldSensitive:
+		return m.OldSensitive(ctx)
+	case variable.FieldValue:
+		return m.OldValue(ctx)
+	case variable.FieldEncryptedValue:
+		return m.OldEncryptedValue(ctx)
+	case variable.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case variable.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Variable field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *VariableMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case variable.FieldOrganizationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrganizationID(v)
+		return nil
+	case variable.FieldApplicationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetApplicationID(v)
+		return nil
+	case variable.FieldComponentID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetComponentID(v)
+		return nil
+	case variable.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case variable.FieldSensitive:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSensitive(v)
+		return nil
+	case variable.FieldValue:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValue(v)
+		return nil
+	case variable.FieldEncryptedValue:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEncryptedValue(v)
+		return nil
+	case variable.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case variable.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Variable field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *VariableMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *VariableMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *VariableMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Variable numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *VariableMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(variable.FieldComponentID) {
+		fields = append(fields, variable.FieldComponentID)
+	}
+	if m.FieldCleared(variable.FieldValue) {
+		fields = append(fields, variable.FieldValue)
+	}
+	if m.FieldCleared(variable.FieldEncryptedValue) {
+		fields = append(fields, variable.FieldEncryptedValue)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *VariableMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *VariableMutation) ClearField(name string) error {
+	switch name {
+	case variable.FieldComponentID:
+		m.ClearComponentID()
+		return nil
+	case variable.FieldValue:
+		m.ClearValue()
+		return nil
+	case variable.FieldEncryptedValue:
+		m.ClearEncryptedValue()
+		return nil
+	}
+	return fmt.Errorf("unknown Variable nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *VariableMutation) ResetField(name string) error {
+	switch name {
+	case variable.FieldOrganizationID:
+		m.ResetOrganizationID()
+		return nil
+	case variable.FieldApplicationID:
+		m.ResetApplicationID()
+		return nil
+	case variable.FieldComponentID:
+		m.ResetComponentID()
+		return nil
+	case variable.FieldName:
+		m.ResetName()
+		return nil
+	case variable.FieldSensitive:
+		m.ResetSensitive()
+		return nil
+	case variable.FieldValue:
+		m.ResetValue()
+		return nil
+	case variable.FieldEncryptedValue:
+		m.ResetEncryptedValue()
+		return nil
+	case variable.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case variable.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Variable field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *VariableMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.organization != nil {
+		edges = append(edges, variable.EdgeOrganization)
+	}
+	if m.application != nil {
+		edges = append(edges, variable.EdgeApplication)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *VariableMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case variable.EdgeOrganization:
+		if id := m.organization; id != nil {
+			return []ent.Value{*id}
+		}
+	case variable.EdgeApplication:
+		if id := m.application; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *VariableMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *VariableMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *VariableMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedorganization {
+		edges = append(edges, variable.EdgeOrganization)
+	}
+	if m.clearedapplication {
+		edges = append(edges, variable.EdgeApplication)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *VariableMutation) EdgeCleared(name string) bool {
+	switch name {
+	case variable.EdgeOrganization:
+		return m.clearedorganization
+	case variable.EdgeApplication:
+		return m.clearedapplication
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *VariableMutation) ClearEdge(name string) error {
+	switch name {
+	case variable.EdgeOrganization:
+		m.ClearOrganization()
+		return nil
+	case variable.EdgeApplication:
+		m.ClearApplication()
+		return nil
+	}
+	return fmt.Errorf("unknown Variable unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *VariableMutation) ResetEdge(name string) error {
+	switch name {
+	case variable.EdgeOrganization:
+		m.ResetOrganization()
+		return nil
+	case variable.EdgeApplication:
+		m.ResetApplication()
+		return nil
+	}
+	return fmt.Errorf("unknown Variable edge %s", name)
 }
 
 // WorkflowRunMutation represents an operation that mutates the WorkflowRun nodes in the graph.

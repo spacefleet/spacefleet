@@ -843,6 +843,179 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/applications/{id}/variables:
+    get:
+      summary: List an application's app-level variables
+      description: |
+        Org-scoped. App-level variables are passed to every component job of the
+        application as environment variables. A sensitive variable's value is
+        sealed and never returned (only `sensitive: true` and the name).
+      operationId: listApplicationVariables
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+      responses:
+        "200":
+          description: The application's app-level variables
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Variable"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Add an app-level variable
+      description: |
+        Org-scoped, editor or above. A sensitive variable's value is sealed at
+        rest and never returned (requires an encryption key,
+        SPACEFLEET_SECRET_KEY). Names are a shell-safe identifier and unique
+        among the application's app-level variables.
+      operationId: createApplicationVariable
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariableCreateRequest"
+      responses:
+        "201":
+          description: Variable created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Variable"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/applications/{id}/variables/{variableId}:
+    patch:
+      summary: Update an app-level variable
+      description: |
+        Org-scoped, editor or above. Renames and/or replaces the value. Omit
+        `value` to leave it unchanged (the only way to keep a sensitive value,
+        which is never returned). The sensitive flag is fixed at creation.
+      operationId: updateApplicationVariable
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+        - $ref: "#/components/parameters/VariableID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariableUpdateRequest"
+      responses:
+        "200":
+          description: Variable updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Variable"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete an app-level variable
+      operationId: deleteApplicationVariable
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+        - $ref: "#/components/parameters/VariableID"
+      responses:
+        "204":
+          description: Variable deleted
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/applications/{id}/components/{componentId}/variables:
+    get:
+      summary: List a component's variables
+      description: |
+        Org-scoped. Component-level variables are passed to that one component's
+        job and override an app-level variable of the same name. A sensitive
+        variable's value is sealed and never returned.
+      operationId: listComponentVariables
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+        - $ref: "#/components/parameters/ComponentID"
+      responses:
+        "200":
+          description: The component's variables
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Variable"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Add a component-level variable
+      description: |
+        Org-scoped, editor or above. Overrides an app-level variable of the same
+        name for this component. A sensitive variable's value is sealed at rest
+        and never returned. The component must already exist (save the workflow
+        first). Names are unique among the component's variables.
+      operationId: createComponentVariable
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+        - $ref: "#/components/parameters/ComponentID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariableCreateRequest"
+      responses:
+        "201":
+          description: Variable created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Variable"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/applications/{id}/components/{componentId}/variables/{variableId}:
+    patch:
+      summary: Update a component-level variable
+      description: |
+        Org-scoped, editor or above. Renames and/or replaces the value. Omit
+        `value` to leave it unchanged. The sensitive flag is fixed at creation.
+      operationId: updateComponentVariable
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+        - $ref: "#/components/parameters/ComponentID"
+        - $ref: "#/components/parameters/VariableID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariableUpdateRequest"
+      responses:
+        "200":
+          description: Variable updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Variable"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete a component-level variable
+      operationId: deleteComponentVariable
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+        - $ref: "#/components/parameters/ComponentID"
+        - $ref: "#/components/parameters/VariableID"
+      responses:
+        "204":
+          description: Variable deleted
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/applications/{id}/runs:
     get:
       summary: List an application's workflow runs
@@ -2911,6 +3084,73 @@ components:
                 was when the run began. Secret-bearing config is redacted for
                 callers below editor.
 
+    Variable:
+      type: object
+      description: |
+        A named key/value passed to component jobs as an environment variable,
+        defined at the app level (every component) or the component level
+        (overriding an app-level variable of the same name). A sensitive
+        variable's value is sealed at rest and never returned — only its name and
+        the sensitive flag are.
+      required: [id, name, sensitive, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: The environment variable name (a shell-safe identifier).
+        sensitive:
+          type: boolean
+          description: |
+            When true, the value is sealed at rest and never returned (write-only,
+            it can only be replaced).
+        value:
+          type: string
+          description: |
+            The plaintext value. Present only for non-sensitive variables; a
+            sensitive variable's value is never returned.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    VariableCreateRequest:
+      type: object
+      required: [name, sensitive, value]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: A shell-safe identifier, unique within the variable's scope.
+        sensitive:
+          type: boolean
+          description: |
+            When true, the value is sealed at rest and never returned. Fixed at
+            creation (delete and recreate to change).
+        value:
+          type: string
+          description: |
+            The value. Required (a sensitive variable's must be non-empty); for a
+            non-sensitive variable an empty string is allowed.
+
+    VariableUpdateRequest:
+      type: object
+      description: |
+        All fields optional. Omit `value` to leave it unchanged — the only way to
+        keep a sensitive value, which is never returned. The sensitive flag is
+        fixed at creation.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        value:
+          type: string
+
   parameters:
     OrganizationID:
       in: path
@@ -2971,6 +3211,22 @@ components:
     ComponentRunID:
       in: path
       name: componentRunId
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    ComponentID:
+      in: path
+      name: componentId
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    VariableID:
+      in: path
+      name: variableId
       required: true
       schema:
         type: string

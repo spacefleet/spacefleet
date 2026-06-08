@@ -6,6 +6,7 @@ import {
   ComponentFields,
   type EditableComponent,
 } from "../components/workflow/ComponentFields";
+import { VariablesEditor } from "../components/VariablesEditor";
 
 // componentsEqual compares two editable components field by field (config is a
 // flat string map) so the editor can tell whether its local working copy still
@@ -39,7 +40,7 @@ function componentsEqual(a: EditableComponent, b: EditableComponent): boolean {
 // Viewers see the fields read-only with no Save/Cancel. A Back link returns to
 // the canvas through the router (never raw history).
 export function NodeEditor() {
-  const { nodeId = "" } = useParams();
+  const { appId = "", nodeId = "" } = useParams();
   const navigate = useNavigate();
   const {
     canEdit,
@@ -199,6 +200,31 @@ export function NodeEditor() {
               </button>
             </div>
           )}
+
+          {/* Component variables. These override the app-level variables of the
+              same name for this component's job, and save through their own
+              endpoints (separately from the node config above) — so they're only
+              available once the node has been saved into the workflow. */}
+          <div className="mt-6 border border-neutral-200 bg-white p-4">
+            <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+              Variables
+            </h2>
+            <p className="mb-3 mt-1 text-xs text-neutral-500">
+              Passed to this component’s job as environment variables, overriding
+              any app-level variable of the same name. Saved separately from the
+              node above; a sensitive value is sealed and never shown again.
+            </p>
+            {isNew ? (
+              <p className="text-sm text-neutral-500">
+                Save the node first to add component variables.
+              </p>
+            ) : (
+              <VariablesEditor
+                scope={{ kind: "component", appId, componentId: nodeId }}
+                canEdit={canEdit}
+              />
+            )}
+          </div>
         </>
       )}
     </div>

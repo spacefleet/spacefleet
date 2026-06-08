@@ -45,5 +45,8 @@ type TektonInstallation func(*sql.Selector)
 // User is the predicate function for user builders.
 type User func(*sql.Selector)
 
+// Variable is the predicate function for variable builders.
+type Variable func(*sql.Selector)
+
 // WorkflowRun is the predicate function for workflowrun builders.
 type WorkflowRun func(*sql.Selector)

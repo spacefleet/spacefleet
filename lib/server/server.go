@@ -24,6 +24,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/secrets"
 	"github.com/spacefleet/spacefleet/lib/users"
+	"github.com/spacefleet/spacefleet/lib/variables"
 	"github.com/spacefleet/spacefleet/lib/workflows"
 )
 
@@ -68,6 +69,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 	githubInstallsSvc := githubinstallations.NewService(entClient, ghAuth)
 	applicationsSvc := applications.NewService(entClient)
 	workflowsSvc := workflows.NewService(entClient)
+	variablesSvc := variables.NewService(entClient, sealer)
 	invitesSvc := invitations.NewService(entClient)
 
 	// Build the request authenticator. Spacefleet always authenticates against
@@ -98,6 +100,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 		GitHubInstallations: githubInstallsSvc,
 		Invites:             invitesSvc,
 		Workflows:           workflowsSvc,
+		Variables:           variablesSvc,
 		AllowOrgCreation:    cfg.AllowOrgCreation,
 		ExternalURL:         cfg.ExternalURL,
 		EmailEnabled:        cfg.EmailEnabled(),

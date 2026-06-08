@@ -7,6 +7,7 @@ import { useObjectStream } from "../lib/useObjectStream";
 import type { components } from "../api/schema";
 import { DeleteApplicationDialog } from "../components/DeleteApplicationDialog";
 import { RunStatusBadge } from "../components/workflow/status";
+import { VariablesEditor } from "../components/VariablesEditor";
 import { formatDuration } from "../lib/duration";
 
 type Application = components["schemas"]["Application"];
@@ -185,6 +186,19 @@ export function ApplicationDetail() {
                 value={clusters[app.runner_cluster_id] ?? app.runner_cluster_id}
               />
             </dl>
+          </div>
+
+          {/* Variables (app-level: passed to every component job as env vars) */}
+          <div className="mt-6 border border-neutral-200 bg-white p-4">
+            <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+              Variables
+            </h2>
+            <p className="mb-3 mt-1 text-xs text-neutral-500">
+              Passed to every component job in this application as environment
+              variables. A component can override one of these for its own job.
+              A sensitive value is sealed and never shown again.
+            </p>
+            <VariablesEditor scope={{ kind: "app", appId }} canEdit={canEdit} />
           </div>
 
           {/* Latest run (links to the run view; full history under Runs) */}

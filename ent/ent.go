@@ -25,6 +25,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/user"
+	"github.com/spacefleet/spacefleet/ent/variable"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
 )
 
@@ -99,6 +100,7 @@ func checkColumn(t, c string) error {
 			organization.Table:       organization.ValidColumn,
 			tektoninstallation.Table: tektoninstallation.ValidColumn,
 			user.Table:               user.ValidColumn,
+			variable.Table:           variable.ValidColumn,
 			workflowrun.Table:        workflowrun.ValidColumn,
 		})
 	})

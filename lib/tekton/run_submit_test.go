@@ -71,12 +71,66 @@ func TestBuildTaskRunWithFiles(t *testing.T) {
 }
 
 func TestBuildCredsSecret(t *testing.T) {
-	s := buildCredsSecret("ns", "helm-creds-x", map[string]string{"kubeconfig": "data"})
+	s := buildCredsSecret("ns", "helm-creds-x", RunSpec{Files: map[string]string{"kubeconfig": "data"}})
 	if s.Type != corev1.SecretTypeOpaque || s.Namespace != "ns" || s.Name != "helm-creds-x" {
 		t.Errorf("unexpected secret meta %+v", s.ObjectMeta)
 	}
 	if s.StringData["kubeconfig"] != "data" {
 		t.Errorf("StringData = %v", s.StringData)
+	}
+}
+
+// TestBuildCredsSecretSecretEnv: sensitive env values are stored in the Secret
+// under the env- prefixed key, alongside any mounted files.
+func TestBuildCredsSecretSecretEnv(t *testing.T) {
+	s := buildCredsSecret("ns", "helm-creds-x", RunSpec{
+		Files:     map[string]string{"kubeconfig": "k"},
+		SecretEnv: map[string]string{"API_KEY": "shh"},
+	})
+	if s.StringData["kubeconfig"] != "k" {
+		t.Errorf("StringData[kubeconfig] = %q", s.StringData["kubeconfig"])
+	}
+	if s.StringData["env-API_KEY"] != "shh" {
+		t.Errorf("StringData[env-API_KEY] = %q, want shh", s.StringData["env-API_KEY"])
+	}
+}
+
+// TestBuildTaskRunSecretEnv: a sensitive env var is rendered as a secretKeyRef
+// (never inline), a non-secret one stays inline, and with no Files there's no
+// volume mount.
+func TestBuildTaskRunSecretEnv(t *testing.T) {
+	spec := RunSpec{
+		Name:      "job",
+		Image:     "img",
+		Script:    "run",
+		Env:       map[string]string{"PLAIN": "1"},
+		SecretEnv: map[string]string{"SEC": "shh"},
+	}
+	tr := buildTaskRun("ns", credsSecretName("abcd"), spec)
+	step := firstStep(t, tr)
+
+	if _, ok := step["volumeMounts"]; ok {
+		t.Error("no Files -> no volumeMounts even with SecretEnv")
+	}
+	env := step["env"].([]any)
+	if len(env) != 2 {
+		t.Fatalf("want 2 env entries, got %d: %v", len(env), env)
+	}
+	// Sorted by name: PLAIN before SEC.
+	plain := env[0].(map[string]any)
+	if plain["name"] != "PLAIN" || plain["value"] != "1" {
+		t.Errorf("inline env = %v, want PLAIN=1", plain)
+	}
+	sec := env[1].(map[string]any)
+	if sec["name"] != "SEC" {
+		t.Errorf("secret env name = %v, want SEC", sec["name"])
+	}
+	if _, leaked := sec["value"]; leaked {
+		t.Error("sensitive env rendered an inline value; it must use secretKeyRef")
+	}
+	ref := sec["valueFrom"].(map[string]any)["secretKeyRef"].(map[string]any)
+	if ref["name"] != credsSecretName("abcd") || ref["key"] != "env-SEC" {
+		t.Errorf("secretKeyRef = %v, want name=helm-creds-abcd key=env-SEC", ref)
 	}
 }
 
