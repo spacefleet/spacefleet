@@ -88,6 +88,12 @@ beforeEach(() => {
   mockApi.GET.mockReset();
   mockApi.PUT.mockReset();
   mockApi.POST.mockReset();
+  // The canvas auto-saves dirty edits (debounced), so give every test a benign
+  // PUT by default; tests that assert on save behavior override it.
+  mockApi.PUT.mockResolvedValue({
+    data: { components: [], groups: [] },
+    error: undefined,
+  });
 });
 
 describe("WorkflowCanvas", () => {
@@ -213,17 +219,18 @@ describe("WorkflowCanvas", () => {
     await userEvent.click(screen.getByRole("button", { name: /^add$/i }));
     await userEvent.click(screen.getByRole("menuitem", { name: /opentofu/i }));
 
-    // Both nodes appear, named for their stage.
+    // Adding opens the plan node's editor directly; go back to the canvas to see
+    // both nodes, named for their stage.
+    await screen.findByText("terraform plan");
+    await userEvent.click(
+      screen.getByRole("button", { name: /back to workflow/i }),
+    );
     expect(await screen.findByText("terraform plan")).toBeInTheDocument();
     expect(screen.getByText("terraform apply")).toBeInTheDocument();
   });
 
-  it("OpenTofu apply node depends on the plan node and is gated by default", async () => {
+  it("OpenTofu apply node depends on the plan node and is gated by default (auto-saved)", async () => {
     defaultGets([]);
-    mockApi.PUT.mockResolvedValue({
-      data: { components: [], groups: [] },
-      error: undefined,
-    });
     renderWorkflow();
     await screen.findByText(/no components yet/i);
 
@@ -231,8 +238,10 @@ describe("WorkflowCanvas", () => {
     await userEvent.click(screen.getByRole("menuitem", { name: /opentofu/i }));
     await screen.findByText("terraform plan");
 
-    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
-    await waitFor(() => expect(mockApi.PUT).toHaveBeenCalled());
+    // No manual save: the debounced auto-save persists the new nodes.
+    await waitFor(() => expect(mockApi.PUT).toHaveBeenCalled(), {
+      timeout: 2000,
+    });
 
     const body = mockApi.PUT.mock.calls[0][1].body as {
       components: {

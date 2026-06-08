@@ -1,4 +1,4 @@
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
 import { Package, FileCode, Layers, RefreshCw, Boxes } from "lucide-react";
 import type { components } from "../../api/schema";
 import { ComponentStatusIcon } from "./status";
@@ -58,11 +58,14 @@ export function BuilderNode({ data, selected }: NodeProps) {
   );
 }
 
-// GroupNodeData is the payload attached to a "group" container node: just the
-// group's display name. Members are real child nodes rendered inside it (via
-// React Flow parentId), so the group node itself only draws the labeled box.
+// GroupNodeData is the payload attached to a "group" container node: the group's
+// display name plus a transient `isDropTarget` flag the canvas sets while a node
+// is being dragged over the group, so we can highlight it as droppable. Members
+// are real child nodes rendered inside it (via React Flow parentId), so the group
+// node itself only draws the labeled box.
 export interface GroupNodeData extends Record<string, unknown> {
   name: string;
+  isDropTarget?: boolean;
 }
 
 // GroupNode is the explicit parallel-group container: a labeled rectangular box
@@ -70,15 +73,29 @@ export interface GroupNodeData extends Record<string, unknown> {
 // inside. It carries source+target handles so an edge can be drawn to/from the
 // whole group ("the group depends on …" / "… depends on the group"). Rendered
 // behind its children by ordering group nodes first in the nodes array. Sized by
-// React Flow from the node's width/height.
+// React Flow from the node's width/height; the NodeResizer (shown when selected)
+// lets the user drag the bounds manually, and a thicker ring lights up while a
+// node is being dragged into it.
 export function GroupNode({ data, selected }: NodeProps) {
   const d = data as GroupNodeData;
   return (
     <div
       className={`h-full w-full border bg-neutral-50/70 ${
-        selected ? "border-black ring-1 ring-black" : "border-neutral-300"
+        d.isDropTarget
+          ? "border-black bg-neutral-100 ring-2 ring-black"
+          : selected
+            ? "border-black ring-1 ring-black"
+            : "border-neutral-300"
       }`}
     >
+      <NodeResizer
+        isVisible={selected}
+        minWidth={180}
+        minHeight={120}
+        color="#000000"
+        handleClassName="!h-2 !w-2 !border !border-black !bg-white"
+        lineClassName="!border-black"
+      />
       <Handle type="target" position={Position.Top} className="!bg-neutral-500" />
       <div className="border-b border-neutral-200 bg-neutral-100/80 px-2 py-1">
         <span className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-neutral-500">

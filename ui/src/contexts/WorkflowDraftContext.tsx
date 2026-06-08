@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -49,6 +50,50 @@ function isGroupNode(n: FlowNode): boolean {
   return n.type === "group";
 }
 
+// Which React Flow node changes actually alter persisted state. Selection and
+// the measurement "dimensions" pass React Flow emits on mount must NOT mark the
+// draft dirty — otherwise auto-save would fire on every load and every click. A
+// "dimensions" change with a defined `resizing` flag comes from the user dragging
+// the NodeResizer, which we do persist.
+function isPersistentNodeChange(c: NodeChange): boolean {
+  if (c.type === "position") return true;
+  if (c.type === "remove" || c.type === "add" || c.type === "replace")
+    return true;
+  if (c.type === "dimensions") return c.resizing !== undefined;
+  return false; // "select"
+}
+
+// Edge selection isn't persisted; add/remove/replace are.
+function isPersistentEdgeChange(c: EdgeChange): boolean {
+  return c.type !== "select";
+}
+
+// groupAt finds the group whose bounds contain the absolute point (x, y), so a
+// dragged node can be matched to the group it's hovering over / dropped into.
+function groupAt(ns: FlowNode[], x: number, y: number): FlowNode | undefined {
+  return ns.find((g) => {
+    if (!isGroupNode(g)) return false;
+    const w = g.width ?? DEFAULT_GROUP_SIZE.w;
+    const h = g.height ?? DEFAULT_GROUP_SIZE.h;
+    return (
+      x >= g.position.x &&
+      x <= g.position.x + w &&
+      y >= g.position.y &&
+      y <= g.position.y + h
+    );
+  });
+}
+
+// absPos resolves a node's absolute canvas position, accounting for its parent
+// (child positions are stored relative to the parent group).
+function absPos(ns: FlowNode[], n: FlowNode): { x: number; y: number } {
+  const parent = n.parentId ? ns.find((p) => p.id === n.parentId) : undefined;
+  return {
+    x: (parent?.position.x ?? 0) + n.position.x,
+    y: (parent?.position.y ?? 0) + n.position.y,
+  };
+}
+
 // toEditable strips position/depends_on/group_id (which live on the node + edges)
 // off a loaded Component into the working shape the editor edits.
 function toEditable(c: Component): EditableComponent {
@@ -88,14 +133,22 @@ interface WorkflowDraftValue {
   forceRoll: boolean;
   setForceRoll: (v: boolean) => void;
 
+  // A request to frame specific node ids in the viewport, bumped (via nonce) each
+  // time so the canvas re-fits even when the same ids are focused twice. The
+  // canvas consumes this with fitView; the provider only records the intent
+  // because it can't call into React Flow's instance itself.
+  focus: { ids: string[]; nonce: number } | null;
+
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (conn: Connection) => void;
+  onNodeDrag: (node: Node) => void;
   onNodeDragStop: (node: Node) => void;
 
   addComponent: (type: ComponentType) => void;
   addTerraform: () => void;
   addGroup: () => void;
+  groupSelection: (ids: string[]) => void;
   updateComponent: (next: EditableComponent) => void;
   deleteNode: (id: string) => void;
   getComponent: (id: string) => EditableComponent | null;
@@ -146,6 +199,33 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   const [running, setRunning] = useState(false);
   const [forceRoll, setForceRoll] = useState(false);
 
+  // Viewport-focus request: when something adds/groups nodes we ask the canvas to
+  // frame them. The nonce (a ref-backed counter, since Date.now/Math.random are
+  // unavailable here and would be overkill anyway) guarantees a fresh object so
+  // the canvas effect refires even when the same ids are focused twice.
+  const [focus, setFocus] = useState<{ ids: string[]; nonce: number } | null>(
+    null,
+  );
+  const focusNonce = useRef(0);
+  const requestFocus = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    focusNonce.current += 1;
+    setFocus({ ids, nonce: focusNonce.current });
+  }, []);
+
+  // markDirty flags the draft as having unsaved edits and bumps an edit revision.
+  // The revision lets a save that resolves after newer edits avoid stamping the
+  // draft "saved" (it would mask those edits) — instead the auto-save effect runs
+  // again. Every genuine edit funnels through here; selection/measurement do not.
+  const revision = useRef(0);
+  const markDirty = useCallback(() => {
+    revision.current += 1;
+    setSaved(false);
+    // A fresh edit clears a prior save error so auto-save gets another chance
+    // (the effect holds off while an error is showing to avoid a retry storm).
+    setSaveError(null);
+  }, []);
+
   // Load the workflow and lay out group + component nodes from their persisted
   // position. Group nodes come first in the array so they render behind their
   // children; component nodes whose group_id is set become React Flow children.
@@ -189,7 +269,9 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
               ? c.position.y
               : 80 + Math.floor(i / 4) * 160,
         },
-        ...(parentId ? { parentId, extent: "parent" as const } : {}),
+        ...(parentId
+          ? { parentId, extent: "parent" as const, expandParent: true }
+          : {}),
         data: {
           name: c.name,
           type: c.type,
@@ -217,6 +299,10 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     // Group nodes first so they render behind their children.
     setNodes([...groupNodes, ...componentNodes]);
     setEdges(flowEdges);
+    // The freshly loaded draft matches the server, so it's clean — important so
+    // auto-save doesn't fire on load (the initial saved=false is just the
+    // pre-load placeholder).
+    setSaved(true);
     setLoading(false);
   }, [appId]);
 
@@ -249,55 +335,94 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     }
   }, [githubEnabled, currentOrg?.id]);
 
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setNodes((ns) => applyNodeChanges(changes, ns) as FlowNode[]);
-    setSaved(false);
-  }, []);
-  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
-    setEdges((es) => applyEdgeChanges(changes, es));
-    setSaved(false);
-  }, []);
-  const onConnect = useCallback((conn: Connection) => {
-    if (!conn.source || !conn.target || conn.source === conn.target) return;
-    setEdges((es) => addEdge({ id: `${conn.source}->${conn.target}`, ...conn }, es));
-    setSaved(false);
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      setNodes((ns) => applyNodeChanges(changes, ns) as FlowNode[]);
+      if (changes.some(isPersistentNodeChange)) markDirty();
+    },
+    [markDirty],
+  );
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      setEdges((es) => applyEdgeChanges(changes, es));
+      if (changes.some(isPersistentEdgeChange)) markDirty();
+    },
+    [markDirty],
+  );
+  const onConnect = useCallback(
+    (conn: Connection) => {
+      if (!conn.source || !conn.target || conn.source === conn.target) return;
+      setEdges((es) =>
+        addEdge({ id: `${conn.source}->${conn.target}`, ...conn }, es),
+      );
+      markDirty();
+    },
+    [markDirty],
+  );
+
+  // clearDropHighlights removes the transient isDropTarget flag from every group,
+  // returning the same array reference when nothing changed (so callers can skip
+  // a needless re-render).
+  const clearDropHighlights = useCallback((ns: FlowNode[]): FlowNode[] => {
+    let changed = false;
+    const next = ns.map((n) => {
+      if (isGroupNode(n) && (n.data as GroupNodeData).isDropTarget) {
+        changed = true;
+        return { ...n, data: { ...n.data, isDropTarget: false } };
+      }
+      return n;
+    });
+    return changed ? next : ns;
   }, []);
 
-  // On drag stop, decide group membership: if a component node's bounds land
-  // inside a group node, adopt it (parentId + position relative to the parent);
-  // if dragged clear of every group, detach it. Group nodes themselves never
-  // become children.
-  const onNodeDragStop = useCallback((dragged: Node) => {
+  // While a component node is being dragged, light up the group it's hovering
+  // over so it's obvious the group is a drop target. We only rewrite group data
+  // when the target actually changes, leaving the dragged node's position to the
+  // normal onNodesChange flow.
+  const onNodeDrag = useCallback((dragged: Node) => {
     setNodes((ns) => {
       const node = ns.find((n) => n.id === dragged.id) as FlowNode | undefined;
-      if (!node || isGroupNode(node)) return ns;
+      if (!node || isGroupNode(node)) return clearDropHighlights(ns);
 
-      // Absolute position of the dragged node (account for its current parent).
+      // dragged.position is live (and parent-relative when the node has a parent).
       const parent = node.parentId
         ? ns.find((n) => n.id === node.parentId)
         : undefined;
-      const abs = {
-        x: (parent?.position.x ?? 0) + node.position.x,
-        y: (parent?.position.y ?? 0) + node.position.y,
-      };
+      const x = (parent?.position.x ?? 0) + dragged.position.x;
+      const y = (parent?.position.y ?? 0) + dragged.position.y;
+      const targetId = groupAt(ns, x, y)?.id;
 
-      // Find a group whose bounds contain the dragged node's top-left point.
-      const target = ns.find((g) => {
-        if (!isGroupNode(g)) return false;
-        const w = g.width ?? DEFAULT_GROUP_SIZE.w;
-        const h = g.height ?? DEFAULT_GROUP_SIZE.h;
-        return (
-          abs.x >= g.position.x &&
-          abs.x <= g.position.x + w &&
-          abs.y >= g.position.y &&
-          abs.y <= g.position.y + h
-        );
+      let changed = false;
+      const next = ns.map((n) => {
+        if (!isGroupNode(n)) return n;
+        const should = n.id === targetId;
+        if (((n.data as GroupNodeData).isDropTarget ?? false) !== should) {
+          changed = true;
+          return { ...n, data: { ...n.data, isDropTarget: should } };
+        }
+        return n;
       });
+      return changed ? next : ns;
+    });
+  }, [clearDropHighlights]);
 
+  // On drag stop, decide group membership: if a component node's bounds land
+  // inside a group node, adopt it (parentId + position relative to the parent,
+  // expandParent so the group grows to keep it enclosed); if dragged clear of
+  // every group, detach it. Group nodes themselves never become children. Any
+  // drop-target highlight from the drag is cleared.
+  const onNodeDragStop = useCallback((dragged: Node) => {
+    setNodes((prev) => {
+      const ns = clearDropHighlights(prev);
+      const node = ns.find((n) => n.id === dragged.id) as FlowNode | undefined;
+      if (!node || isGroupNode(node)) return ns;
+
+      const abs = absPos(ns, node);
+      const target = groupAt(ns, abs.x, abs.y);
       const nextParentId = target?.id;
-      if (nextParentId === node.parentId) return ns; // no change
+      if (nextParentId === node.parentId) return ns; // no membership change
 
-      setSaved(false);
+      markDirty();
       return ns.map((n) => {
         if (n.id !== node.id) return n;
         if (nextParentId) {
@@ -306,6 +431,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
             ...n,
             parentId: nextParentId,
             extent: "parent" as const,
+            expandParent: true,
             position: { x: abs.x - g.position.x, y: abs.y - g.position.y },
           };
         }
@@ -313,10 +439,11 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
         const rest = { ...n, position: abs };
         delete rest.parentId;
         delete rest.extent;
+        delete rest.expandParent;
         return rest;
       });
     });
-  }, []);
+  }, [clearDropHighlights, markDirty]);
 
   const addComponent = useCallback((type: ComponentType) => {
     const id = crypto.randomUUID();
@@ -353,8 +480,12 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       },
       ];
     });
-    setSaved(false);
-  }, []);
+    markDirty();
+    // Go straight to the node's editor so the user fills it in immediately,
+    // rather than landing on a half-configured node on the canvas. (No
+    // requestFocus: we're navigating off the canvas, so there's nothing to fit.)
+    navigate(`/applications/${appId}/workflow/nodes/${id}`);
+  }, [appId, navigate, markDirty]);
 
   // addTerraform adds a terraform deployment as TWO linked nodes — a plan node
   // and an apply node that depends on it — plus the connecting edge (depends_on
@@ -415,8 +546,11 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     });
     // The edge plan -> apply is what buildPayload turns into apply.depends_on.
     setEdges((es) => [...es, { id: `${planId}->${applyId}`, source: planId, target: applyId }]);
-    setSaved(false);
-  }, []);
+    markDirty();
+    // Open the plan node's editor first — the user fills the repo/source there,
+    // then copies it to apply (per-node config is the v1 tradeoff).
+    navigate(`/applications/${appId}/workflow/nodes/${planId}`);
+  }, [appId, navigate, markDirty]);
 
   const addGroup = useCallback(() => {
     const id = crypto.randomUUID();
@@ -438,8 +572,75 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       // Keep group nodes first so they render behind children.
       return [groupNode, ...ns];
     });
-    setSaved(false);
-  }, []);
+    markDirty();
+    requestFocus([id]);
+  }, [markDirty, requestFocus]);
+
+  // groupSelection wraps the given component nodes in a new group sized to
+  // enclose them (with padding for the header), reparenting each one. This is the
+  // shift-select path: pick nodes on the canvas, then hit "Group". Selected group
+  // nodes are ignored; a node already inside another group is moved into the new
+  // one. The group is prepended so it renders behind — and lists before — its
+  // children, satisfying React Flow's parent-before-child ordering.
+  const groupSelection = useCallback(
+    (ids: string[]) => {
+      const idSet = new Set(ids);
+      const gid = crypto.randomUUID();
+      setNodes((ns) => {
+        const members = ns.filter(
+          (n) => n.type === "component" && idSet.has(n.id),
+        );
+        if (members.length === 0) return ns;
+
+        // Approximate node footprint (min-w-[11rem] ≈ 176px wide, ~64px tall).
+        const NODE_W = 176;
+        const NODE_H = 64;
+        const PAD = 28;
+        const HEADER = 24;
+
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        for (const m of members) {
+          const a = absPos(ns, m);
+          minX = Math.min(minX, a.x);
+          minY = Math.min(minY, a.y);
+          maxX = Math.max(maxX, a.x + NODE_W);
+          maxY = Math.max(maxY, a.y + NODE_H);
+        }
+
+        const gx = minX - PAD;
+        const gy = minY - PAD - HEADER;
+        const gw = maxX - minX + PAD * 2;
+        const gh = maxY - minY + PAD * 2 + HEADER;
+        const group: FlowNode = {
+          id: gid,
+          type: "group",
+          position: { x: gx, y: gy },
+          width: gw,
+          height: gh,
+          data: { name: "group" },
+        };
+
+        const reparented = ns.map((n) => {
+          if (!idSet.has(n.id) || n.type !== "component") return n;
+          const a = absPos(ns, n);
+          return {
+            ...n,
+            parentId: gid,
+            extent: "parent" as const,
+            expandParent: true,
+            position: { x: a.x - gx, y: a.y - gy },
+          };
+        });
+        return [group, ...reparented];
+      });
+      markDirty();
+      requestFocus([gid]);
+    },
+    [markDirty, requestFocus],
+  );
 
   const updateComponent = useCallback((next: EditableComponent) => {
     setNodes((ns) =>
@@ -457,8 +658,8 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
           : n,
       ),
     );
-    setSaved(false);
-  }, []);
+    markDirty();
+  }, [markDirty]);
 
   const deleteNode = useCallback((id: string) => {
     setNodes((ns) => {
@@ -483,8 +684,8 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
         });
     });
     setEdges((es) => es.filter((e) => e.source !== id && e.target !== id));
-    setSaved(false);
-  }, []);
+    markDirty();
+  }, [markDirty]);
 
   const getComponent = useCallback(
     (id: string): EditableComponent | null => {
@@ -557,9 +758,9 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   }, [nodes, edges]);
 
   const save = useCallback(async () => {
+    const rev = revision.current;
     setSaving(true);
     setSaveError(null);
-    setSaved(false);
     const { components, groups } = buildPayload();
     const { data, error } = await api.PUT("/api/applications/{id}/workflow", {
       params: { path: { id: appId } },
@@ -570,8 +771,20 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       setSaveError(error?.message ?? "Could not save the workflow");
       return;
     }
-    setSaved(true);
+    // Only mark clean if no edits landed while this save was in flight; otherwise
+    // leave it dirty so the auto-save effect runs again for the newer state.
+    if (revision.current === rev) setSaved(true);
   }, [appId, buildPayload]);
+
+  // Auto-save: whenever the draft is dirty (and we can edit), schedule a debounced
+  // save. `save`'s identity changes with every node/edge edit (it closes over the
+  // payload), so this effect re-runs and resets the timer on each change — that's
+  // the debounce. A save in flight (saving) or a clean draft (saved) short-circuits.
+  useEffect(() => {
+    if (!canEdit || loading || saving || saved || error || saveError) return;
+    const t = setTimeout(() => void save(), 800);
+    return () => clearTimeout(t);
+  }, [canEdit, loading, saving, saved, error, saveError, save]);
 
   const startRun = useCallback(
     async (action: RunAction) => {
@@ -617,13 +830,16 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       running,
       forceRoll,
       setForceRoll,
+      focus,
       onNodesChange,
       onEdgesChange,
       onConnect,
+      onNodeDrag,
       onNodeDragStop,
       addComponent,
       addTerraform,
       addGroup,
+      groupSelection,
       updateComponent,
       deleteNode,
       getComponent,
@@ -648,13 +864,16 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       runError,
       running,
       forceRoll,
+      focus,
       onNodesChange,
       onEdgesChange,
       onConnect,
+      onNodeDrag,
       onNodeDragStop,
       addComponent,
       addTerraform,
       addGroup,
+      groupSelection,
       updateComponent,
       deleteNode,
       getComponent,

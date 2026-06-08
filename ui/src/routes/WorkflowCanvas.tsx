@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
   ReactFlow,
   Background,
   Controls,
+  Panel,
+  useReactFlow,
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -55,26 +57,60 @@ export function WorkflowCanvas() {
     running,
     forceRoll,
     setForceRoll,
+    focus,
     onNodesChange,
     onEdgesChange,
     onConnect,
+    onNodeDrag,
     onNodeDragStop,
     addComponent,
     addTerraform,
     addGroup,
+    groupSelection,
     deleteNode,
     save,
     startRun,
   } = useWorkflowDraft();
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = nodes.find((n) => n.id === selectedId) ?? null;
+  const { fitView } = useReactFlow();
+
+  // Track the current selection (React Flow drives it; shift-click adds to it).
+  // The slim summary shows for a single selected node; the "Group" action appears
+  // once two or more component nodes are selected.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const onSelectionChange = useCallback(
+    ({ nodes: sel }: { nodes: Node[] }) =>
+      setSelectedIds(sel.map((n) => n.id)),
+    [],
+  );
+
+  const selectedComponentIds = selectedIds.filter(
+    (id) => nodes.find((n) => n.id === id)?.type === "component",
+  );
+  const selected =
+    selectedIds.length === 1
+      ? (nodes.find((n) => n.id === selectedIds[0]) ?? null)
+      : null;
   const selectedName =
     selected?.type === "group"
       ? (selected.data as { name: string }).name
       : selected?.type === "component"
         ? (selected.data as { name: string }).name
         : null;
+
+  // When the draft asks to frame nodes (after add/group), fit them into view so
+  // it's obvious something happened — a freshly added node off-screen otherwise
+  // gives no feedback. Runs after React Flow has the new nodes in its store
+  // (child effects fire before this parent effect).
+  useEffect(() => {
+    if (!focus) return;
+    void fitView({
+      nodes: focus.ids.map((id) => ({ id })),
+      duration: 500,
+      padding: 0.4,
+      maxZoom: 1.2,
+    });
+  }, [focus, fitView]);
 
   return (
     <div className="flex h-[calc(100vh-7rem)] flex-col">
@@ -131,14 +167,22 @@ export function WorkflowCanvas() {
                   },
                 ]}
               />
+              <span className="text-xs text-neutral-400">
+                {saving
+                  ? "Saving…"
+                  : saved
+                    ? "All changes saved"
+                    : "Unsaved changes"}
+              </span>
               <button
                 type="button"
                 onClick={() => void save()}
                 disabled={saving}
-                className="inline-flex items-center gap-1.5 bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+                title="Changes save automatically — click to save now"
+                className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
               >
                 <Save className="h-3.5 w-3.5" />
-                {saving ? "Saving…" : saved ? "Saved" : "Save"}
+                {saving ? "Saving…" : "Save"}
               </button>
               <span className="mx-1 h-5 w-px bg-neutral-200" />
               <button
@@ -205,15 +249,29 @@ export function WorkflowCanvas() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
-            onNodeClick={(_, n) => setSelectedId(n.id)}
+            onSelectionChange={onSelectionChange}
+            onNodeDrag={(_, n: Node) => onNodeDrag(n)}
             onNodeDragStop={(_, n: Node) => onNodeDragStop(n)}
-            onPaneClick={() => setSelectedId(null)}
+            multiSelectionKeyCode="Shift"
+            selectionKeyCode="Shift"
             nodesConnectable={canEdit}
             proOptions={{ hideAttribution: true }}
             fitView
           >
             <Background />
             <Controls />
+            {canEdit && selectedComponentIds.length >= 2 && (
+              <Panel position="top-center">
+                <button
+                  type="button"
+                  onClick={() => groupSelection(selectedComponentIds)}
+                  className="inline-flex items-center gap-1.5 bg-black px-3 py-1.5 text-sm font-medium text-white shadow-md hover:bg-neutral-800"
+                >
+                  <Boxes className="h-3.5 w-3.5" />
+                  Group {selectedComponentIds.length} components
+                </button>
+              </Panel>
+            )}
           </ReactFlow>
 
           {/* Slim floating summary for the selected node, replacing the old
@@ -266,10 +324,7 @@ export function WorkflowCanvas() {
                 {canEdit && (
                   <button
                     type="button"
-                    onClick={() => {
-                      deleteNode(selected.id);
-                      setSelectedId(null);
-                    }}
+                    onClick={() => deleteNode(selected.id)}
                     className="inline-flex items-center gap-1.5 border border-red-300 px-2.5 py-1 text-sm text-red-700 hover:bg-red-50"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
