@@ -5,26 +5,36 @@ import (
 	"testing"
 )
 
-func TestScriptPlanDeployKubernetesBackend(t *testing.T) {
+// s3Backend is a representative managed, non-kubernetes backend used across the
+// tests that don't care about backend specifics — a terraform component has no
+// injected kubeconfig, so the implicit kubernetes backend is unavailable and an
+// explicit backend is always configured.
+func s3Backend() (string, map[string]string) {
+	return "s3", map[string]string{
+		"bucket": "my-state",
+		"key":    "prod/terraform.tfstate",
+		"region": "us-east-1",
+	}
+}
+
+func TestScriptPlanDeployManagedBackend(t *testing.T) {
+	backend, cfg := s3Backend()
 	s := Script(Apply{
-		Command:      CommandPlan,
-		Action:       ActionDeploy,
-		RepoURL:      "https://github.com/acme/infra.git",
-		Path:         "envs/prod",
-		SecretSuffix: "app1-comp1",
-		Namespace:    "default",
+		Command:       CommandPlan,
+		Action:        ActionDeploy,
+		RepoURL:       "https://github.com/acme/infra.git",
+		Path:          "envs/prod",
+		Backend:       backend,
+		BackendConfig: cfg,
+		Namespace:     "default",
 	})
 	wantContains := []string{
 		"#!/bin/sh\nset -e\n",
 		"git clone --depth 1 'https://github.com/acme/infra.git' /src",
 		"echo \"SPACEFLEET_CHART_REVISION=$(git -C /src rev-parse HEAD)\"",
 		"cd '/src/envs/prod'",
-		"export KUBECONFIG='/workspace/creds/kubeconfig'",
 		"cat > backend_override.tf <<'EOF'",
-		"backend \"kubernetes\" {",
-		"secret_suffix    = \"app1-comp1\"",
-		"namespace        = \"default\"",
-		"in_cluster_config = false",
+		"backend \"s3\" {",
 		"tofu init -no-color",
 		"tofu plan -out=tfplan -no-color",
 	}
@@ -32,6 +42,14 @@ func TestScriptPlanDeployKubernetesBackend(t *testing.T) {
 		if !strings.Contains(s, w) {
 			t.Errorf("script missing %q\n---\n%s", w, s)
 		}
+	}
+	// No kubeconfig is injected for a terraform component, so KUBECONFIG is never
+	// exported and the kubernetes backend never appears.
+	if strings.Contains(s, "KUBECONFIG") {
+		t.Errorf("terraform step must not export KUBECONFIG\n---\n%s", s)
+	}
+	if strings.Contains(s, "backend \"kubernetes\"") || strings.Contains(s, "in_cluster_config") {
+		t.Errorf("terraform must not use the kubernetes backend\n---\n%s", s)
 	}
 	if strings.Contains(s, "tofu apply") {
 		t.Error("plan node must not apply")
@@ -53,12 +71,14 @@ func TestScriptPlanDeployKubernetesBackend(t *testing.T) {
 }
 
 func TestScriptPlanUninstallDestroy(t *testing.T) {
+	backend, cfg := s3Backend()
 	s := Script(Apply{
-		Command:      CommandPlan,
-		Action:       ActionUninstall,
-		RepoURL:      "r",
-		Path:         "p",
-		SecretSuffix: "s",
+		Command:       CommandPlan,
+		Action:        ActionUninstall,
+		RepoURL:       "r",
+		Path:          "p",
+		Backend:       backend,
+		BackendConfig: cfg,
 	})
 	if !strings.Contains(s, "tofu plan -destroy -out=tfplan -no-color") {
 		t.Errorf("uninstall plan must be a destroy plan saved to a planfile\n---\n%s", s)
@@ -71,12 +91,14 @@ func TestScriptPlanUninstallDestroy(t *testing.T) {
 func TestScriptPlanStoresPlanfileSecret(t *testing.T) {
 	// A non-preview plan node with a PlanArtifactSecret hands its saved planfile to
 	// the apply node: install kubectl, then upsert the planfile into the Secret.
+	backend, cfg := s3Backend()
 	s := Script(Apply{
 		Command:            CommandPlan,
 		Action:             ActionDeploy,
 		RepoURL:            "r",
 		Path:               "p",
-		SecretSuffix:       "s",
+		Backend:            backend,
+		BackendConfig:      cfg,
 		Namespace:          "default",
 		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
@@ -101,12 +123,14 @@ func TestScriptPlanStoresPlanfileSecret(t *testing.T) {
 }
 
 func TestScriptApplyDeployUsesPlanfile(t *testing.T) {
+	backend, cfg := s3Backend()
 	s := Script(Apply{
 		Command:            CommandApply,
 		Action:             ActionDeploy,
 		RepoURL:            "r",
 		Path:               "p",
-		SecretSuffix:       "s",
+		Backend:            backend,
+		BackendConfig:      cfg,
 		Namespace:          "default",
 		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
@@ -141,12 +165,14 @@ func TestScriptApplyUninstallAppliesDestroyPlanfile(t *testing.T) {
 	// An uninstall apply applies the saved DESTROY plan the plan node produced —
 	// the same `tofu apply tfplan`; the destroy intent is encoded in the planfile,
 	// so there is no separate `tofu destroy`.
+	backend, cfg := s3Backend()
 	s := Script(Apply{
 		Command:            CommandApply,
 		Action:             ActionUninstall,
 		RepoURL:            "r",
 		Path:               "p",
-		SecretSuffix:       "s",
+		Backend:            backend,
+		BackendConfig:      cfg,
 		Namespace:          "default",
 		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
@@ -164,12 +190,14 @@ func TestScriptApplyUninstallAppliesDestroyPlanfile(t *testing.T) {
 func TestScriptApplyWithoutPlanfileFailsClosed(t *testing.T) {
 	// Defense behind the DAG validation: an apply node with no plan artifact must
 	// fail rather than silently re-plan.
+	backend, cfg := s3Backend()
 	s := Script(Apply{
-		Command:      CommandApply,
-		Action:       ActionDeploy,
-		RepoURL:      "r",
-		Path:         "p",
-		SecretSuffix: "s",
+		Command:       CommandApply,
+		Action:        ActionDeploy,
+		RepoURL:       "r",
+		Path:          "p",
+		Backend:       backend,
+		BackendConfig: cfg,
 	})
 	if !strings.Contains(s, "exit 1") || !strings.Contains(s, "no reviewed planfile") {
 		t.Errorf("apply without a planfile must fail closed\n---\n%s", s)
@@ -181,12 +209,14 @@ func TestScriptApplyWithoutPlanfileFailsClosed(t *testing.T) {
 
 func TestScriptPreviewIsAlwaysPlan(t *testing.T) {
 	// An apply node previewed must still be a read-only plan (preview never mutates).
+	backend, cfg := s3Backend()
 	s := Script(Apply{
-		Command:      CommandApply,
-		Action:       ActionPreview,
-		RepoURL:      "r",
-		Path:         "p",
-		SecretSuffix: "s",
+		Command:       CommandApply,
+		Action:        ActionPreview,
+		RepoURL:       "r",
+		Path:          "p",
+		Backend:       backend,
+		BackendConfig: cfg,
 	})
 	if !strings.Contains(s, "tofu plan -no-color") {
 		t.Errorf("preview must be a read-only plan\n---\n%s", s)
@@ -228,8 +258,8 @@ func TestScriptCustomBackend(t *testing.T) {
 			t.Errorf("custom-backend script missing %q\n---\n%s", w, s)
 		}
 	}
-	// Custom backend must not emit the kubernetes-default settings.
-	if strings.Contains(s, "secret_suffix") || strings.Contains(s, "in_cluster_config") {
+	// Custom backend must not emit any kubernetes-backend settings or KUBECONFIG.
+	if strings.Contains(s, "secret_suffix") || strings.Contains(s, "in_cluster_config") || strings.Contains(s, "KUBECONFIG") {
 		t.Errorf("custom backend must not emit kubernetes backend settings\n---\n%s", s)
 	}
 	if strings.Contains(s, "backend \"kubernetes\"") {
@@ -242,18 +272,18 @@ func TestScriptCustomBackend(t *testing.T) {
 }
 
 func TestScriptGitRefBranchFlag(t *testing.T) {
-	withRef := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", GitRef: "release-1", Path: "p", SecretSuffix: "s"})
+	withRef := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", GitRef: "release-1", Path: "p", Backend: "s3"})
 	if !strings.Contains(withRef, "git clone --depth 1 --branch 'release-1' 'r' /src") {
 		t.Errorf("expected --branch with git_ref\n---\n%s", withRef)
 	}
-	noRef := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "p", SecretSuffix: "s"})
+	noRef := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "p", Backend: "s3"})
 	if strings.Contains(noRef, "--branch") {
 		t.Errorf("expected no --branch without git_ref\n---\n%s", noRef)
 	}
 }
 
 func TestScriptTokenWiresCredentialHelper(t *testing.T) {
-	withTok := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "p", SecretSuffix: "s", HasGitToken: true})
+	withTok := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "p", Backend: "s3", HasGitToken: true})
 	if !strings.Contains(withTok, "git config --global credential.helper 'store --file=/workspace/creds/git-credentials'") {
 		t.Errorf("expected credential helper wired when HasGitToken\n---\n%s", withTok)
 	}
@@ -261,7 +291,7 @@ func TestScriptTokenWiresCredentialHelper(t *testing.T) {
 	if strings.Contains(withTok, "x-access-token") || strings.Contains(withTok, "@github.com") {
 		t.Errorf("token material must not appear in the script\n---\n%s", withTok)
 	}
-	withoutTok := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "p", SecretSuffix: "s"})
+	withoutTok := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "p", Backend: "s3"})
 	if strings.Contains(withoutTok, "credential.helper") {
 		t.Errorf("no credential helper expected without a token\n---\n%s", withoutTok)
 	}
@@ -270,23 +300,15 @@ func TestScriptTokenWiresCredentialHelper(t *testing.T) {
 func TestScriptTokenWiredForUninstall(t *testing.T) {
 	// An uninstall (tofu destroy) still clones the root module, so the token wiring
 	// is honored regardless of action.
-	s := Script(Apply{Command: CommandApply, Action: ActionUninstall, RepoURL: "r", Path: "p", SecretSuffix: "s", HasGitToken: true, PlanArtifactSecret: "tfplan-run1-plan1"})
+	s := Script(Apply{Command: CommandApply, Action: ActionUninstall, RepoURL: "r", Path: "p", Backend: "s3", HasGitToken: true, PlanArtifactSecret: "tfplan-run1-plan1"})
 	if !strings.Contains(s, "credential.helper 'store --file=/workspace/creds/git-credentials'") {
 		t.Errorf("uninstall must still wire the credential helper to clone\n---\n%s", s)
 	}
 }
 
-func TestScriptDefaultBackendWhenEmpty(t *testing.T) {
-	// No Backend set falls back to the kubernetes default.
-	s := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "p", SecretSuffix: "s"})
-	if !strings.Contains(s, "backend \"kubernetes\" {") {
-		t.Errorf("empty backend should default to kubernetes\n---\n%s", s)
-	}
-}
-
 func TestScriptRejectsPathTraversal(t *testing.T) {
 	for _, p := range []string{"../etc", "envs/../../secret", ".."} {
-		s := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: p, SecretSuffix: "s"})
+		s := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: p, Backend: "s3"})
 		if !strings.Contains(s, "path traversal not allowed") {
 			t.Errorf("path %q should be rejected\n---\n%s", p, s)
 		}
@@ -394,52 +416,50 @@ func TestScriptBYOEmptyBackendConfigPlainInit(t *testing.T) {
 }
 
 func TestScriptManagedUnchanged(t *testing.T) {
-	// Byte-for-byte guard: a representative managed Apply must render exactly the
-	// historical output, so the byo additions can't regress managed mode.
-	s := Script(Apply{
-		Command:      CommandPlan,
-		Action:       ActionDeploy,
-		RepoURL:      "https://github.com/acme/infra.git",
-		Path:         "envs/prod",
-		SecretSuffix: "app1-comp1",
-		Namespace:    "default",
-	})
+	// Byte-for-byte guard for managed mode: a representative managed Apply renders
+	// exactly this output — a named (non-kubernetes) backend override and no
+	// injected KUBECONFIG.
+	mk := func(mode string) string {
+		return Script(Apply{
+			Command: CommandPlan,
+			Action:  ActionDeploy,
+			RepoURL: "https://github.com/acme/infra.git",
+			Path:    "envs/prod",
+			Backend: "s3",
+			BackendConfig: map[string]string{
+				"bucket": "my-state",
+				"key":    "prod/terraform.tfstate",
+				"region": "us-east-1",
+			},
+			BackendMode: mode,
+		})
+	}
 	want := "#!/bin/sh\nset -e\n" +
 		"git clone --depth 1 'https://github.com/acme/infra.git' /src\n" +
 		"echo \"SPACEFLEET_CHART_REVISION=$(git -C /src rev-parse HEAD)\"\n" +
 		"cd '/src/envs/prod'\n" +
-		"export KUBECONFIG='/workspace/creds/kubeconfig'\n" +
 		"cat > backend_override.tf <<'EOF'\n" +
 		"terraform {\n" +
-		"  backend \"kubernetes\" {\n" +
-		"    secret_suffix    = \"app1-comp1\"\n" +
-		"    namespace        = \"default\"\n" +
-		"    in_cluster_config = false\n" +
+		"  backend \"s3\" {\n" +
+		"    bucket = \"my-state\"\n" +
+		"    key = \"prod/terraform.tfstate\"\n" +
+		"    region = \"us-east-1\"\n" +
 		"  }\n" +
 		"}\n" +
 		"EOF\n" +
 		"tofu init -no-color\n" +
 		"tofu plan -out=tfplan -no-color\n"
-	if s != want {
+	if s := mk(""); s != want {
 		t.Errorf("managed output changed\n got: %q\nwant: %q", s, want)
 	}
 	// Explicit ModeManaged is identical to empty.
-	withMode := Script(Apply{
-		Command:      CommandPlan,
-		Action:       ActionDeploy,
-		RepoURL:      "https://github.com/acme/infra.git",
-		Path:         "envs/prod",
-		SecretSuffix: "app1-comp1",
-		Namespace:    "default",
-		BackendMode:  ModeManaged,
-	})
-	if withMode != want {
-		t.Errorf("explicit managed mode differs from empty\n got: %q\nwant: %q", withMode, want)
+	if s := mk(ModeManaged); s != want {
+		t.Errorf("explicit managed mode differs from empty\n got: %q\nwant: %q", s, want)
 	}
 }
 
 func TestScriptAllowsDottedNames(t *testing.T) {
-	s := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "envs/..foo/prod", SecretSuffix: "s"})
+	s := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "envs/..foo/prod", Backend: "s3"})
 	if strings.Contains(s, "path traversal not allowed") {
 		t.Errorf("dotted name wrongly rejected\n---\n%s", s)
 	}

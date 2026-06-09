@@ -13,12 +13,15 @@ import (
 // helmNodeIn builds a minimal valid helm node with the given id, group, and
 // dependencies, so an expansion/validation test can focus on graph shape.
 func helmNodeIn(id uuid.UUID, group *uuid.UUID, deps ...uuid.UUID) ComponentInput {
+	target := uuid.New()
 	return ComponentInput{
-		ID:        id,
-		Name:      "n-" + id.String()[:8],
-		Type:      TypeHelm,
-		GroupID:   group,
-		DependsOn: deps,
+		ID:              id,
+		Name:            "n-" + id.String()[:8],
+		Type:            TypeHelm,
+		GroupID:         group,
+		DependsOn:       deps,
+		TargetClusterID: &target,
+		TargetNamespace: "ns",
 		Config: map[string]string{
 			helmConfigChartSource: helm.SourceOCI,
 			helm.ConfigRepoURL:    "oci://example.com/charts/app",

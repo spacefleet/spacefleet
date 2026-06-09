@@ -55,16 +55,12 @@ const DefaultImage = "ghcr.io/opentofu/opentofu:1.9.1"
 
 // File names injected into the terraform step (keys in tekton.RunSpec.Files),
 // mounted under tekton.CredsMountPath. They match the helm/manifest renderer
-// names because the shared resolver (lib/deploy) assembles the same Files map:
-// the target kubeconfig always (the Kubernetes backend authenticates with it),
-// and a git-credentials line for a private github.com clone. Kept as local
-// constants so this package does not import lib/helm for them (avoiding an
-// import cycle and decoupling the renderers).
+// names because the shared resolver (lib/deploy) assembles the same Files map: a
+// git-credentials line for a private github.com clone and, in byo mode, the AWS
+// env file. A terraform component has no cluster target, so no kubeconfig is
+// injected. Kept as local constants so this package does not import lib/helm for
+// them (avoiding an import cycle and decoupling the renderers).
 const (
-	// KubeconfigFile is the injected kubeconfig for the target cluster. The
-	// Kubernetes state backend reads it via the KUBECONFIG env var so state
-	// Secrets land in the cluster we already manage.
-	KubeconfigFile = "kubeconfig"
 	// GitCredentialsFile carries a git credential line
 	// (https://x-access-token:<token>@github.com) for a private-Git repo, wired
 	// into git via `credential.helper store --file=<this>` so the token is read
@@ -103,9 +99,11 @@ const (
 // the PlanArtifactSecret.
 const PlanfileName = "tfplan"
 
-// DefaultBackend is the OpenTofu state backend used when none is configured:
-// the Kubernetes backend, storing state as Secrets in the runner cluster using
-// the injected kubeconfig — zero extra config.
+// DefaultBackend names the Kubernetes state backend. A terraform component has
+// no injected kubeconfig, so this backend is unavailable and a component must
+// name an explicit backend instead; the workflow validation rejects this value
+// (and an unset backend in managed mode). Kept as the reserved name the
+// validation checks against.
 const DefaultBackend = "kubernetes"
 
 // Backend modes select how state backend configuration is wired. Managed (the
@@ -132,21 +130,17 @@ type Apply struct {
 	GitRef string
 	// Path is the working directory within the repo holding the root module.
 	Path string
-	// Backend names the state backend; empty means DefaultBackend (kubernetes).
+	// Backend names the state backend (managed mode). Required and non-kubernetes
+	// — a terraform component has no injected kubeconfig, so the implicit
+	// kubernetes backend is unavailable (the workflow validation enforces this).
 	Backend string
 	// BackendConfig is the decoded backend settings rendered into
-	// backend_override.tf as `key = "value"` lines. Used for a custom backend
-	// (S3/GCS/pg/etc.); ignored for the kubernetes default (which derives its
-	// settings from SecretSuffix + Namespace). Values are rendered verbatim as
-	// HCL strings.
+	// backend_override.tf as `key = "value"` lines for a managed custom backend
+	// (S3/GCS/pg/etc.), or passed as `-backend-config` init flags in byo mode.
+	// Values are rendered verbatim as HCL strings.
 	BackendConfig map[string]string
-	// SecretSuffix disambiguates the Kubernetes-backend state Secret per
-	// app+component (the backend stores state in a Secret named
-	// tfstate-default-<secret_suffix>). The planner derives it from the
-	// application + component so two components don't clobber each other's state.
-	SecretSuffix string
-	// Namespace is the runner-cluster namespace the Kubernetes backend stores its
-	// state Secret in (the same namespace the TaskRun runs in).
+	// Namespace is the runner-cluster namespace the planfile-handover Secret is
+	// stored in (the same namespace the TaskRun runs in).
 	Namespace string
 	// HasGitToken authenticates a private github.com clone via the mounted
 	// GitCredentialsFile + a credential helper, set by the resolver when the
@@ -173,9 +167,10 @@ type Apply struct {
 }
 
 // Script renders the /bin/sh script the terraform step runs. It clones the root
-// module, cds into the working path, writes a generated backend_override.tf
-// (the Kubernetes backend by default, or a custom backend from Backend +
-// BackendConfig), runs `tofu init`, then plans or applies per Command/Action:
+// module, cds into the working path, then in managed mode writes a generated
+// backend_override.tf (a named, non-kubernetes backend from Backend +
+// BackendConfig) or in byo mode uses the module's own backend block, runs
+// `tofu init`, then plans or applies per Command/Action:
 //
 //   - Command=plan, deploy:    tofu plan -out=tfplan -no-color, then store tfplan
 //   - Command=plan, uninstall: tofu plan -destroy -out=tfplan -no-color, then store
@@ -228,12 +223,11 @@ func Script(a Apply) string {
 
 	fmt.Fprintf(&b, "cd %s\n", shQuote("/src/"+a.Path))
 
-	// The Kubernetes backend authenticates with the injected target kubeconfig.
-	// Export KUBECONFIG so `tofu init` finds it without a config_path in HCL
-	// (which would put the path in the rendered override). Harmless for a custom
-	// backend (tofu ignores KUBECONFIG when the backend isn't kubernetes).
-	kubeconfig := tekton.CredsMountPath + "/" + KubeconfigFile
-	fmt.Fprintf(&b, "export KUBECONFIG=%s\n", shQuote(kubeconfig))
+	// No kubeconfig is injected for a terraform component (it has no cluster
+	// target), so no KUBECONFIG is exported. The state backend is always explicit
+	// (validated at write time); the planfile-handover Secret below is read/written
+	// with the runner's in-cluster credentials (the step's own service account),
+	// since the job already runs in the runner cluster.
 
 	// In byo mode with cloud auth, source the mounted AWS env file so the
 	// credential values enter the process env before init — they live only in the
@@ -320,8 +314,9 @@ const kubectlInstall = "apk add --no-cache kubectl\n"
 // storePlanfile emits the lines a non-preview plan node runs to hand its saved
 // planfile to the apply node: install kubectl, then upsert the planfile into the
 // PlanArtifactSecret (create-or-update via a client-side apply, idempotent so an
-// approval-resume re-run is safe). Uses the already-exported KUBECONFIG, so the
-// Secret lands on the same cluster+namespace as the Kubernetes-backend state.
+// approval-resume re-run is safe). No KUBECONFIG is exported, so kubectl uses the
+// step's in-cluster credentials — the Secret lands in the runner cluster (the
+// namespace the TaskRun runs in), reachable by both the plan and apply nodes.
 func storePlanfile(a Apply) string {
 	var b strings.Builder
 	b.WriteString(kubectlInstall)
@@ -351,41 +346,21 @@ func deletePlanfileSecret(a Apply) string {
 		shQuote(a.PlanArtifactSecret), shQuote(a.Namespace))
 }
 
-// backendOverride renders the backend_override.tf the step writes before init.
-// For the kubernetes default it emits a Kubernetes backend keyed by the
-// per-component secret_suffix in the runner namespace (in_cluster_config so the
-// step authenticates via the mounted kubeconfig/KUBECONFIG). For any other
-// backend it emits the named backend with the BackendConfig key/values rendered
-// as HCL strings. The heredoc is single-quoted ('EOF') so nothing in the body
-// is shell-expanded.
+// backendOverride renders the backend_override.tf the step writes before init
+// in managed mode. It emits the named backend (a.Backend, a required
+// non-kubernetes backend) with the BackendConfig key/values rendered as HCL
+// strings, in sorted key order for a stable (testable) output. The heredoc is
+// single-quoted ('EOF') so nothing in the body is shell-expanded.
 func backendOverride(a Apply) string {
-	backend := a.Backend
-	if backend == "" {
-		backend = DefaultBackend
-	}
-
 	var body strings.Builder
-	fmt.Fprintf(&body, "terraform {\n  backend %q {\n", backend)
-	if backend == DefaultBackend {
-		// Kubernetes backend: state stored as a Secret in the runner cluster. The
-		// secret_suffix is per app+component so components don't clobber each
-		// other; in_cluster_config=false makes it read the mounted KUBECONFIG.
-		fmt.Fprintf(&body, "    secret_suffix    = %q\n", a.SecretSuffix)
-		if a.Namespace != "" {
-			fmt.Fprintf(&body, "    namespace        = %q\n", a.Namespace)
-		}
-		body.WriteString("    in_cluster_config = false\n")
-	} else {
-		// Custom backend: render the operator-provided settings verbatim as HCL
-		// strings, in sorted key order for a stable (testable) output.
-		keys := make([]string, 0, len(a.BackendConfig))
-		for k := range a.BackendConfig {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			fmt.Fprintf(&body, "    %s = %q\n", k, a.BackendConfig[k])
-		}
+	fmt.Fprintf(&body, "terraform {\n  backend %q {\n", a.Backend)
+	keys := make([]string, 0, len(a.BackendConfig))
+	for k := range a.BackendConfig {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Fprintf(&body, "    %s = %q\n", k, a.BackendConfig[k])
 	}
 	body.WriteString("  }\n}\n")
 

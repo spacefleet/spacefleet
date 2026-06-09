@@ -148,26 +148,33 @@ func (r *Resolver) Resolve(ctx context.Context, in RunInputs) (Resolved, error) 
 	if err != nil {
 		return Resolved{}, err
 	}
-	targetConn, err := r.conns.ConnForTekton(ctx, in.OrgID, in.TargetClusterID)
-	if err != nil {
-		return Resolved{}, err
-	}
-	// When the runner is the target cluster, the Helm job runs inside the cluster
-	// it deploys to, so the injected kubeconfig must use the in-cluster API server
-	// address rather than the registered (possibly host-only) endpoint.
-	sameCluster := in.RunnerClusterID == in.TargetClusterID
-	kubeconfig, err := k8s.Kubeconfig(ctx, targetConn, sameCluster)
-	if err != nil {
-		return Resolved{}, err
-	}
 
 	out := Resolved{
-		RunnerConn:   runnerConn,
-		TargetMethod: targetConn.Method,
+		RunnerConn: runnerConn,
 		Files: map[string]string{
-			helm.KubeconfigFile: string(kubeconfig),
-			helm.ValuesFile:     in.Values,
+			helm.ValuesFile: in.Values,
 		},
+	}
+
+	// Build + inject the target cluster's kubeconfig only when a target is set.
+	// A terraform component has no cluster target (TargetClusterID is uuid.Nil):
+	// it gets no kubeconfig and must use an explicit state backend. Helm/manifest
+	// always pass a real target.
+	if in.TargetClusterID != uuid.Nil {
+		targetConn, err := r.conns.ConnForTekton(ctx, in.OrgID, in.TargetClusterID)
+		if err != nil {
+			return Resolved{}, err
+		}
+		// When the runner is the target cluster, the job runs inside the cluster it
+		// deploys to, so the injected kubeconfig must use the in-cluster API server
+		// address rather than the registered (possibly host-only) endpoint.
+		sameCluster := in.RunnerClusterID == in.TargetClusterID
+		kubeconfig, err := k8s.Kubeconfig(ctx, targetConn, sameCluster)
+		if err != nil {
+			return Resolved{}, err
+		}
+		out.TargetMethod = targetConn.Method
+		out.Files[helm.KubeconfigFile] = string(kubeconfig)
 	}
 
 	// Inject the application's variables (app-level overlaid by the component's

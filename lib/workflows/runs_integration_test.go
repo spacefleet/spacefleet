@@ -5,6 +5,7 @@ package workflows
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -48,16 +49,14 @@ func newCluster(t *testing.T, client *ent.Client, orgID uuid.UUID, name string) 
 	return c
 }
 
-// newApp creates an application in an org with a target+runner cluster.
+// newApp creates an application in an org with a runner cluster (deploy targets
+// live on the components).
 func newApp(t *testing.T, client *ent.Client, orgID uuid.UUID, name string) *ent.Application {
 	t.Helper()
-	target := newCluster(t, client, orgID, name+"-target")
 	runner := newCluster(t, client, orgID, name+"-runner")
 	app, err := client.Application.Create().
 		SetOrganizationID(orgID).
 		SetName(name).
-		SetTargetNamespace("apps").
-		SetTargetClusterID(target.ID).
 		SetRunnerClusterID(runner.ID).
 		Save(context.Background())
 	if err != nil {
@@ -80,6 +79,90 @@ func addComponent(t *testing.T, client *ent.Client, orgID, appID uuid.UUID, name
 		t.Fatalf("create component %q: %v", name, err)
 	}
 	return c
+}
+
+// helmInput builds a valid helm ComponentInput targeting the given cluster, for
+// the ReplaceWorkflow target-validation tests.
+func helmInput(target uuid.UUID) ComponentInput {
+	return ComponentInput{
+		ID:              uuid.New(),
+		Name:            "api",
+		Type:            TypeHelm,
+		TargetClusterID: &target,
+		TargetNamespace: "prod",
+		Config: map[string]string{
+			"chart_source": "oci",
+			"repo_url":     "oci://example.com/charts/app",
+		},
+	}
+}
+
+// TestReplaceWorkflowValidatesComponentTargets proves a helm/manifest node's
+// target cluster must exist in the organization: an unknown or cross-org cluster
+// is rejected with ErrInvalidTarget, an in-org one is accepted.
+func TestReplaceWorkflowValidatesComponentTargets(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	runner := newCluster(t, client, org.ID, "runner")
+	app, err := client.Application.Create().
+		SetOrganizationID(org.ID).SetName("web").SetRunnerClusterID(runner.ID).Save(ctx)
+	if err != nil {
+		t.Fatalf("create app: %v", err)
+	}
+	target := newCluster(t, client, org.ID, "target")
+
+	// Valid: helm targeting an in-org token cluster.
+	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, []ComponentInput{helmInput(target.ID)}, nil); err != nil {
+		t.Fatalf("valid target: %v", err)
+	}
+	// Target cluster not in the org → ErrInvalidTarget.
+	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, []ComponentInput{helmInput(uuid.New())}, nil); !errors.Is(err, ErrInvalidTarget) {
+		t.Fatalf("unknown target: want ErrInvalidTarget, got %v", err)
+	}
+	// Cross-org cluster → ErrInvalidTarget.
+	other := newOrg(t, client, "Other")
+	foreign := newCluster(t, client, other.ID, "foreign")
+	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, []ComponentInput{helmInput(foreign.ID)}, nil); !errors.Is(err, ErrInvalidTarget) {
+		t.Fatalf("cross-org target: want ErrInvalidTarget, got %v", err)
+	}
+}
+
+// TestReplaceWorkflowInClusterTargetRequiresRunner proves the relocated rule: an
+// in-cluster target is only reachable from a pod in that same cluster, so it must
+// be the application's runner.
+func TestReplaceWorkflowInClusterTargetRequiresRunner(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	inCluster, err := client.Cluster.Create().
+		SetOrganizationID(org.ID).SetName("self").SetConnectionMethod(cluster.ConnectionMethodInCluster).Save(ctx)
+	if err != nil {
+		t.Fatalf("create in-cluster: %v", err)
+	}
+	app, err := client.Application.Create().
+		SetOrganizationID(org.ID).SetName("web").SetRunnerClusterID(inCluster.ID).Save(ctx)
+	if err != nil {
+		t.Fatalf("create app: %v", err)
+	}
+
+	// In-cluster target that is the runner → ok.
+	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, []ComponentInput{helmInput(inCluster.ID)}, nil); err != nil {
+		t.Fatalf("in-cluster target == runner: %v", err)
+	}
+	// A different in-cluster target (not the runner) → ErrInvalidTarget.
+	otherInCluster, err := client.Cluster.Create().
+		SetOrganizationID(org.ID).SetName("other").SetConnectionMethod(cluster.ConnectionMethodInCluster).Save(ctx)
+	if err != nil {
+		t.Fatalf("create other in-cluster: %v", err)
+	}
+	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, []ComponentInput{helmInput(otherInCluster.ID)}, nil); !errors.Is(err, ErrInvalidTarget) {
+		t.Fatalf("in-cluster target != runner: want ErrInvalidTarget, got %v", err)
+	}
 }
 
 // TestBeginRunSnapshotAndComponentRuns proves a successful BeginRun snapshots the

@@ -17,12 +17,14 @@ const ALL = "__all__";
 
 // RunsIndex is the Applications › Workflow Runs page (route /runs): the global
 // deploy history across every application in the organization, newest-first and
-// updated live. Three filters narrow the table — application, target cluster, and
-// runner cluster — and each filter is a URL query param so an application can
-// deep-link here pre-filtered to itself (?application=<id>). Every run carries its
-// application_id; the application's name and its target/runner clusters are
-// resolved client-side from the applications and clusters lists (the same join the
-// application detail page does), so no enriched run payload is needed.
+// updated live. Two filters narrow the table — application and runner cluster —
+// and each filter is a URL query param so an application can deep-link here
+// pre-filtered to itself (?application=<id>). Every run carries its
+// application_id; the application's name and its runner cluster are resolved
+// client-side from the applications and clusters lists (the same join the
+// application detail page does), so no enriched run payload is needed. The deploy
+// target lives on the individual components, not the application, so the runs
+// table no longer shows a single target cluster.
 export function RunsIndex() {
   const { currentOrg } = useOrg();
   const navigate = useNavigate();
@@ -39,7 +41,6 @@ export function RunsIndex() {
   // Selected filters live in the URL so the view is shareable and an app page can
   // link here pre-filtered. Absent params mean "all".
   const appFilter = searchParams.get("application") ?? ALL;
-  const targetFilter = searchParams.get("target_cluster") ?? ALL;
   const runnerFilter = searchParams.get("runner_cluster") ?? ALL;
 
   const setFilter = useCallback(
@@ -96,11 +97,7 @@ export function RunsIndex() {
     if (streamed) setRuns(streamed.runs);
   }, [streamed]);
 
-  // The target/runner cluster of a run is its application's, resolved client-side.
-  const targetClusterId = useCallback(
-    (r: WorkflowRun) => appsById[r.application_id]?.target_cluster_id,
-    [appsById],
-  );
+  // The runner cluster of a run is its application's, resolved client-side.
   const runnerClusterId = useCallback(
     (r: WorkflowRun) => appsById[r.application_id]?.runner_cluster_id,
     [appsById],
@@ -115,10 +112,6 @@ export function RunsIndex() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [runs, appsById]);
 
-  const targetClusterOptions = useMemo(
-    () => clusterOptions(runs.map(targetClusterId), clusterNameById),
-    [runs, targetClusterId, clusterNameById],
-  );
   const runnerClusterOptions = useMemo(
     () => clusterOptions(runs.map(runnerClusterId), clusterNameById),
     [runs, runnerClusterId, clusterNameById],
@@ -129,13 +122,12 @@ export function RunsIndex() {
       runs.filter(
         (r) =>
           (appFilter === ALL || r.application_id === appFilter) &&
-          (targetFilter === ALL || targetClusterId(r) === targetFilter) &&
           (runnerFilter === ALL || runnerClusterId(r) === runnerFilter),
       ),
-    [runs, appFilter, targetFilter, runnerFilter, targetClusterId, runnerClusterId],
+    [runs, appFilter, runnerFilter, runnerClusterId],
   );
 
-  const filtered = appFilter !== ALL || targetFilter !== ALL || runnerFilter !== ALL;
+  const filtered = appFilter !== ALL || runnerFilter !== ALL;
 
   return (
     <div>
@@ -158,13 +150,6 @@ export function RunsIndex() {
               allLabel="All applications"
               options={appOptions}
               onChange={(v) => setFilter("application", v)}
-            />
-            <FilterSelect
-              label="Target cluster"
-              value={targetFilter}
-              allLabel="All target clusters"
-              options={targetClusterOptions}
-              onChange={(v) => setFilter("target_cluster", v)}
             />
             <FilterSelect
               label="Runner cluster"
@@ -195,7 +180,6 @@ export function RunsIndex() {
             <thead>
               <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
                 <th className="px-4 py-2 font-medium">Application</th>
-                <th className="px-4 py-2 font-medium">Target cluster</th>
                 <th className="px-4 py-2 font-medium">Runner cluster</th>
                 <th className="px-4 py-2 font-medium">Action</th>
                 <th className="px-4 py-2 font-medium">Status</th>
@@ -214,9 +198,6 @@ export function RunsIndex() {
                 >
                   <td className="px-4 py-3 font-medium text-neutral-900">
                     {appsById[r.application_id]?.name ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-neutral-600">
-                    {clusterLabel(targetClusterId(r), clusterNameById)}
                   </td>
                   <td className="px-4 py-3 text-neutral-600">
                     {clusterLabel(runnerClusterId(r), clusterNameById)}

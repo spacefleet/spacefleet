@@ -13,11 +13,11 @@ import (
 // Application is a deployable workload registered to an organization. It owns a
 // deploy workflow — a DAG of typed Components (see ent/schema/component.go) — and
 // a run of that workflow is a WorkflowRun with one ComponentRun per node. The
-// application itself holds only the workflow-owner fields: a name, the app-level
-// default target cluster + namespace its components deploy into (each component
-// may override), and a runner cluster (a Tekton-enabled cluster) where the
-// management jobs execute. All helm/chart-specific config lives on the
-// components, and all run/sync lifecycle lives on the WorkflowRun / ComponentRun.
+// application itself holds only the workflow-owner fields: a name and a runner
+// cluster (a Tekton-enabled cluster) where the management jobs execute. All
+// helm/chart-specific config and targeting (target cluster + namespace) live on
+// the individual components — the application has no app-level target — and all
+// run/sync lifecycle lives on the WorkflowRun / ComponentRun.
 type Application struct {
 	ent.Schema
 }
@@ -34,13 +34,9 @@ func (Application) Fields() []ent.Field {
 		// lets the UI surface that the workflow is a best-effort reconstruction of
 		// a live release. Defaults false (created, not imported).
 		field.Bool("imported").Default(false),
-		// The app-level default namespace in the target cluster components deploy
-		// into; a component may override it.
-		field.String("target_namespace").NotEmpty(),
-		// FK columns bound to the cluster edges below. target_cluster is the
-		// app-level default a component deploys into (overridable per component);
-		// runner_cluster is the Tekton-enabled cluster the management jobs run on.
-		field.UUID("target_cluster_id", uuid.UUID{}),
+		// FK column bound to the runner_cluster edge below: the Tekton-enabled
+		// cluster the management jobs run on. There is no app-level target cluster
+		// or namespace — targeting lives on the individual components.
 		field.UUID("runner_cluster_id", uuid.UUID{}),
 		// Optional membership in a top-level ApplicationGroup (a folder). When
 		// unset (uuid.Nil) the application sits at the org root. Bound to the group
@@ -59,12 +55,6 @@ func (Application) Edges() []ent.Edge {
 			Unique().
 			Required().
 			Immutable(),
-		// The app-level default cluster components deploy into. RESTRICT in the
-		// migration: an app blocks deletion of a cluster it targets.
-		edge.To("target_cluster", Cluster.Type).
-			Field("target_cluster_id").
-			Unique().
-			Required(),
 		// The Tekton-enabled cluster the management jobs run on.
 		edge.To("runner_cluster", Cluster.Type).
 			Field("runner_cluster_id").

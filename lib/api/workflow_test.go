@@ -167,7 +167,7 @@ func TestIsWorkflowValidation(t *testing.T) {
 	for _, err := range []error{
 		workflows.ErrDuplicateID, workflows.ErrMissingID, workflows.ErrUnknownDependency,
 		workflows.ErrSelfDependency, workflows.ErrCycle, workflows.ErrInvalidConfig,
-		workflows.ErrInvalidAction,
+		workflows.ErrInvalidTarget, workflows.ErrInvalidAction,
 	} {
 		if !isWorkflowValidation(err) {
 			t.Fatalf("%v should classify as validation", err)

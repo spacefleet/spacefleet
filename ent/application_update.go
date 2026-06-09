@@ -58,34 +58,6 @@ func (_u *ApplicationUpdate) SetNillableImported(v *bool) *ApplicationUpdate {
 	return _u
 }
 
-// SetTargetNamespace sets the "target_namespace" field.
-func (_u *ApplicationUpdate) SetTargetNamespace(v string) *ApplicationUpdate {
-	_u.mutation.SetTargetNamespace(v)
-	return _u
-}
-
-// SetNillableTargetNamespace sets the "target_namespace" field if the given value is not nil.
-func (_u *ApplicationUpdate) SetNillableTargetNamespace(v *string) *ApplicationUpdate {
-	if v != nil {
-		_u.SetTargetNamespace(*v)
-	}
-	return _u
-}
-
-// SetTargetClusterID sets the "target_cluster_id" field.
-func (_u *ApplicationUpdate) SetTargetClusterID(v uuid.UUID) *ApplicationUpdate {
-	_u.mutation.SetTargetClusterID(v)
-	return _u
-}
-
-// SetNillableTargetClusterID sets the "target_cluster_id" field if the given value is not nil.
-func (_u *ApplicationUpdate) SetNillableTargetClusterID(v *uuid.UUID) *ApplicationUpdate {
-	if v != nil {
-		_u.SetTargetClusterID(*v)
-	}
-	return _u
-}
-
 // SetRunnerClusterID sets the "runner_cluster_id" field.
 func (_u *ApplicationUpdate) SetRunnerClusterID(v uuid.UUID) *ApplicationUpdate {
 	_u.mutation.SetRunnerClusterID(v)
@@ -126,11 +98,6 @@ func (_u *ApplicationUpdate) SetUpdatedAt(v time.Time) *ApplicationUpdate {
 	return _u
 }
 
-// SetTargetCluster sets the "target_cluster" edge to the Cluster entity.
-func (_u *ApplicationUpdate) SetTargetCluster(v *Cluster) *ApplicationUpdate {
-	return _u.SetTargetClusterID(v.ID)
-}
-
 // SetRunnerCluster sets the "runner_cluster" edge to the Cluster entity.
 func (_u *ApplicationUpdate) SetRunnerCluster(v *Cluster) *ApplicationUpdate {
 	return _u.SetRunnerClusterID(v.ID)
@@ -139,12 +106,6 @@ func (_u *ApplicationUpdate) SetRunnerCluster(v *Cluster) *ApplicationUpdate {
 // Mutation returns the ApplicationMutation object of the builder.
 func (_u *ApplicationUpdate) Mutation() *ApplicationMutation {
 	return _u.mutation
-}
-
-// ClearTargetCluster clears the "target_cluster" edge to the Cluster entity.
-func (_u *ApplicationUpdate) ClearTargetCluster() *ApplicationUpdate {
-	_u.mutation.ClearTargetCluster()
-	return _u
 }
 
 // ClearRunnerCluster clears the "runner_cluster" edge to the Cluster entity.
@@ -196,16 +157,8 @@ func (_u *ApplicationUpdate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Application.name": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.TargetNamespace(); ok {
-		if err := application.TargetNamespaceValidator(v); err != nil {
-			return &ValidationError{Name: "target_namespace", err: fmt.Errorf(`ent: validator failed for field "Application.target_namespace": %w`, err)}
-		}
-	}
 	if _u.mutation.OrganizationCleared() && len(_u.mutation.OrganizationIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Application.organization"`)
-	}
-	if _u.mutation.TargetClusterCleared() && len(_u.mutation.TargetClusterIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "Application.target_cluster"`)
 	}
 	if _u.mutation.RunnerClusterCleared() && len(_u.mutation.RunnerClusterIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Application.runner_cluster"`)
@@ -231,9 +184,6 @@ func (_u *ApplicationUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if value, ok := _u.mutation.Imported(); ok {
 		_spec.SetField(application.FieldImported, field.TypeBool, value)
 	}
-	if value, ok := _u.mutation.TargetNamespace(); ok {
-		_spec.SetField(application.FieldTargetNamespace, field.TypeString, value)
-	}
 	if value, ok := _u.mutation.GroupID(); ok {
 		_spec.SetField(application.FieldGroupID, field.TypeUUID, value)
 	}
@@ -242,35 +192,6 @@ func (_u *ApplicationUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(application.FieldUpdatedAt, field.TypeTime, value)
-	}
-	if _u.mutation.TargetClusterCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2O,
-			Inverse: false,
-			Table:   application.TargetClusterTable,
-			Columns: []string{application.TargetClusterColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(cluster.FieldID, field.TypeUUID),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.TargetClusterIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2O,
-			Inverse: false,
-			Table:   application.TargetClusterTable,
-			Columns: []string{application.TargetClusterColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(cluster.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _u.mutation.RunnerClusterCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -349,34 +270,6 @@ func (_u *ApplicationUpdateOne) SetNillableImported(v *bool) *ApplicationUpdateO
 	return _u
 }
 
-// SetTargetNamespace sets the "target_namespace" field.
-func (_u *ApplicationUpdateOne) SetTargetNamespace(v string) *ApplicationUpdateOne {
-	_u.mutation.SetTargetNamespace(v)
-	return _u
-}
-
-// SetNillableTargetNamespace sets the "target_namespace" field if the given value is not nil.
-func (_u *ApplicationUpdateOne) SetNillableTargetNamespace(v *string) *ApplicationUpdateOne {
-	if v != nil {
-		_u.SetTargetNamespace(*v)
-	}
-	return _u
-}
-
-// SetTargetClusterID sets the "target_cluster_id" field.
-func (_u *ApplicationUpdateOne) SetTargetClusterID(v uuid.UUID) *ApplicationUpdateOne {
-	_u.mutation.SetTargetClusterID(v)
-	return _u
-}
-
-// SetNillableTargetClusterID sets the "target_cluster_id" field if the given value is not nil.
-func (_u *ApplicationUpdateOne) SetNillableTargetClusterID(v *uuid.UUID) *ApplicationUpdateOne {
-	if v != nil {
-		_u.SetTargetClusterID(*v)
-	}
-	return _u
-}
-
 // SetRunnerClusterID sets the "runner_cluster_id" field.
 func (_u *ApplicationUpdateOne) SetRunnerClusterID(v uuid.UUID) *ApplicationUpdateOne {
 	_u.mutation.SetRunnerClusterID(v)
@@ -417,11 +310,6 @@ func (_u *ApplicationUpdateOne) SetUpdatedAt(v time.Time) *ApplicationUpdateOne 
 	return _u
 }
 
-// SetTargetCluster sets the "target_cluster" edge to the Cluster entity.
-func (_u *ApplicationUpdateOne) SetTargetCluster(v *Cluster) *ApplicationUpdateOne {
-	return _u.SetTargetClusterID(v.ID)
-}
-
 // SetRunnerCluster sets the "runner_cluster" edge to the Cluster entity.
 func (_u *ApplicationUpdateOne) SetRunnerCluster(v *Cluster) *ApplicationUpdateOne {
 	return _u.SetRunnerClusterID(v.ID)
@@ -430,12 +318,6 @@ func (_u *ApplicationUpdateOne) SetRunnerCluster(v *Cluster) *ApplicationUpdateO
 // Mutation returns the ApplicationMutation object of the builder.
 func (_u *ApplicationUpdateOne) Mutation() *ApplicationMutation {
 	return _u.mutation
-}
-
-// ClearTargetCluster clears the "target_cluster" edge to the Cluster entity.
-func (_u *ApplicationUpdateOne) ClearTargetCluster() *ApplicationUpdateOne {
-	_u.mutation.ClearTargetCluster()
-	return _u
 }
 
 // ClearRunnerCluster clears the "runner_cluster" edge to the Cluster entity.
@@ -500,16 +382,8 @@ func (_u *ApplicationUpdateOne) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Application.name": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.TargetNamespace(); ok {
-		if err := application.TargetNamespaceValidator(v); err != nil {
-			return &ValidationError{Name: "target_namespace", err: fmt.Errorf(`ent: validator failed for field "Application.target_namespace": %w`, err)}
-		}
-	}
 	if _u.mutation.OrganizationCleared() && len(_u.mutation.OrganizationIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Application.organization"`)
-	}
-	if _u.mutation.TargetClusterCleared() && len(_u.mutation.TargetClusterIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "Application.target_cluster"`)
 	}
 	if _u.mutation.RunnerClusterCleared() && len(_u.mutation.RunnerClusterIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Application.runner_cluster"`)
@@ -552,9 +426,6 @@ func (_u *ApplicationUpdateOne) sqlSave(ctx context.Context) (_node *Application
 	if value, ok := _u.mutation.Imported(); ok {
 		_spec.SetField(application.FieldImported, field.TypeBool, value)
 	}
-	if value, ok := _u.mutation.TargetNamespace(); ok {
-		_spec.SetField(application.FieldTargetNamespace, field.TypeString, value)
-	}
 	if value, ok := _u.mutation.GroupID(); ok {
 		_spec.SetField(application.FieldGroupID, field.TypeUUID, value)
 	}
@@ -563,35 +434,6 @@ func (_u *ApplicationUpdateOne) sqlSave(ctx context.Context) (_node *Application
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(application.FieldUpdatedAt, field.TypeTime, value)
-	}
-	if _u.mutation.TargetClusterCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2O,
-			Inverse: false,
-			Table:   application.TargetClusterTable,
-			Columns: []string{application.TargetClusterColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(cluster.FieldID, field.TypeUUID),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.TargetClusterIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2O,
-			Inverse: false,
-			Table:   application.TargetClusterTable,
-			Columns: []string{application.TargetClusterColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(cluster.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _u.mutation.RunnerClusterCleared() {
 		edge := &sqlgraph.EdgeSpec{

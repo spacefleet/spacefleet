@@ -58,8 +58,6 @@ func newApp(t *testing.T, client *ent.Client, orgID uuid.UUID, name string) *ent
 	app, err := client.Application.Create().
 		SetOrganizationID(orgID).
 		SetName(name).
-		SetTargetNamespace("apps").
-		SetTargetClusterID(mkCluster(name + "-target").ID).
 		SetRunnerClusterID(mkCluster(name + "-runner").ID).
 		Save(ctx)
 	if err != nil {

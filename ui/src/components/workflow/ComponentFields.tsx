@@ -206,38 +206,44 @@ export function ComponentFields({
         </Field>
       )}
 
-      {/* Targeting overrides. Blank = the application's default target. */}
-      <Field
-        label="Target cluster override"
-        help="Optional — defaults to the application's target cluster."
-      >
-        <select
-          className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
-          value={component.target_cluster_id ?? ""}
-          onChange={(e) => set("target_cluster_id", e.target.value || null)}
-          disabled={disabled}
+      {/* Targeting. Helm + manifest deploy to a cluster (required); terraform
+          manages cloud infra and has no cluster target, so the fields are hidden
+          for it. The namespace is only meaningful for helm — a manifest carries
+          its own namespaces. */}
+      {component.type !== "terraform" && (
+        <Field
+          label="Target cluster"
+          help="The cluster this component deploys into."
         >
-          <option value="">App default</option>
-          {clusters.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </Field>
+          <select
+            className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+            value={component.target_cluster_id ?? ""}
+            onChange={(e) => set("target_cluster_id", e.target.value || null)}
+            disabled={disabled}
+          >
+            <option value="">Select a cluster…</option>
+            {clusters.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
 
-      <Field
-        label="Target namespace override"
-        help="Optional — defaults to the application's target namespace."
-      >
-        <input
-          className="w-full border border-neutral-300 px-3 py-2 text-sm"
-          value={component.target_namespace}
-          onChange={(e) => set("target_namespace", e.target.value)}
-          placeholder="(app default)"
-          disabled={disabled}
-        />
-      </Field>
+      {component.type === "helm" && (
+        <Field
+          label="Target namespace"
+          help="The namespace this release deploys into."
+        >
+          <input
+            className="w-full border border-neutral-300 px-3 py-2 text-sm"
+            value={component.target_namespace}
+            onChange={(e) => set("target_namespace", e.target.value)}
+            disabled={disabled}
+          />
+        </Field>
+      )}
 
       <label className="flex items-center gap-2 text-sm text-neutral-700">
         <input

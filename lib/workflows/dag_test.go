@@ -10,13 +10,17 @@ import (
 )
 
 // helmNode builds a minimal valid helm node with the given id and dependencies,
-// so a test can focus on graph shape rather than config.
+// so a test can focus on graph shape rather than config. A helm node carries a
+// target cluster + namespace (both required for the type).
 func helmNode(id uuid.UUID, deps ...uuid.UUID) ComponentInput {
+	target := uuid.New()
 	return ComponentInput{
-		ID:        id,
-		Name:      "n-" + id.String()[:8],
-		Type:      TypeHelm,
-		DependsOn: deps,
+		ID:              id,
+		Name:            "n-" + id.String()[:8],
+		Type:            TypeHelm,
+		DependsOn:       deps,
+		TargetClusterID: &target,
+		TargetNamespace: "ns",
 		Config: map[string]string{
 			helmConfigChartSource: helm.SourceOCI,
 			helm.ConfigRepoURL:    "oci://example.com/charts/app",
@@ -172,7 +176,8 @@ func TestValidateConfig_HelmSources(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n := ComponentInput{ID: uuid.New(), Name: "x", Type: TypeHelm, Config: tt.config}
+			target := uuid.New()
+			n := ComponentInput{ID: uuid.New(), Name: "x", Type: TypeHelm, TargetClusterID: &target, TargetNamespace: "ns", Config: tt.config}
 			err := validateDAG([]ComponentInput{n})
 			if tt.wantErr {
 				if !errors.Is(err, ErrInvalidConfig) {
@@ -186,10 +191,12 @@ func TestValidateConfig_HelmSources(t *testing.T) {
 }
 
 func TestValidateConfig_Manifest(t *testing.T) {
+	target := uuid.New()
 	ok := ComponentInput{
-		ID:   uuid.New(),
-		Name: "m",
-		Type: TypeManifest,
+		ID:              uuid.New(),
+		Name:            "m",
+		Type:            TypeManifest,
+		TargetClusterID: &target,
 		Config: map[string]string{
 			helm.ConfigRepoURL: "https://github.com/acme/manifests",
 			manifestConfigPath: "deploy/",
@@ -200,40 +207,118 @@ func TestValidateConfig_Manifest(t *testing.T) {
 	}
 
 	missingPath := ComponentInput{
-		ID:     uuid.New(),
-		Name:   "m",
-		Type:   TypeManifest,
-		Config: map[string]string{helm.ConfigRepoURL: "https://github.com/acme/manifests"},
+		ID:              uuid.New(),
+		Name:            "m",
+		Type:            TypeManifest,
+		TargetClusterID: &target,
+		Config:          map[string]string{helm.ConfigRepoURL: "https://github.com/acme/manifests"},
 	}
 	if err := validateDAG([]ComponentInput{missingPath}); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("expected ErrInvalidConfig for missing path, got %v", err)
 	}
 
 	missingRepo := ComponentInput{
-		ID:     uuid.New(),
-		Name:   "m",
-		Type:   TypeManifest,
-		Config: map[string]string{manifestConfigPath: "deploy/"},
+		ID:              uuid.New(),
+		Name:            "m",
+		Type:            TypeManifest,
+		TargetClusterID: &target,
+		Config:          map[string]string{manifestConfigPath: "deploy/"},
 	}
 	if err := validateDAG([]ComponentInput{missingRepo}); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("expected ErrInvalidConfig for missing repo_url, got %v", err)
 	}
 }
 
+// TestValidateConfig_TargetRules covers the per-type targeting rules: helm needs
+// a target cluster + namespace, manifest needs a cluster, and terraform must not
+// carry a target.
+func TestValidateConfig_TargetRules(t *testing.T) {
+	target := uuid.New()
+	helmCfg := map[string]string{helmConfigChartSource: helm.SourceOCI, helm.ConfigRepoURL: "oci://x/y"}
+
+	// Helm without a target cluster → rejected.
+	noCluster := ComponentInput{ID: uuid.New(), Name: "h", Type: TypeHelm, TargetNamespace: "ns", Config: helmCfg}
+	if err := validateDAG([]ComponentInput{noCluster}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("helm without a target cluster: expected ErrInvalidConfig, got %v", err)
+	}
+	// Helm without a target namespace → rejected.
+	noNS := ComponentInput{ID: uuid.New(), Name: "h", Type: TypeHelm, TargetClusterID: &target, Config: helmCfg}
+	if err := validateDAG([]ComponentInput{noNS}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("helm without a target namespace: expected ErrInvalidConfig, got %v", err)
+	}
+	// Manifest without a target cluster → rejected.
+	mfNoCluster := ComponentInput{ID: uuid.New(), Name: "m", Type: TypeManifest, Config: map[string]string{helm.ConfigRepoURL: "https://github.com/acme/manifests", manifestConfigPath: "deploy/"}}
+	if err := validateDAG([]ComponentInput{mfNoCluster}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("manifest without a target cluster: expected ErrInvalidConfig, got %v", err)
+	}
+	// Terraform carrying a target cluster → rejected.
+	tfTarget := tfNode(nil)
+	tfTarget.TargetClusterID = &target
+	if err := validateDAG([]ComponentInput{tfTarget}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("terraform with a target cluster: expected ErrInvalidConfig, got %v", err)
+	}
+	// Terraform carrying a target namespace → rejected.
+	tfNS := tfNode(nil)
+	tfNS.TargetNamespace = "ns"
+	if err := validateDAG([]ComponentInput{tfNS}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("terraform with a target namespace: expected ErrInvalidConfig, got %v", err)
+	}
+}
+
+// TestValidateTerraformRequiresExplicitBackend proves a terraform node with no
+// explicit backend (empty, or the kubernetes default, in managed mode) is
+// rejected — it has no injected kubeconfig.
+func TestValidateTerraformRequiresExplicitBackend(t *testing.T) {
+	base := map[string]string{
+		helm.ConfigRepoURL:     "https://github.com/acme/infra",
+		manifestConfigPath:     "envs/prod",
+		terraformConfigCommand: terraformCommandPlan,
+	}
+	mk := func(extra map[string]string) ComponentInput {
+		cfg := map[string]string{}
+		for k, v := range base {
+			cfg[k] = v
+		}
+		for k, v := range extra {
+			cfg[k] = v
+		}
+		return ComponentInput{ID: uuid.New(), Name: "tf", Type: TypeTerraform, Config: cfg}
+	}
+	// Managed mode, no backend → rejected.
+	if err := validateDAG([]ComponentInput{mk(nil)}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("managed mode without a backend: expected ErrInvalidConfig, got %v", err)
+	}
+	// Managed mode, kubernetes backend → rejected.
+	if err := validateDAG([]ComponentInput{mk(map[string]string{terraformConfigBackend: "kubernetes"})}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("managed kubernetes backend: expected ErrInvalidConfig, got %v", err)
+	}
+	// Managed mode, explicit s3 backend → valid.
+	if err := validateDAG([]ComponentInput{mk(map[string]string{terraformConfigBackend: "s3"})}); err != nil {
+		t.Errorf("managed s3 backend: unexpected error %v", err)
+	}
+	// BYO mode (module owns its backend) → valid even with no backend key.
+	if err := validateDAG([]ComponentInput{mk(map[string]string{terraformConfigBackendMode: "byo"})}); err != nil {
+		t.Errorf("byo mode: unexpected error %v", err)
+	}
+}
+
 func TestValidateConfig_UnknownType(t *testing.T) {
-	n := ComponentInput{ID: uuid.New(), Name: "x", Type: "terraform"}
+	n := ComponentInput{ID: uuid.New(), Name: "x", Type: "bogus"}
 	if err := validateDAG([]ComponentInput{n}); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("expected ErrInvalidConfig for unknown type, got %v", err)
 	}
 }
 
 // tfNode builds a minimal valid terraform plan node, overlaying any extra
-// config keys, so a test can focus on the key under test.
+// config keys, so a test can focus on the key under test. It carries an explicit
+// (non-kubernetes) backend, required now that terraform gets no injected
+// kubeconfig.
 func tfNode(extra map[string]string) ComponentInput {
 	cfg := map[string]string{
 		helm.ConfigRepoURL:     "https://github.com/acme/infra",
 		manifestConfigPath:     "envs/prod",
 		terraformConfigCommand: terraformCommandPlan,
+		terraformConfigBackend: "s3",
 	}
 	for k, v := range extra {
 		cfg[k] = v

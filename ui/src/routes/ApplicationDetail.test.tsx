@@ -32,8 +32,6 @@ const app = {
   id: "app-1",
   name: "web",
   imported: false,
-  target_namespace: "apps",
-  target_cluster_id: "c1",
   runner_cluster_id: "c1",
   created_at: "2026-06-03T09:00:00Z",
   updated_at: "2026-06-03T10:00:00Z",
@@ -87,12 +85,11 @@ beforeEach(() => {
 });
 
 describe("ApplicationDetail overview", () => {
-  it("shows the targeting and the latest run status", async () => {
+  it("shows the runner and the latest run status", async () => {
     renderDetail();
     expect(await screen.findByText("web")).toBeInTheDocument();
-    // The cluster id resolves to its name.
+    // The runner cluster id resolves to its name.
     expect((await screen.findAllByText("prod")).length).toBeGreaterThan(0);
-    expect(screen.getByText("apps")).toBeInTheDocument();
     // The latest run's action + status are shown.
     expect(screen.getByText("deploy")).toBeInTheDocument();
     expect(screen.getByText("succeeded")).toBeInTheDocument();

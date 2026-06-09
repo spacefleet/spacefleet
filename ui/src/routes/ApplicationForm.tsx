@@ -19,9 +19,9 @@ export type ImportSeed = { clusterId: string; release: HelmRelease };
 // ApplicationForm is the create/edit/import workflow for an application — the
 // workflow owner (routes /applications/new and /applications/:appId/edit; import
 // mode when an ImportSeed is passed via router state). It collects only the
-// app-level fields: name, the default target cluster + namespace, and the runner
-// cluster. The deploy steps themselves are built afterwards on the workflow
-// canvas. The clusters are fixed at registration, so they're read-only on edit.
+// app-level fields: a name and the runner cluster. The deploy steps — and their
+// per-component target cluster + namespace — are built afterwards on the workflow
+// canvas. The runner is fixed at registration, so it's read-only on edit.
 export function ApplicationForm() {
   const { appId } = useParams();
   const editing = Boolean(appId);
@@ -36,12 +36,6 @@ export function ApplicationForm() {
   const canEdit = currentRole !== "viewer";
 
   const [name, setName] = useState(seedRelease?.name ?? "");
-  const [targetNamespace, setTargetNamespace] = useState(
-    seedRelease?.namespace ?? "",
-  );
-  const [targetClusterId, setTargetClusterId] = useState(
-    importSeed?.clusterId ?? "",
-  );
   const [runnerClusterId, setRunnerClusterId] = useState("");
 
   const [clusters, setClusters] = useState<Cluster[]>([]);
@@ -74,8 +68,6 @@ export function ApplicationForm() {
         return;
       }
       setName(data.name);
-      setTargetNamespace(data.target_namespace);
-      setTargetClusterId(data.target_cluster_id);
       setRunnerClusterId(data.runner_cluster_id);
       setLoading(false);
     })();
@@ -94,7 +86,6 @@ export function ApplicationForm() {
     if (editing) {
       const body: UpdateRequest = {
         name: name.trim(),
-        target_namespace: targetNamespace.trim(),
       };
       const { error } = await api.PATCH("/api/applications/{id}", {
         params: { path: { id: appId! } },
@@ -111,8 +102,6 @@ export function ApplicationForm() {
 
     const body: CreateRequest & ImportRequest = {
       name: name.trim(),
-      target_namespace: targetNamespace.trim(),
-      target_cluster_id: targetClusterId,
       runner_cluster_id: runnerClusterId,
     };
     if (importing) {
@@ -157,8 +146,9 @@ export function ApplicationForm() {
 
       <h1 className="mt-3 text-2xl font-bold tracking-tight">{title}</h1>
       <p className="mt-1 text-sm text-neutral-600">
-        An application owns a deploy workflow. Set its name and clusters here;
-        build the deploy steps on the workflow canvas afterwards.
+        An application owns a deploy workflow. Set its name and runner cluster
+        here; build the deploy steps — and their targets — on the workflow canvas
+        afterwards.
       </p>
 
       {loading ? (
@@ -175,41 +165,6 @@ export function ApplicationForm() {
               onChange={(e) => setName(e.target.value)}
               className="w-full border border-neutral-300 px-3 py-2 text-sm"
             />
-          </Field>
-
-          <Field label="Default target namespace">
-            <input
-              type="text"
-              required
-              value={targetNamespace}
-              onChange={(e) => setTargetNamespace(e.target.value)}
-              className="w-full border border-neutral-300 px-3 py-2 text-sm"
-            />
-          </Field>
-
-          <Field label="Default target cluster">
-            {editing ? (
-              <p className="text-sm text-neutral-700">
-                {clusterName(targetClusterId)}
-                <span className="ml-2 text-xs text-neutral-400">
-                  (fixed at registration)
-                </span>
-              </p>
-            ) : (
-              <select
-                required
-                value={targetClusterId}
-                onChange={(e) => setTargetClusterId(e.target.value)}
-                className="w-full border border-neutral-300 px-3 py-2 text-sm"
-              >
-                <option value="">Select a cluster…</option>
-                {clusters.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            )}
           </Field>
 
           <Field label="Runner cluster">

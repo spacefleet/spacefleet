@@ -28,6 +28,9 @@ var (
 	// ErrInvalidConfig is returned when a node's per-type config is missing a
 	// required key or names an invalid value.
 	ErrInvalidConfig = errors.New("workflows: invalid component config")
+	// ErrInvalidTarget is returned when a node's target cluster is not in the
+	// organization or violates the in-cluster/runner pairing rule.
+	ErrInvalidTarget = errors.New("workflows: invalid component target")
 	// ErrUnknownGroup is returned when a component's group_id names a group that
 	// is not among the input groups.
 	ErrUnknownGroup = errors.New("workflows: unknown group")
@@ -121,6 +124,13 @@ func validateConfig(n ComponentInput) error {
 const helmConfigChartSource = "chart_source"
 
 func validateHelmConfig(n ComponentInput) error {
+	// A helm release deploys to a cluster + namespace, both required on the node.
+	if !hasTargetCluster(n) {
+		return fmt.Errorf("%w: node %q (helm) requires a target cluster", ErrInvalidConfig, n.Name)
+	}
+	if n.TargetNamespace == "" {
+		return fmt.Errorf("%w: node %q (helm) requires a target namespace", ErrInvalidConfig, n.Name)
+	}
 	source := n.Config[helmConfigChartSource]
 	switch source {
 	case helm.SourceHTTPRepo:
@@ -169,7 +179,17 @@ func validateValuesSources(n ComponentInput) error {
 const manifestConfigPath = "path"
 
 func validateManifestConfig(n ComponentInput) error {
+	// A manifest apply deploys to a cluster (its kubeconfig is what matters); the
+	// namespace is informational (manifests carry their own), so it stays optional.
+	if !hasTargetCluster(n) {
+		return fmt.Errorf("%w: node %q (manifest) requires a target cluster", ErrInvalidConfig, n.Name)
+	}
 	return requireConfig(n, helm.ConfigRepoURL, manifestConfigPath)
+}
+
+// hasTargetCluster reports whether the node names a non-nil target cluster.
+func hasTargetCluster(n ComponentInput) bool {
+	return n.TargetClusterID != nil && *n.TargetClusterID != uuid.Nil
 }
 
 // Terraform component config keys. A terraform component clones a git repo at a
@@ -216,8 +236,24 @@ const (
 // (defaults to kubernetes). Failures wrap ErrInvalidConfig so a handler maps
 // them to a 400.
 func validateTerraformConfig(n ComponentInput) error {
+	// A terraform component manages cloud/infra, not a Kubernetes workload, so it
+	// carries no cluster/namespace target — reject one if the canvas sends it.
+	if hasTargetCluster(n) {
+		return fmt.Errorf("%w: node %q (terraform) must not set a target cluster", ErrInvalidConfig, n.Name)
+	}
+	if n.TargetNamespace != "" {
+		return fmt.Errorf("%w: node %q (terraform) must not set a target namespace", ErrInvalidConfig, n.Name)
+	}
 	if err := requireConfig(n, helm.ConfigRepoURL, manifestConfigPath); err != nil {
 		return err
+	}
+	// With no target cluster there is no injected kubeconfig, so the implicit
+	// kubernetes state backend is unavailable: a terraform component must name an
+	// explicit backend — either byo mode (the module owns its backend block) or a
+	// managed backend other than kubernetes (e.g. s3, pg).
+	backend := n.Config[terraformConfigBackend]
+	if n.Config[terraformConfigBackendMode] != tofu.ModeBYO && (backend == "" || backend == tofu.DefaultBackend) {
+		return fmt.Errorf("%w: node %q (terraform) requires an explicit state backend: set %q to byo, or set %q to a backend other than %q", ErrInvalidConfig, n.Name, terraformConfigBackendMode, terraformConfigBackend, tofu.DefaultBackend)
 	}
 	switch n.Config[terraformConfigCommand] {
 	case terraformCommandPlan, terraformCommandApply:

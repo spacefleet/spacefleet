@@ -14,12 +14,10 @@ var (
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "name", Type: field.TypeString},
 		{Name: "imported", Type: field.TypeBool, Default: false},
-		{Name: "target_namespace", Type: field.TypeString},
 		{Name: "group_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "organization_id", Type: field.TypeUUID},
-		{Name: "target_cluster_id", Type: field.TypeUUID},
 		{Name: "runner_cluster_id", Type: field.TypeUUID},
 	}
 	// ApplicationsTable holds the schema information for the "applications" table.
@@ -30,19 +28,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "applications_organizations_organization",
-				Columns:    []*schema.Column{ApplicationsColumns[7]},
+				Columns:    []*schema.Column{ApplicationsColumns[6]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
-				Symbol:     "applications_clusters_target_cluster",
-				Columns:    []*schema.Column{ApplicationsColumns[8]},
-				RefColumns: []*schema.Column{ClustersColumns[0]},
-				OnDelete:   schema.NoAction,
-			},
-			{
 				Symbol:     "applications_clusters_runner_cluster",
-				Columns:    []*schema.Column{ApplicationsColumns[9]},
+				Columns:    []*schema.Column{ApplicationsColumns[7]},
 				RefColumns: []*schema.Column{ClustersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -51,12 +43,12 @@ var (
 			{
 				Name:    "application_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{ApplicationsColumns[7]},
+				Columns: []*schema.Column{ApplicationsColumns[6]},
 			},
 			{
 				Name:    "application_organization_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{ApplicationsColumns[7], ApplicationsColumns[1]},
+				Columns: []*schema.Column{ApplicationsColumns[6], ApplicationsColumns[1]},
 			},
 		},
 	}
@@ -715,7 +707,6 @@ var (
 func init() {
 	ApplicationsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ApplicationsTable.ForeignKeys[1].RefTable = ClustersTable
-	ApplicationsTable.ForeignKeys[2].RefTable = ClustersTable
 	ApplicationGroupsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ChartCredentialsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	CloudCredentialsTable.ForeignKeys[0].RefTable = OrganizationsTable

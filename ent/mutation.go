@@ -68,15 +68,12 @@ type ApplicationMutation struct {
 	id                    *uuid.UUID
 	name                  *string
 	imported              *bool
-	target_namespace      *string
 	group_id              *uuid.UUID
 	created_at            *time.Time
 	updated_at            *time.Time
 	clearedFields         map[string]struct{}
 	organization          *uuid.UUID
 	clearedorganization   bool
-	target_cluster        *uuid.UUID
-	clearedtarget_cluster bool
 	runner_cluster        *uuid.UUID
 	clearedrunner_cluster bool
 	done                  bool
@@ -296,78 +293,6 @@ func (m *ApplicationMutation) ResetImported() {
 	m.imported = nil
 }
 
-// SetTargetNamespace sets the "target_namespace" field.
-func (m *ApplicationMutation) SetTargetNamespace(s string) {
-	m.target_namespace = &s
-}
-
-// TargetNamespace returns the value of the "target_namespace" field in the mutation.
-func (m *ApplicationMutation) TargetNamespace() (r string, exists bool) {
-	v := m.target_namespace
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldTargetNamespace returns the old "target_namespace" field's value of the Application entity.
-// If the Application object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ApplicationMutation) OldTargetNamespace(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldTargetNamespace is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldTargetNamespace requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldTargetNamespace: %w", err)
-	}
-	return oldValue.TargetNamespace, nil
-}
-
-// ResetTargetNamespace resets all changes to the "target_namespace" field.
-func (m *ApplicationMutation) ResetTargetNamespace() {
-	m.target_namespace = nil
-}
-
-// SetTargetClusterID sets the "target_cluster_id" field.
-func (m *ApplicationMutation) SetTargetClusterID(u uuid.UUID) {
-	m.target_cluster = &u
-}
-
-// TargetClusterID returns the value of the "target_cluster_id" field in the mutation.
-func (m *ApplicationMutation) TargetClusterID() (r uuid.UUID, exists bool) {
-	v := m.target_cluster
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldTargetClusterID returns the old "target_cluster_id" field's value of the Application entity.
-// If the Application object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ApplicationMutation) OldTargetClusterID(ctx context.Context) (v uuid.UUID, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldTargetClusterID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldTargetClusterID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldTargetClusterID: %w", err)
-	}
-	return oldValue.TargetClusterID, nil
-}
-
-// ResetTargetClusterID resets all changes to the "target_cluster_id" field.
-func (m *ApplicationMutation) ResetTargetClusterID() {
-	m.target_cluster = nil
-}
-
 // SetRunnerClusterID sets the "runner_cluster_id" field.
 func (m *ApplicationMutation) SetRunnerClusterID(u uuid.UUID) {
 	m.runner_cluster = &u
@@ -552,33 +477,6 @@ func (m *ApplicationMutation) ResetOrganization() {
 	m.clearedorganization = false
 }
 
-// ClearTargetCluster clears the "target_cluster" edge to the Cluster entity.
-func (m *ApplicationMutation) ClearTargetCluster() {
-	m.clearedtarget_cluster = true
-	m.clearedFields[application.FieldTargetClusterID] = struct{}{}
-}
-
-// TargetClusterCleared reports if the "target_cluster" edge to the Cluster entity was cleared.
-func (m *ApplicationMutation) TargetClusterCleared() bool {
-	return m.clearedtarget_cluster
-}
-
-// TargetClusterIDs returns the "target_cluster" edge IDs in the mutation.
-// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
-// TargetClusterID instead. It exists only for internal usage by the builders.
-func (m *ApplicationMutation) TargetClusterIDs() (ids []uuid.UUID) {
-	if id := m.target_cluster; id != nil {
-		ids = append(ids, *id)
-	}
-	return
-}
-
-// ResetTargetCluster resets all changes to the "target_cluster" edge.
-func (m *ApplicationMutation) ResetTargetCluster() {
-	m.target_cluster = nil
-	m.clearedtarget_cluster = false
-}
-
 // ClearRunnerCluster clears the "runner_cluster" edge to the Cluster entity.
 func (m *ApplicationMutation) ClearRunnerCluster() {
 	m.clearedrunner_cluster = true
@@ -640,7 +538,7 @@ func (m *ApplicationMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ApplicationMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 7)
 	if m.organization != nil {
 		fields = append(fields, application.FieldOrganizationID)
 	}
@@ -649,12 +547,6 @@ func (m *ApplicationMutation) Fields() []string {
 	}
 	if m.imported != nil {
 		fields = append(fields, application.FieldImported)
-	}
-	if m.target_namespace != nil {
-		fields = append(fields, application.FieldTargetNamespace)
-	}
-	if m.target_cluster != nil {
-		fields = append(fields, application.FieldTargetClusterID)
 	}
 	if m.runner_cluster != nil {
 		fields = append(fields, application.FieldRunnerClusterID)
@@ -682,10 +574,6 @@ func (m *ApplicationMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case application.FieldImported:
 		return m.Imported()
-	case application.FieldTargetNamespace:
-		return m.TargetNamespace()
-	case application.FieldTargetClusterID:
-		return m.TargetClusterID()
 	case application.FieldRunnerClusterID:
 		return m.RunnerClusterID()
 	case application.FieldGroupID:
@@ -709,10 +597,6 @@ func (m *ApplicationMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldName(ctx)
 	case application.FieldImported:
 		return m.OldImported(ctx)
-	case application.FieldTargetNamespace:
-		return m.OldTargetNamespace(ctx)
-	case application.FieldTargetClusterID:
-		return m.OldTargetClusterID(ctx)
 	case application.FieldRunnerClusterID:
 		return m.OldRunnerClusterID(ctx)
 	case application.FieldGroupID:
@@ -750,20 +634,6 @@ func (m *ApplicationMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetImported(v)
-		return nil
-	case application.FieldTargetNamespace:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetTargetNamespace(v)
-		return nil
-	case application.FieldTargetClusterID:
-		v, ok := value.(uuid.UUID)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetTargetClusterID(v)
 		return nil
 	case application.FieldRunnerClusterID:
 		v, ok := value.(uuid.UUID)
@@ -860,12 +730,6 @@ func (m *ApplicationMutation) ResetField(name string) error {
 	case application.FieldImported:
 		m.ResetImported()
 		return nil
-	case application.FieldTargetNamespace:
-		m.ResetTargetNamespace()
-		return nil
-	case application.FieldTargetClusterID:
-		m.ResetTargetClusterID()
-		return nil
 	case application.FieldRunnerClusterID:
 		m.ResetRunnerClusterID()
 		return nil
@@ -884,12 +748,9 @@ func (m *ApplicationMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ApplicationMutation) AddedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 2)
 	if m.organization != nil {
 		edges = append(edges, application.EdgeOrganization)
-	}
-	if m.target_cluster != nil {
-		edges = append(edges, application.EdgeTargetCluster)
 	}
 	if m.runner_cluster != nil {
 		edges = append(edges, application.EdgeRunnerCluster)
@@ -905,10 +766,6 @@ func (m *ApplicationMutation) AddedIDs(name string) []ent.Value {
 		if id := m.organization; id != nil {
 			return []ent.Value{*id}
 		}
-	case application.EdgeTargetCluster:
-		if id := m.target_cluster; id != nil {
-			return []ent.Value{*id}
-		}
 	case application.EdgeRunnerCluster:
 		if id := m.runner_cluster; id != nil {
 			return []ent.Value{*id}
@@ -919,7 +776,7 @@ func (m *ApplicationMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ApplicationMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 2)
 	return edges
 }
 
@@ -931,12 +788,9 @@ func (m *ApplicationMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ApplicationMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 2)
 	if m.clearedorganization {
 		edges = append(edges, application.EdgeOrganization)
-	}
-	if m.clearedtarget_cluster {
-		edges = append(edges, application.EdgeTargetCluster)
 	}
 	if m.clearedrunner_cluster {
 		edges = append(edges, application.EdgeRunnerCluster)
@@ -950,8 +804,6 @@ func (m *ApplicationMutation) EdgeCleared(name string) bool {
 	switch name {
 	case application.EdgeOrganization:
 		return m.clearedorganization
-	case application.EdgeTargetCluster:
-		return m.clearedtarget_cluster
 	case application.EdgeRunnerCluster:
 		return m.clearedrunner_cluster
 	}
@@ -964,9 +816,6 @@ func (m *ApplicationMutation) ClearEdge(name string) error {
 	switch name {
 	case application.EdgeOrganization:
 		m.ClearOrganization()
-		return nil
-	case application.EdgeTargetCluster:
-		m.ClearTargetCluster()
 		return nil
 	case application.EdgeRunnerCluster:
 		m.ClearRunnerCluster()
@@ -981,9 +830,6 @@ func (m *ApplicationMutation) ResetEdge(name string) error {
 	switch name {
 	case application.EdgeOrganization:
 		m.ResetOrganization()
-		return nil
-	case application.EdgeTargetCluster:
-		m.ResetTargetCluster()
 		return nil
 	case application.EdgeRunnerCluster:
 		m.ResetRunnerCluster()

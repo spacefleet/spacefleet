@@ -61,8 +61,6 @@ const oneApp = {
   id: "app-1",
   name: "web",
   imported: false,
-  target_namespace: "apps",
-  target_cluster_id: "c1",
   runner_cluster_id: "c1",
   group_id: null,
   created_at: "2026-06-03T09:00:00Z",
@@ -105,11 +103,10 @@ describe("Applications list", () => {
     expect(await screen.findByText("boom")).toBeInTheDocument();
   });
 
-  it("renders registered applications with namespace and origin", async () => {
+  it("renders registered applications with their origin", async () => {
     mockData({ apps: [oneApp] });
     renderApps();
     expect(await screen.findByText("web")).toBeInTheDocument();
-    expect(screen.getByText("apps")).toBeInTheDocument();
     // The origin column reflects whether the app was created or imported.
     expect(screen.getByText("Created")).toBeInTheDocument();
   });

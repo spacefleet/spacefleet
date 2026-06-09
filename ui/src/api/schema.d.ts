@@ -1791,19 +1791,13 @@ export interface components {
         /**
          * @description A deployable workload that owns a deploy workflow (a DAG of components).
          *     The application holds only the workflow-owner fields; all chart-specific
-         *     config lives on its components, and run/sync state lives on its runs.
+         *     config and targeting (cluster + namespace) live on its components, and
+         *     run/sync state lives on its runs.
          */
         Application: {
             /** Format: uuid */
             id: string;
             name: string;
-            /** @description App-level default namespace components deploy into (overridable per component). */
-            target_namespace: string;
-            /**
-             * Format: uuid
-             * @description App-level default target cluster (overridable per component).
-             */
-            target_cluster_id: string;
             /**
              * Format: uuid
              * @description The Tekton-enabled cluster the management jobs run on.
@@ -1826,15 +1820,12 @@ export interface components {
             updated_at: string;
         };
         /**
-         * @description Register an application (the workflow owner). The deploy steps are added
-         *     afterwards as components via the workflow builder; create only sets the
-         *     name, the app-level default target cluster + namespace, and the runner.
+         * @description Register an application (the workflow owner). The deploy steps — and
+         *     their per-component targeting — are added afterwards as components via
+         *     the workflow builder; create only sets the name and the runner cluster.
          */
         ApplicationCreateRequest: {
             name: string;
-            target_namespace: string;
-            /** Format: uuid */
-            target_cluster_id: string;
             /** Format: uuid */
             runner_cluster_id: string;
             /**
@@ -1851,9 +1842,6 @@ export interface components {
          */
         ApplicationImportRequest: {
             name: string;
-            target_namespace: string;
-            /** Format: uuid */
-            target_cluster_id: string;
             /** Format: uuid */
             runner_cluster_id: string;
             /**
@@ -1864,12 +1852,11 @@ export interface components {
             group_id?: string;
         };
         /**
-         * @description All fields optional. The clusters and name can change; the deploy steps
-         *     live on the components (edit them via the workflow builder).
+         * @description All fields optional. The name can change; the deploy steps and their
+         *     targeting live on the components (edit them via the workflow builder).
          */
         ApplicationUpdateRequest: {
             name?: string;
-            target_namespace?: string;
         };
         /**
          * @description A top-level folder for organizing an organization's applications. An
@@ -2121,10 +2108,16 @@ export interface components {
             requires_approval?: boolean;
             /**
              * Format: uuid
-             * @description Per-component override of the app's default target cluster.
+             * @description The cluster this component deploys into. Required for helm and
+             *     manifest components; null for terraform (which has no cluster
+             *     target).
              */
             target_cluster_id?: string | null;
-            /** @description Per-component override of the app's default target namespace. */
+            /**
+             * @description The namespace this component deploys into. Required for helm;
+             *     unused for manifest (manifests carry their own namespaces) and
+             *     terraform.
+             */
             target_namespace?: string;
             /**
              * Format: uuid
@@ -2168,8 +2161,16 @@ export interface components {
              *     (status awaiting_approval). Defaults to false.
              */
             requires_approval?: boolean;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description The cluster this component deploys into. Required for helm and
+             *     manifest; must be null for terraform.
+             */
             target_cluster_id?: string | null;
+            /**
+             * @description The namespace this component deploys into. Required for helm;
+             *     unused for manifest and terraform.
+             */
             target_namespace?: string;
             /** Format: uuid */
             chart_credential_id?: string | null;

@@ -28,8 +28,8 @@ const (
 )
 
 // planComponent builds the run plan for one workflow node, given the application
-// (for the app-level runner cluster + default target cluster/namespace), the
-// snapshot node (its as-run config + per-component overrides), the run action, the
+// (for the app-level runner cluster), the snapshot node (its as-run config + its
+// own deploy target, for the cluster-deploying types), the run action, the
 // per-run force flag (a deploy-only "roll the workload" opt-in, threaded from the
 // River job args so it survives retries), and the persisted run name to re-attach
 // to. It is the workflow analogue of applications.ResolveRollout, sharing the exact
@@ -81,12 +81,9 @@ func (w *WorkflowRunWorker) planManifest(ctx context.Context, app *ent.Applicati
 		return tekton.RunRequest{}, err
 	}
 
-	// Runner is always app-level; target cluster/namespace take the per-component
-	// override when set, else the application's app-level default.
-	targetClusterID := app.TargetClusterID
-	if node.TargetClusterID != nil && *node.TargetClusterID != uuid.Nil {
-		targetClusterID = *node.TargetClusterID
-	}
+	// Runner is app-level; the target cluster lives on the component itself
+	// (validateComponentTargets guarantees a manifest node names one).
+	targetClusterID := deref(node.TargetClusterID)
 
 	// A manifest must clone (and thus authenticate) for both deploy and uninstall —
 	// uninstall needs the manifests to know what to delete. So request the git
@@ -131,17 +128,17 @@ func (w *WorkflowRunWorker) planManifest(ctx context.Context, app *ent.Applicati
 }
 
 // planTofu builds the OpenTofu RunSpec + runner connection for a terraform
-// component. It resolves the runner/target clusters (honoring the per-component
-// target override), reads the command/backend from the component config, calls
-// the shared resolver (lib/deploy) for the injected kubeconfig + optional git
-// token, and renders the plan/apply script via tofu.Script in tofu.DefaultImage.
+// component. It runs on the app-level runner cluster, reads the command/backend
+// from the component config, calls the shared resolver (lib/deploy) for the
+// optional git token + cloud credential, and renders the plan/apply script via
+// tofu.Script in tofu.DefaultImage.
 //
-// The target kubeconfig is injected (PullsChart:true) because the default
-// Kubernetes state backend authenticates with it — the step exports it as
-// KUBECONFIG so tofu init/plan/apply read/write state Secrets in the runner
-// cluster. It is requested for every action (a terraform uninstall is a
-// `tofu destroy` that still needs state + git), so PullsChart is true here
-// regardless of action, and a private-repo git token is honored the same way.
+// A terraform component has no cluster target, so no kubeconfig is injected and
+// the implicit kubernetes state backend is unavailable — the component must name
+// an explicit backend (enforced by validateTerraformConfig). PullsChart is true
+// for every action (a terraform uninstall is a `tofu destroy` that still needs
+// state + the root module) so a private-repo git token and a cloud credential
+// are resolved regardless of action.
 //
 // The plan node's stdout is the review material captured as the component_run
 // logs; the apply node applies the EXACT planfile the plan node produced,
@@ -174,13 +171,6 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		planArtifactSecret = tofuPlanArtifactSecret(runID, planID)
 	}
 
-	// Runner is always app-level; target cluster takes the per-component override
-	// when set, else the application's app-level default.
-	targetClusterID := app.TargetClusterID
-	if node.TargetClusterID != nil && *node.TargetClusterID != uuid.Nil {
-		targetClusterID = *node.TargetClusterID
-	}
-
 	// Decode an optional custom backend_config (validated at write time in
 	// validateTerraformConfig); ignored for the kubernetes default backend.
 	backendConfig, err := decodeBackendConfig(node.Config[terraformConfigBackendConfig])
@@ -194,16 +184,18 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 	backendMode := node.Config[terraformConfigBackendMode]
 	cloudCredentialID, _ := uuid.Parse(node.Config[terraformConfigCloudCredentialID])
 
-	// Always inject the target kubeconfig (the Kubernetes backend uses it) and,
-	// for a private github.com repo, the git-credentials file — for every action,
-	// since even an uninstall (tofu destroy) needs state + the root module.
+	// A terraform component has no cluster target (TargetClusterID is uuid.Nil), so
+	// the resolver injects no kubeconfig — the state backend must be explicit
+	// (validated at write time). PullsChart stays true so the git-credentials file
+	// (private github.com repo) and the cloud credential are still resolved for
+	// every action — even an uninstall (tofu destroy) needs state + the root module.
 	pullsChart := true
 	resolved, err := w.resolver.Resolve(ctx, deploy.RunInputs{
 		OrgID:                app.OrganizationID,
 		ApplicationID:        app.ID,
 		ComponentID:          node.ID,
 		RunnerClusterID:      app.RunnerClusterID,
-		TargetClusterID:      targetClusterID,
+		TargetClusterID:      uuid.Nil,
 		Values:               "",
 		ChartCredentialID:    uuid.Nil,
 		GitHubInstallationID: deref(node.GitHubInstallationID),
@@ -222,7 +214,6 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		Path:               node.Config[manifestConfigPath],
 		Backend:            node.Config[terraformConfigBackend],
 		BackendConfig:      backendConfig,
-		SecretSuffix:       tofuSecretSuffix(app, planID),
 		Namespace:          helm.RunNamespace,
 		HasGitToken:        resolved.HasGitToken,
 		BackendMode:        backendMode,
@@ -279,18 +270,6 @@ func decodeBackendConfig(encoded string) (map[string]string, error) {
 		out[k] = fmt.Sprintf("%v", v)
 	}
 	return out, nil
-}
-
-// tofuSecretSuffix derives the Kubernetes-backend state Secret suffix for a
-// terraform deployment, per application + PLAN-node id. A plan node passes its
-// own id and its apply node passes the same (its upstream plan node's id), so
-// the pair shares one state Secret — required for `tofu apply tfplan` to apply
-// the plan node's saved plan (a saved plan is bound to the state it was planned
-// against). Two distinct deployments (and two apps) never share state. The
-// backend names its Secret tfstate-default-<suffix>, which must be a DNS-1123
-// label.
-func tofuSecretSuffix(app *ent.Application, planID uuid.UUID) string {
-	return sanitizeLabel(app.ID.String() + "-" + planID.String())
 }
 
 // tofuPlanArtifactSecret is the name of the Kubernetes Secret the plan node
@@ -360,16 +339,11 @@ func (w *WorkflowRunWorker) planHelm(ctx context.Context, app *ent.Application, 
 		return tekton.RunRequest{}, err
 	}
 
-	// Runner is always app-level; target cluster/namespace take the per-component
-	// override when set, else the application's app-level default.
-	targetClusterID := app.TargetClusterID
-	if node.TargetClusterID != nil && *node.TargetClusterID != uuid.Nil {
-		targetClusterID = *node.TargetClusterID
-	}
-	targetNamespace := app.TargetNamespace
-	if node.TargetNamespace != "" {
-		targetNamespace = node.TargetNamespace
-	}
+	// Runner is app-level; the deploy target (cluster + namespace) lives on the
+	// component itself — validateComponentTargets guarantees both are set for a
+	// helm node before a run can begin.
+	targetClusterID := deref(node.TargetClusterID)
+	targetNamespace := node.TargetNamespace
 
 	chartSource := node.Config[helmConfigChartSource]
 	valuesSources, err := decodeValuesSources(node.Config[helmConfigValuesSources])

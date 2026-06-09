@@ -49,11 +49,10 @@ func validationErr(format string, args ...any) error {
 }
 
 // CreateParams describes an application to register: the workflow-owner fields
-// only. The deploy steps are added afterwards as components.
+// only (a name and the runner cluster). The deploy steps — and their
+// per-component targeting — are added afterwards as components.
 type CreateParams struct {
 	Name            string
-	TargetNamespace string
-	TargetClusterID uuid.UUID
 	RunnerClusterID uuid.UUID
 	// GroupID optionally places the new application in a group (folder). Nil
 	// creates it at the org root (ungrouped).
@@ -61,10 +60,9 @@ type CreateParams struct {
 }
 
 // UpdateParams describes a change to an application. A nil field is unchanged.
-// The clusters are fixed at registration; name and target namespace can change.
+// The runner cluster is fixed at registration; only the name can change.
 type UpdateParams struct {
-	Name            *string
-	TargetNamespace *string
+	Name *string
 }
 
 // ImportParams describes an application to adopt from a release already running
@@ -87,7 +85,7 @@ func (s *Service) Get(ctx context.Context, orgID, id uuid.UUID) (*ent.Applicatio
 		Only(ctx)
 }
 
-// Create validates the cluster pairing, then registers the application. No
+// Create validates the runner cluster, then registers the application. No
 // workflow runs here — the deploy steps are added afterwards as components.
 func (s *Service) Create(ctx context.Context, orgID uuid.UUID, p CreateParams) (*ent.Application, error) {
 	if err := s.validate(ctx, orgID, p); err != nil {
@@ -121,8 +119,6 @@ func (s *Service) newCreate(orgID uuid.UUID, p CreateParams) *ent.ApplicationCre
 	c := s.ent.Application.Create().
 		SetOrganizationID(orgID).
 		SetName(p.Name).
-		SetTargetNamespace(p.TargetNamespace).
-		SetTargetClusterID(p.TargetClusterID).
 		SetRunnerClusterID(p.RunnerClusterID)
 	if p.GroupID != nil {
 		c.SetGroupID(*p.GroupID)
@@ -139,12 +135,6 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, p UpdateParam
 	upd := app.Update()
 	if p.Name != nil {
 		upd.SetName(*p.Name)
-	}
-	if p.TargetNamespace != nil {
-		if *p.TargetNamespace == "" {
-			return nil, validationErr("target namespace cannot be empty")
-		}
-		upd.SetTargetNamespace(*p.TargetNamespace)
 	}
 	return upd.Save(ctx)
 }
@@ -197,20 +187,10 @@ func (s *Service) ensureGroup(ctx context.Context, orgID uuid.UUID, groupID *uui
 	return nil
 }
 
-// validate checks the cluster pairing for a create.
+// validate checks the runner cluster for a create. The deploy target lives on
+// the individual components, so it is validated at the workflow layer
+// (lib/workflows), not here.
 func (s *Service) validate(ctx context.Context, orgID uuid.UUID, p CreateParams) error {
-	if p.TargetNamespace == "" {
-		return validationErr("target namespace is required")
-	}
-	target, err := s.ent.Cluster.Query().
-		Where(cluster.OrganizationID(orgID), cluster.ID(p.TargetClusterID)).
-		Only(ctx)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return validationErr("target cluster not found in this organization")
-		}
-		return err
-	}
 	runner, err := s.ent.Cluster.Query().
 		Where(cluster.OrganizationID(orgID), cluster.ID(p.RunnerClusterID)).
 		WithTekton().
@@ -220,12 +200,6 @@ func (s *Service) validate(ctx context.Context, orgID uuid.UUID, p CreateParams)
 			return validationErr("runner cluster not found in this organization")
 		}
 		return err
-	}
-
-	// In-cluster targets are only reachable from a pod in that same cluster, so
-	// the runner must be that cluster. Use the token method for a remote runner.
-	if target.ConnectionMethod == cluster.ConnectionMethodInCluster && runner.ID != target.ID {
-		return validationErr("an in-cluster target requires the runner to be that same cluster; to use a different runner, register the target via the token method with an external endpoint")
 	}
 	// The runner must be designated to run jobs (Tekton enabled).
 	if runner.Edges.Tekton == nil || !runner.Edges.Tekton.Enabled {

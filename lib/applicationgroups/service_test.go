@@ -133,8 +133,6 @@ func TestDeleteUngroupsApplications(t *testing.T) {
 	app, err := client.Application.Create().
 		SetOrganizationID(org.ID).
 		SetName("web").
-		SetTargetNamespace("apps").
-		SetTargetClusterID(c.ID).
 		SetRunnerClusterID(c.ID).
 		SetGroupID(g.ID).
 		Save(ctx)

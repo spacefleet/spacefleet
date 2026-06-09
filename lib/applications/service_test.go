@@ -41,11 +41,11 @@ func newCluster(t *testing.T, client *ent.Client, orgID uuid.UUID, name string, 
 	return c
 }
 
-func appParams(target, runner uuid.UUID) CreateParams {
+// appParams builds a create request for the workflow owner — only a name and the
+// runner cluster (the deploy target lives on the components).
+func appParams(runner uuid.UUID) CreateParams {
 	return CreateParams{
 		Name:            "web",
-		TargetNamespace: "apps",
-		TargetClusterID: target,
 		RunnerClusterID: runner,
 	}
 }
@@ -56,10 +56,9 @@ func TestCreateValidAndOrgScoped(t *testing.T) {
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
-	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
 	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
 
-	app, err := svc.Create(ctx, org.ID, appParams(target.ID, runner.ID))
+	app, err := svc.Create(ctx, org.ID, appParams(runner.ID))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -84,70 +83,26 @@ func TestCreateRunnerNotJobRunner(t *testing.T) {
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
-	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
 	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, false) // tekton not enabled
 
-	_, err := svc.Create(ctx, org.ID, appParams(target.ID, runner.ID))
+	_, err := svc.Create(ctx, org.ID, appParams(runner.ID))
 	if !IsValidation(err) {
 		t.Fatalf("Create error = %v, want ValidationError", err)
 	}
 }
 
-func TestCreateInClusterRequiresSameRunner(t *testing.T) {
-	client := testsupport.NewEntClient(t)
-	svc := NewService(client)
-	ctx := context.Background()
-
-	org := newOrg(t, client, "Acme")
-	target := newCluster(t, client, org.ID, "in-cluster-target", cluster.ConnectionMethodInCluster, false)
-	runner := newCluster(t, client, org.ID, "other-runner", cluster.ConnectionMethodToken, true)
-
-	// in_cluster target + different runner → rejected.
-	_, err := svc.Create(ctx, org.ID, appParams(target.ID, runner.ID))
-	if !IsValidation(err) {
-		t.Fatalf("mismatched runner error = %v, want ValidationError", err)
-	}
-
-	// in_cluster target where the target is itself the (tekton-enabled) runner → ok.
-	selfRunner := newCluster(t, client, org.ID, "self", cluster.ConnectionMethodInCluster, true)
-	app, err := svc.Create(ctx, org.ID, appParams(selfRunner.ID, selfRunner.ID))
-	if err != nil {
-		t.Fatalf("in_cluster self-runner Create: %v", err)
-	}
-	if app.TargetClusterID != app.RunnerClusterID {
-		t.Errorf("expected target == runner")
-	}
-}
-
-func TestCreateMissingNamespace(t *testing.T) {
-	client := testsupport.NewEntClient(t)
-	svc := NewService(client)
-	ctx := context.Background()
-
-	org := newOrg(t, client, "Acme")
-	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
-	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
-
-	p := appParams(target.ID, runner.ID)
-	p.TargetNamespace = ""
-	if _, err := svc.Create(ctx, org.ID, p); !IsValidation(err) {
-		t.Fatalf("error = %v, want ValidationError for missing namespace", err)
-	}
-}
-
-func TestCreateTargetClusterFromAnotherOrgRejected(t *testing.T) {
+func TestCreateRunnerFromAnotherOrgRejected(t *testing.T) {
 	client := testsupport.NewEntClient(t)
 	svc := NewService(client)
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
 	other := newOrg(t, client, "Other")
-	foreignTarget := newCluster(t, client, other.ID, "foreign", cluster.ConnectionMethodToken, false)
-	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
+	foreignRunner := newCluster(t, client, other.ID, "foreign", cluster.ConnectionMethodToken, true)
 
-	_, err := svc.Create(ctx, org.ID, appParams(foreignTarget.ID, runner.ID))
+	_, err := svc.Create(ctx, org.ID, appParams(foreignRunner.ID))
 	if !IsValidation(err) {
-		t.Fatalf("error = %v, want ValidationError for cross-org target", err)
+		t.Fatalf("error = %v, want ValidationError for cross-org runner", err)
 	}
 }
 
@@ -157,27 +112,19 @@ func TestUpdateMutableFields(t *testing.T) {
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
-	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
 	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
-	app, err := svc.Create(ctx, org.ID, appParams(target.ID, runner.ID))
+	app, err := svc.Create(ctx, org.ID, appParams(runner.ID))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
 	newName := "web2"
-	newNS := "prod"
-	updated, err := svc.Update(ctx, org.ID, app.ID, UpdateParams{Name: &newName, TargetNamespace: &newNS})
+	updated, err := svc.Update(ctx, org.ID, app.ID, UpdateParams{Name: &newName})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if updated.Name != "web2" || updated.TargetNamespace != "prod" {
+	if updated.Name != "web2" {
 		t.Errorf("update not persisted: %+v", updated)
-	}
-
-	// An empty namespace is rejected.
-	empty := ""
-	if _, err := svc.Update(ctx, org.ID, app.ID, UpdateParams{TargetNamespace: &empty}); !IsValidation(err) {
-		t.Errorf("empty namespace update error = %v, want ValidationError", err)
 	}
 }
 
@@ -187,10 +134,9 @@ func TestAdoptCreatesImported(t *testing.T) {
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
-	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
 	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
 
-	app, err := svc.Adopt(ctx, org.ID, appParams(target.ID, runner.ID))
+	app, err := svc.Adopt(ctx, org.ID, appParams(runner.ID))
 	if err != nil {
 		t.Fatalf("Adopt: %v", err)
 	}
@@ -205,10 +151,9 @@ func TestAdoptRejectsInvalidLikeCreate(t *testing.T) {
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
-	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
 	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, false) // tekton not enabled
 
-	if _, err := svc.Adopt(ctx, org.ID, appParams(target.ID, runner.ID)); !IsValidation(err) {
+	if _, err := svc.Adopt(ctx, org.ID, appParams(runner.ID)); !IsValidation(err) {
 		t.Fatalf("Adopt error = %v, want ValidationError", err)
 	}
 }
@@ -220,9 +165,8 @@ func TestDeleteOrgScoped(t *testing.T) {
 
 	org := newOrg(t, client, "Acme")
 	other := newOrg(t, client, "Other")
-	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
 	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
-	app, err := svc.Create(ctx, org.ID, appParams(target.ID, runner.ID))
+	app, err := svc.Create(ctx, org.ID, appParams(runner.ID))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -254,9 +198,8 @@ func TestSetGroupMovesAndClears(t *testing.T) {
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
-	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
 	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
-	app, err := svc.Create(ctx, org.ID, appParams(target.ID, runner.ID))
+	app, err := svc.Create(ctx, org.ID, appParams(runner.ID))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -291,9 +234,8 @@ func TestSetGroupRejectsForeignGroup(t *testing.T) {
 
 	org := newOrg(t, client, "Acme")
 	other := newOrg(t, client, "Other")
-	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
 	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
-	app, err := svc.Create(ctx, org.ID, appParams(target.ID, runner.ID))
+	app, err := svc.Create(ctx, org.ID, appParams(runner.ID))
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -310,11 +252,10 @@ func TestCreateWithGroup(t *testing.T) {
 	ctx := context.Background()
 
 	org := newOrg(t, client, "Acme")
-	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
 	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
 	group := newGroup(t, client, org.ID, "Backend")
 
-	p := appParams(target.ID, runner.ID)
+	p := appParams(runner.ID)
 	p.GroupID = &group.ID
 	app, err := svc.Create(ctx, org.ID, p)
 	if err != nil {
@@ -327,7 +268,7 @@ func TestCreateWithGroup(t *testing.T) {
 	// A foreign group is rejected at create time too.
 	other := newOrg(t, client, "Other")
 	foreign := newGroup(t, client, other.ID, "Theirs")
-	p2 := appParams(target.ID, runner.ID)
+	p2 := appParams(runner.ID)
 	p2.Name = "web2"
 	p2.GroupID = &foreign.ID
 	if _, err := svc.Create(ctx, org.ID, p2); !IsValidation(err) {

@@ -464,22 +464,6 @@ func (c *ApplicationClient) QueryOrganization(_m *Application) *OrganizationQuer
 	return query
 }
 
-// QueryTargetCluster queries the target_cluster edge of a Application.
-func (c *ApplicationClient) QueryTargetCluster(_m *Application) *ClusterQuery {
-	query := (&ClusterClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(application.Table, application.FieldID, id),
-			sqlgraph.To(cluster.Table, cluster.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, application.TargetClusterTable, application.TargetClusterColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
 // QueryRunnerCluster queries the runner_cluster edge of a Application.
 func (c *ApplicationClient) QueryRunnerCluster(_m *Application) *ClusterQuery {
 	query := (&ClusterClient{config: c.config}).Query()

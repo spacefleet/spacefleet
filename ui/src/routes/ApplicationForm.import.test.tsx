@@ -68,15 +68,14 @@ beforeEach(() => {
 });
 
 describe("ApplicationForm import mode", () => {
-  it("pre-fills the name, namespace, and target cluster from the release", async () => {
+  it("pre-fills the name from the release", async () => {
     renderImport();
 
     expect(
       await screen.findByRole("heading", { name: "Import application" }),
     ).toBeInTheDocument();
-    // Name + namespace seeded from the live release.
+    // Name seeded from the live release (targeting now lives on the components).
     expect(screen.getByDisplayValue("cache")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("data")).toBeInTheDocument();
   });
 
   it("adopts via POST /api/applications/import then opens the workflow canvas", async () => {
@@ -86,8 +85,7 @@ describe("ApplicationForm import mode", () => {
 
     await screen.findByRole("heading", { name: "Import application" });
 
-    // The cluster the release was found on is pre-selected as the target;
-    // choose the runner cluster.
+    // The app only needs a name + runner cluster; targets are set per-component.
     await user.selectOptions(
       screen.getByLabelText("Runner cluster"),
       "cluster-1",
@@ -100,8 +98,6 @@ describe("ApplicationForm import mode", () => {
         expect.objectContaining({
           body: expect.objectContaining({
             name: "cache",
-            target_namespace: "data",
-            target_cluster_id: "cluster-1",
             runner_cluster_id: "cluster-1",
           }),
         }),

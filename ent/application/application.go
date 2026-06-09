@@ -21,10 +21,6 @@ const (
 	FieldName = "name"
 	// FieldImported holds the string denoting the imported field in the database.
 	FieldImported = "imported"
-	// FieldTargetNamespace holds the string denoting the target_namespace field in the database.
-	FieldTargetNamespace = "target_namespace"
-	// FieldTargetClusterID holds the string denoting the target_cluster_id field in the database.
-	FieldTargetClusterID = "target_cluster_id"
 	// FieldRunnerClusterID holds the string denoting the runner_cluster_id field in the database.
 	FieldRunnerClusterID = "runner_cluster_id"
 	// FieldGroupID holds the string denoting the group_id field in the database.
@@ -35,8 +31,6 @@ const (
 	FieldUpdatedAt = "updated_at"
 	// EdgeOrganization holds the string denoting the organization edge name in mutations.
 	EdgeOrganization = "organization"
-	// EdgeTargetCluster holds the string denoting the target_cluster edge name in mutations.
-	EdgeTargetCluster = "target_cluster"
 	// EdgeRunnerCluster holds the string denoting the runner_cluster edge name in mutations.
 	EdgeRunnerCluster = "runner_cluster"
 	// Table holds the table name of the application in the database.
@@ -48,13 +42,6 @@ const (
 	OrganizationInverseTable = "organizations"
 	// OrganizationColumn is the table column denoting the organization relation/edge.
 	OrganizationColumn = "organization_id"
-	// TargetClusterTable is the table that holds the target_cluster relation/edge.
-	TargetClusterTable = "applications"
-	// TargetClusterInverseTable is the table name for the Cluster entity.
-	// It exists in this package in order to avoid circular dependency with the "cluster" package.
-	TargetClusterInverseTable = "clusters"
-	// TargetClusterColumn is the table column denoting the target_cluster relation/edge.
-	TargetClusterColumn = "target_cluster_id"
 	// RunnerClusterTable is the table that holds the runner_cluster relation/edge.
 	RunnerClusterTable = "applications"
 	// RunnerClusterInverseTable is the table name for the Cluster entity.
@@ -70,8 +57,6 @@ var Columns = []string{
 	FieldOrganizationID,
 	FieldName,
 	FieldImported,
-	FieldTargetNamespace,
-	FieldTargetClusterID,
 	FieldRunnerClusterID,
 	FieldGroupID,
 	FieldCreatedAt,
@@ -93,8 +78,6 @@ var (
 	NameValidator func(string) error
 	// DefaultImported holds the default value on creation for the "imported" field.
 	DefaultImported bool
-	// TargetNamespaceValidator is a validator for the "target_namespace" field. It is called by the builders before save.
-	TargetNamespaceValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -128,16 +111,6 @@ func ByImported(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImported, opts...).ToFunc()
 }
 
-// ByTargetNamespace orders the results by the target_namespace field.
-func ByTargetNamespace(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldTargetNamespace, opts...).ToFunc()
-}
-
-// ByTargetClusterID orders the results by the target_cluster_id field.
-func ByTargetClusterID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldTargetClusterID, opts...).ToFunc()
-}
-
 // ByRunnerClusterID orders the results by the runner_cluster_id field.
 func ByRunnerClusterID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRunnerClusterID, opts...).ToFunc()
@@ -165,13 +138,6 @@ func ByOrganizationField(field string, opts ...sql.OrderTermOption) OrderOption 
 	}
 }
 
-// ByTargetClusterField orders the results by target_cluster field.
-func ByTargetClusterField(field string, opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newTargetClusterStep(), sql.OrderByField(field, opts...))
-	}
-}
-
 // ByRunnerClusterField orders the results by runner_cluster field.
 func ByRunnerClusterField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -183,13 +149,6 @@ func newOrganizationStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(OrganizationInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, false, OrganizationTable, OrganizationColumn),
-	)
-}
-func newTargetClusterStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(TargetClusterInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.M2O, false, TargetClusterTable, TargetClusterColumn),
 	)
 }
 func newRunnerClusterStep() *sqlgraph.Step {

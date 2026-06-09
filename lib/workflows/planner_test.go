@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/manifest"
 )
@@ -167,28 +166,6 @@ func TestUpstreamTofuPlanID(t *testing.T) {
 	orphan := GraphNode{ID: uuid.New(), Type: TypeTerraform, DependsOn: []uuid.UUID{helmID}, Config: map[string]string{terraformConfigCommand: terraformCommandApply}}
 	if got := upstreamTofuPlanID(orphan, byID); got != uuid.Nil {
 		t.Errorf("no upstream plan: got %s, want Nil", got)
-	}
-}
-
-func TestTofuSecretSuffixSharedByPair(t *testing.T) {
-	t.Parallel()
-	app := &ent.Application{ID: uuid.New()}
-	planID := uuid.New()
-	// A plan node keys state off its own id; its apply node keys off the SAME
-	// (its upstream plan's) id — so the pair shares one backend state Secret, the
-	// precondition for `tofu apply tfplan` to apply the plan node's saved plan.
-	planSuffix := tofuSecretSuffix(app, planID)
-	applySuffix := tofuSecretSuffix(app, planID)
-	if planSuffix != applySuffix {
-		t.Fatalf("plan and apply must share a state suffix: %q vs %q", planSuffix, applySuffix)
-	}
-	// A different deployment (different plan id) does not share state.
-	if other := tofuSecretSuffix(app, uuid.New()); other == planSuffix {
-		t.Fatalf("distinct plan ids must not collide: %q", other)
-	}
-	// The result is a DNS-1123 label (lowercase, hyphen-separated).
-	if planSuffix == "" || planSuffix != sanitizeLabel(planSuffix) {
-		t.Fatalf("suffix is not a sanitized label: %q", planSuffix)
 	}
 }
 

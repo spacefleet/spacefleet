@@ -71,16 +71,6 @@ func Imported(v bool) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldImported, v))
 }
 
-// TargetNamespace applies equality check predicate on the "target_namespace" field. It's identical to TargetNamespaceEQ.
-func TargetNamespace(v string) predicate.Application {
-	return predicate.Application(sql.FieldEQ(FieldTargetNamespace, v))
-}
-
-// TargetClusterID applies equality check predicate on the "target_cluster_id" field. It's identical to TargetClusterIDEQ.
-func TargetClusterID(v uuid.UUID) predicate.Application {
-	return predicate.Application(sql.FieldEQ(FieldTargetClusterID, v))
-}
-
 // RunnerClusterID applies equality check predicate on the "runner_cluster_id" field. It's identical to RunnerClusterIDEQ.
 func RunnerClusterID(v uuid.UUID) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldRunnerClusterID, v))
@@ -194,91 +184,6 @@ func ImportedEQ(v bool) predicate.Application {
 // ImportedNEQ applies the NEQ predicate on the "imported" field.
 func ImportedNEQ(v bool) predicate.Application {
 	return predicate.Application(sql.FieldNEQ(FieldImported, v))
-}
-
-// TargetNamespaceEQ applies the EQ predicate on the "target_namespace" field.
-func TargetNamespaceEQ(v string) predicate.Application {
-	return predicate.Application(sql.FieldEQ(FieldTargetNamespace, v))
-}
-
-// TargetNamespaceNEQ applies the NEQ predicate on the "target_namespace" field.
-func TargetNamespaceNEQ(v string) predicate.Application {
-	return predicate.Application(sql.FieldNEQ(FieldTargetNamespace, v))
-}
-
-// TargetNamespaceIn applies the In predicate on the "target_namespace" field.
-func TargetNamespaceIn(vs ...string) predicate.Application {
-	return predicate.Application(sql.FieldIn(FieldTargetNamespace, vs...))
-}
-
-// TargetNamespaceNotIn applies the NotIn predicate on the "target_namespace" field.
-func TargetNamespaceNotIn(vs ...string) predicate.Application {
-	return predicate.Application(sql.FieldNotIn(FieldTargetNamespace, vs...))
-}
-
-// TargetNamespaceGT applies the GT predicate on the "target_namespace" field.
-func TargetNamespaceGT(v string) predicate.Application {
-	return predicate.Application(sql.FieldGT(FieldTargetNamespace, v))
-}
-
-// TargetNamespaceGTE applies the GTE predicate on the "target_namespace" field.
-func TargetNamespaceGTE(v string) predicate.Application {
-	return predicate.Application(sql.FieldGTE(FieldTargetNamespace, v))
-}
-
-// TargetNamespaceLT applies the LT predicate on the "target_namespace" field.
-func TargetNamespaceLT(v string) predicate.Application {
-	return predicate.Application(sql.FieldLT(FieldTargetNamespace, v))
-}
-
-// TargetNamespaceLTE applies the LTE predicate on the "target_namespace" field.
-func TargetNamespaceLTE(v string) predicate.Application {
-	return predicate.Application(sql.FieldLTE(FieldTargetNamespace, v))
-}
-
-// TargetNamespaceContains applies the Contains predicate on the "target_namespace" field.
-func TargetNamespaceContains(v string) predicate.Application {
-	return predicate.Application(sql.FieldContains(FieldTargetNamespace, v))
-}
-
-// TargetNamespaceHasPrefix applies the HasPrefix predicate on the "target_namespace" field.
-func TargetNamespaceHasPrefix(v string) predicate.Application {
-	return predicate.Application(sql.FieldHasPrefix(FieldTargetNamespace, v))
-}
-
-// TargetNamespaceHasSuffix applies the HasSuffix predicate on the "target_namespace" field.
-func TargetNamespaceHasSuffix(v string) predicate.Application {
-	return predicate.Application(sql.FieldHasSuffix(FieldTargetNamespace, v))
-}
-
-// TargetNamespaceEqualFold applies the EqualFold predicate on the "target_namespace" field.
-func TargetNamespaceEqualFold(v string) predicate.Application {
-	return predicate.Application(sql.FieldEqualFold(FieldTargetNamespace, v))
-}
-
-// TargetNamespaceContainsFold applies the ContainsFold predicate on the "target_namespace" field.
-func TargetNamespaceContainsFold(v string) predicate.Application {
-	return predicate.Application(sql.FieldContainsFold(FieldTargetNamespace, v))
-}
-
-// TargetClusterIDEQ applies the EQ predicate on the "target_cluster_id" field.
-func TargetClusterIDEQ(v uuid.UUID) predicate.Application {
-	return predicate.Application(sql.FieldEQ(FieldTargetClusterID, v))
-}
-
-// TargetClusterIDNEQ applies the NEQ predicate on the "target_cluster_id" field.
-func TargetClusterIDNEQ(v uuid.UUID) predicate.Application {
-	return predicate.Application(sql.FieldNEQ(FieldTargetClusterID, v))
-}
-
-// TargetClusterIDIn applies the In predicate on the "target_cluster_id" field.
-func TargetClusterIDIn(vs ...uuid.UUID) predicate.Application {
-	return predicate.Application(sql.FieldIn(FieldTargetClusterID, vs...))
-}
-
-// TargetClusterIDNotIn applies the NotIn predicate on the "target_cluster_id" field.
-func TargetClusterIDNotIn(vs ...uuid.UUID) predicate.Application {
-	return predicate.Application(sql.FieldNotIn(FieldTargetClusterID, vs...))
 }
 
 // RunnerClusterIDEQ applies the EQ predicate on the "runner_cluster_id" field.
@@ -446,29 +351,6 @@ func HasOrganization() predicate.Application {
 func HasOrganizationWith(preds ...predicate.Organization) predicate.Application {
 	return predicate.Application(func(s *sql.Selector) {
 		step := newOrganizationStep()
-		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
-			for _, p := range preds {
-				p(s)
-			}
-		})
-	})
-}
-
-// HasTargetCluster applies the HasEdge predicate on the "target_cluster" edge.
-func HasTargetCluster() predicate.Application {
-	return predicate.Application(func(s *sql.Selector) {
-		step := sqlgraph.NewStep(
-			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, TargetClusterTable, TargetClusterColumn),
-		)
-		sqlgraph.HasNeighbors(s, step)
-	})
-}
-
-// HasTargetClusterWith applies the HasEdge predicate on the "target_cluster" edge with a given conditions (other predicates).
-func HasTargetClusterWith(preds ...predicate.Cluster) predicate.Application {
-	return predicate.Application(func(s *sql.Selector) {
-		step := newTargetClusterStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

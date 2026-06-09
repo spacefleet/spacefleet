@@ -21,10 +21,11 @@ import (
 // depends_on lists the sibling components this one waits on; concurrency is "no
 // unmet deps". continue_on_failure decides whether a failed node skips its
 // dependents (false) or not (true → the run goes "partial"). target_cluster_id /
-// target_namespace are optional per-component overrides of the application's
-// app-level defaults; chart_credential_id / github_installation_id mirror the
-// application's optional private-pull credentials. position is the canvas {x,y}
-// for the builder UI.
+// target_namespace are the component's own deploy target — required for the
+// cluster-deploying types (helm needs both, manifest needs the cluster) and
+// unset for terraform, which has no cluster target; the service validates this
+// per type. chart_credential_id / github_installation_id are optional
+// private-pull credentials. position is the canvas {x,y} for the builder UI.
 //
 // Like every resource it carries organization_id so every service query is
 // org-scoped (the tenancy boundary), not via the application join alone.
@@ -72,11 +73,13 @@ func (Component) Fields() []ent.Field {
 		// human to approve before it executes. The general per-component approval-gate
 		// flag; OpenTofu's apply node is its first consumer.
 		field.Bool("requires_approval").Default(false),
-		// Optional per-component override of the application's default target cluster.
-		// Bound to the target_cluster edge below; RESTRICT in the migration.
+		// The cluster this component deploys into. Required for helm/manifest,
+		// unset for terraform (validated per type in the service). Optional at the
+		// schema/column level because terraform leaves it unset. Bound to the
+		// target_cluster edge below; RESTRICT in the migration.
 		field.UUID("target_cluster_id", uuid.UUID{}).Optional(),
-		// Optional per-component override of the application's default target
-		// namespace.
+		// The namespace this component deploys into. Required for helm, unused for
+		// manifest/terraform (validated per type in the service).
 		field.String("target_namespace").Optional(),
 		// Optional credential for pulling a private chart, mirroring Application.
 		// Bound to the chart_credential edge below; RESTRICT in the migration.

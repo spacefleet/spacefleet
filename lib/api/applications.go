@@ -112,8 +112,6 @@ func (s *Server) CreateApplication(ctx context.Context, req CreateApplicationReq
 	}
 	a, err := s.applications.Create(ctx, orgID, applications.CreateParams{
 		Name:            name,
-		TargetNamespace: strings.TrimSpace(req.Body.TargetNamespace),
-		TargetClusterID: req.Body.TargetClusterId,
 		RunnerClusterID: req.Body.RunnerClusterId,
 		GroupID:         req.Body.GroupId,
 	})
@@ -147,8 +145,6 @@ func (s *Server) ImportApplication(ctx context.Context, req ImportApplicationReq
 	}
 	a, err := s.applications.Adopt(ctx, orgID, applications.ImportParams{
 		Name:            name,
-		TargetNamespace: strings.TrimSpace(req.Body.TargetNamespace),
-		TargetClusterID: req.Body.TargetClusterId,
 		RunnerClusterID: req.Body.RunnerClusterId,
 		GroupID:         req.Body.GroupId,
 	})
@@ -179,10 +175,6 @@ func (s *Server) UpdateApplication(ctx context.Context, req UpdateApplicationReq
 			return errResp[UpdateApplicationdefaultJSONResponse](http.StatusBadRequest, "bad_request", "name cannot be empty"), nil
 		}
 		params.Name = &name
-	}
-	if req.Body.TargetNamespace != nil {
-		ns := strings.TrimSpace(*req.Body.TargetNamespace)
-		params.TargetNamespace = &ns
 	}
 	a, err := s.applications.Update(ctx, orgID, req.Id, params)
 	if err != nil {
@@ -262,8 +254,6 @@ func toAPIApplication(a *ent.Application) Application {
 	out := Application{
 		Id:              a.ID,
 		Name:            a.Name,
-		TargetNamespace: a.TargetNamespace,
-		TargetClusterId: a.TargetClusterID,
 		RunnerClusterId: a.RunnerClusterID,
 		Imported:        &imported,
 		CreatedAt:       a.CreatedAt,

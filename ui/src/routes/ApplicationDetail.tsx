@@ -170,17 +170,12 @@ export function ApplicationDetail() {
             </div>
           </div>
 
-          {/* Targeting */}
+          {/* Runner (deploy targets live on the individual components) */}
           <div className="mt-6 border border-neutral-200 bg-white p-4">
             <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-              Targeting
+              Runner
             </h2>
             <dl className="mt-3 grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
-              <Row
-                label="Default target cluster"
-                value={clusters[app.target_cluster_id] ?? app.target_cluster_id}
-              />
-              <Row label="Default target namespace" value={app.target_namespace} />
               <Row
                 label="Runner cluster"
                 value={clusters[app.runner_cluster_id] ?? app.runner_cluster_id}

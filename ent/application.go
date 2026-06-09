@@ -26,10 +26,6 @@ type Application struct {
 	Name string `json:"name,omitempty"`
 	// Imported holds the value of the "imported" field.
 	Imported bool `json:"imported,omitempty"`
-	// TargetNamespace holds the value of the "target_namespace" field.
-	TargetNamespace string `json:"target_namespace,omitempty"`
-	// TargetClusterID holds the value of the "target_cluster_id" field.
-	TargetClusterID uuid.UUID `json:"target_cluster_id,omitempty"`
 	// RunnerClusterID holds the value of the "runner_cluster_id" field.
 	RunnerClusterID uuid.UUID `json:"runner_cluster_id,omitempty"`
 	// GroupID holds the value of the "group_id" field.
@@ -48,13 +44,11 @@ type Application struct {
 type ApplicationEdges struct {
 	// Organization holds the value of the organization edge.
 	Organization *Organization `json:"organization,omitempty"`
-	// TargetCluster holds the value of the target_cluster edge.
-	TargetCluster *Cluster `json:"target_cluster,omitempty"`
 	// RunnerCluster holds the value of the runner_cluster edge.
 	RunnerCluster *Cluster `json:"runner_cluster,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [2]bool
 }
 
 // OrganizationOrErr returns the Organization value or an error if the edge
@@ -68,23 +62,12 @@ func (e ApplicationEdges) OrganizationOrErr() (*Organization, error) {
 	return nil, &NotLoadedError{edge: "organization"}
 }
 
-// TargetClusterOrErr returns the TargetCluster value or an error if the edge
-// was not loaded in eager-loading, or loaded but was not found.
-func (e ApplicationEdges) TargetClusterOrErr() (*Cluster, error) {
-	if e.TargetCluster != nil {
-		return e.TargetCluster, nil
-	} else if e.loadedTypes[1] {
-		return nil, &NotFoundError{label: cluster.Label}
-	}
-	return nil, &NotLoadedError{edge: "target_cluster"}
-}
-
 // RunnerClusterOrErr returns the RunnerCluster value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
 func (e ApplicationEdges) RunnerClusterOrErr() (*Cluster, error) {
 	if e.RunnerCluster != nil {
 		return e.RunnerCluster, nil
-	} else if e.loadedTypes[2] {
+	} else if e.loadedTypes[1] {
 		return nil, &NotFoundError{label: cluster.Label}
 	}
 	return nil, &NotLoadedError{edge: "runner_cluster"}
@@ -97,11 +80,11 @@ func (*Application) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case application.FieldImported:
 			values[i] = new(sql.NullBool)
-		case application.FieldName, application.FieldTargetNamespace:
+		case application.FieldName:
 			values[i] = new(sql.NullString)
 		case application.FieldCreatedAt, application.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
-		case application.FieldID, application.FieldOrganizationID, application.FieldTargetClusterID, application.FieldRunnerClusterID, application.FieldGroupID:
+		case application.FieldID, application.FieldOrganizationID, application.FieldRunnerClusterID, application.FieldGroupID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -141,18 +124,6 @@ func (_m *Application) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field imported", values[i])
 			} else if value.Valid {
 				_m.Imported = value.Bool
-			}
-		case application.FieldTargetNamespace:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field target_namespace", values[i])
-			} else if value.Valid {
-				_m.TargetNamespace = value.String
-			}
-		case application.FieldTargetClusterID:
-			if value, ok := values[i].(*uuid.UUID); !ok {
-				return fmt.Errorf("unexpected type %T for field target_cluster_id", values[i])
-			} else if value != nil {
-				_m.TargetClusterID = *value
 			}
 		case application.FieldRunnerClusterID:
 			if value, ok := values[i].(*uuid.UUID); !ok {
@@ -196,11 +167,6 @@ func (_m *Application) QueryOrganization() *OrganizationQuery {
 	return NewApplicationClient(_m.config).QueryOrganization(_m)
 }
 
-// QueryTargetCluster queries the "target_cluster" edge of the Application entity.
-func (_m *Application) QueryTargetCluster() *ClusterQuery {
-	return NewApplicationClient(_m.config).QueryTargetCluster(_m)
-}
-
 // QueryRunnerCluster queries the "runner_cluster" edge of the Application entity.
 func (_m *Application) QueryRunnerCluster() *ClusterQuery {
 	return NewApplicationClient(_m.config).QueryRunnerCluster(_m)
@@ -237,12 +203,6 @@ func (_m *Application) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("imported=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Imported))
-	builder.WriteString(", ")
-	builder.WriteString("target_namespace=")
-	builder.WriteString(_m.TargetNamespace)
-	builder.WriteString(", ")
-	builder.WriteString("target_cluster_id=")
-	builder.WriteString(fmt.Sprintf("%v", _m.TargetClusterID))
 	builder.WriteString(", ")
 	builder.WriteString("runner_cluster_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RunnerClusterID))

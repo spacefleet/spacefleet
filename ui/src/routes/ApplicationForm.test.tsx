@@ -27,15 +27,12 @@ const mockApi = api as unknown as {
   PATCH: ReturnType<typeof vi.fn>;
 };
 
-const target = { id: "cluster-1", name: "prod" };
 const runner = { id: "cluster-2", name: "ci" };
 
 const existingApp = {
   id: "app-1",
   name: "web",
   imported: false,
-  target_namespace: "apps",
-  target_cluster_id: "cluster-1",
   runner_cluster_id: "cluster-2",
   created_at: "2026-06-03T09:00:00Z",
   updated_at: "2026-06-03T10:00:00Z",
@@ -49,7 +46,7 @@ beforeEach(() => {
   navigate.mockReset();
   mockApi.GET.mockImplementation((path: string) => {
     if (path === "/api/clusters")
-      return Promise.resolve({ data: [target, runner], error: undefined });
+      return Promise.resolve({ data: [runner], error: undefined });
     return Promise.resolve({ data: [], error: undefined });
   });
 });
@@ -80,14 +77,6 @@ describe("ApplicationForm create mode", () => {
     renderCreate();
 
     await userEvent.type(await screen.findByLabelText("Name"), "api");
-    await userEvent.type(
-      screen.getByLabelText("Default target namespace"),
-      "apps",
-    );
-    await userEvent.selectOptions(
-      screen.getByLabelText("Default target cluster"),
-      "cluster-1",
-    );
     await userEvent.selectOptions(
       screen.getByLabelText("Runner cluster"),
       "cluster-2",
@@ -98,8 +87,6 @@ describe("ApplicationForm create mode", () => {
       expect(mockApi.POST).toHaveBeenCalledWith("/api/applications", {
         body: {
           name: "api",
-          target_namespace: "apps",
-          target_cluster_id: "cluster-1",
           runner_cluster_id: "cluster-2",
         },
       }),
@@ -115,14 +102,6 @@ describe("ApplicationForm create mode", () => {
     renderCreate();
 
     await userEvent.type(await screen.findByLabelText("Name"), "api");
-    await userEvent.type(
-      screen.getByLabelText("Default target namespace"),
-      "apps",
-    );
-    await userEvent.selectOptions(
-      screen.getByLabelText("Default target cluster"),
-      "cluster-1",
-    );
     await userEvent.selectOptions(
       screen.getByLabelText("Runner cluster"),
       "cluster-2",
@@ -135,10 +114,10 @@ describe("ApplicationForm create mode", () => {
 });
 
 describe("ApplicationForm edit mode", () => {
-  it("hydrates from the existing application and locks the clusters", async () => {
+  it("hydrates from the existing application and locks the runner", async () => {
     mockApi.GET.mockImplementation((path: string) => {
       if (path === "/api/clusters")
-        return Promise.resolve({ data: [target, runner], error: undefined });
+        return Promise.resolve({ data: [runner], error: undefined });
       if (path === "/api/applications/{id}")
         return Promise.resolve({ data: existingApp, error: undefined });
       return Promise.resolve({ data: [], error: undefined });
@@ -146,16 +125,15 @@ describe("ApplicationForm edit mode", () => {
     renderEdit();
 
     expect(await screen.findByDisplayValue("web")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("apps")).toBeInTheDocument();
-    // The clusters are fixed at registration → shown read-only, not as selects.
-    expect(screen.queryByLabelText("Default target cluster")).toBeNull();
-    expect((await screen.findAllByText(/fixed at registration/)).length).toBe(2);
+    // The runner is fixed at registration → shown read-only, not as a select.
+    expect(screen.queryByLabelText("Runner cluster")).toBeNull();
+    expect((await screen.findAllByText(/fixed at registration/)).length).toBe(1);
   });
 
   it("PATCHes the editable fields and returns to the detail page", async () => {
     mockApi.GET.mockImplementation((path: string) => {
       if (path === "/api/clusters")
-        return Promise.resolve({ data: [target, runner], error: undefined });
+        return Promise.resolve({ data: [runner], error: undefined });
       if (path === "/api/applications/{id}")
         return Promise.resolve({ data: existingApp, error: undefined });
       return Promise.resolve({ data: [], error: undefined });
@@ -171,7 +149,7 @@ describe("ApplicationForm edit mode", () => {
     await waitFor(() =>
       expect(mockApi.PATCH).toHaveBeenCalledWith("/api/applications/{id}", {
         params: { path: { id: "app-1" } },
-        body: { name: "web2", target_namespace: "apps" },
+        body: { name: "web2" },
       }),
     );
     expect(navigate).toHaveBeenCalledWith("/applications/app-1");

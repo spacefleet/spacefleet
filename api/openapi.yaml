@@ -2513,13 +2513,12 @@ components:
       description: |
         A deployable workload that owns a deploy workflow (a DAG of components).
         The application holds only the workflow-owner fields; all chart-specific
-        config lives on its components, and run/sync state lives on its runs.
+        config and targeting (cluster + namespace) live on its components, and
+        run/sync state lives on its runs.
       required:
         [
           id,
           name,
-          target_namespace,
-          target_cluster_id,
           runner_cluster_id,
           created_at,
           updated_at,
@@ -2530,13 +2529,6 @@ components:
           format: uuid
         name:
           type: string
-        target_namespace:
-          type: string
-          description: App-level default namespace components deploy into (overridable per component).
-        target_cluster_id:
-          type: string
-          format: uuid
-          description: App-level default target cluster (overridable per component).
         runner_cluster_id:
           type: string
           format: uuid
@@ -2562,22 +2554,16 @@ components:
 
     ApplicationCreateRequest:
       type: object
-      required: [name, target_namespace, target_cluster_id, runner_cluster_id]
+      required: [name, runner_cluster_id]
       description: |
-        Register an application (the workflow owner). The deploy steps are added
-        afterwards as components via the workflow builder; create only sets the
-        name, the app-level default target cluster + namespace, and the runner.
+        Register an application (the workflow owner). The deploy steps — and
+        their per-component targeting — are added afterwards as components via
+        the workflow builder; create only sets the name and the runner cluster.
       properties:
         name:
           type: string
           minLength: 1
           maxLength: 200
-        target_namespace:
-          type: string
-          minLength: 1
-        target_cluster_id:
-          type: string
-          format: uuid
         runner_cluster_id:
           type: string
           format: uuid
@@ -2590,7 +2576,7 @@ components:
 
     ApplicationImportRequest:
       type: object
-      required: [name, target_namespace, target_cluster_id, runner_cluster_id]
+      required: [name, runner_cluster_id]
       description: |
         Adopt an existing workload as an application. Creates the application in
         the imported state (the workflow owner only); the user then builds the
@@ -2600,12 +2586,6 @@ components:
           type: string
           minLength: 1
           maxLength: 200
-        target_namespace:
-          type: string
-          minLength: 1
-        target_cluster_id:
-          type: string
-          format: uuid
         runner_cluster_id:
           type: string
           format: uuid
@@ -2619,16 +2599,13 @@ components:
     ApplicationUpdateRequest:
       type: object
       description: |
-        All fields optional. The clusters and name can change; the deploy steps
-        live on the components (edit them via the workflow builder).
+        All fields optional. The name can change; the deploy steps and their
+        targeting live on the components (edit them via the workflow builder).
       properties:
         name:
           type: string
           minLength: 1
           maxLength: 200
-        target_namespace:
-          type: string
-          minLength: 1
 
     ApplicationGroup:
       type: object
@@ -3001,10 +2978,16 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: Per-component override of the app's default target cluster.
+          description: |
+            The cluster this component deploys into. Required for helm and
+            manifest components; null for terraform (which has no cluster
+            target).
         target_namespace:
           type: string
-          description: Per-component override of the app's default target namespace.
+          description: |
+            The namespace this component deploys into. Required for helm;
+            unused for manifest (manifests carry their own namespaces) and
+            terraform.
         chart_credential_id:
           type: string
           format: uuid
@@ -3064,8 +3047,14 @@ components:
           type: string
           format: uuid
           nullable: true
+          description: |
+            The cluster this component deploys into. Required for helm and
+            manifest; must be null for terraform.
         target_namespace:
           type: string
+          description: |
+            The namespace this component deploys into. Required for helm;
+            unused for manifest and terraform.
         chart_credential_id:
           type: string
           format: uuid

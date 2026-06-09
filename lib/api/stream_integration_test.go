@@ -91,8 +91,8 @@ func (f *streamFixture) seedApp(orgID uuid.UUID) uuid.UUID {
 		return c.ID
 	}
 	app, err := f.client.Application.Create().
-		SetOrganizationID(orgID).SetName("web").SetTargetNamespace("apps").
-		SetTargetClusterID(mkCluster("target")).SetRunnerClusterID(mkCluster("runner")).Save(ctx)
+		SetOrganizationID(orgID).SetName("web").
+		SetRunnerClusterID(mkCluster("runner")).Save(ctx)
 	if err != nil {
 		f.t.Fatalf("create app: %v", err)
 	}

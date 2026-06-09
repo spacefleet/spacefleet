@@ -200,8 +200,6 @@ func TestDeleteInUseRejected(t *testing.T) {
 	app, err := client.Application.Create().
 		SetOrganizationID(org.ID).
 		SetName("web").
-		SetTargetNamespace("apps").
-		SetTargetClusterID(target.ID).
 		SetRunnerClusterID(target.ID).
 		Save(ctx)
 	if err != nil {

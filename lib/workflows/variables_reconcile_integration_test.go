@@ -22,6 +22,7 @@ func TestReplaceWorkflowReconcilesComponentVariables(t *testing.T) {
 
 	org := newOrg(t, client, "Acme")
 	app := newApp(t, client, org.ID, "web")
+	target := newCluster(t, client, org.ID, "target").ID
 
 	helmCfg := map[string]string{
 		"chart_source": "http_repo",
@@ -33,8 +34,8 @@ func TestReplaceWorkflowReconcilesComponentVariables(t *testing.T) {
 	// Start with components A and B.
 	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID,
 		[]ComponentInput{
-			{ID: idA, Name: "a", Type: "helm", Config: helmCfg},
-			{ID: idB, Name: "b", Type: "helm", Config: helmCfg},
+			{ID: idA, Name: "a", Type: "helm", Config: helmCfg, TargetClusterID: &target, TargetNamespace: "prod"},
+			{ID: idB, Name: "b", Type: "helm", Config: helmCfg, TargetClusterID: &target, TargetNamespace: "prod"},
 		}, nil); err != nil {
 		t.Fatalf("ReplaceWorkflow (A,B): %v", err)
 	}
@@ -59,7 +60,7 @@ func TestReplaceWorkflowReconcilesComponentVariables(t *testing.T) {
 
 	// Replace with only A — B is removed.
 	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID,
-		[]ComponentInput{{ID: idA, Name: "a", Type: "helm", Config: helmCfg}}, nil); err != nil {
+		[]ComponentInput{{ID: idA, Name: "a", Type: "helm", Config: helmCfg, TargetClusterID: &target, TargetNamespace: "prod"}}, nil); err != nil {
 		t.Fatalf("ReplaceWorkflow (A): %v", err)
 	}
 
@@ -86,11 +87,12 @@ func TestReplaceWorkflowEmptyDropsAllComponentVariables(t *testing.T) {
 
 	org := newOrg(t, client, "Acme")
 	app := newApp(t, client, org.ID, "web")
+	target := newCluster(t, client, org.ID, "target").ID
 	id := uuid.New()
 	helmCfg := map[string]string{"chart_source": "http_repo", "repo_url": "https://x", "chart": "c"}
 
 	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID,
-		[]ComponentInput{{ID: id, Name: "a", Type: "helm", Config: helmCfg}}, nil); err != nil {
+		[]ComponentInput{{ID: id, Name: "a", Type: "helm", Config: helmCfg, TargetClusterID: &target, TargetNamespace: "prod"}}, nil); err != nil {
 		t.Fatalf("ReplaceWorkflow: %v", err)
 	}
 	if _, err := client.Variable.Create().SetOrganizationID(org.ID).SetApplicationID(app.ID).SetComponentID(id).SetName("V").SetValue("x").Save(ctx); err != nil {

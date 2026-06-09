@@ -110,6 +110,7 @@ func isWorkflowValidation(err error) bool {
 		errors.Is(err, workflows.ErrSelfDependency) ||
 		errors.Is(err, workflows.ErrCycle) ||
 		errors.Is(err, workflows.ErrInvalidConfig) ||
+		errors.Is(err, workflows.ErrInvalidTarget) ||
 		errors.Is(err, workflows.ErrUnknownGroup) ||
 		errors.Is(err, workflows.ErrInvalidAction)
 }

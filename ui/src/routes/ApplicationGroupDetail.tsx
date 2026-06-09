@@ -230,7 +230,6 @@ export function ApplicationGroupDetail() {
                 <thead>
                   <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
                     <th className="px-4 py-2 font-medium">Name</th>
-                    <th className="px-4 py-2 font-medium">Namespace</th>
                     <th className="px-4 py-2 font-medium">Origin</th>
                     {canEdit && <th className="px-4 py-2 font-medium">Move</th>}
                   </tr>
@@ -244,9 +243,6 @@ export function ApplicationGroupDetail() {
                     >
                       <td className="px-4 py-3 font-medium text-neutral-900">
                         {a.name}
-                      </td>
-                      <td className="px-4 py-3 text-neutral-600">
-                        {a.target_namespace}
                       </td>
                       <td className="px-4 py-3 text-neutral-600">
                         {a.imported ? "Imported" : "Created"}

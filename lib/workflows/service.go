@@ -19,6 +19,7 @@ import (
 
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/ent/application"
+	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
 	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/variable"
@@ -83,10 +84,14 @@ func (s *Service) ListComponents(ctx context.Context, orgID, appID uuid.UUID) ([
 // Returns the persisted components and groups (created-order), reloaded outside
 // the transaction.
 func (s *Service) ReplaceWorkflow(ctx context.Context, orgID, appID uuid.UUID, nodes []ComponentInput, groups []GroupInput) ([]*ent.Component, []*ent.ComponentGroup, error) {
-	if _, err := s.getApp(ctx, orgID, appID); err != nil {
+	app, err := s.getApp(ctx, orgID, appID)
+	if err != nil {
 		return nil, nil, err
 	}
 	if err := validateWorkflow(nodes, groups); err != nil {
+		return nil, nil, err
+	}
+	if err := s.validateComponentTargets(ctx, orgID, app, nodes); err != nil {
 		return nil, nil, err
 	}
 
@@ -232,6 +237,57 @@ func (s *Service) getApp(ctx context.Context, orgID, appID uuid.UUID) (*ent.Appl
 	return s.ent.Application.Query().
 		Where(application.OrganizationID(orgID), application.ID(appID)).
 		Only(ctx)
+}
+
+// validateComponentTargets checks the cluster-deploying nodes' targets against
+// the database: each helm/manifest node's target cluster must exist in the
+// organization, and an in-cluster target must be the application's runner
+// cluster (an in-cluster API server is only reachable from a pod in that same
+// cluster — the rule that used to live on the application). Terraform nodes
+// carry no target (validateConfig already enforces that) and are skipped. The
+// pure DAG validation has already guaranteed each helm/manifest node names a
+// target cluster, so a missing one here means it isn't in the org. Failures wrap
+// ErrInvalidTarget, which a handler maps to 400.
+func (s *Service) validateComponentTargets(ctx context.Context, orgID uuid.UUID, app *ent.Application, nodes []ComponentInput) error {
+	ids := make(map[uuid.UUID]struct{})
+	for _, n := range nodes {
+		if (n.Type == TypeHelm || n.Type == TypeManifest) && n.TargetClusterID != nil && *n.TargetClusterID != uuid.Nil {
+			ids[*n.TargetClusterID] = struct{}{}
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	idList := make([]uuid.UUID, 0, len(ids))
+	for id := range ids {
+		idList = append(idList, id)
+	}
+	clusters, err := s.ent.Cluster.Query().
+		Where(cluster.OrganizationID(orgID), cluster.IDIn(idList...)).
+		All(ctx)
+	if err != nil {
+		return err
+	}
+	byID := make(map[uuid.UUID]*ent.Cluster, len(clusters))
+	for _, c := range clusters {
+		byID[c.ID] = c
+	}
+	for _, n := range nodes {
+		if n.Type != TypeHelm && n.Type != TypeManifest {
+			continue
+		}
+		if n.TargetClusterID == nil || *n.TargetClusterID == uuid.Nil {
+			continue
+		}
+		c, ok := byID[*n.TargetClusterID]
+		if !ok {
+			return fmt.Errorf("%w: node %q target cluster not found in this organization", ErrInvalidTarget, n.Name)
+		}
+		if c.ConnectionMethod == cluster.ConnectionMethodInCluster && c.ID != app.RunnerClusterID {
+			return fmt.Errorf("%w: node %q targets an in-cluster cluster that is not the application's runner; an in-cluster target requires the runner to be that same cluster (register the target via the token method with an external endpoint to use a different runner)", ErrInvalidTarget, n.Name)
+		}
+	}
+	return nil
 }
 
 // nonNilStringMap guards against a nil map reaching the JSON column.

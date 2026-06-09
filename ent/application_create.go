@@ -52,18 +52,6 @@ func (_c *ApplicationCreate) SetNillableImported(v *bool) *ApplicationCreate {
 	return _c
 }
 
-// SetTargetNamespace sets the "target_namespace" field.
-func (_c *ApplicationCreate) SetTargetNamespace(v string) *ApplicationCreate {
-	_c.mutation.SetTargetNamespace(v)
-	return _c
-}
-
-// SetTargetClusterID sets the "target_cluster_id" field.
-func (_c *ApplicationCreate) SetTargetClusterID(v uuid.UUID) *ApplicationCreate {
-	_c.mutation.SetTargetClusterID(v)
-	return _c
-}
-
 // SetRunnerClusterID sets the "runner_cluster_id" field.
 func (_c *ApplicationCreate) SetRunnerClusterID(v uuid.UUID) *ApplicationCreate {
 	_c.mutation.SetRunnerClusterID(v)
@@ -129,11 +117,6 @@ func (_c *ApplicationCreate) SetNillableID(v *uuid.UUID) *ApplicationCreate {
 // SetOrganization sets the "organization" edge to the Organization entity.
 func (_c *ApplicationCreate) SetOrganization(v *Organization) *ApplicationCreate {
 	return _c.SetOrganizationID(v.ID)
-}
-
-// SetTargetCluster sets the "target_cluster" edge to the Cluster entity.
-func (_c *ApplicationCreate) SetTargetCluster(v *Cluster) *ApplicationCreate {
-	return _c.SetTargetClusterID(v.ID)
 }
 
 // SetRunnerCluster sets the "runner_cluster" edge to the Cluster entity.
@@ -210,17 +193,6 @@ func (_c *ApplicationCreate) check() error {
 	if _, ok := _c.mutation.Imported(); !ok {
 		return &ValidationError{Name: "imported", err: errors.New(`ent: missing required field "Application.imported"`)}
 	}
-	if _, ok := _c.mutation.TargetNamespace(); !ok {
-		return &ValidationError{Name: "target_namespace", err: errors.New(`ent: missing required field "Application.target_namespace"`)}
-	}
-	if v, ok := _c.mutation.TargetNamespace(); ok {
-		if err := application.TargetNamespaceValidator(v); err != nil {
-			return &ValidationError{Name: "target_namespace", err: fmt.Errorf(`ent: validator failed for field "Application.target_namespace": %w`, err)}
-		}
-	}
-	if _, ok := _c.mutation.TargetClusterID(); !ok {
-		return &ValidationError{Name: "target_cluster_id", err: errors.New(`ent: missing required field "Application.target_cluster_id"`)}
-	}
 	if _, ok := _c.mutation.RunnerClusterID(); !ok {
 		return &ValidationError{Name: "runner_cluster_id", err: errors.New(`ent: missing required field "Application.runner_cluster_id"`)}
 	}
@@ -232,9 +204,6 @@ func (_c *ApplicationCreate) check() error {
 	}
 	if len(_c.mutation.OrganizationIDs()) == 0 {
 		return &ValidationError{Name: "organization", err: errors.New(`ent: missing required edge "Application.organization"`)}
-	}
-	if len(_c.mutation.TargetClusterIDs()) == 0 {
-		return &ValidationError{Name: "target_cluster", err: errors.New(`ent: missing required edge "Application.target_cluster"`)}
 	}
 	if len(_c.mutation.RunnerClusterIDs()) == 0 {
 		return &ValidationError{Name: "runner_cluster", err: errors.New(`ent: missing required edge "Application.runner_cluster"`)}
@@ -283,10 +252,6 @@ func (_c *ApplicationCreate) createSpec() (*Application, *sqlgraph.CreateSpec) {
 		_spec.SetField(application.FieldImported, field.TypeBool, value)
 		_node.Imported = value
 	}
-	if value, ok := _c.mutation.TargetNamespace(); ok {
-		_spec.SetField(application.FieldTargetNamespace, field.TypeString, value)
-		_node.TargetNamespace = value
-	}
 	if value, ok := _c.mutation.GroupID(); ok {
 		_spec.SetField(application.FieldGroupID, field.TypeUUID, value)
 		_node.GroupID = value
@@ -314,23 +279,6 @@ func (_c *ApplicationCreate) createSpec() (*Application, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.OrganizationID = nodes[0]
-		_spec.Edges = append(_spec.Edges, edge)
-	}
-	if nodes := _c.mutation.TargetClusterIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2O,
-			Inverse: false,
-			Table:   application.TargetClusterTable,
-			Columns: []string{application.TargetClusterColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(cluster.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_node.TargetClusterID = nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := _c.mutation.RunnerClusterIDs(); len(nodes) > 0 {
@@ -423,30 +371,6 @@ func (u *ApplicationUpsert) SetImported(v bool) *ApplicationUpsert {
 // UpdateImported sets the "imported" field to the value that was provided on create.
 func (u *ApplicationUpsert) UpdateImported() *ApplicationUpsert {
 	u.SetExcluded(application.FieldImported)
-	return u
-}
-
-// SetTargetNamespace sets the "target_namespace" field.
-func (u *ApplicationUpsert) SetTargetNamespace(v string) *ApplicationUpsert {
-	u.Set(application.FieldTargetNamespace, v)
-	return u
-}
-
-// UpdateTargetNamespace sets the "target_namespace" field to the value that was provided on create.
-func (u *ApplicationUpsert) UpdateTargetNamespace() *ApplicationUpsert {
-	u.SetExcluded(application.FieldTargetNamespace)
-	return u
-}
-
-// SetTargetClusterID sets the "target_cluster_id" field.
-func (u *ApplicationUpsert) SetTargetClusterID(v uuid.UUID) *ApplicationUpsert {
-	u.Set(application.FieldTargetClusterID, v)
-	return u
-}
-
-// UpdateTargetClusterID sets the "target_cluster_id" field to the value that was provided on create.
-func (u *ApplicationUpsert) UpdateTargetClusterID() *ApplicationUpsert {
-	u.SetExcluded(application.FieldTargetClusterID)
 	return u
 }
 
@@ -571,34 +495,6 @@ func (u *ApplicationUpsertOne) SetImported(v bool) *ApplicationUpsertOne {
 func (u *ApplicationUpsertOne) UpdateImported() *ApplicationUpsertOne {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.UpdateImported()
-	})
-}
-
-// SetTargetNamespace sets the "target_namespace" field.
-func (u *ApplicationUpsertOne) SetTargetNamespace(v string) *ApplicationUpsertOne {
-	return u.Update(func(s *ApplicationUpsert) {
-		s.SetTargetNamespace(v)
-	})
-}
-
-// UpdateTargetNamespace sets the "target_namespace" field to the value that was provided on create.
-func (u *ApplicationUpsertOne) UpdateTargetNamespace() *ApplicationUpsertOne {
-	return u.Update(func(s *ApplicationUpsert) {
-		s.UpdateTargetNamespace()
-	})
-}
-
-// SetTargetClusterID sets the "target_cluster_id" field.
-func (u *ApplicationUpsertOne) SetTargetClusterID(v uuid.UUID) *ApplicationUpsertOne {
-	return u.Update(func(s *ApplicationUpsert) {
-		s.SetTargetClusterID(v)
-	})
-}
-
-// UpdateTargetClusterID sets the "target_cluster_id" field to the value that was provided on create.
-func (u *ApplicationUpsertOne) UpdateTargetClusterID() *ApplicationUpsertOne {
-	return u.Update(func(s *ApplicationUpsert) {
-		s.UpdateTargetClusterID()
 	})
 }
 
@@ -897,34 +793,6 @@ func (u *ApplicationUpsertBulk) SetImported(v bool) *ApplicationUpsertBulk {
 func (u *ApplicationUpsertBulk) UpdateImported() *ApplicationUpsertBulk {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.UpdateImported()
-	})
-}
-
-// SetTargetNamespace sets the "target_namespace" field.
-func (u *ApplicationUpsertBulk) SetTargetNamespace(v string) *ApplicationUpsertBulk {
-	return u.Update(func(s *ApplicationUpsert) {
-		s.SetTargetNamespace(v)
-	})
-}
-
-// UpdateTargetNamespace sets the "target_namespace" field to the value that was provided on create.
-func (u *ApplicationUpsertBulk) UpdateTargetNamespace() *ApplicationUpsertBulk {
-	return u.Update(func(s *ApplicationUpsert) {
-		s.UpdateTargetNamespace()
-	})
-}
-
-// SetTargetClusterID sets the "target_cluster_id" field.
-func (u *ApplicationUpsertBulk) SetTargetClusterID(v uuid.UUID) *ApplicationUpsertBulk {
-	return u.Update(func(s *ApplicationUpsert) {
-		s.SetTargetClusterID(v)
-	})
-}
-
-// UpdateTargetClusterID sets the "target_cluster_id" field to the value that was provided on create.
-func (u *ApplicationUpsertBulk) UpdateTargetClusterID() *ApplicationUpsertBulk {
-	return u.Update(func(s *ApplicationUpsert) {
-		s.UpdateTargetClusterID()
 	})
 }
 

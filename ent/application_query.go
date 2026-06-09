@@ -26,7 +26,6 @@ type ApplicationQuery struct {
 	inters            []Interceptor
 	predicates        []predicate.Application
 	withOrganization  *OrganizationQuery
-	withTargetCluster *ClusterQuery
 	withRunnerCluster *ClusterQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -79,28 +78,6 @@ func (_q *ApplicationQuery) QueryOrganization() *OrganizationQuery {
 			sqlgraph.From(application.Table, application.FieldID, selector),
 			sqlgraph.To(organization.Table, organization.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, false, application.OrganizationTable, application.OrganizationColumn),
-		)
-		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
-// QueryTargetCluster chains the current query on the "target_cluster" edge.
-func (_q *ApplicationQuery) QueryTargetCluster() *ClusterQuery {
-	query := (&ClusterClient{config: _q.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := _q.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := _q.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(application.Table, application.FieldID, selector),
-			sqlgraph.To(cluster.Table, cluster.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, application.TargetClusterTable, application.TargetClusterColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -323,7 +300,6 @@ func (_q *ApplicationQuery) Clone() *ApplicationQuery {
 		inters:            append([]Interceptor{}, _q.inters...),
 		predicates:        append([]predicate.Application{}, _q.predicates...),
 		withOrganization:  _q.withOrganization.Clone(),
-		withTargetCluster: _q.withTargetCluster.Clone(),
 		withRunnerCluster: _q.withRunnerCluster.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
@@ -339,17 +315,6 @@ func (_q *ApplicationQuery) WithOrganization(opts ...func(*OrganizationQuery)) *
 		opt(query)
 	}
 	_q.withOrganization = query
-	return _q
-}
-
-// WithTargetCluster tells the query-builder to eager-load the nodes that are connected to
-// the "target_cluster" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *ApplicationQuery) WithTargetCluster(opts ...func(*ClusterQuery)) *ApplicationQuery {
-	query := (&ClusterClient{config: _q.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	_q.withTargetCluster = query
 	return _q
 }
 
@@ -442,9 +407,8 @@ func (_q *ApplicationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	var (
 		nodes       = []*Application{}
 		_spec       = _q.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [2]bool{
 			_q.withOrganization != nil,
-			_q.withTargetCluster != nil,
 			_q.withRunnerCluster != nil,
 		}
 	)
@@ -469,12 +433,6 @@ func (_q *ApplicationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	if query := _q.withOrganization; query != nil {
 		if err := _q.loadOrganization(ctx, query, nodes, nil,
 			func(n *Application, e *Organization) { n.Edges.Organization = e }); err != nil {
-			return nil, err
-		}
-	}
-	if query := _q.withTargetCluster; query != nil {
-		if err := _q.loadTargetCluster(ctx, query, nodes, nil,
-			func(n *Application, e *Cluster) { n.Edges.TargetCluster = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -509,35 +467,6 @@ func (_q *ApplicationQuery) loadOrganization(ctx context.Context, query *Organiz
 		nodes, ok := nodeids[n.ID]
 		if !ok {
 			return fmt.Errorf(`unexpected foreign-key "organization_id" returned %v`, n.ID)
-		}
-		for i := range nodes {
-			assign(nodes[i], n)
-		}
-	}
-	return nil
-}
-func (_q *ApplicationQuery) loadTargetCluster(ctx context.Context, query *ClusterQuery, nodes []*Application, init func(*Application), assign func(*Application, *Cluster)) error {
-	ids := make([]uuid.UUID, 0, len(nodes))
-	nodeids := make(map[uuid.UUID][]*Application)
-	for i := range nodes {
-		fk := nodes[i].TargetClusterID
-		if _, ok := nodeids[fk]; !ok {
-			ids = append(ids, fk)
-		}
-		nodeids[fk] = append(nodeids[fk], nodes[i])
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-	query.Where(cluster.IDIn(ids...))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		nodes, ok := nodeids[n.ID]
-		if !ok {
-			return fmt.Errorf(`unexpected foreign-key "target_cluster_id" returned %v`, n.ID)
 		}
 		for i := range nodes {
 			assign(nodes[i], n)
@@ -602,9 +531,6 @@ func (_q *ApplicationQuery) querySpec() *sqlgraph.QuerySpec {
 		}
 		if _q.withOrganization != nil {
 			_spec.Node.AddColumnOnce(application.FieldOrganizationID)
-		}
-		if _q.withTargetCluster != nil {
-			_spec.Node.AddColumnOnce(application.FieldTargetClusterID)
 		}
 		if _q.withRunnerCluster != nil {
 			_spec.Node.AddColumnOnce(application.FieldRunnerClusterID)

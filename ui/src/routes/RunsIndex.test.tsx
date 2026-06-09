@@ -27,8 +27,6 @@ const apps = [
   {
     id: "app-1",
     name: "checkout",
-    target_namespace: "prod",
-    target_cluster_id: "cl-prod",
     runner_cluster_id: "cl-ci",
     created_at: "",
     updated_at: "",
@@ -36,9 +34,7 @@ const apps = [
   {
     id: "app-2",
     name: "billing",
-    target_namespace: "prod",
-    target_cluster_id: "cl-stage",
-    runner_cluster_id: "cl-ci",
+    runner_cluster_id: "cl-stage",
     created_at: "",
     updated_at: "",
   },
@@ -113,18 +109,18 @@ async function findTableBody() {
 }
 
 describe("RunsIndex", () => {
-  it("renders runs with application and both cluster names", async () => {
+  it("renders runs with application and runner cluster name", async () => {
     routeGet();
     renderIndex();
 
     const body = await findTableBody();
     const checkout = within(body).getByText("checkout");
     const row = checkout.closest("tr") as HTMLElement;
-    expect(within(row).getByText("production")).toBeInTheDocument(); // target cluster
     expect(within(row).getByText("ci-runner")).toBeInTheDocument(); // runner cluster
     expect(within(row).getByText("succeeded")).toBeInTheDocument();
 
     expect(within(body).getByText("billing")).toBeInTheDocument();
+    // billing's runner resolves to its name (the deploy target is per-component).
     expect(within(body).getByText("staging")).toBeInTheDocument();
   });
 
@@ -143,14 +139,14 @@ describe("RunsIndex", () => {
     expect(within(body).getByText("billing")).toBeInTheDocument();
   });
 
-  it("filters by target cluster", async () => {
+  it("filters by runner cluster", async () => {
     routeGet();
     renderIndex();
     await findTableBody();
 
     await userEvent.selectOptions(
-      screen.getByRole("combobox", { name: /Target cluster/i }),
-      "production",
+      screen.getByRole("combobox", { name: /Runner cluster/i }),
+      "ci-runner",
     );
 
     const body = await findTableBody();
