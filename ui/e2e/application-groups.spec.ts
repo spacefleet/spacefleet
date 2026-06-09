@@ -64,7 +64,7 @@ test("create, open, rename, and delete an application group", async ({
 
   // Rename it.
   await page.getByRole("button", { name: "Rename" }).click();
-  const input = page.getByRole("textbox");
+  const input = page.getByRole("textbox", { name: "Group name" });
   await input.fill(renamed);
   await page.getByRole("button", { name: "Save name" }).click();
   await expect(page.getByRole("heading", { name: renamed })).toBeVisible();
