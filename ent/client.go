@@ -25,6 +25,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
+	"github.com/spacefleet/spacefleet/ent/groupvariable"
 	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/organization"
@@ -57,6 +58,8 @@ type Client struct {
 	ComponentRun *ComponentRunClient
 	// GitHubInstallation is the client for interacting with the GitHubInstallation builders.
 	GitHubInstallation *GitHubInstallationClient
+	// GroupVariable is the client for interacting with the GroupVariable builders.
+	GroupVariable *GroupVariableClient
 	// Invitation is the client for interacting with the Invitation builders.
 	Invitation *InvitationClient
 	// Membership is the client for interacting with the Membership builders.
@@ -91,6 +94,7 @@ func (c *Client) init() {
 	c.ComponentGroup = NewComponentGroupClient(c.config)
 	c.ComponentRun = NewComponentRunClient(c.config)
 	c.GitHubInstallation = NewGitHubInstallationClient(c.config)
+	c.GroupVariable = NewGroupVariableClient(c.config)
 	c.Invitation = NewInvitationClient(c.config)
 	c.Membership = NewMembershipClient(c.config)
 	c.Organization = NewOrganizationClient(c.config)
@@ -199,6 +203,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ComponentGroup:     NewComponentGroupClient(cfg),
 		ComponentRun:       NewComponentRunClient(cfg),
 		GitHubInstallation: NewGitHubInstallationClient(cfg),
+		GroupVariable:      NewGroupVariableClient(cfg),
 		Invitation:         NewInvitationClient(cfg),
 		Membership:         NewMembershipClient(cfg),
 		Organization:       NewOrganizationClient(cfg),
@@ -234,6 +239,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ComponentGroup:     NewComponentGroupClient(cfg),
 		ComponentRun:       NewComponentRunClient(cfg),
 		GitHubInstallation: NewGitHubInstallationClient(cfg),
+		GroupVariable:      NewGroupVariableClient(cfg),
 		Invitation:         NewInvitationClient(cfg),
 		Membership:         NewMembershipClient(cfg),
 		Organization:       NewOrganizationClient(cfg),
@@ -272,8 +278,8 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Application, c.ApplicationGroup, c.ChartCredential, c.CloudCredential,
 		c.Cluster, c.Component, c.ComponentGroup, c.ComponentRun, c.GitHubInstallation,
-		c.Invitation, c.Membership, c.Organization, c.TektonInstallation, c.User,
-		c.Variable, c.WorkflowRun,
+		c.GroupVariable, c.Invitation, c.Membership, c.Organization,
+		c.TektonInstallation, c.User, c.Variable, c.WorkflowRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -285,8 +291,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Application, c.ApplicationGroup, c.ChartCredential, c.CloudCredential,
 		c.Cluster, c.Component, c.ComponentGroup, c.ComponentRun, c.GitHubInstallation,
-		c.Invitation, c.Membership, c.Organization, c.TektonInstallation, c.User,
-		c.Variable, c.WorkflowRun,
+		c.GroupVariable, c.Invitation, c.Membership, c.Organization,
+		c.TektonInstallation, c.User, c.Variable, c.WorkflowRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -313,6 +319,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ComponentRun.mutate(ctx, m)
 	case *GitHubInstallationMutation:
 		return c.GitHubInstallation.mutate(ctx, m)
+	case *GroupVariableMutation:
+		return c.GroupVariable.mutate(ctx, m)
 	case *InvitationMutation:
 		return c.Invitation.mutate(ctx, m)
 	case *MembershipMutation:
@@ -1833,6 +1841,171 @@ func (c *GitHubInstallationClient) mutate(ctx context.Context, m *GitHubInstalla
 	}
 }
 
+// GroupVariableClient is a client for the GroupVariable schema.
+type GroupVariableClient struct {
+	config
+}
+
+// NewGroupVariableClient returns a client for the GroupVariable from the given config.
+func NewGroupVariableClient(c config) *GroupVariableClient {
+	return &GroupVariableClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `groupvariable.Hooks(f(g(h())))`.
+func (c *GroupVariableClient) Use(hooks ...Hook) {
+	c.hooks.GroupVariable = append(c.hooks.GroupVariable, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `groupvariable.Intercept(f(g(h())))`.
+func (c *GroupVariableClient) Intercept(interceptors ...Interceptor) {
+	c.inters.GroupVariable = append(c.inters.GroupVariable, interceptors...)
+}
+
+// Create returns a builder for creating a GroupVariable entity.
+func (c *GroupVariableClient) Create() *GroupVariableCreate {
+	mutation := newGroupVariableMutation(c.config, OpCreate)
+	return &GroupVariableCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of GroupVariable entities.
+func (c *GroupVariableClient) CreateBulk(builders ...*GroupVariableCreate) *GroupVariableCreateBulk {
+	return &GroupVariableCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *GroupVariableClient) MapCreateBulk(slice any, setFunc func(*GroupVariableCreate, int)) *GroupVariableCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &GroupVariableCreateBulk{err: fmt.Errorf("calling to GroupVariableClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*GroupVariableCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &GroupVariableCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for GroupVariable.
+func (c *GroupVariableClient) Update() *GroupVariableUpdate {
+	mutation := newGroupVariableMutation(c.config, OpUpdate)
+	return &GroupVariableUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *GroupVariableClient) UpdateOne(_m *GroupVariable) *GroupVariableUpdateOne {
+	mutation := newGroupVariableMutation(c.config, OpUpdateOne, withGroupVariable(_m))
+	return &GroupVariableUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *GroupVariableClient) UpdateOneID(id uuid.UUID) *GroupVariableUpdateOne {
+	mutation := newGroupVariableMutation(c.config, OpUpdateOne, withGroupVariableID(id))
+	return &GroupVariableUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for GroupVariable.
+func (c *GroupVariableClient) Delete() *GroupVariableDelete {
+	mutation := newGroupVariableMutation(c.config, OpDelete)
+	return &GroupVariableDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *GroupVariableClient) DeleteOne(_m *GroupVariable) *GroupVariableDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *GroupVariableClient) DeleteOneID(id uuid.UUID) *GroupVariableDeleteOne {
+	builder := c.Delete().Where(groupvariable.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &GroupVariableDeleteOne{builder}
+}
+
+// Query returns a query builder for GroupVariable.
+func (c *GroupVariableClient) Query() *GroupVariableQuery {
+	return &GroupVariableQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeGroupVariable},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a GroupVariable entity by its id.
+func (c *GroupVariableClient) Get(ctx context.Context, id uuid.UUID) (*GroupVariable, error) {
+	return c.Query().Where(groupvariable.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *GroupVariableClient) GetX(ctx context.Context, id uuid.UUID) *GroupVariable {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryOrganization queries the organization edge of a GroupVariable.
+func (c *GroupVariableClient) QueryOrganization(_m *GroupVariable) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(groupvariable.Table, groupvariable.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, groupvariable.OrganizationTable, groupvariable.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGroup queries the group edge of a GroupVariable.
+func (c *GroupVariableClient) QueryGroup(_m *GroupVariable) *ApplicationGroupQuery {
+	query := (&ApplicationGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(groupvariable.Table, groupvariable.FieldID, id),
+			sqlgraph.To(applicationgroup.Table, applicationgroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, groupvariable.GroupTable, groupvariable.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *GroupVariableClient) Hooks() []Hook {
+	return c.hooks.GroupVariable
+}
+
+// Interceptors returns the client interceptors.
+func (c *GroupVariableClient) Interceptors() []Interceptor {
+	return c.inters.GroupVariable
+}
+
+func (c *GroupVariableClient) mutate(ctx context.Context, m *GroupVariableMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&GroupVariableCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&GroupVariableUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&GroupVariableUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&GroupVariableDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown GroupVariable mutation op: %q", m.Op())
+	}
+}
+
 // InvitationClient is a client for the Invitation schema.
 type InvitationClient struct {
 	config
@@ -2960,14 +3133,14 @@ func (c *WorkflowRunClient) mutate(ctx context.Context, m *WorkflowRunMutation) 
 type (
 	hooks struct {
 		Application, ApplicationGroup, ChartCredential, CloudCredential, Cluster,
-		Component, ComponentGroup, ComponentRun, GitHubInstallation, Invitation,
-		Membership, Organization, TektonInstallation, User, Variable,
+		Component, ComponentGroup, ComponentRun, GitHubInstallation, GroupVariable,
+		Invitation, Membership, Organization, TektonInstallation, User, Variable,
 		WorkflowRun []ent.Hook
 	}
 	inters struct {
 		Application, ApplicationGroup, ChartCredential, CloudCredential, Cluster,
-		Component, ComponentGroup, ComponentRun, GitHubInstallation, Invitation,
-		Membership, Organization, TektonInstallation, User, Variable,
+		Component, ComponentGroup, ComponentRun, GitHubInstallation, GroupVariable,
+		Invitation, Membership, Organization, TektonInstallation, User, Variable,
 		WorkflowRun []ent.Interceptor
 	}
 )

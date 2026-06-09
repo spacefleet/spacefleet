@@ -5,19 +5,21 @@ import type { components } from "../api/schema";
 
 type Variable = components["schemas"]["Variable"];
 
-// Scope discriminates the two API surfaces a VariablesEditor drives: app-level
-// variables (one path) and a single component's variables (a nested path). Both
-// return the same Variable shape, so only the endpoints differ.
+// Scope discriminates the three API surfaces a VariablesEditor drives: group-
+// level variables (an application group's path), app-level variables (one
+// application's path), and a single component's variables (a nested path). All
+// three return the same Variable shape, so only the endpoints differ.
 export type VariablesScope =
+  | { kind: "group"; groupId: string }
   | { kind: "app"; appId: string }
   | { kind: "component"; appId: string; componentId: string };
 
 // VariablesEditor lists and edits the variables in a scope. A variable is a
 // name/value pair passed to component jobs as an environment variable; a
 // sensitive one is sealed server-side and never returned, so its value is shown
-// as "set" and can only be replaced (never read back). Used at both the app and
-// component levels (see VariablesScope). Editors can add/replace/delete; viewers
-// see a read-only list.
+// as "set" and can only be replaced (never read back). Used at the group, app,
+// and component levels (see VariablesScope). Editors can add/replace/delete;
+// viewers see a read-only list.
 export function VariablesEditor({
   scope,
   canEdit,
@@ -30,26 +32,32 @@ export function VariablesEditor({
   const [error, setError] = useState<string | null>(null);
 
   const scopeKey =
-    scope.kind === "app"
-      ? `app:${scope.appId}`
-      : `component:${scope.appId}:${scope.componentId}`;
+    scope.kind === "group"
+      ? `group:${scope.groupId}`
+      : scope.kind === "app"
+        ? `app:${scope.appId}`
+        : `component:${scope.appId}:${scope.componentId}`;
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     const res =
-      scope.kind === "app"
-        ? await api.GET("/api/applications/{id}/variables", {
-            params: { path: { id: scope.appId } },
+      scope.kind === "group"
+        ? await api.GET("/api/application-groups/{id}/variables", {
+            params: { path: { id: scope.groupId } },
           })
-        : await api.GET(
-            "/api/applications/{id}/components/{componentId}/variables",
-            {
-              params: {
-                path: { id: scope.appId, componentId: scope.componentId },
+        : scope.kind === "app"
+          ? await api.GET("/api/applications/{id}/variables", {
+              params: { path: { id: scope.appId } },
+            })
+          : await api.GET(
+              "/api/applications/{id}/components/{componentId}/variables",
+              {
+                params: {
+                  path: { id: scope.appId, componentId: scope.componentId },
+                },
               },
-            },
-          );
+            );
     if (res.error) setError(res.error.message ?? "Could not load variables");
     setVars(res.data ?? []);
     setLoading(false);
@@ -65,22 +73,29 @@ export function VariablesEditor({
   async function onDelete(v: Variable) {
     if (!confirm(`Delete the variable "${v.name}"?`)) return;
     const res =
-      scope.kind === "app"
-        ? await api.DELETE("/api/applications/{id}/variables/{variableId}", {
-            params: { path: { id: scope.appId, variableId: v.id } },
-          })
-        : await api.DELETE(
-            "/api/applications/{id}/components/{componentId}/variables/{variableId}",
+      scope.kind === "group"
+        ? await api.DELETE(
+            "/api/application-groups/{id}/variables/{variableId}",
             {
-              params: {
-                path: {
-                  id: scope.appId,
-                  componentId: scope.componentId,
-                  variableId: v.id,
+              params: { path: { id: scope.groupId, variableId: v.id } },
+            },
+          )
+        : scope.kind === "app"
+          ? await api.DELETE("/api/applications/{id}/variables/{variableId}", {
+              params: { path: { id: scope.appId, variableId: v.id } },
+            })
+          : await api.DELETE(
+              "/api/applications/{id}/components/{componentId}/variables/{variableId}",
+              {
+                params: {
+                  path: {
+                    id: scope.appId,
+                    componentId: scope.componentId,
+                    variableId: v.id,
+                  },
                 },
               },
-            },
-          );
+            );
     if (res.error) {
       setError(res.error.message ?? "Could not delete variable");
       return;
@@ -156,24 +171,34 @@ function VariableRow({
   async function save() {
     setSaving(true);
     const res =
-      scope.kind === "app"
-        ? await api.PATCH("/api/applications/{id}/variables/{variableId}", {
-            params: { path: { id: scope.appId, variableId: variable.id } },
-            body: { value },
-          })
-        : await api.PATCH(
-            "/api/applications/{id}/components/{componentId}/variables/{variableId}",
+      scope.kind === "group"
+        ? await api.PATCH(
+            "/api/application-groups/{id}/variables/{variableId}",
             {
               params: {
-                path: {
-                  id: scope.appId,
-                  componentId: scope.componentId,
-                  variableId: variable.id,
-                },
+                path: { id: scope.groupId, variableId: variable.id },
               },
               body: { value },
             },
-          );
+          )
+        : scope.kind === "app"
+          ? await api.PATCH("/api/applications/{id}/variables/{variableId}", {
+              params: { path: { id: scope.appId, variableId: variable.id } },
+              body: { value },
+            })
+          : await api.PATCH(
+              "/api/applications/{id}/components/{componentId}/variables/{variableId}",
+              {
+                params: {
+                  path: {
+                    id: scope.appId,
+                    componentId: scope.componentId,
+                    variableId: variable.id,
+                  },
+                },
+                body: { value },
+              },
+            );
     setSaving(false);
     if (res.error || !res.data) {
       onError(res.error?.message ?? "Could not update variable");
@@ -281,20 +306,25 @@ function AddVariableForm({
     setSubmitting(true);
     const body = { name: trimmed, sensitive, value };
     const res =
-      scope.kind === "app"
-        ? await api.POST("/api/applications/{id}/variables", {
-            params: { path: { id: scope.appId } },
+      scope.kind === "group"
+        ? await api.POST("/api/application-groups/{id}/variables", {
+            params: { path: { id: scope.groupId } },
             body,
           })
-        : await api.POST(
-            "/api/applications/{id}/components/{componentId}/variables",
-            {
-              params: {
-                path: { id: scope.appId, componentId: scope.componentId },
-              },
+        : scope.kind === "app"
+          ? await api.POST("/api/applications/{id}/variables", {
+              params: { path: { id: scope.appId } },
               body,
-            },
-          );
+            })
+          : await api.POST(
+              "/api/applications/{id}/components/{componentId}/variables",
+              {
+                params: {
+                  path: { id: scope.appId, componentId: scope.componentId },
+                },
+                body,
+              },
+            );
     setSubmitting(false);
     if (res.error || !res.data) {
       onError(res.error?.message ?? "Could not add variable");

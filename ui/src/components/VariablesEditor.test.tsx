@@ -108,6 +108,31 @@ describe("VariablesEditor", () => {
     );
   });
 
+  it("sends a group-scoped POST when the scope is a group", async () => {
+    mockApi.GET.mockResolvedValue({ data: [], error: undefined });
+    mockApi.POST.mockResolvedValue({
+      data: { ...nonSecret, name: "X", value: "y" },
+      error: undefined,
+    });
+    render(
+      <VariablesEditor scope={{ kind: "group", groupId: "grp-7" }} canEdit />,
+    );
+    await screen.findByText("No variables.");
+    expect(mockApi.GET).toHaveBeenCalledWith(
+      "/api/application-groups/{id}/variables",
+      expect.objectContaining({ params: { path: { id: "grp-7" } } }),
+    );
+    await userEvent.type(screen.getByLabelText("Variable name"), "X");
+    await userEvent.type(screen.getByLabelText("Variable value"), "y");
+    await userEvent.click(screen.getByRole("button", { name: /^add$/i }));
+
+    await waitFor(() => expect(mockApi.POST).toHaveBeenCalled());
+    expect(mockApi.POST).toHaveBeenCalledWith(
+      "/api/application-groups/{id}/variables",
+      expect.objectContaining({ params: { path: { id: "grp-7" } } }),
+    );
+  });
+
   it("deletes a variable after confirmation", async () => {
     mockApi.GET.mockResolvedValue({ data: [nonSecret], error: undefined });
     mockApi.DELETE.mockResolvedValue({ data: undefined, error: undefined });

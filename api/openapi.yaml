@@ -913,6 +913,94 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/application-groups/{id}/variables:
+    get:
+      summary: List an application group's variables
+      description: |
+        Org-scoped. Group variables are passed to the component jobs of every
+        application in the group as environment variables, at the lowest priority
+        — an application's own variable of the same name overrides a group
+        variable, and a component-level one overrides that. A sensitive
+        variable's value is sealed and never returned (only `sensitive: true` and
+        the name).
+      operationId: listGroupVariables
+      parameters:
+        - $ref: "#/components/parameters/ApplicationGroupID"
+      responses:
+        "200":
+          description: The group's variables
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Variable"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Add a group variable
+      description: |
+        Org-scoped, editor or above. A sensitive variable's value is sealed at
+        rest and never returned (requires an encryption key,
+        SPACEFLEET_SECRET_KEY). Names are a shell-safe identifier and unique
+        among the group's variables.
+      operationId: createGroupVariable
+      parameters:
+        - $ref: "#/components/parameters/ApplicationGroupID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariableCreateRequest"
+      responses:
+        "201":
+          description: Variable created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Variable"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/application-groups/{id}/variables/{variableId}:
+    patch:
+      summary: Update a group variable
+      description: |
+        Org-scoped, editor or above. Renames and/or replaces the value. Omit
+        `value` to leave it unchanged (the only way to keep a sensitive value,
+        which is never returned). The sensitive flag is fixed at creation.
+      operationId: updateGroupVariable
+      parameters:
+        - $ref: "#/components/parameters/ApplicationGroupID"
+        - $ref: "#/components/parameters/VariableID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariableUpdateRequest"
+      responses:
+        "200":
+          description: Variable updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Variable"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete a group variable
+      operationId: deleteGroupVariable
+      parameters:
+        - $ref: "#/components/parameters/ApplicationGroupID"
+        - $ref: "#/components/parameters/VariableID"
+      responses:
+        "204":
+          description: Variable deleted
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/applications/{id}/workflow:
     get:
       summary: Get an application's deploy workflow (its component graph)
@@ -3273,10 +3361,11 @@ components:
       type: object
       description: |
         A named key/value passed to component jobs as an environment variable,
-        defined at the app level (every component) or the component level
-        (overriding an app-level variable of the same name). A sensitive
-        variable's value is sealed at rest and never returned — only its name and
-        the sensitive flag are.
+        defined at the group level (every application in the group), the app
+        level (every component), or the component level. Lower levels are
+        overridden by higher: group < app < component for a same-named variable.
+        A sensitive variable's value is sealed at rest and never returned — only
+        its name and the sensitive flag are.
       required: [id, name, sensitive, created_at, updated_at]
       properties:
         id:

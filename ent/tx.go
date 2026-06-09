@@ -30,6 +30,8 @@ type Tx struct {
 	ComponentRun *ComponentRunClient
 	// GitHubInstallation is the client for interacting with the GitHubInstallation builders.
 	GitHubInstallation *GitHubInstallationClient
+	// GroupVariable is the client for interacting with the GroupVariable builders.
+	GroupVariable *GroupVariableClient
 	// Invitation is the client for interacting with the Invitation builders.
 	Invitation *InvitationClient
 	// Membership is the client for interacting with the Membership builders.
@@ -184,6 +186,7 @@ func (tx *Tx) init() {
 	tx.ComponentGroup = NewComponentGroupClient(tx.config)
 	tx.ComponentRun = NewComponentRunClient(tx.config)
 	tx.GitHubInstallation = NewGitHubInstallationClient(tx.config)
+	tx.GroupVariable = NewGroupVariableClient(tx.config)
 	tx.Invitation = NewInvitationClient(tx.config)
 	tx.Membership = NewMembershipClient(tx.config)
 	tx.Organization = NewOrganizationClient(tx.config)

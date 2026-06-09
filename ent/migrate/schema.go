@@ -419,6 +419,50 @@ var (
 			},
 		},
 	}
+	// GroupVariablesColumns holds the columns for the "group_variables" table.
+	GroupVariablesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "sensitive", Type: field.TypeBool, Default: false},
+		{Name: "value", Type: field.TypeString, Nullable: true},
+		{Name: "encrypted_value", Type: field.TypeBytes, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+		{Name: "group_id", Type: field.TypeUUID},
+	}
+	// GroupVariablesTable holds the schema information for the "group_variables" table.
+	GroupVariablesTable = &schema.Table{
+		Name:       "group_variables",
+		Columns:    GroupVariablesColumns,
+		PrimaryKey: []*schema.Column{GroupVariablesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "group_variables_organizations_organization",
+				Columns:    []*schema.Column{GroupVariablesColumns[7]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "group_variables_application_groups_group",
+				Columns:    []*schema.Column{GroupVariablesColumns[8]},
+				RefColumns: []*schema.Column{ApplicationGroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "groupvariable_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{GroupVariablesColumns[7]},
+			},
+			{
+				Name:    "groupvariable_group_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{GroupVariablesColumns[8], GroupVariablesColumns[1]},
+			},
+		},
+	}
 	// InvitationsColumns holds the columns for the "invitations" table.
 	InvitationsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -657,6 +701,7 @@ var (
 		ComponentGroupsTable,
 		ComponentRunsTable,
 		GithubInstallationsTable,
+		GroupVariablesTable,
 		InvitationsTable,
 		MembershipsTable,
 		OrganizationsTable,
@@ -689,6 +734,8 @@ func init() {
 	GithubInstallationsTable.Annotation = &entsql.Annotation{
 		Table: "github_installations",
 	}
+	GroupVariablesTable.ForeignKeys[0].RefTable = OrganizationsTable
+	GroupVariablesTable.ForeignKeys[1].RefTable = ApplicationGroupsTable
 	InvitationsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	MembershipsTable.ForeignKeys[0].RefTable = UsersTable
 	MembershipsTable.ForeignKeys[1].RefTable = OrganizationsTable

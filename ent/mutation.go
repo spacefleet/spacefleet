@@ -21,6 +21,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
+	"github.com/spacefleet/spacefleet/ent/groupvariable"
 	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/organization"
@@ -49,6 +50,7 @@ const (
 	TypeComponentGroup     = "ComponentGroup"
 	TypeComponentRun       = "ComponentRun"
 	TypeGitHubInstallation = "GitHubInstallation"
+	TypeGroupVariable      = "GroupVariable"
 	TypeInvitation         = "Invitation"
 	TypeMembership         = "Membership"
 	TypeOrganization       = "Organization"
@@ -8939,6 +8941,857 @@ func (m *GitHubInstallationMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown GitHubInstallation edge %s", name)
+}
+
+// GroupVariableMutation represents an operation that mutates the GroupVariable nodes in the graph.
+type GroupVariableMutation struct {
+	config
+	op                  Op
+	typ                 string
+	id                  *uuid.UUID
+	name                *string
+	sensitive           *bool
+	value               *string
+	encrypted_value     *[]byte
+	created_at          *time.Time
+	updated_at          *time.Time
+	clearedFields       map[string]struct{}
+	organization        *uuid.UUID
+	clearedorganization bool
+	group               *uuid.UUID
+	clearedgroup        bool
+	done                bool
+	oldValue            func(context.Context) (*GroupVariable, error)
+	predicates          []predicate.GroupVariable
+}
+
+var _ ent.Mutation = (*GroupVariableMutation)(nil)
+
+// groupvariableOption allows management of the mutation configuration using functional options.
+type groupvariableOption func(*GroupVariableMutation)
+
+// newGroupVariableMutation creates new mutation for the GroupVariable entity.
+func newGroupVariableMutation(c config, op Op, opts ...groupvariableOption) *GroupVariableMutation {
+	m := &GroupVariableMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeGroupVariable,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withGroupVariableID sets the ID field of the mutation.
+func withGroupVariableID(id uuid.UUID) groupvariableOption {
+	return func(m *GroupVariableMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *GroupVariable
+		)
+		m.oldValue = func(ctx context.Context) (*GroupVariable, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().GroupVariable.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withGroupVariable sets the old GroupVariable of the mutation.
+func withGroupVariable(node *GroupVariable) groupvariableOption {
+	return func(m *GroupVariableMutation) {
+		m.oldValue = func(context.Context) (*GroupVariable, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m GroupVariableMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m GroupVariableMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of GroupVariable entities.
+func (m *GroupVariableMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *GroupVariableMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *GroupVariableMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().GroupVariable.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (m *GroupVariableMutation) SetOrganizationID(u uuid.UUID) {
+	m.organization = &u
+}
+
+// OrganizationID returns the value of the "organization_id" field in the mutation.
+func (m *GroupVariableMutation) OrganizationID() (r uuid.UUID, exists bool) {
+	v := m.organization
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrganizationID returns the old "organization_id" field's value of the GroupVariable entity.
+// If the GroupVariable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupVariableMutation) OldOrganizationID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrganizationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrganizationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrganizationID: %w", err)
+	}
+	return oldValue.OrganizationID, nil
+}
+
+// ResetOrganizationID resets all changes to the "organization_id" field.
+func (m *GroupVariableMutation) ResetOrganizationID() {
+	m.organization = nil
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *GroupVariableMutation) SetGroupID(u uuid.UUID) {
+	m.group = &u
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *GroupVariableMutation) GroupID() (r uuid.UUID, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the GroupVariable entity.
+// If the GroupVariable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupVariableMutation) OldGroupID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *GroupVariableMutation) ResetGroupID() {
+	m.group = nil
+}
+
+// SetName sets the "name" field.
+func (m *GroupVariableMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *GroupVariableMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the GroupVariable entity.
+// If the GroupVariable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupVariableMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *GroupVariableMutation) ResetName() {
+	m.name = nil
+}
+
+// SetSensitive sets the "sensitive" field.
+func (m *GroupVariableMutation) SetSensitive(b bool) {
+	m.sensitive = &b
+}
+
+// Sensitive returns the value of the "sensitive" field in the mutation.
+func (m *GroupVariableMutation) Sensitive() (r bool, exists bool) {
+	v := m.sensitive
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSensitive returns the old "sensitive" field's value of the GroupVariable entity.
+// If the GroupVariable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupVariableMutation) OldSensitive(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSensitive is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSensitive requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSensitive: %w", err)
+	}
+	return oldValue.Sensitive, nil
+}
+
+// ResetSensitive resets all changes to the "sensitive" field.
+func (m *GroupVariableMutation) ResetSensitive() {
+	m.sensitive = nil
+}
+
+// SetValue sets the "value" field.
+func (m *GroupVariableMutation) SetValue(s string) {
+	m.value = &s
+}
+
+// Value returns the value of the "value" field in the mutation.
+func (m *GroupVariableMutation) Value() (r string, exists bool) {
+	v := m.value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValue returns the old "value" field's value of the GroupVariable entity.
+// If the GroupVariable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupVariableMutation) OldValue(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValue is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValue requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValue: %w", err)
+	}
+	return oldValue.Value, nil
+}
+
+// ClearValue clears the value of the "value" field.
+func (m *GroupVariableMutation) ClearValue() {
+	m.value = nil
+	m.clearedFields[groupvariable.FieldValue] = struct{}{}
+}
+
+// ValueCleared returns if the "value" field was cleared in this mutation.
+func (m *GroupVariableMutation) ValueCleared() bool {
+	_, ok := m.clearedFields[groupvariable.FieldValue]
+	return ok
+}
+
+// ResetValue resets all changes to the "value" field.
+func (m *GroupVariableMutation) ResetValue() {
+	m.value = nil
+	delete(m.clearedFields, groupvariable.FieldValue)
+}
+
+// SetEncryptedValue sets the "encrypted_value" field.
+func (m *GroupVariableMutation) SetEncryptedValue(b []byte) {
+	m.encrypted_value = &b
+}
+
+// EncryptedValue returns the value of the "encrypted_value" field in the mutation.
+func (m *GroupVariableMutation) EncryptedValue() (r []byte, exists bool) {
+	v := m.encrypted_value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEncryptedValue returns the old "encrypted_value" field's value of the GroupVariable entity.
+// If the GroupVariable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupVariableMutation) OldEncryptedValue(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEncryptedValue is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEncryptedValue requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEncryptedValue: %w", err)
+	}
+	return oldValue.EncryptedValue, nil
+}
+
+// ClearEncryptedValue clears the value of the "encrypted_value" field.
+func (m *GroupVariableMutation) ClearEncryptedValue() {
+	m.encrypted_value = nil
+	m.clearedFields[groupvariable.FieldEncryptedValue] = struct{}{}
+}
+
+// EncryptedValueCleared returns if the "encrypted_value" field was cleared in this mutation.
+func (m *GroupVariableMutation) EncryptedValueCleared() bool {
+	_, ok := m.clearedFields[groupvariable.FieldEncryptedValue]
+	return ok
+}
+
+// ResetEncryptedValue resets all changes to the "encrypted_value" field.
+func (m *GroupVariableMutation) ResetEncryptedValue() {
+	m.encrypted_value = nil
+	delete(m.clearedFields, groupvariable.FieldEncryptedValue)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *GroupVariableMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *GroupVariableMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the GroupVariable entity.
+// If the GroupVariable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupVariableMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *GroupVariableMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *GroupVariableMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *GroupVariableMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the GroupVariable entity.
+// If the GroupVariable object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupVariableMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *GroupVariableMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearOrganization clears the "organization" edge to the Organization entity.
+func (m *GroupVariableMutation) ClearOrganization() {
+	m.clearedorganization = true
+	m.clearedFields[groupvariable.FieldOrganizationID] = struct{}{}
+}
+
+// OrganizationCleared reports if the "organization" edge to the Organization entity was cleared.
+func (m *GroupVariableMutation) OrganizationCleared() bool {
+	return m.clearedorganization
+}
+
+// OrganizationIDs returns the "organization" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OrganizationID instead. It exists only for internal usage by the builders.
+func (m *GroupVariableMutation) OrganizationIDs() (ids []uuid.UUID) {
+	if id := m.organization; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOrganization resets all changes to the "organization" edge.
+func (m *GroupVariableMutation) ResetOrganization() {
+	m.organization = nil
+	m.clearedorganization = false
+}
+
+// ClearGroup clears the "group" edge to the ApplicationGroup entity.
+func (m *GroupVariableMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[groupvariable.FieldGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the ApplicationGroup entity was cleared.
+func (m *GroupVariableMutation) GroupCleared() bool {
+	return m.clearedgroup
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *GroupVariableMutation) GroupIDs() (ids []uuid.UUID) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *GroupVariableMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// Where appends a list predicates to the GroupVariableMutation builder.
+func (m *GroupVariableMutation) Where(ps ...predicate.GroupVariable) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the GroupVariableMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *GroupVariableMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.GroupVariable, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *GroupVariableMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *GroupVariableMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (GroupVariable).
+func (m *GroupVariableMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *GroupVariableMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.organization != nil {
+		fields = append(fields, groupvariable.FieldOrganizationID)
+	}
+	if m.group != nil {
+		fields = append(fields, groupvariable.FieldGroupID)
+	}
+	if m.name != nil {
+		fields = append(fields, groupvariable.FieldName)
+	}
+	if m.sensitive != nil {
+		fields = append(fields, groupvariable.FieldSensitive)
+	}
+	if m.value != nil {
+		fields = append(fields, groupvariable.FieldValue)
+	}
+	if m.encrypted_value != nil {
+		fields = append(fields, groupvariable.FieldEncryptedValue)
+	}
+	if m.created_at != nil {
+		fields = append(fields, groupvariable.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, groupvariable.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *GroupVariableMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case groupvariable.FieldOrganizationID:
+		return m.OrganizationID()
+	case groupvariable.FieldGroupID:
+		return m.GroupID()
+	case groupvariable.FieldName:
+		return m.Name()
+	case groupvariable.FieldSensitive:
+		return m.Sensitive()
+	case groupvariable.FieldValue:
+		return m.Value()
+	case groupvariable.FieldEncryptedValue:
+		return m.EncryptedValue()
+	case groupvariable.FieldCreatedAt:
+		return m.CreatedAt()
+	case groupvariable.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *GroupVariableMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case groupvariable.FieldOrganizationID:
+		return m.OldOrganizationID(ctx)
+	case groupvariable.FieldGroupID:
+		return m.OldGroupID(ctx)
+	case groupvariable.FieldName:
+		return m.OldName(ctx)
+	case groupvariable.FieldSensitive:
+		return m.OldSensitive(ctx)
+	case groupvariable.FieldValue:
+		return m.OldValue(ctx)
+	case groupvariable.FieldEncryptedValue:
+		return m.OldEncryptedValue(ctx)
+	case groupvariable.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case groupvariable.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown GroupVariable field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GroupVariableMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case groupvariable.FieldOrganizationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrganizationID(v)
+		return nil
+	case groupvariable.FieldGroupID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
+	case groupvariable.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case groupvariable.FieldSensitive:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSensitive(v)
+		return nil
+	case groupvariable.FieldValue:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValue(v)
+		return nil
+	case groupvariable.FieldEncryptedValue:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEncryptedValue(v)
+		return nil
+	case groupvariable.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case groupvariable.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown GroupVariable field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *GroupVariableMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *GroupVariableMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GroupVariableMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown GroupVariable numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *GroupVariableMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(groupvariable.FieldValue) {
+		fields = append(fields, groupvariable.FieldValue)
+	}
+	if m.FieldCleared(groupvariable.FieldEncryptedValue) {
+		fields = append(fields, groupvariable.FieldEncryptedValue)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *GroupVariableMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *GroupVariableMutation) ClearField(name string) error {
+	switch name {
+	case groupvariable.FieldValue:
+		m.ClearValue()
+		return nil
+	case groupvariable.FieldEncryptedValue:
+		m.ClearEncryptedValue()
+		return nil
+	}
+	return fmt.Errorf("unknown GroupVariable nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *GroupVariableMutation) ResetField(name string) error {
+	switch name {
+	case groupvariable.FieldOrganizationID:
+		m.ResetOrganizationID()
+		return nil
+	case groupvariable.FieldGroupID:
+		m.ResetGroupID()
+		return nil
+	case groupvariable.FieldName:
+		m.ResetName()
+		return nil
+	case groupvariable.FieldSensitive:
+		m.ResetSensitive()
+		return nil
+	case groupvariable.FieldValue:
+		m.ResetValue()
+		return nil
+	case groupvariable.FieldEncryptedValue:
+		m.ResetEncryptedValue()
+		return nil
+	case groupvariable.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case groupvariable.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown GroupVariable field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *GroupVariableMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.organization != nil {
+		edges = append(edges, groupvariable.EdgeOrganization)
+	}
+	if m.group != nil {
+		edges = append(edges, groupvariable.EdgeGroup)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *GroupVariableMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case groupvariable.EdgeOrganization:
+		if id := m.organization; id != nil {
+			return []ent.Value{*id}
+		}
+	case groupvariable.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *GroupVariableMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *GroupVariableMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *GroupVariableMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedorganization {
+		edges = append(edges, groupvariable.EdgeOrganization)
+	}
+	if m.clearedgroup {
+		edges = append(edges, groupvariable.EdgeGroup)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *GroupVariableMutation) EdgeCleared(name string) bool {
+	switch name {
+	case groupvariable.EdgeOrganization:
+		return m.clearedorganization
+	case groupvariable.EdgeGroup:
+		return m.clearedgroup
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *GroupVariableMutation) ClearEdge(name string) error {
+	switch name {
+	case groupvariable.EdgeOrganization:
+		m.ClearOrganization()
+		return nil
+	case groupvariable.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown GroupVariable unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *GroupVariableMutation) ResetEdge(name string) error {
+	switch name {
+	case groupvariable.EdgeOrganization:
+		m.ResetOrganization()
+		return nil
+	case groupvariable.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown GroupVariable edge %s", name)
 }
 
 // InvitationMutation represents an operation that mutates the Invitation nodes in the graph.

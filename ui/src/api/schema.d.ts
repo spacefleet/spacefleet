@@ -767,6 +767,61 @@ export interface paths {
         patch: operations["updateApplicationGroup"];
         trace?: never;
     };
+    "/api/application-groups/{id}/variables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an application group's variables
+         * @description Org-scoped. Group variables are passed to the component jobs of every
+         *     application in the group as environment variables, at the lowest priority
+         *     — an application's own variable of the same name overrides a group
+         *     variable, and a component-level one overrides that. A sensitive
+         *     variable's value is sealed and never returned (only `sensitive: true` and
+         *     the name).
+         */
+        get: operations["listGroupVariables"];
+        put?: never;
+        /**
+         * Add a group variable
+         * @description Org-scoped, editor or above. A sensitive variable's value is sealed at
+         *     rest and never returned (requires an encryption key,
+         *     SPACEFLEET_SECRET_KEY). Names are a shell-safe identifier and unique
+         *     among the group's variables.
+         */
+        post: operations["createGroupVariable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/application-groups/{id}/variables/{variableId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a group variable */
+        delete: operations["deleteGroupVariable"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a group variable
+         * @description Org-scoped, editor or above. Renames and/or replaces the value. Omit
+         *     `value` to leave it unchanged (the only way to keep a sensitive value,
+         *     which is never returned). The sensitive flag is fixed at creation.
+         */
+        patch: operations["updateGroupVariable"];
+        trace?: never;
+    };
     "/api/applications/{id}/workflow": {
         parameters: {
             query?: never;
@@ -2321,10 +2376,11 @@ export interface components {
         };
         /**
          * @description A named key/value passed to component jobs as an environment variable,
-         *     defined at the app level (every component) or the component level
-         *     (overriding an app-level variable of the same name). A sensitive
-         *     variable's value is sealed at rest and never returned — only its name and
-         *     the sensitive flag are.
+         *     defined at the group level (every application in the group), the app
+         *     level (every component), or the component level. Lower levels are
+         *     overridden by higher: group < app < component for a same-named variable.
+         *     A sensitive variable's value is sealed at rest and never returned — only
+         *     its name and the sensitive flag are.
          */
         Variable: {
             /** Format: uuid */
@@ -3435,6 +3491,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApplicationGroup"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listGroupVariables: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationGroupID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The group's variables */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Variable"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createGroupVariable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationGroupID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VariableCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Variable created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Variable"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteGroupVariable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationGroupID"];
+                variableId: components["parameters"]["VariableID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Variable deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateGroupVariable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationGroupID"];
+                variableId: components["parameters"]["VariableID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VariableUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Variable updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Variable"];
                 };
             };
             default: components["responses"]["Error"];

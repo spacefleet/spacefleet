@@ -21,6 +21,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
+	"github.com/spacefleet/spacefleet/ent/groupvariable"
 	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/organization"
@@ -97,6 +98,7 @@ func checkColumn(t, c string) error {
 			componentgroup.Table:     componentgroup.ValidColumn,
 			componentrun.Table:       componentrun.ValidColumn,
 			githubinstallation.Table: githubinstallation.ValidColumn,
+			groupvariable.Table:      groupvariable.ValidColumn,
 			invitation.Table:         invitation.ValidColumn,
 			membership.Table:         membership.ValidColumn,
 			organization.Table:       organization.ValidColumn,

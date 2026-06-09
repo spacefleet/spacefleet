@@ -15,6 +15,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
+	"github.com/spacefleet/spacefleet/ent/groupvariable"
 	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/organization"
@@ -221,6 +222,30 @@ func init() {
 	githubinstallationDescID := githubinstallationFields[0].Descriptor()
 	// githubinstallation.DefaultID holds the default value on creation for the id field.
 	githubinstallation.DefaultID = githubinstallationDescID.Default.(func() uuid.UUID)
+	groupvariableFields := schema.GroupVariable{}.Fields()
+	_ = groupvariableFields
+	// groupvariableDescName is the schema descriptor for name field.
+	groupvariableDescName := groupvariableFields[3].Descriptor()
+	// groupvariable.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	groupvariable.NameValidator = groupvariableDescName.Validators[0].(func(string) error)
+	// groupvariableDescSensitive is the schema descriptor for sensitive field.
+	groupvariableDescSensitive := groupvariableFields[4].Descriptor()
+	// groupvariable.DefaultSensitive holds the default value on creation for the sensitive field.
+	groupvariable.DefaultSensitive = groupvariableDescSensitive.Default.(bool)
+	// groupvariableDescCreatedAt is the schema descriptor for created_at field.
+	groupvariableDescCreatedAt := groupvariableFields[7].Descriptor()
+	// groupvariable.DefaultCreatedAt holds the default value on creation for the created_at field.
+	groupvariable.DefaultCreatedAt = groupvariableDescCreatedAt.Default.(func() time.Time)
+	// groupvariableDescUpdatedAt is the schema descriptor for updated_at field.
+	groupvariableDescUpdatedAt := groupvariableFields[8].Descriptor()
+	// groupvariable.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	groupvariable.DefaultUpdatedAt = groupvariableDescUpdatedAt.Default.(func() time.Time)
+	// groupvariable.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	groupvariable.UpdateDefaultUpdatedAt = groupvariableDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// groupvariableDescID is the schema descriptor for id field.
+	groupvariableDescID := groupvariableFields[0].Descriptor()
+	// groupvariable.DefaultID holds the default value on creation for the id field.
+	groupvariable.DefaultID = groupvariableDescID.Default.(func() uuid.UUID)
 	invitationFields := schema.Invitation{}.Fields()
 	_ = invitationFields
 	// invitationDescEmail is the schema descriptor for email field.

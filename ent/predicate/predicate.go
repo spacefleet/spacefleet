@@ -33,6 +33,9 @@ type ComponentRun func(*sql.Selector)
 // GitHubInstallation is the predicate function for githubinstallation builders.
 type GitHubInstallation func(*sql.Selector)
 
+// GroupVariable is the predicate function for groupvariable builders.
+type GroupVariable func(*sql.Selector)
+
 // Invitation is the predicate function for invitation builders.
 type Invitation func(*sql.Selector)
 

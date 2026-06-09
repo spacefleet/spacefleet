@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
+import { VariablesEditor } from "../components/VariablesEditor";
 import type { components } from "../api/schema";
 
 type Application = components["schemas"]["Application"];
@@ -274,6 +275,23 @@ export function ApplicationGroupDetail() {
                 </tbody>
               </table>
             )}
+          </div>
+
+          {/* Variables (group-level: the base env vars for every app in the group) */}
+          <div className="mt-6 border border-neutral-200 bg-white p-4">
+            <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+              Variables
+            </h2>
+            <p className="mb-3 mt-1 text-xs text-neutral-500">
+              Passed to every component job of every application in this group as
+              environment variables. These are the lowest priority — an
+              application or one of its components can override one of these for
+              its own job. A sensitive value is sealed and never shown again.
+            </p>
+            <VariablesEditor
+              scope={{ kind: "group", groupId }}
+              canEdit={canEdit}
+            />
           </div>
 
           {confirmDelete && (

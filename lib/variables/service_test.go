@@ -68,6 +68,32 @@ func newApp(t *testing.T, client *ent.Client, orgID uuid.UUID, name string) *ent
 	return app
 }
 
+// newGroup creates an application group so group-level variables can hang off a
+// real group row.
+func newGroup(t *testing.T, client *ent.Client, orgID uuid.UUID, name string) *ent.ApplicationGroup {
+	t.Helper()
+	g, err := client.ApplicationGroup.Create().
+		SetOrganizationID(orgID).
+		SetName(name).
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("create group %q: %v", name, err)
+	}
+	return g
+}
+
+// newAppInGroup is newApp but with the application placed in the given group, so
+// ResolveEnv folds the group's variables in.
+func newAppInGroup(t *testing.T, client *ent.Client, orgID, groupID uuid.UUID, name string) *ent.Application {
+	t.Helper()
+	app := newApp(t, client, orgID, name)
+	out, err := app.Update().SetGroupID(groupID).Save(context.Background())
+	if err != nil {
+		t.Fatalf("set group on app %q: %v", name, err)
+	}
+	return out
+}
+
 func newComponent(t *testing.T, client *ent.Client, orgID, appID uuid.UUID, name string) *ent.Component {
 	t.Helper()
 	c, err := client.Component.Create().
@@ -163,6 +189,97 @@ func TestResolveEnvOverride(t *testing.T) {
 	}
 	if _, ok := plain2["TOKEN"]; ok {
 		t.Errorf("sensitive TOKEN leaked into plain map")
+	}
+}
+
+// TestResolveEnvGroupPrecedence confirms group-level variables are the lowest
+// priority: an app-level variable overrides a group one of the same name, a
+// component-level one overrides both, and a group-only variable still reaches a
+// component. An application not in any group sees no group variables.
+func TestResolveEnvGroupPrecedence(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, newSealer(t))
+	ctx := context.Background()
+	org := newOrg(t, client, "Acme")
+	group := newGroup(t, client, org.ID, "platform")
+	app := newAppInGroup(t, client, org.ID, group.ID, "web")
+	comp := newComponent(t, client, org.ID, app.ID, "api")
+
+	// Group-level: FOO (plain), GSECRET (sensitive), GONLY (plain, no override).
+	mustCreateGroup(t, svc, org.ID, group.ID, CreateParams{Name: "FOO", Value: "group-foo"})
+	mustCreateGroup(t, svc, org.ID, group.ID, CreateParams{Name: "GSECRET", Sensitive: true, Value: "group-sec"})
+	mustCreateGroup(t, svc, org.ID, group.ID, CreateParams{Name: "GONLY", Value: "group-only"})
+	// App-level: FOO overrides the group, AONLY is new.
+	mustCreate(t, svc, org.ID, app.ID, nil, CreateParams{Name: "FOO", Value: "app-foo"})
+	mustCreate(t, svc, org.ID, app.ID, nil, CreateParams{Name: "AONLY", Value: "app-only"})
+	// Component-level: FOO overrides both group and app.
+	cid := comp.ID
+	mustCreate(t, svc, org.ID, app.ID, &cid, CreateParams{Name: "FOO", Value: "comp-foo"})
+
+	plain, secret, err := svc.ResolveEnv(ctx, org.ID, app.ID, comp.ID)
+	if err != nil {
+		t.Fatalf("ResolveEnv: %v", err)
+	}
+	if plain["FOO"] != "comp-foo" {
+		t.Errorf("FOO = %q, want comp-foo (component beats app beats group)", plain["FOO"])
+	}
+	if plain["AONLY"] != "app-only" {
+		t.Errorf("AONLY = %q, want app-only", plain["AONLY"])
+	}
+	if plain["GONLY"] != "group-only" {
+		t.Errorf("GONLY = %q, want group-only (group reaches the component)", plain["GONLY"])
+	}
+	if secret["GSECRET"] != "group-sec" {
+		t.Errorf("GSECRET secret = %q, want decrypted group-sec", secret["GSECRET"])
+	}
+
+	// A component with no overrides: app still beats group on FOO.
+	other := newComponent(t, client, org.ID, app.ID, "worker")
+	plain2, _, err := svc.ResolveEnv(ctx, org.ID, app.ID, other.ID)
+	if err != nil {
+		t.Fatalf("ResolveEnv other: %v", err)
+	}
+	if plain2["FOO"] != "app-foo" {
+		t.Errorf("other FOO = %q, want app-foo (app overrides group)", plain2["FOO"])
+	}
+	if plain2["GONLY"] != "group-only" {
+		t.Errorf("other GONLY = %q, want group-only", plain2["GONLY"])
+	}
+
+	// An application not in any group never sees the group's variables.
+	rootApp := newApp(t, client, org.ID, "root-app")
+	plain3, _, err := svc.ResolveEnv(ctx, org.ID, rootApp.ID, uuid.Nil)
+	if err != nil {
+		t.Fatalf("ResolveEnv root: %v", err)
+	}
+	if _, ok := plain3["GONLY"]; ok {
+		t.Errorf("ungrouped app leaked group variable GONLY")
+	}
+}
+
+// TestGroupVariableValidationAndIsolation confirms group-variable names are
+// unique within a group, a variable on a missing group is rejected, and group
+// variables are org-scoped.
+func TestGroupVariableValidationAndIsolation(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, newSealer(t))
+	ctx := context.Background()
+	org := newOrg(t, client, "Acme")
+	group := newGroup(t, client, org.ID, "platform")
+
+	mustCreateGroup(t, svc, org.ID, group.ID, CreateParams{Name: "FOO", Value: "x"})
+	if _, err := svc.CreateGroup(ctx, org.ID, group.ID, CreateParams{Name: "FOO", Value: "y"}); !IsValidation(err) {
+		t.Errorf("duplicate group name error = %v, want ValidationError", err)
+	}
+	// A variable on a group that doesn't exist in the org is rejected.
+	if _, err := svc.CreateGroup(ctx, org.ID, uuid.New(), CreateParams{Name: "BAR", Value: "z"}); !IsValidation(err) {
+		t.Errorf("missing-group error = %v, want ValidationError", err)
+	}
+	// Cross-org: another org can't reach this group's variables.
+	v := mustCreateGroup(t, svc, org.ID, group.ID, CreateParams{Name: "BAZ", Value: "1"})
+	other := newOrg(t, client, "Other")
+	if err := svc.DeleteGroup(ctx, other.ID, group.ID, v.ID); !ent.IsNotFound(err) {
+		t.Errorf("cross-org DeleteGroup error = %v, want NotFound", err)
 	}
 }
 
@@ -273,6 +390,15 @@ func mustCreate(t *testing.T, svc *Service, orgID, appID uuid.UUID, componentID 
 	v, err := svc.Create(context.Background(), orgID, appID, componentID, p)
 	if err != nil {
 		t.Fatalf("Create %q: %v", p.Name, err)
+	}
+	return v
+}
+
+func mustCreateGroup(t *testing.T, svc *Service, orgID, groupID uuid.UUID, p CreateParams) *ent.GroupVariable {
+	t.Helper()
+	v, err := svc.CreateGroup(context.Background(), orgID, groupID, p)
+	if err != nil {
+		t.Fatalf("CreateGroup %q: %v", p.Name, err)
 	}
 	return v
 }

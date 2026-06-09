@@ -117,6 +117,18 @@ func (f GitHubInstallationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GitHubInstallationMutation", m)
 }
 
+// The GroupVariableFunc type is an adapter to allow the use of ordinary
+// function as GroupVariable mutator.
+type GroupVariableFunc func(context.Context, *ent.GroupVariableMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f GroupVariableFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.GroupVariableMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GroupVariableMutation", m)
+}
+
 // The InvitationFunc type is an adapter to allow the use of ordinary
 // function as Invitation mutator.
 type InvitationFunc func(context.Context, *ent.InvitationMutation) (ent.Value, error)
