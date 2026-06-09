@@ -797,6 +797,122 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/applications/{id}/group:
+    put:
+      summary: Move an application into a group (or to the org root)
+      description: |
+        Org-scoped, editor or above. Sets the application's group membership. The
+        request's group_id is always present: a uuid moves the application into
+        that group (which must belong to the same organization), and null removes
+        it from any group (back to the org root).
+      operationId: setApplicationGroup
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationGroupAssignment"
+      responses:
+        "200":
+          description: Application moved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/application-groups:
+    get:
+      summary: List the application groups in the current organization
+      description: |
+        Org-scoped: the organization is taken from the X-Organization-ID header.
+      operationId: listApplicationGroups
+      responses:
+        "200":
+          description: Application groups in the current organization
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApplicationGroup"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Create an application group
+      description: |
+        Org-scoped, editor or above. Group names are unique within the org.
+      operationId: createApplicationGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationGroupCreateRequest"
+      responses:
+        "201":
+          description: Application group created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationGroup"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/application-groups/{id}:
+    get:
+      summary: Get an application group
+      operationId: getApplicationGroup
+      parameters:
+        - $ref: "#/components/parameters/ApplicationGroupID"
+      responses:
+        "200":
+          description: The application group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationGroup"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      summary: Rename an application group
+      description: |
+        Org-scoped, editor or above. Only the name is mutable.
+      operationId: updateApplicationGroup
+      parameters:
+        - $ref: "#/components/parameters/ApplicationGroupID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationGroupUpdateRequest"
+      responses:
+        "200":
+          description: Application group updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationGroup"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete an application group
+      description: |
+        Org-scoped, editor or above. The group's applications are not deleted —
+        they fall back to the org root (ungrouped).
+      operationId: deleteApplicationGroup
+      parameters:
+        - $ref: "#/components/parameters/ApplicationGroupID"
+      responses:
+        "204":
+          description: Application group deleted
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/applications/{id}/workflow:
     get:
       summary: Get an application's deploy workflow (its component graph)
@@ -2342,6 +2458,13 @@ components:
           description: |
             True when the application was adopted from a release already running
             on the cluster (the import flow) rather than created from scratch.
+        group_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            The application group (folder) this application belongs to, or null
+            when it sits at the org root (ungrouped).
         created_at:
           type: string
           format: date-time
@@ -2370,6 +2493,12 @@ components:
         runner_cluster_id:
           type: string
           format: uuid
+        group_id:
+          type: string
+          format: uuid
+          description: |
+            Optional application group (folder) to create the application in. Omit
+            to create it at the org root (ungrouped).
 
     ApplicationImportRequest:
       type: object
@@ -2392,6 +2521,12 @@ components:
         runner_cluster_id:
           type: string
           format: uuid
+        group_id:
+          type: string
+          format: uuid
+          description: |
+            Optional application group (folder) to adopt the application into.
+            Omit to adopt it at the org root (ungrouped).
 
     ApplicationUpdateRequest:
       type: object
@@ -2406,6 +2541,56 @@ components:
         target_namespace:
           type: string
           minLength: 1
+
+    ApplicationGroup:
+      type: object
+      description: |
+        A top-level folder for organizing an organization's applications. An
+        application belongs to at most one group; groups do not nest.
+      required: [id, name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ApplicationGroupCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    ApplicationGroupUpdateRequest:
+      type: object
+      description: All fields optional. Only the name is mutable.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    ApplicationGroupAssignment:
+      type: object
+      description: |
+        Sets an application's group membership. group_id is always present: a
+        uuid moves the application into that group, null removes it from any
+        group (back to the org root).
+      required: [group_id]
+      properties:
+        group_id:
+          type: string
+          format: uuid
+          nullable: true
 
     ChartSource:
       type: string
@@ -3169,6 +3354,14 @@ components:
         format: uuid
 
     ApplicationID:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    ApplicationGroupID:
       in: path
       name: id
       required: true

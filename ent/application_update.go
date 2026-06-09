@@ -100,6 +100,26 @@ func (_u *ApplicationUpdate) SetNillableRunnerClusterID(v *uuid.UUID) *Applicati
 	return _u
 }
 
+// SetGroupID sets the "group_id" field.
+func (_u *ApplicationUpdate) SetGroupID(v uuid.UUID) *ApplicationUpdate {
+	_u.mutation.SetGroupID(v)
+	return _u
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_u *ApplicationUpdate) SetNillableGroupID(v *uuid.UUID) *ApplicationUpdate {
+	if v != nil {
+		_u.SetGroupID(*v)
+	}
+	return _u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (_u *ApplicationUpdate) ClearGroupID() *ApplicationUpdate {
+	_u.mutation.ClearGroupID()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ApplicationUpdate) SetUpdatedAt(v time.Time) *ApplicationUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -213,6 +233,12 @@ func (_u *ApplicationUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.TargetNamespace(); ok {
 		_spec.SetField(application.FieldTargetNamespace, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GroupID(); ok {
+		_spec.SetField(application.FieldGroupID, field.TypeUUID, value)
+	}
+	if _u.mutation.GroupIDCleared() {
+		_spec.ClearField(application.FieldGroupID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(application.FieldUpdatedAt, field.TypeTime, value)
@@ -365,6 +391,26 @@ func (_u *ApplicationUpdateOne) SetNillableRunnerClusterID(v *uuid.UUID) *Applic
 	return _u
 }
 
+// SetGroupID sets the "group_id" field.
+func (_u *ApplicationUpdateOne) SetGroupID(v uuid.UUID) *ApplicationUpdateOne {
+	_u.mutation.SetGroupID(v)
+	return _u
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_u *ApplicationUpdateOne) SetNillableGroupID(v *uuid.UUID) *ApplicationUpdateOne {
+	if v != nil {
+		_u.SetGroupID(*v)
+	}
+	return _u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (_u *ApplicationUpdateOne) ClearGroupID() *ApplicationUpdateOne {
+	_u.mutation.ClearGroupID()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ApplicationUpdateOne) SetUpdatedAt(v time.Time) *ApplicationUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -508,6 +554,12 @@ func (_u *ApplicationUpdateOne) sqlSave(ctx context.Context) (_node *Application
 	}
 	if value, ok := _u.mutation.TargetNamespace(); ok {
 		_spec.SetField(application.FieldTargetNamespace, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GroupID(); ok {
+		_spec.SetField(application.FieldGroupID, field.TypeUUID, value)
+	}
+	if _u.mutation.GroupIDCleared() {
+		_spec.ClearField(application.FieldGroupID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(application.FieldUpdatedAt, field.TypeTime, value)

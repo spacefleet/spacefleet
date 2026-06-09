@@ -11,6 +11,7 @@ import { Applications } from "./routes/Applications";
 import { ApplicationForm } from "./routes/ApplicationForm";
 import { ImportApplication } from "./routes/ImportApplication";
 import { ApplicationDetail } from "./routes/ApplicationDetail";
+import { ApplicationGroupDetail } from "./routes/ApplicationGroupDetail";
 import { WorkflowLayout } from "./routes/WorkflowLayout";
 import { WorkflowCanvas } from "./routes/WorkflowCanvas";
 import { NodeEditor } from "./routes/NodeEditor";
@@ -109,6 +110,13 @@ export function App() {
                 <Route
                   path="/applications/import"
                   element={<ImportApplication />}
+                />
+                {/* Application group (folder) drill-down: lists just that group's
+                    apps. Listed before the ":appId" detail route below so the
+                    "groups" segment isn't captured as an app id. */}
+                <Route
+                  path="/applications/groups/:groupId"
+                  element={<ApplicationGroupDetail />}
                 />
                 <Route
                   path="/applications/:appId/edit"

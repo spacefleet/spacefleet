@@ -27,6 +27,8 @@ const (
 	FieldTargetClusterID = "target_cluster_id"
 	// FieldRunnerClusterID holds the string denoting the runner_cluster_id field in the database.
 	FieldRunnerClusterID = "runner_cluster_id"
+	// FieldGroupID holds the string denoting the group_id field in the database.
+	FieldGroupID = "group_id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -71,6 +73,7 @@ var Columns = []string{
 	FieldTargetNamespace,
 	FieldTargetClusterID,
 	FieldRunnerClusterID,
+	FieldGroupID,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -138,6 +141,11 @@ func ByTargetClusterID(opts ...sql.OrderTermOption) OrderOption {
 // ByRunnerClusterID orders the results by the runner_cluster_id field.
 func ByRunnerClusterID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRunnerClusterID, opts...).ToFunc()
+}
+
+// ByGroupID orders the results by the group_id field.
+func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGroupID, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

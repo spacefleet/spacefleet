@@ -694,6 +694,79 @@ export interface paths {
         patch: operations["updateApplication"];
         trace?: never;
     };
+    "/api/applications/{id}/group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Move an application into a group (or to the org root)
+         * @description Org-scoped, editor or above. Sets the application's group membership. The
+         *     request's group_id is always present: a uuid moves the application into
+         *     that group (which must belong to the same organization), and null removes
+         *     it from any group (back to the org root).
+         */
+        put: operations["setApplicationGroup"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/application-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the application groups in the current organization
+         * @description Org-scoped: the organization is taken from the X-Organization-ID header.
+         */
+        get: operations["listApplicationGroups"];
+        put?: never;
+        /**
+         * Create an application group
+         * @description Org-scoped, editor or above. Group names are unique within the org.
+         */
+        post: operations["createApplicationGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/application-groups/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an application group */
+        get: operations["getApplicationGroup"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an application group
+         * @description Org-scoped, editor or above. The group's applications are not deleted —
+         *     they fall back to the org root (ungrouped).
+         */
+        delete: operations["deleteApplicationGroup"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename an application group
+         * @description Org-scoped, editor or above. Only the name is mutable.
+         */
+        patch: operations["updateApplicationGroup"];
+        trace?: never;
+    };
     "/api/applications/{id}/workflow": {
         parameters: {
             query?: never;
@@ -1686,6 +1759,12 @@ export interface components {
              *     on the cluster (the import flow) rather than created from scratch.
              */
             imported?: boolean;
+            /**
+             * Format: uuid
+             * @description The application group (folder) this application belongs to, or null
+             *     when it sits at the org root (ungrouped).
+             */
+            group_id?: string | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -1703,6 +1782,12 @@ export interface components {
             target_cluster_id: string;
             /** Format: uuid */
             runner_cluster_id: string;
+            /**
+             * Format: uuid
+             * @description Optional application group (folder) to create the application in. Omit
+             *     to create it at the org root (ungrouped).
+             */
+            group_id?: string;
         };
         /**
          * @description Adopt an existing workload as an application. Creates the application in
@@ -1716,6 +1801,12 @@ export interface components {
             target_cluster_id: string;
             /** Format: uuid */
             runner_cluster_id: string;
+            /**
+             * Format: uuid
+             * @description Optional application group (folder) to adopt the application into.
+             *     Omit to adopt it at the org root (ungrouped).
+             */
+            group_id?: string;
         };
         /**
          * @description All fields optional. The clusters and name can change; the deploy steps
@@ -1724,6 +1815,35 @@ export interface components {
         ApplicationUpdateRequest: {
             name?: string;
             target_namespace?: string;
+        };
+        /**
+         * @description A top-level folder for organizing an organization's applications. An
+         *     application belongs to at most one group; groups do not nest.
+         */
+        ApplicationGroup: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ApplicationGroupCreateRequest: {
+            name: string;
+        };
+        /** @description All fields optional. Only the name is mutable. */
+        ApplicationGroupUpdateRequest: {
+            name?: string;
+        };
+        /**
+         * @description Sets an application's group membership. group_id is always present: a
+         *     uuid moves the application into that group, null removes it from any
+         *     group (back to the org root).
+         */
+        ApplicationGroupAssignment: {
+            /** Format: uuid */
+            group_id: string | null;
         };
         /**
          * @description Where a Helm component's chart comes from (a value of the component's
@@ -2265,6 +2385,7 @@ export interface components {
         OrganizationID: string;
         ClusterID: string;
         ApplicationID: string;
+        ApplicationGroupID: string;
         ChartCredentialID: string;
         CloudCredentialID: string;
         GitHubInstallationID: string;
@@ -3170,6 +3291,150 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Application"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setApplicationGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationGroupAssignment"];
+            };
+        };
+        responses: {
+            /** @description Application moved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Application"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listApplicationGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Application groups in the current organization */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationGroup"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createApplicationGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationGroupCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Application group created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationGroup"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getApplicationGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationGroupID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The application group */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationGroup"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteApplicationGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationGroupID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Application group deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateApplicationGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationGroupID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationGroupUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Application group updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationGroup"];
                 };
             };
             default: components["responses"]["Error"];

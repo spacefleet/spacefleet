@@ -17,6 +17,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/spacefleet/spacefleet/ent/application"
+	"github.com/spacefleet/spacefleet/ent/applicationgroup"
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cloudcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
@@ -40,6 +41,8 @@ type Client struct {
 	Schema *migrate.Schema
 	// Application is the client for interacting with the Application builders.
 	Application *ApplicationClient
+	// ApplicationGroup is the client for interacting with the ApplicationGroup builders.
+	ApplicationGroup *ApplicationGroupClient
 	// ChartCredential is the client for interacting with the ChartCredential builders.
 	ChartCredential *ChartCredentialClient
 	// CloudCredential is the client for interacting with the CloudCredential builders.
@@ -80,6 +83,7 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.Application = NewApplicationClient(c.config)
+	c.ApplicationGroup = NewApplicationGroupClient(c.config)
 	c.ChartCredential = NewChartCredentialClient(c.config)
 	c.CloudCredential = NewCloudCredentialClient(c.config)
 	c.Cluster = NewClusterClient(c.config)
@@ -187,6 +191,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ctx:                ctx,
 		config:             cfg,
 		Application:        NewApplicationClient(cfg),
+		ApplicationGroup:   NewApplicationGroupClient(cfg),
 		ChartCredential:    NewChartCredentialClient(cfg),
 		CloudCredential:    NewCloudCredentialClient(cfg),
 		Cluster:            NewClusterClient(cfg),
@@ -221,6 +226,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ctx:                ctx,
 		config:             cfg,
 		Application:        NewApplicationClient(cfg),
+		ApplicationGroup:   NewApplicationGroupClient(cfg),
 		ChartCredential:    NewChartCredentialClient(cfg),
 		CloudCredential:    NewCloudCredentialClient(cfg),
 		Cluster:            NewClusterClient(cfg),
@@ -264,10 +270,10 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Application, c.ChartCredential, c.CloudCredential, c.Cluster, c.Component,
-		c.ComponentGroup, c.ComponentRun, c.GitHubInstallation, c.Invitation,
-		c.Membership, c.Organization, c.TektonInstallation, c.User, c.Variable,
-		c.WorkflowRun,
+		c.Application, c.ApplicationGroup, c.ChartCredential, c.CloudCredential,
+		c.Cluster, c.Component, c.ComponentGroup, c.ComponentRun, c.GitHubInstallation,
+		c.Invitation, c.Membership, c.Organization, c.TektonInstallation, c.User,
+		c.Variable, c.WorkflowRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -277,10 +283,10 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Application, c.ChartCredential, c.CloudCredential, c.Cluster, c.Component,
-		c.ComponentGroup, c.ComponentRun, c.GitHubInstallation, c.Invitation,
-		c.Membership, c.Organization, c.TektonInstallation, c.User, c.Variable,
-		c.WorkflowRun,
+		c.Application, c.ApplicationGroup, c.ChartCredential, c.CloudCredential,
+		c.Cluster, c.Component, c.ComponentGroup, c.ComponentRun, c.GitHubInstallation,
+		c.Invitation, c.Membership, c.Organization, c.TektonInstallation, c.User,
+		c.Variable, c.WorkflowRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -291,6 +297,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *ApplicationMutation:
 		return c.Application.mutate(ctx, m)
+	case *ApplicationGroupMutation:
+		return c.ApplicationGroup.mutate(ctx, m)
 	case *ChartCredentialMutation:
 		return c.ChartCredential.mutate(ctx, m)
 	case *CloudCredentialMutation:
@@ -502,6 +510,155 @@ func (c *ApplicationClient) mutate(ctx context.Context, m *ApplicationMutation) 
 		return (&ApplicationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Application mutation op: %q", m.Op())
+	}
+}
+
+// ApplicationGroupClient is a client for the ApplicationGroup schema.
+type ApplicationGroupClient struct {
+	config
+}
+
+// NewApplicationGroupClient returns a client for the ApplicationGroup from the given config.
+func NewApplicationGroupClient(c config) *ApplicationGroupClient {
+	return &ApplicationGroupClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `applicationgroup.Hooks(f(g(h())))`.
+func (c *ApplicationGroupClient) Use(hooks ...Hook) {
+	c.hooks.ApplicationGroup = append(c.hooks.ApplicationGroup, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `applicationgroup.Intercept(f(g(h())))`.
+func (c *ApplicationGroupClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ApplicationGroup = append(c.inters.ApplicationGroup, interceptors...)
+}
+
+// Create returns a builder for creating a ApplicationGroup entity.
+func (c *ApplicationGroupClient) Create() *ApplicationGroupCreate {
+	mutation := newApplicationGroupMutation(c.config, OpCreate)
+	return &ApplicationGroupCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ApplicationGroup entities.
+func (c *ApplicationGroupClient) CreateBulk(builders ...*ApplicationGroupCreate) *ApplicationGroupCreateBulk {
+	return &ApplicationGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ApplicationGroupClient) MapCreateBulk(slice any, setFunc func(*ApplicationGroupCreate, int)) *ApplicationGroupCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ApplicationGroupCreateBulk{err: fmt.Errorf("calling to ApplicationGroupClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ApplicationGroupCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ApplicationGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ApplicationGroup.
+func (c *ApplicationGroupClient) Update() *ApplicationGroupUpdate {
+	mutation := newApplicationGroupMutation(c.config, OpUpdate)
+	return &ApplicationGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ApplicationGroupClient) UpdateOne(_m *ApplicationGroup) *ApplicationGroupUpdateOne {
+	mutation := newApplicationGroupMutation(c.config, OpUpdateOne, withApplicationGroup(_m))
+	return &ApplicationGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ApplicationGroupClient) UpdateOneID(id uuid.UUID) *ApplicationGroupUpdateOne {
+	mutation := newApplicationGroupMutation(c.config, OpUpdateOne, withApplicationGroupID(id))
+	return &ApplicationGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ApplicationGroup.
+func (c *ApplicationGroupClient) Delete() *ApplicationGroupDelete {
+	mutation := newApplicationGroupMutation(c.config, OpDelete)
+	return &ApplicationGroupDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ApplicationGroupClient) DeleteOne(_m *ApplicationGroup) *ApplicationGroupDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ApplicationGroupClient) DeleteOneID(id uuid.UUID) *ApplicationGroupDeleteOne {
+	builder := c.Delete().Where(applicationgroup.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ApplicationGroupDeleteOne{builder}
+}
+
+// Query returns a query builder for ApplicationGroup.
+func (c *ApplicationGroupClient) Query() *ApplicationGroupQuery {
+	return &ApplicationGroupQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeApplicationGroup},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ApplicationGroup entity by its id.
+func (c *ApplicationGroupClient) Get(ctx context.Context, id uuid.UUID) (*ApplicationGroup, error) {
+	return c.Query().Where(applicationgroup.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ApplicationGroupClient) GetX(ctx context.Context, id uuid.UUID) *ApplicationGroup {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryOrganization queries the organization edge of a ApplicationGroup.
+func (c *ApplicationGroupClient) QueryOrganization(_m *ApplicationGroup) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(applicationgroup.Table, applicationgroup.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, applicationgroup.OrganizationTable, applicationgroup.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ApplicationGroupClient) Hooks() []Hook {
+	return c.hooks.ApplicationGroup
+}
+
+// Interceptors returns the client interceptors.
+func (c *ApplicationGroupClient) Interceptors() []Interceptor {
+	return c.inters.ApplicationGroup
+}
+
+func (c *ApplicationGroupClient) mutate(ctx context.Context, m *ApplicationGroupMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ApplicationGroupCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ApplicationGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ApplicationGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ApplicationGroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ApplicationGroup mutation op: %q", m.Op())
 	}
 }
 
@@ -2802,13 +2959,15 @@ func (c *WorkflowRunClient) mutate(ctx context.Context, m *WorkflowRunMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Application, ChartCredential, CloudCredential, Cluster, Component,
-		ComponentGroup, ComponentRun, GitHubInstallation, Invitation, Membership,
-		Organization, TektonInstallation, User, Variable, WorkflowRun []ent.Hook
+		Application, ApplicationGroup, ChartCredential, CloudCredential, Cluster,
+		Component, ComponentGroup, ComponentRun, GitHubInstallation, Invitation,
+		Membership, Organization, TektonInstallation, User, Variable,
+		WorkflowRun []ent.Hook
 	}
 	inters struct {
-		Application, ChartCredential, CloudCredential, Cluster, Component,
-		ComponentGroup, ComponentRun, GitHubInstallation, Invitation, Membership,
-		Organization, TektonInstallation, User, Variable, WorkflowRun []ent.Interceptor
+		Application, ApplicationGroup, ChartCredential, CloudCredential, Cluster,
+		Component, ComponentGroup, ComponentRun, GitHubInstallation, Invitation,
+		Membership, Organization, TektonInstallation, User, Variable,
+		WorkflowRun []ent.Interceptor
 	}
 )

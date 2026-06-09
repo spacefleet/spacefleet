@@ -42,6 +42,11 @@ func (Application) Fields() []ent.Field {
 		// runner_cluster is the Tekton-enabled cluster the management jobs run on.
 		field.UUID("target_cluster_id", uuid.UUID{}),
 		field.UUID("runner_cluster_id", uuid.UUID{}),
+		// Optional membership in a top-level ApplicationGroup (a folder). When
+		// unset (uuid.Nil) the application sits at the org root. Bound to the group
+		// edge below; ON DELETE SET NULL in the migration (deleting a group
+		// ungroups its applications rather than deleting them).
+		field.UUID("group_id", uuid.UUID{}).Optional(),
 		field.Time("created_at").Default(time.Now).Immutable(),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}

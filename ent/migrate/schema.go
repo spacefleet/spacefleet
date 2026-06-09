@@ -15,6 +15,7 @@ var (
 		{Name: "name", Type: field.TypeString},
 		{Name: "imported", Type: field.TypeBool, Default: false},
 		{Name: "target_namespace", Type: field.TypeString},
+		{Name: "group_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "organization_id", Type: field.TypeUUID},
@@ -29,19 +30,19 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "applications_organizations_organization",
-				Columns:    []*schema.Column{ApplicationsColumns[6]},
+				Columns:    []*schema.Column{ApplicationsColumns[7]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "applications_clusters_target_cluster",
-				Columns:    []*schema.Column{ApplicationsColumns[7]},
+				Columns:    []*schema.Column{ApplicationsColumns[8]},
 				RefColumns: []*schema.Column{ClustersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "applications_clusters_runner_cluster",
-				Columns:    []*schema.Column{ApplicationsColumns[8]},
+				Columns:    []*schema.Column{ApplicationsColumns[9]},
 				RefColumns: []*schema.Column{ClustersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -50,12 +51,46 @@ var (
 			{
 				Name:    "application_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{ApplicationsColumns[6]},
+				Columns: []*schema.Column{ApplicationsColumns[7]},
 			},
 			{
 				Name:    "application_organization_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{ApplicationsColumns[6], ApplicationsColumns[1]},
+				Columns: []*schema.Column{ApplicationsColumns[7], ApplicationsColumns[1]},
+			},
+		},
+	}
+	// ApplicationGroupsColumns holds the columns for the "application_groups" table.
+	ApplicationGroupsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+	}
+	// ApplicationGroupsTable holds the schema information for the "application_groups" table.
+	ApplicationGroupsTable = &schema.Table{
+		Name:       "application_groups",
+		Columns:    ApplicationGroupsColumns,
+		PrimaryKey: []*schema.Column{ApplicationGroupsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "application_groups_organizations_organization",
+				Columns:    []*schema.Column{ApplicationGroupsColumns[4]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "applicationgroup_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{ApplicationGroupsColumns[4]},
+			},
+			{
+				Name:    "applicationgroup_organization_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{ApplicationGroupsColumns[4], ApplicationGroupsColumns[1]},
 			},
 		},
 	}
@@ -614,6 +649,7 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		ApplicationsTable,
+		ApplicationGroupsTable,
 		ChartCredentialsTable,
 		CloudCredentialsTable,
 		ClustersTable,
@@ -635,6 +671,7 @@ func init() {
 	ApplicationsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ApplicationsTable.ForeignKeys[1].RefTable = ClustersTable
 	ApplicationsTable.ForeignKeys[2].RefTable = ClustersTable
+	ApplicationGroupsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ChartCredentialsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	CloudCredentialsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ClustersTable.ForeignKeys[0].RefTable = OrganizationsTable

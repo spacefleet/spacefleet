@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/spacefleet/spacefleet/ent"
+	"github.com/spacefleet/spacefleet/lib/applicationgroups"
 	"github.com/spacefleet/spacefleet/lib/applications"
 	"github.com/spacefleet/spacefleet/lib/auth"
 	"github.com/spacefleet/spacefleet/lib/chartcredentials"
@@ -29,6 +30,7 @@ type Server struct {
 	orgs                *organizations.Service
 	clusters            *clusters.Service
 	applications        *applications.Service
+	applicationGroups   *applicationgroups.Service
 	chartCredentials    *chartcredentials.Service
 	cloudCredentials    *cloudcredentials.Service
 	githubInstallations *githubinstallations.Service
@@ -73,6 +75,7 @@ type ServerDeps struct {
 	Orgs                *organizations.Service
 	Clusters            *clusters.Service
 	Applications        *applications.Service
+	ApplicationGroups   *applicationgroups.Service
 	ChartCredentials    *chartcredentials.Service
 	CloudCredentials    *cloudcredentials.Service
 	GitHubInstallations *githubinstallations.Service
@@ -94,6 +97,7 @@ func NewServer(d ServerDeps) *Server {
 		orgs:                d.Orgs,
 		clusters:            d.Clusters,
 		applications:        d.Applications,
+		applicationGroups:   d.ApplicationGroups,
 		chartCredentials:    d.ChartCredentials,
 		cloudCredentials:    d.CloudCredentials,
 		githubInstallations: d.GitHubInstallations,

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spacefleet/spacefleet/lib/api"
+	"github.com/spacefleet/spacefleet/lib/applicationgroups"
 	"github.com/spacefleet/spacefleet/lib/applications"
 	"github.com/spacefleet/spacefleet/lib/auth"
 	"github.com/spacefleet/spacefleet/lib/chartcredentials"
@@ -68,6 +69,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 	cloudCredsSvc := cloudcredentials.NewService(entClient, sealer)
 	githubInstallsSvc := githubinstallations.NewService(entClient, ghAuth)
 	applicationsSvc := applications.NewService(entClient)
+	applicationGroupsSvc := applicationgroups.NewService(entClient)
 	workflowsSvc := workflows.NewService(entClient)
 	variablesSvc := variables.NewService(entClient, sealer)
 	invitesSvc := invitations.NewService(entClient)
@@ -95,6 +97,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 		Orgs:                orgsSvc,
 		Clusters:            clustersSvc,
 		Applications:        applicationsSvc,
+		ApplicationGroups:   applicationGroupsSvc,
 		ChartCredentials:    chartCredsSvc,
 		CloudCredentials:    cloudCredsSvc,
 		GitHubInstallations: githubInstallsSvc,

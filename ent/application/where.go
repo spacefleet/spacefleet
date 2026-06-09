@@ -86,6 +86,11 @@ func RunnerClusterID(v uuid.UUID) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldRunnerClusterID, v))
 }
 
+// GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
+func GroupID(v uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldGroupID, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldCreatedAt, v))
@@ -294,6 +299,56 @@ func RunnerClusterIDIn(vs ...uuid.UUID) predicate.Application {
 // RunnerClusterIDNotIn applies the NotIn predicate on the "runner_cluster_id" field.
 func RunnerClusterIDNotIn(vs ...uuid.UUID) predicate.Application {
 	return predicate.Application(sql.FieldNotIn(FieldRunnerClusterID, vs...))
+}
+
+// GroupIDEQ applies the EQ predicate on the "group_id" field.
+func GroupIDEQ(v uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldGroupID, v))
+}
+
+// GroupIDNEQ applies the NEQ predicate on the "group_id" field.
+func GroupIDNEQ(v uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldGroupID, v))
+}
+
+// GroupIDIn applies the In predicate on the "group_id" field.
+func GroupIDIn(vs ...uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldIn(FieldGroupID, vs...))
+}
+
+// GroupIDNotIn applies the NotIn predicate on the "group_id" field.
+func GroupIDNotIn(vs ...uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldNotIn(FieldGroupID, vs...))
+}
+
+// GroupIDGT applies the GT predicate on the "group_id" field.
+func GroupIDGT(v uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldGT(FieldGroupID, v))
+}
+
+// GroupIDGTE applies the GTE predicate on the "group_id" field.
+func GroupIDGTE(v uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldGTE(FieldGroupID, v))
+}
+
+// GroupIDLT applies the LT predicate on the "group_id" field.
+func GroupIDLT(v uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldLT(FieldGroupID, v))
+}
+
+// GroupIDLTE applies the LTE predicate on the "group_id" field.
+func GroupIDLTE(v uuid.UUID) predicate.Application {
+	return predicate.Application(sql.FieldLTE(FieldGroupID, v))
+}
+
+// GroupIDIsNil applies the IsNil predicate on the "group_id" field.
+func GroupIDIsNil() predicate.Application {
+	return predicate.Application(sql.FieldIsNull(FieldGroupID))
+}
+
+// GroupIDNotNil applies the NotNil predicate on the "group_id" field.
+func GroupIDNotNil() predicate.Application {
+	return predicate.Application(sql.FieldNotNull(FieldGroupID))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

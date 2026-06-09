@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/application"
+	"github.com/spacefleet/spacefleet/ent/applicationgroup"
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cloudcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
@@ -43,11 +44,11 @@ func init() {
 	// application.TargetNamespaceValidator is a validator for the "target_namespace" field. It is called by the builders before save.
 	application.TargetNamespaceValidator = applicationDescTargetNamespace.Validators[0].(func(string) error)
 	// applicationDescCreatedAt is the schema descriptor for created_at field.
-	applicationDescCreatedAt := applicationFields[7].Descriptor()
+	applicationDescCreatedAt := applicationFields[8].Descriptor()
 	// application.DefaultCreatedAt holds the default value on creation for the created_at field.
 	application.DefaultCreatedAt = applicationDescCreatedAt.Default.(func() time.Time)
 	// applicationDescUpdatedAt is the schema descriptor for updated_at field.
-	applicationDescUpdatedAt := applicationFields[8].Descriptor()
+	applicationDescUpdatedAt := applicationFields[9].Descriptor()
 	// application.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	application.DefaultUpdatedAt = applicationDescUpdatedAt.Default.(func() time.Time)
 	// application.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -56,6 +57,26 @@ func init() {
 	applicationDescID := applicationFields[0].Descriptor()
 	// application.DefaultID holds the default value on creation for the id field.
 	application.DefaultID = applicationDescID.Default.(func() uuid.UUID)
+	applicationgroupFields := schema.ApplicationGroup{}.Fields()
+	_ = applicationgroupFields
+	// applicationgroupDescName is the schema descriptor for name field.
+	applicationgroupDescName := applicationgroupFields[2].Descriptor()
+	// applicationgroup.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	applicationgroup.NameValidator = applicationgroupDescName.Validators[0].(func(string) error)
+	// applicationgroupDescCreatedAt is the schema descriptor for created_at field.
+	applicationgroupDescCreatedAt := applicationgroupFields[3].Descriptor()
+	// applicationgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
+	applicationgroup.DefaultCreatedAt = applicationgroupDescCreatedAt.Default.(func() time.Time)
+	// applicationgroupDescUpdatedAt is the schema descriptor for updated_at field.
+	applicationgroupDescUpdatedAt := applicationgroupFields[4].Descriptor()
+	// applicationgroup.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	applicationgroup.DefaultUpdatedAt = applicationgroupDescUpdatedAt.Default.(func() time.Time)
+	// applicationgroup.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	applicationgroup.UpdateDefaultUpdatedAt = applicationgroupDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// applicationgroupDescID is the schema descriptor for id field.
+	applicationgroupDescID := applicationgroupFields[0].Descriptor()
+	// applicationgroup.DefaultID holds the default value on creation for the id field.
+	applicationgroup.DefaultID = applicationgroupDescID.Default.(func() uuid.UUID)
 	chartcredentialFields := schema.ChartCredential{}.Fields()
 	_ = chartcredentialFields
 	// chartcredentialDescName is the schema descriptor for name field.

@@ -115,6 +115,7 @@ func (s *Server) CreateApplication(ctx context.Context, req CreateApplicationReq
 		TargetNamespace: strings.TrimSpace(req.Body.TargetNamespace),
 		TargetClusterID: req.Body.TargetClusterId,
 		RunnerClusterID: req.Body.RunnerClusterId,
+		GroupID:         req.Body.GroupId,
 	})
 	if err != nil {
 		if resp, ok := appWriteError[CreateApplicationdefaultJSONResponse](err); ok {
@@ -149,6 +150,7 @@ func (s *Server) ImportApplication(ctx context.Context, req ImportApplicationReq
 		TargetNamespace: strings.TrimSpace(req.Body.TargetNamespace),
 		TargetClusterID: req.Body.TargetClusterId,
 		RunnerClusterID: req.Body.RunnerClusterId,
+		GroupID:         req.Body.GroupId,
 	})
 	if err != nil {
 		if resp, ok := appWriteError[ImportApplicationdefaultJSONResponse](err); ok {
@@ -212,6 +214,35 @@ func (s *Server) DeleteApplication(ctx context.Context, req DeleteApplicationReq
 	return DeleteApplication204Response{}, nil
 }
 
+// SetApplicationGroup moves an application into a group (folder) or back to the
+// org root. The request's group_id is always present: a uuid moves it into that
+// group, null removes it from any group. Editor or above.
+func (s *Server) SetApplicationGroup(ctx context.Context, req SetApplicationGroupRequestObject) (SetApplicationGroupResponseObject, error) {
+	orgID, aerr, err := s.resolveAppWrite(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[SetApplicationGroupdefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	if req.Body == nil {
+		return errResp[SetApplicationGroupdefaultJSONResponse](http.StatusBadRequest, "bad_request", "request body is required"), nil
+	}
+	// group_id is always present in the body: a uuid moves the app into that
+	// group, nil (null/absent) removes it from any group.
+	a, err := s.applications.SetGroup(ctx, orgID, req.Id, req.Body.GroupId)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return errResp[SetApplicationGroupdefaultJSONResponse](http.StatusNotFound, "not_found", "application not found"), nil
+		}
+		if resp, ok := appWriteError[SetApplicationGroupdefaultJSONResponse](err); ok {
+			return resp, nil
+		}
+		return nil, err
+	}
+	return SetApplicationGroup200JSONResponse(toAPIApplication(a)), nil
+}
+
 // appWriteError maps service-layer write errors to a typed client error, or
 // reports false to bubble up as 500.
 func appWriteError[T defaultResp](err error) (T, bool) {
@@ -228,7 +259,7 @@ func appWriteError[T defaultResp](err error) (T, bool) {
 
 func toAPIApplication(a *ent.Application) Application {
 	imported := a.Imported
-	return Application{
+	out := Application{
 		Id:              a.ID,
 		Name:            a.Name,
 		TargetNamespace: a.TargetNamespace,
@@ -238,4 +269,10 @@ func toAPIApplication(a *ent.Application) Application {
 		CreatedAt:       a.CreatedAt,
 		UpdatedAt:       a.UpdatedAt,
 	}
+	// group_id is an optional FK: uuid.Nil means the app sits at the org root.
+	if a.GroupID != uuid.Nil {
+		gid := a.GroupID
+		out.GroupId = &gid
+	}
+	return out
 }

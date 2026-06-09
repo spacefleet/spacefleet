@@ -21,6 +21,18 @@ func (f ApplicationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ApplicationMutation", m)
 }
 
+// The ApplicationGroupFunc type is an adapter to allow the use of ordinary
+// function as ApplicationGroup mutator.
+type ApplicationGroupFunc func(context.Context, *ent.ApplicationGroupMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ApplicationGroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ApplicationGroupMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ApplicationGroupMutation", m)
+}
+
 // The ChartCredentialFunc type is an adapter to allow the use of ordinary
 // function as ChartCredential mutator.
 type ChartCredentialFunc func(context.Context, *ent.ChartCredentialMutation) (ent.Value, error)

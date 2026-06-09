@@ -238,3 +238,99 @@ func TestDeleteOrgScoped(t *testing.T) {
 		t.Errorf("after delete Get error = %v, want NotFound", err)
 	}
 }
+
+func newGroup(t *testing.T, client *ent.Client, orgID uuid.UUID, name string) *ent.ApplicationGroup {
+	t.Helper()
+	g, err := client.ApplicationGroup.Create().SetOrganizationID(orgID).SetName(name).Save(context.Background())
+	if err != nil {
+		t.Fatalf("create group %q: %v", name, err)
+	}
+	return g
+}
+
+func TestSetGroupMovesAndClears(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
+	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
+	app, err := svc.Create(ctx, org.ID, appParams(target.ID, runner.ID))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if app.GroupID != uuid.Nil {
+		t.Fatalf("new app should be ungrouped, got group %v", app.GroupID)
+	}
+	group := newGroup(t, client, org.ID, "Backend")
+
+	// Move into the group.
+	moved, err := svc.SetGroup(ctx, org.ID, app.ID, &group.ID)
+	if err != nil {
+		t.Fatalf("SetGroup into group: %v", err)
+	}
+	if moved.GroupID != group.ID {
+		t.Errorf("GroupID = %v, want %v", moved.GroupID, group.ID)
+	}
+
+	// Move back to the root.
+	cleared, err := svc.SetGroup(ctx, org.ID, app.ID, nil)
+	if err != nil {
+		t.Fatalf("SetGroup to root: %v", err)
+	}
+	if cleared.GroupID != uuid.Nil {
+		t.Errorf("GroupID after clear = %v, want nil", cleared.GroupID)
+	}
+}
+
+func TestSetGroupRejectsForeignGroup(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	other := newOrg(t, client, "Other")
+	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
+	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
+	app, err := svc.Create(ctx, org.ID, appParams(target.ID, runner.ID))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	foreign := newGroup(t, client, other.ID, "Theirs")
+
+	if _, err := svc.SetGroup(ctx, org.ID, app.ID, &foreign.ID); !IsValidation(err) {
+		t.Fatalf("SetGroup with foreign group error = %v, want ValidationError", err)
+	}
+}
+
+func TestCreateWithGroup(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	target := newCluster(t, client, org.ID, "target", cluster.ConnectionMethodToken, false)
+	runner := newCluster(t, client, org.ID, "runner", cluster.ConnectionMethodToken, true)
+	group := newGroup(t, client, org.ID, "Backend")
+
+	p := appParams(target.ID, runner.ID)
+	p.GroupID = &group.ID
+	app, err := svc.Create(ctx, org.ID, p)
+	if err != nil {
+		t.Fatalf("Create with group: %v", err)
+	}
+	if app.GroupID != group.ID {
+		t.Errorf("GroupID = %v, want %v", app.GroupID, group.ID)
+	}
+
+	// A foreign group is rejected at create time too.
+	other := newOrg(t, client, "Other")
+	foreign := newGroup(t, client, other.ID, "Theirs")
+	p2 := appParams(target.ID, runner.ID)
+	p2.Name = "web2"
+	p2.GroupID = &foreign.ID
+	if _, err := svc.Create(ctx, org.ID, p2); !IsValidation(err) {
+		t.Fatalf("Create with foreign group error = %v, want ValidationError", err)
+	}
+}

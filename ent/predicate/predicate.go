@@ -9,6 +9,9 @@ import (
 // Application is the predicate function for application builders.
 type Application func(*sql.Selector)
 
+// ApplicationGroup is the predicate function for applicationgroup builders.
+type ApplicationGroup func(*sql.Selector)
+
 // ChartCredential is the predicate function for chartcredential builders.
 type ChartCredential func(*sql.Selector)
 

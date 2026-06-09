@@ -18,6 +18,7 @@ import (
 
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/ent/application"
+	"github.com/spacefleet/spacefleet/ent/applicationgroup"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 )
 
@@ -54,6 +55,9 @@ type CreateParams struct {
 	TargetNamespace string
 	TargetClusterID uuid.UUID
 	RunnerClusterID uuid.UUID
+	// GroupID optionally places the new application in a group (folder). Nil
+	// creates it at the org root (ungrouped).
+	GroupID *uuid.UUID
 }
 
 // UpdateParams describes a change to an application. A nil field is unchanged.
@@ -89,6 +93,9 @@ func (s *Service) Create(ctx context.Context, orgID uuid.UUID, p CreateParams) (
 	if err := s.validate(ctx, orgID, p); err != nil {
 		return nil, err
 	}
+	if err := s.ensureGroup(ctx, orgID, p.GroupID); err != nil {
+		return nil, err
+	}
 	return s.newCreate(orgID, p).Save(ctx)
 }
 
@@ -100,6 +107,9 @@ func (s *Service) Adopt(ctx context.Context, orgID uuid.UUID, p ImportParams) (*
 	if err := s.validate(ctx, orgID, p); err != nil {
 		return nil, err
 	}
+	if err := s.ensureGroup(ctx, orgID, p.GroupID); err != nil {
+		return nil, err
+	}
 	return s.newCreate(orgID, p).
 		SetImported(true).
 		Save(ctx)
@@ -108,12 +118,16 @@ func (s *Service) Adopt(ctx context.Context, orgID uuid.UUID, p ImportParams) (*
 // newCreate builds the ent create shared by Create and Adopt from the validated
 // params.
 func (s *Service) newCreate(orgID uuid.UUID, p CreateParams) *ent.ApplicationCreate {
-	return s.ent.Application.Create().
+	c := s.ent.Application.Create().
 		SetOrganizationID(orgID).
 		SetName(p.Name).
 		SetTargetNamespace(p.TargetNamespace).
 		SetTargetClusterID(p.TargetClusterID).
 		SetRunnerClusterID(p.RunnerClusterID)
+	if p.GroupID != nil {
+		c.SetGroupID(*p.GroupID)
+	}
+	return c
 }
 
 // Update changes mutable fields of an application scoped to the organization.
@@ -142,6 +156,45 @@ func (s *Service) Delete(ctx context.Context, orgID, id uuid.UUID) error {
 		return err
 	}
 	return s.ent.Application.DeleteOne(app).Exec(ctx)
+}
+
+// SetGroup moves an application into a group (groupID set) or to the org root
+// (groupID nil), scoped to the organization. A non-nil group must belong to the
+// same organization.
+func (s *Service) SetGroup(ctx context.Context, orgID, id uuid.UUID, groupID *uuid.UUID) (*ent.Application, error) {
+	app, err := s.Get(ctx, orgID, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.ensureGroup(ctx, orgID, groupID); err != nil {
+		return nil, err
+	}
+	upd := app.Update()
+	if groupID != nil {
+		upd.SetGroupID(*groupID)
+	} else {
+		upd.ClearGroupID()
+	}
+	return upd.Save(ctx)
+}
+
+// ensureGroup checks that a non-nil group exists in the organization (the
+// tenancy boundary for the group reference). A nil group is the org root and
+// always valid.
+func (s *Service) ensureGroup(ctx context.Context, orgID uuid.UUID, groupID *uuid.UUID) error {
+	if groupID == nil {
+		return nil
+	}
+	exists, err := s.ent.ApplicationGroup.Query().
+		Where(applicationgroup.OrganizationID(orgID), applicationgroup.ID(*groupID)).
+		Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return validationErr("application group not found in this organization")
+	}
+	return nil
 }
 
 // validate checks the cluster pairing for a create.

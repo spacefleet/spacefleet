@@ -32,6 +32,8 @@ type Application struct {
 	TargetClusterID uuid.UUID `json:"target_cluster_id,omitempty"`
 	// RunnerClusterID holds the value of the "runner_cluster_id" field.
 	RunnerClusterID uuid.UUID `json:"runner_cluster_id,omitempty"`
+	// GroupID holds the value of the "group_id" field.
+	GroupID uuid.UUID `json:"group_id,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -99,7 +101,7 @@ func (*Application) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullString)
 		case application.FieldCreatedAt, application.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
-		case application.FieldID, application.FieldOrganizationID, application.FieldTargetClusterID, application.FieldRunnerClusterID:
+		case application.FieldID, application.FieldOrganizationID, application.FieldTargetClusterID, application.FieldRunnerClusterID, application.FieldGroupID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -157,6 +159,12 @@ func (_m *Application) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field runner_cluster_id", values[i])
 			} else if value != nil {
 				_m.RunnerClusterID = *value
+			}
+		case application.FieldGroupID:
+			if value, ok := values[i].(*uuid.UUID); !ok {
+				return fmt.Errorf("unexpected type %T for field group_id", values[i])
+			} else if value != nil {
+				_m.GroupID = *value
 			}
 		case application.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -238,6 +246,9 @@ func (_m *Application) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("runner_cluster_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RunnerClusterID))
+	builder.WriteString(", ")
+	builder.WriteString("group_id=")
+	builder.WriteString(fmt.Sprintf("%v", _m.GroupID))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

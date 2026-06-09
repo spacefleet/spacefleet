@@ -70,6 +70,20 @@ func (_c *ApplicationCreate) SetRunnerClusterID(v uuid.UUID) *ApplicationCreate 
 	return _c
 }
 
+// SetGroupID sets the "group_id" field.
+func (_c *ApplicationCreate) SetGroupID(v uuid.UUID) *ApplicationCreate {
+	_c.mutation.SetGroupID(v)
+	return _c
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_c *ApplicationCreate) SetNillableGroupID(v *uuid.UUID) *ApplicationCreate {
+	if v != nil {
+		_c.SetGroupID(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *ApplicationCreate) SetCreatedAt(v time.Time) *ApplicationCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -273,6 +287,10 @@ func (_c *ApplicationCreate) createSpec() (*Application, *sqlgraph.CreateSpec) {
 		_spec.SetField(application.FieldTargetNamespace, field.TypeString, value)
 		_node.TargetNamespace = value
 	}
+	if value, ok := _c.mutation.GroupID(); ok {
+		_spec.SetField(application.FieldGroupID, field.TypeUUID, value)
+		_node.GroupID = value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(application.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -444,6 +462,24 @@ func (u *ApplicationUpsert) UpdateRunnerClusterID() *ApplicationUpsert {
 	return u
 }
 
+// SetGroupID sets the "group_id" field.
+func (u *ApplicationUpsert) SetGroupID(v uuid.UUID) *ApplicationUpsert {
+	u.Set(application.FieldGroupID, v)
+	return u
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdateGroupID() *ApplicationUpsert {
+	u.SetExcluded(application.FieldGroupID)
+	return u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *ApplicationUpsert) ClearGroupID() *ApplicationUpsert {
+	u.SetNull(application.FieldGroupID)
+	return u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (u *ApplicationUpsert) SetUpdatedAt(v time.Time) *ApplicationUpsert {
 	u.Set(application.FieldUpdatedAt, v)
@@ -577,6 +613,27 @@ func (u *ApplicationUpsertOne) SetRunnerClusterID(v uuid.UUID) *ApplicationUpser
 func (u *ApplicationUpsertOne) UpdateRunnerClusterID() *ApplicationUpsertOne {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.UpdateRunnerClusterID()
+	})
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *ApplicationUpsertOne) SetGroupID(v uuid.UUID) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetGroupID(v)
+	})
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdateGroupID() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateGroupID()
+	})
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *ApplicationUpsertOne) ClearGroupID() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearGroupID()
 	})
 }
 
@@ -882,6 +939,27 @@ func (u *ApplicationUpsertBulk) SetRunnerClusterID(v uuid.UUID) *ApplicationUpse
 func (u *ApplicationUpsertBulk) UpdateRunnerClusterID() *ApplicationUpsertBulk {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.UpdateRunnerClusterID()
+	})
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *ApplicationUpsertBulk) SetGroupID(v uuid.UUID) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetGroupID(v)
+	})
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdateGroupID() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateGroupID()
+	})
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *ApplicationUpsertBulk) ClearGroupID() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.ClearGroupID()
 	})
 }
 
