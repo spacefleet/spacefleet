@@ -211,7 +211,7 @@ describe("WorkflowCanvas", () => {
     expect(await screen.findByText("helm release")).toBeInTheDocument();
   });
 
-  it("adding OpenTofu creates two linked plan + apply nodes", async () => {
+  it("adding OpenTofu opens a single create form and saves one node", async () => {
     defaultGets([]);
     renderWorkflow();
     await screen.findByText(/no components yet/i);
@@ -219,13 +219,14 @@ describe("WorkflowCanvas", () => {
     await userEvent.click(screen.getByRole("button", { name: /^add$/i }));
     await userEvent.click(screen.getByRole("menuitem", { name: /opentofu/i }));
 
-    // Adding opens the plan node's editor directly. The pair is provisional until
-    // saved, so commit it with Save node — that returns to the canvas where both
-    // nodes, named for their stage, are now shown.
-    await screen.findByText("terraform plan");
+    // Adding opens the create form for one OpenTofu node (no plan/apply split).
+    // It's provisional until saved; Save node commits it and returns to the
+    // canvas where the single node is shown.
+    await screen.findByText("opentofu");
     await userEvent.click(screen.getByRole("button", { name: /save node/i }));
-    expect(await screen.findByText("terraform plan")).toBeInTheDocument();
-    expect(screen.getByText("terraform apply")).toBeInTheDocument();
+    expect(await screen.findByText("opentofu")).toBeInTheDocument();
+    expect(screen.queryByText("terraform plan")).not.toBeInTheDocument();
+    expect(screen.queryByText("terraform apply")).not.toBeInTheDocument();
   });
 
   it("backing out of a freshly added node without saving discards it", async () => {
@@ -244,17 +245,17 @@ describe("WorkflowCanvas", () => {
     expect(await screen.findByText(/no components yet/i)).toBeInTheDocument();
   });
 
-  it("OpenTofu apply node depends on the plan node and is gated by default (saved on commit)", async () => {
+  it("saves OpenTofu as a single gated node with no authored command", async () => {
     defaultGets([]);
     renderWorkflow();
     await screen.findByText(/no components yet/i);
 
     await userEvent.click(screen.getByRole("button", { name: /^add$/i }));
     await userEvent.click(screen.getByRole("menuitem", { name: /opentofu/i }));
-    await screen.findByText("terraform plan");
+    await screen.findByText("opentofu");
 
-    // The new pair is provisional until committed; Save node commits it, after
-    // which the debounced auto-save persists both nodes.
+    // The new node is provisional until committed; Save node commits it, after
+    // which the debounced auto-save persists it as a single terraform component.
     await userEvent.click(screen.getByRole("button", { name: /save node/i }));
     await waitFor(() => expect(mockApi.PUT).toHaveBeenCalled(), {
       timeout: 2000,
@@ -264,18 +265,49 @@ describe("WorkflowCanvas", () => {
       components: {
         id: string;
         name: string;
+        type: string;
         depends_on: string[];
         requires_approval: boolean;
         config: Record<string, string>;
       }[];
     };
-    const plan = body.components.find((c) => c.name === "terraform plan")!;
-    const apply = body.components.find((c) => c.name === "terraform apply")!;
-    expect(plan.config.command).toBe("plan");
-    expect(plan.requires_approval).toBe(false);
-    expect(apply.config.command).toBe("apply");
-    expect(apply.requires_approval).toBe(true);
-    expect(apply.depends_on).toEqual([plan.id]);
+    const tf = body.components.filter((c) => c.type === "terraform");
+    expect(tf).toHaveLength(1);
+    // No authored command — it's synthesized into plan/apply units at run time.
+    expect(tf[0].config.command).toBeUndefined();
+    // Gated by default (apply pauses for review).
+    expect(tf[0].requires_approval).toBe(true);
+    expect(tf[0].config.backend).toBe("kubernetes");
+  });
+
+  it("reloading the create page re-seeds the form instead of 'node not found'", async () => {
+    defaultGets([]); // server has no such node (it was never saved)
+
+    // Land directly on the editor's create route with ?new=terraform, as a page
+    // reload would — the node lives only in the URL, not on the server.
+    const newId = "44444444-4444-4444-4444-444444444444";
+    render(
+      <MemoryRouter
+        initialEntries={[
+          `/applications/app-1/workflow/nodes/${newId}?new=terraform`,
+        ]}
+      >
+        <Routes>
+          <Route path="/applications/:appId/workflow" element={<WorkflowLayout />}>
+            <Route index element={<WorkflowCanvas />} />
+            <Route path="nodes/:nodeId" element={<NodeEditor />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    // The create form is shown (seeded OpenTofu node), not the not-found message.
+    expect(await screen.findByText("opentofu")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/isn’t in this workflow/i),
+    ).not.toBeInTheDocument();
+    // It's a terraform node: the OpenTofu working-path field is present.
+    expect(screen.getByText(/holding the OpenTofu files/i)).toBeInTheDocument();
   });
 
   // A terraform plan node already loaded in the workflow, so we can open it in

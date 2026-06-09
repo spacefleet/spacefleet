@@ -64,7 +64,6 @@ export function WorkflowCanvas() {
     onNodeDrag,
     onNodeDragStop,
     addComponent,
-    addTerraform,
     addGroup,
     groupSelection,
     deleteNode,
@@ -158,7 +157,7 @@ export function WorkflowCanvas() {
                   {
                     label: "OpenTofu",
                     icon: <Layers className="h-3.5 w-3.5" />,
-                    onSelect: () => addTerraform(),
+                    onSelect: () => addComponent("terraform"),
                   },
                   {
                     label: "Group",

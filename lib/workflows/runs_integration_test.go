@@ -219,6 +219,91 @@ func TestBeginRunSnapshotAndComponentRuns(t *testing.T) {
 	}
 }
 
+// TestBeginRunExpandsTerraform proves a single authored OpenTofu component
+// fans out, at run time, into a plan unit (the authored id) and an apply unit (a
+// derived id) — two pending ComponentRuns whose ids match the two expanded
+// snapshot nodes, with the apply unit gated by the component's requires_approval.
+func TestBeginRunExpandsTerraform(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+
+	tf, err := client.Component.Create().
+		SetOrganizationID(org.ID).
+		SetApplicationID(app.ID).
+		SetName("infra").
+		SetType("terraform").
+		SetConfig(map[string]string{"repo_url": "https://github.com/acme/infra", "path": "envs/prod", "backend": "s3"}).
+		SetRequiresApproval(true).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("create terraform component: %v", err)
+	}
+
+	run, err := svc.BeginRun(ctx, org.ID, app.ID, ActionDeploy)
+	if err != nil {
+		t.Fatalf("BeginRun: %v", err)
+	}
+
+	// The snapshot holds two execution nodes: plan (authored id) and apply (derived).
+	var snap GraphSnapshot
+	if err := json.Unmarshal([]byte(run.Graph), &snap); err != nil {
+		t.Fatalf("decode snapshot: %v", err)
+	}
+	if len(snap.Nodes) != 2 {
+		t.Fatalf("snapshot nodes = %d, want 2 (plan + apply)", len(snap.Nodes))
+	}
+	applyID := deriveApplyID(tf.ID)
+	var sawPlan, sawApply bool
+	for _, n := range snap.Nodes {
+		switch n.ID {
+		case tf.ID:
+			sawPlan = true
+			if n.Config["command"] != "plan" || n.RequiresApproval {
+				t.Errorf("plan unit wrong: %+v", n)
+			}
+		case applyID:
+			sawApply = true
+			if n.Config["command"] != "apply" || !n.RequiresApproval {
+				t.Errorf("apply unit wrong: %+v", n)
+			}
+			if n.ComponentID != tf.ID {
+				t.Errorf("apply ComponentID = %s, want authored %s", n.ComponentID, tf.ID)
+			}
+			if len(n.DependsOn) != 1 || n.DependsOn[0] != tf.ID {
+				t.Errorf("apply deps = %v, want [%s]", n.DependsOn, tf.ID)
+			}
+		default:
+			t.Errorf("unexpected snapshot node id %s", n.ID)
+		}
+	}
+	if !sawPlan || !sawApply {
+		t.Fatalf("expected both plan and apply units; sawPlan=%v sawApply=%v", sawPlan, sawApply)
+	}
+
+	// Two ComponentRuns, one per execution unit, keyed by the unit ids.
+	_, steps, err := svc.GetRun(ctx, org.ID, app.ID, run.ID)
+	if err != nil {
+		t.Fatalf("GetRun: %v", err)
+	}
+	if len(steps) != 2 {
+		t.Fatalf("component runs = %d, want 2", len(steps))
+	}
+	ids := map[uuid.UUID]bool{}
+	for _, cr := range steps {
+		ids[cr.ComponentID] = true
+		if cr.Status != componentrun.StatusPending {
+			t.Errorf("step %s status = %q, want pending", cr.Name, cr.Status)
+		}
+	}
+	if !ids[tf.ID] || !ids[applyID] {
+		t.Errorf("component run ids = %v, want plan %s + apply %s", ids, tf.ID, applyID)
+	}
+}
+
 // TestBeginRunInFlightConflict proves a second BeginRun while a run is still
 // pending/running is refused with ErrRunInFlight (the handler's 409), and that no
 // orphan run is created.

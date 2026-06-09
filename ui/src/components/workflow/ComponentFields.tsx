@@ -25,8 +25,8 @@ export interface EditableComponent {
   type: ComponentType;
   config: Record<string, string>;
   continue_on_failure: boolean;
-  // When true the run parks at this node (status awaiting_approval) until a
-  // human approves it. The terraform apply node defaults this on; helm/manifest
+  // When true the run parks for a human before this step runs. An OpenTofu node
+  // defaults this on (its apply waits for review after the plan); helm/manifest
   // nodes can opt in too.
   requires_approval: boolean;
   target_cluster_id: string | null;
@@ -256,11 +256,12 @@ export function ComponentFields({
         Continue on failure
       </label>
 
-      {/* Approval gate. A terraform apply node frames it as an Auto-approve
-          opt-out (gated by default); every other node frames it as an opt-in
-          manual-approval requirement. Both edit the same requires_approval flag. */}
-      {component.type === "terraform" && component.config.command === "apply" ? (
-        <Field help="Off (the default): the run pauses here for a human to review the plan and approve before applying.">
+      {/* Approval gate. An OpenTofu node frames it as an Auto-approve opt-out
+          (gated by default — the run plans, then pauses for a human to review
+          before applying); every other node frames it as an opt-in manual-
+          approval requirement. Both edit the same requires_approval flag. */}
+      {component.type === "terraform" ? (
+        <Field help="Off (the default): the run plans, then pauses for a human to review the plan and approve before applying.">
           <label className="flex items-center gap-2 text-sm text-neutral-700">
             <input
               type="checkbox"
@@ -427,9 +428,10 @@ function ManifestConfig({
   );
 }
 
-// TerraformConfig edits an OpenTofu node: the git source (repo_url/ref/path),
-// the tofu command (plan/apply — set by addTerraform, shown read-only so the
-// two-node shape stays intact), and the backend.
+// TerraformConfig edits an OpenTofu node: the git source (repo_url/ref/path)
+// and the backend. There is no command field — an OpenTofu node is a single
+// step that runs plan then (once approved) apply; the run synthesizes those two
+// commands, so the user configures the source once here.
 //
 // Backend mode (config.backend_mode, default "managed") splits two worlds:
 //   - managed: Spacefleet manages state (Kubernetes default, or a custom
@@ -458,7 +460,6 @@ function TerraformConfig({
   const isByo = backendMode === "byo";
   const backend = config.backend || "kubernetes";
   const isCustom = backend !== "kubernetes";
-  const command = config.command || "plan";
   const backendRows = parseBackendConfig(config.backend_config);
 
   // Only aws credentials can be injected into the OpenTofu run for now.
@@ -475,15 +476,6 @@ function TerraformConfig({
 
   return (
     <>
-      <Field label="Stage" help="Set when the OpenTofu nodes are created.">
-        <input
-          type="text"
-          className="w-full border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-600"
-          value={command === "apply" ? "Apply" : "Plan"}
-          readOnly
-          disabled
-        />
-      </Field>
       <Field label="Repository URL">
         {repoUrlPicker && <div className="mb-1.5">{repoUrlPicker}</div>}
         <input

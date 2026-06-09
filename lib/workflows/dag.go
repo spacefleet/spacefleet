@@ -198,10 +198,11 @@ func hasTargetCluster(n ComponentInput) bool {
 // helm/manifest (helm.ConfigRepoURL / helm.ConfigGitRef) and the working-path
 // key with manifest (manifestConfigPath).
 const (
-	// terraformConfigCommand selects the tofu verb the node runs: "plan"
-	// (produces the review material) or "apply" (mutates infrastructure). A
-	// terraform deployment is modelled as two nodes — a plan node and an apply
-	// node that depends on it and is gated by requires_approval.
+	// terraformConfigCommand selects the tofu verb an execution unit runs: "plan"
+	// (produces the review material) or "apply" (mutates infrastructure). It is
+	// NOT authored: an OpenTofu component is a single node that expandExecutionNodes
+	// splits at run time into a plan unit and an apply unit (the apply gated by the
+	// component's requires_approval) — this key is synthesized per unit there.
 	terraformConfigCommand = "command"
 	// terraformConfigBackend names the OpenTofu state backend. Defaults to
 	// "kubernetes" (state stored as Secrets in the runner cluster) when empty.
@@ -230,11 +231,13 @@ const (
 )
 
 // validateTerraformConfig checks a terraform node's config: a git repo_url + a
-// working path are required; command must be plan or apply; and backend_config,
-// when present, must parse as a JSON object (so a malformed override is rejected
-// at write time rather than failing mid-run in the worker). backend is optional
-// (defaults to kubernetes). Failures wrap ErrInvalidConfig so a handler maps
-// them to a 400.
+// working path are required, and backend_config — when present — must parse as a
+// JSON object (so a malformed override is rejected at write time rather than
+// failing mid-run in the worker). The plan/apply command is NOT authored: an
+// OpenTofu component is one node, expanded into a plan unit + an apply unit at
+// run time (see expandExecutionNodes), so command is synthesized, not validated
+// here. backend is optional (defaults to kubernetes). Failures wrap
+// ErrInvalidConfig so a handler maps them to a 400.
 func validateTerraformConfig(n ComponentInput) error {
 	// A terraform component manages cloud/infra, not a Kubernetes workload, so it
 	// carries no cluster/namespace target — reject one if the canvas sends it.
@@ -254,13 +257,6 @@ func validateTerraformConfig(n ComponentInput) error {
 	backend := n.Config[terraformConfigBackend]
 	if n.Config[terraformConfigBackendMode] != tofu.ModeBYO && (backend == "" || backend == tofu.DefaultBackend) {
 		return fmt.Errorf("%w: node %q (terraform) requires an explicit state backend: set %q to byo, or set %q to a backend other than %q", ErrInvalidConfig, n.Name, terraformConfigBackendMode, terraformConfigBackend, tofu.DefaultBackend)
-	}
-	switch n.Config[terraformConfigCommand] {
-	case terraformCommandPlan, terraformCommandApply:
-	case "":
-		return fmt.Errorf("%w: node %q (terraform) requires %q (one of %q, %q)", ErrInvalidConfig, n.Name, terraformConfigCommand, terraformCommandPlan, terraformCommandApply)
-	default:
-		return fmt.Errorf("%w: node %q (terraform) has unknown %s %q", ErrInvalidConfig, n.Name, terraformConfigCommand, n.Config[terraformConfigCommand])
 	}
 	if raw := n.Config[terraformConfigBackendConfig]; raw != "" {
 		var obj map[string]any

@@ -94,29 +94,29 @@ function absPos(ns: FlowNode[], n: FlowNode): { x: number; y: number } {
   };
 }
 
-// provisionalBatch returns the set of still-provisional node ids reachable from
-// `id` through edges (id itself included). Nodes added as a connected unit — the
-// terraform plan + apply pair — commit or discard together, so the editor acts
-// on the whole batch, not just the node it happens to be showing. Traversal
-// stops at any non-provisional node, so an already-saved neighbor is never
-// dragged in.
-function provisionalBatch(
-  id: string,
-  edges: Edge[],
-  provisional: Set<string>,
-): Set<string> {
-  const batch = new Set<string>();
-  const stack = [id];
-  while (stack.length > 0) {
-    const cur = stack.pop() as string;
-    if (batch.has(cur) || !provisional.has(cur)) continue;
-    batch.add(cur);
-    for (const e of edges) {
-      if (e.source === cur) stack.push(e.target);
-      if (e.target === cur) stack.push(e.source);
-    }
+// seedComponent builds a fresh, empty editable component for a newly-added node
+// of the given type. terraform is a single OpenTofu node that runs plan → apply:
+// it carries no command (synthesized per run on the server) and defaults to
+// gated (requires_approval = true → apply pauses for review); the editor frames
+// that as an "Auto-approve apply" opt-out.
+function seedComponent(id: string, type: ComponentType): EditableComponent {
+  const base = {
+    id,
+    type,
+    continue_on_failure: false,
+    target_cluster_id: null,
+    target_namespace: "",
+    chart_credential_id: null,
+    github_installation_id: null,
+  };
+  switch (type) {
+    case "helm":
+      return { ...base, name: "helm release", config: { chart_source: "http_repo" }, requires_approval: false };
+    case "terraform":
+      return { ...base, name: "opentofu", config: { backend: "kubernetes" }, requires_approval: true };
+    default:
+      return { ...base, name: "manifest apply", config: {}, requires_approval: false };
   }
-  return batch;
 }
 
 // toEditable strips position/depends_on/group_id (which live on the node + edges)
@@ -171,7 +171,6 @@ interface WorkflowDraftValue {
   onNodeDragStop: (node: Node) => void;
 
   addComponent: (type: ComponentType) => void;
-  addTerraform: () => void;
   addGroup: () => void;
   groupSelection: (ids: string[]) => void;
   updateComponent: (next: EditableComponent) => void;
@@ -182,6 +181,12 @@ interface WorkflowDraftValue {
   // from the saved payload until the editor commits it, so backing out of the
   // editor leaves nothing behind. The node editor drives these.
   isProvisional: (id: string) => boolean;
+  // ensureProvisional creates the provisional node for a given id+type if it
+  // doesn't already exist. The editor calls it on mount so a deep link / page
+  // reload to a not-yet-saved create page re-seeds a fresh node instead of
+  // showing "node not found"; addComponent navigates here rather than mutating
+  // state itself, so creation is driven entirely by the route.
+  ensureProvisional: (id: string, type: ComponentType) => void;
   commitComponent: (next: EditableComponent) => void;
   discardNewNode: (id: string) => void;
 
@@ -484,121 +489,52 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     });
   }, [clearDropHighlights, markDirty]);
 
-  const addComponent = useCallback((type: ComponentType) => {
-    const id = crypto.randomUUID();
-    const editable: EditableComponent = {
-      id,
-      name: type === "helm" ? "helm release" : "manifest apply",
-      type,
-      config: type === "helm" ? { chart_source: "http_repo" } : {},
-      continue_on_failure: false,
-      requires_approval: false,
-      target_cluster_id: null,
-      target_namespace: "",
-      chart_credential_id: null,
-      github_installation_id: null,
-    };
-    setNodes((ns) => {
-      // Tile new top-level nodes into a non-overlapping grid (same spacing as the
-      // load-time fallback layout), rather than stacking them diagonally near the
-      // center where they overlap and are hard to select. Children of a group are
-      // positioned relative to their parent, so they don't count toward the slot.
-      const slot = ns.filter((n) => n.type === "component" && !n.parentId).length;
-      return [
-      ...ns,
-      {
-        id,
-        type: "component",
-        position: { x: 80 + (slot % 4) * 240, y: 80 + Math.floor(slot / 4) * 160 },
-        data: {
-          name: editable.name,
-          type: editable.type,
-          continueOnFailure: false,
-          component: editable,
-        },
-      },
-      ];
-    });
-    // Provisional until the editor commits it — no markDirty, so an abandoned add
-    // never auto-saves (the node is excluded from the payload while provisional).
-    setProvisional((p) => new Set(p).add(id));
-    // Go straight to the node's editor so the user fills it in immediately,
-    // rather than landing on a half-configured node on the canvas. (No
-    // requestFocus: we're navigating off the canvas, so there's nothing to fit.)
-    navigate(`/applications/${appId}/workflow/nodes/${id}`);
-  }, [appId, navigate]);
+  // addComponent navigates to the node editor's create route (carrying the type
+  // in a `new` query param) WITHOUT mutating state. The editor calls
+  // ensureProvisional on mount to create the node, so creation is driven entirely
+  // by the route — a page reload on the create page re-seeds a fresh node instead
+  // of landing on "node not found". (No requestFocus: we navigate off the canvas.)
+  const addComponent = useCallback(
+    (type: ComponentType) => {
+      const id = crypto.randomUUID();
+      navigate(`/applications/${appId}/workflow/nodes/${id}?new=${type}`);
+    },
+    [appId, navigate],
+  );
 
-  // addTerraform adds a terraform deployment as TWO linked nodes — a plan node
-  // and an apply node that depends on it — plus the connecting edge (depends_on
-  // is derived from edges at save time, so the edge is what records the link).
-  // The apply node defaults to requires_approval=true so the run parks for a
-  // human to review the plan before applying. Both nodes are seeded with the
-  // same git source + backend so the user fills the repo details once on the
-  // plan node and copies them to apply (per-node config is the v1 tradeoff).
-  const addTerraform = useCallback(() => {
-    const planId = crypto.randomUUID();
-    const applyId = crypto.randomUUID();
-    const seed: Record<string, string> = {
-      repo_url: "",
-      git_ref: "",
-      path: "",
-      backend: "kubernetes",
-    };
-    const plan: EditableComponent = {
-      id: planId,
-      name: "terraform plan",
-      type: "terraform",
-      config: { ...seed, command: "plan" },
-      continue_on_failure: false,
-      requires_approval: false,
-      target_cluster_id: null,
-      target_namespace: "",
-      chart_credential_id: null,
-      github_installation_id: null,
-    };
-    const apply: EditableComponent = {
-      id: applyId,
-      name: "terraform apply",
-      type: "terraform",
-      config: { ...seed, command: "apply" },
-      continue_on_failure: false,
-      requires_approval: true,
-      target_cluster_id: null,
-      target_namespace: "",
-      chart_credential_id: null,
-      github_installation_id: null,
-    };
-    setNodes((ns) => {
-      const slot = ns.filter((n) => n.type === "component" && !n.parentId).length;
-      const x = 80 + (slot % 4) * 240;
-      const y = 80 + Math.floor(slot / 4) * 160;
-      const mk = (c: EditableComponent, dy: number): FlowNode => ({
-        id: c.id,
-        type: "component",
-        position: { x, y: y + dy },
-        data: {
-          name: c.name,
-          type: c.type,
-          continueOnFailure: c.continue_on_failure,
-          component: c,
-        },
+  // ensureProvisional creates the provisional node for id+type if it isn't
+  // already in the draft (idempotent — safe to call repeatedly, e.g. across a
+  // StrictMode double-effect or a reload). It's provisional until the editor
+  // commits it — no markDirty, so an abandoned add never auto-saves (the node is
+  // excluded from the payload while provisional). A committed node is left alone.
+  const ensureProvisional = useCallback(
+    (id: string, type: ComponentType) => {
+      if (nodes.some((n) => n.id === id)) return;
+      const editable = seedComponent(id, type);
+      setNodes((ns) => {
+        if (ns.some((n) => n.id === id)) return ns;
+        // Tile new top-level nodes into a non-overlapping grid (same spacing as the
+        // load-time fallback layout) so they don't stack and overlap.
+        const slot = ns.filter((n) => n.type === "component" && !n.parentId).length;
+        return [
+          ...ns,
+          {
+            id,
+            type: "component",
+            position: { x: 80 + (slot % 4) * 240, y: 80 + Math.floor(slot / 4) * 160 },
+            data: {
+              name: editable.name,
+              type: editable.type,
+              continueOnFailure: editable.continue_on_failure,
+              component: editable,
+            },
+          },
+        ];
       });
-      return [...ns, mk(plan, 0), mk(apply, 160)];
-    });
-    // The edge plan -> apply is what buildPayload turns into apply.depends_on.
-    setEdges((es) => [...es, { id: `${planId}->${applyId}`, source: planId, target: applyId }]);
-    // Both nodes are provisional (committed/discarded as a unit — see
-    // provisionalBatch); saving the plan persists the pair, backing out drops it.
-    setProvisional((p) => {
-      const n = new Set(p);
-      n.add(planId);
-      n.add(applyId);
-      return n;
-    });
-    // Open the plan node's editor first — the user fills the repo/source there,
-    // then copies it to apply (per-node config is the v1 tradeoff).
-    navigate(`/applications/${appId}/workflow/nodes/${planId}`);
-  }, [appId, navigate]);
+      setProvisional((p) => new Set(p).add(id));
+    },
+    [nodes],
+  );
 
   const addGroup = useCallback(() => {
     const id = crypto.randomUUID();
@@ -715,42 +651,37 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   );
 
   // commitComponent is the editor's Save: it writes the working copy back into
-  // the draft and clears the provisional flag for the node (and any siblings
-  // added with it), so the node now travels in the save payload and the debounced
-  // auto-save persists it.
+  // the draft and clears the node's provisional flag, so it now travels in the
+  // save payload and the debounced auto-save persists it.
   const commitComponent = useCallback(
     (next: EditableComponent) => {
       updateComponent(next);
       if (!provisional.has(next.id)) return;
-      const batch = provisionalBatch(next.id, edges, provisional);
       setProvisional((prev) => {
         const n = new Set(prev);
-        for (const id of batch) n.delete(id);
+        n.delete(next.id);
         return n;
       });
     },
-    [updateComponent, provisional, edges],
+    [updateComponent, provisional],
   );
 
   // discardNewNode is the editor's Cancel for a node that was never committed: it
-  // removes the node (and any provisional siblings) and their edges from the
-  // draft. A no-op for an already-committed node — backing out of those just
-  // drops the editor's local edits without touching the draft.
+  // removes the node and any edges touching it from the draft. A no-op for an
+  // already-committed node — backing out of those just drops the editor's local
+  // edits without touching the draft.
   const discardNewNode = useCallback(
     (id: string) => {
       if (!provisional.has(id)) return;
-      const batch = provisionalBatch(id, edges, provisional);
-      setNodes((ns) => ns.filter((n) => !batch.has(n.id)));
-      setEdges((es) =>
-        es.filter((e) => !batch.has(e.source) && !batch.has(e.target)),
-      );
+      setNodes((ns) => ns.filter((n) => n.id !== id));
+      setEdges((es) => es.filter((e) => e.source !== id && e.target !== id));
       setProvisional((prev) => {
         const n = new Set(prev);
-        for (const x of batch) n.delete(x);
+        n.delete(id);
         return n;
       });
     },
-    [provisional, edges],
+    [provisional],
   );
 
   const deleteNode = useCallback((id: string) => {
@@ -935,7 +866,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       onNodeDrag,
       onNodeDragStop,
       addComponent,
-      addTerraform,
+      ensureProvisional,
       addGroup,
       groupSelection,
       updateComponent,
@@ -972,7 +903,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       onNodeDrag,
       onNodeDragStop,
       addComponent,
-      addTerraform,
+      ensureProvisional,
       addGroup,
       groupSelection,
       updateComponent,

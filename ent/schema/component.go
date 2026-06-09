@@ -54,10 +54,11 @@ func (Component) Fields() []ent.Field {
 		field.UUID("organization_id", uuid.UUID{}).Immutable(),
 		field.UUID("application_id", uuid.UUID{}).Immutable(),
 		field.String("name").NotEmpty(),
-		// The component type. Only helm + manifest today; the enum lets the set grow
-		// without a migration for the common case.
+		// The component type: a Helm release, a manifest apply, or an OpenTofu
+		// plan/apply. The enum lets the set grow without a migration for the common
+		// case (the components.type column is unconstrained TEXT).
 		field.Enum("type").
-			Values("helm", "manifest").
+			Values("helm", "manifest", "terraform").
 			Default("helm"),
 		// Non-secret, type-specific parameters. Stored as a flat string map so the
 		// shape can vary per type without a migration, exactly as Application stored

@@ -1,12 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import { useWorkflowDraft } from "../contexts/WorkflowDraftContext";
+import type { components } from "../api/schema";
 import {
   ComponentFields,
   type EditableComponent,
 } from "../components/workflow/ComponentFields";
 import { VariablesEditor } from "../components/VariablesEditor";
+
+type ComponentType = components["schemas"]["ComponentType"];
+
+// The component types the create route (?new=…) accepts, so a hand-edited or
+// stale URL can't seed a bogus node.
+const NEW_TYPES: ComponentType[] = ["helm", "manifest", "terraform"];
 
 // componentsEqual compares two editable components field by field (config is a
 // flat string map) so the editor can tell whether its local working copy still
@@ -41,6 +48,7 @@ function componentsEqual(a: EditableComponent, b: EditableComponent): boolean {
 // the canvas through the router (never raw history).
 export function NodeEditor() {
   const { appId = "", nodeId = "" } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const {
     canEdit,
@@ -53,6 +61,7 @@ export function NodeEditor() {
     githubEnabled,
     getComponent,
     isProvisional,
+    ensureProvisional,
     commitComponent,
     discardNewNode,
     deleteNode,
@@ -61,6 +70,31 @@ export function NodeEditor() {
   // The committed node as it currently lives in the shared draft.
   const committed = getComponent(nodeId);
   const isNew = isProvisional(nodeId);
+
+  // Create flow: when the route carries ?new=<type> and the node isn't in the
+  // draft yet, seed it. This runs both on the first add (addComponent navigates
+  // here) and after a page reload of the create page — which re-fetches the
+  // workflow without the still-unsaved node — so the reload re-seeds a fresh
+  // create form instead of "node not found". Gated on !loading so it fires after
+  // the workflow load settles (not against the pre-load empty draft).
+  //
+  // discardedRef stops the seed from coming back to life after the user cancels:
+  // discardNewNode removes the node, which re-fires this effect (committed flips
+  // to null) and would otherwise recreate what we just discarded. It is NOT keyed
+  // on having-seeded-once, because a legitimate re-seed is required when a draft
+  // reload wipes the provisional node — the org context loads asynchronously and
+  // can trigger a second workflow load that resets the draft right after we seed,
+  // so the effect must re-seed then. cancel()/removeNode() set this before they
+  // discard; a page reload remounts the editor fresh, resetting it.
+  const newType = searchParams.get("new");
+  const discardedRef = useRef(false);
+  useEffect(() => {
+    if (loading || error) return;
+    if (committed || discardedRef.current) return;
+    if (newType && (NEW_TYPES as string[]).includes(newType)) {
+      ensureProvisional(nodeId, newType as ComponentType);
+    }
+  }, [loading, error, committed, newType, nodeId, ensureProvisional]);
 
   // Local working copy. Seeded once per node id from the committed value; edits
   // stay here until Save. (Local edits never call updateComponent, so `committed`
@@ -80,9 +114,14 @@ export function NodeEditor() {
   }
 
   // Cancel/Back: drop a provisional node entirely; for a committed node just
-  // leave (the local edits were never applied to the draft).
+  // leave (the local edits were never applied to the draft). discardedRef stops
+  // the create effect from re-seeding the node we're discarding before the
+  // navigation away unmounts the editor.
   function cancel() {
-    if (isNew) discardNewNode(nodeId);
+    if (isNew) {
+      discardedRef.current = true;
+      discardNewNode(nodeId);
+    }
     backToWorkflow();
   }
 
@@ -93,8 +132,12 @@ export function NodeEditor() {
   }
 
   function removeNode() {
-    if (isNew) discardNewNode(nodeId);
-    else deleteNode(nodeId);
+    if (isNew) {
+      discardedRef.current = true;
+      discardNewNode(nodeId);
+    } else {
+      deleteNode(nodeId);
+    }
     backToWorkflow();
   }
 

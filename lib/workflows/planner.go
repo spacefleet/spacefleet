@@ -92,7 +92,7 @@ func (w *WorkflowRunWorker) planManifest(ctx context.Context, app *ent.Applicati
 	resolved, err := w.resolver.Resolve(ctx, deploy.RunInputs{
 		OrgID:                app.OrganizationID,
 		ApplicationID:        app.ID,
-		ComponentID:          node.ID,
+		ComponentID:          node.ComponentID,
 		RunnerClusterID:      app.RunnerClusterID,
 		TargetClusterID:      targetClusterID,
 		Values:               "",
@@ -154,7 +154,8 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 
 	// Resolve the plan node id this component is bound to: a plan node is its own
 	// reference; an apply node points at its single upstream terraform plan node
-	// (guaranteed by validateWorkflow). Both the backend state Secret and the
+	// (guaranteed by expandExecutionNodes, which makes the apply unit depend on
+	// exactly its plan unit). Both the backend state Secret and the
 	// planfile-handover Secret are keyed off it so plan and apply share state and
 	// the apply applies the plan's saved planfile.
 	planID := node.ID
@@ -193,7 +194,7 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 	resolved, err := w.resolver.Resolve(ctx, deploy.RunInputs{
 		OrgID:                app.OrganizationID,
 		ApplicationID:        app.ID,
-		ComponentID:          node.ID,
+		ComponentID:          node.ComponentID,
 		RunnerClusterID:      app.RunnerClusterID,
 		TargetClusterID:      uuid.Nil,
 		Values:               "",
@@ -284,8 +285,8 @@ func tofuPlanArtifactSecret(runID, planID uuid.UUID) string {
 
 // upstreamTofuPlanID returns the id of the terraform plan node an apply node
 // depends on (its expanded depends_on holds component-level edges, with groups
-// already desugared). validateWorkflow guarantees an apply node has exactly one
-// such upstream plan node; a missing one (defensive) yields uuid.Nil, which
+// already desugared). expandExecutionNodes guarantees an apply unit depends on
+// exactly its plan unit; a missing one (defensive) yields uuid.Nil, which
 // leaves the planfile Secret unset so the apply script fails closed.
 func upstreamTofuPlanID(node GraphNode, byID map[uuid.UUID]GraphNode) uuid.UUID {
 	for _, dep := range node.DependsOn {
@@ -355,7 +356,7 @@ func (w *WorkflowRunWorker) planHelm(ctx context.Context, app *ent.Application, 
 	resolved, err := w.resolver.Resolve(ctx, deploy.RunInputs{
 		OrgID:                app.OrganizationID,
 		ApplicationID:        app.ID,
-		ComponentID:          node.ID,
+		ComponentID:          node.ComponentID,
 		RunnerClusterID:      app.RunnerClusterID,
 		TargetClusterID:      targetClusterID,
 		Values:               node.Config[helmConfigValues],

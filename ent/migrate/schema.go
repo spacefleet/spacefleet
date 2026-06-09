@@ -206,7 +206,7 @@ var (
 	ComponentsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "name", Type: field.TypeString},
-		{Name: "type", Type: field.TypeEnum, Enums: []string{"helm", "manifest"}, Default: "helm"},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"helm", "manifest", "terraform"}, Default: "helm"},
 		{Name: "config", Type: field.TypeJSON, Nullable: true},
 		{Name: "depends_on", Type: field.TypeJSON, Nullable: true},
 		{Name: "continue_on_failure", Type: field.TypeBool, Default: false},

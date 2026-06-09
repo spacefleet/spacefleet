@@ -270,9 +270,8 @@ func TestValidateConfig_TargetRules(t *testing.T) {
 // rejected — it has no injected kubeconfig.
 func TestValidateTerraformRequiresExplicitBackend(t *testing.T) {
 	base := map[string]string{
-		helm.ConfigRepoURL:     "https://github.com/acme/infra",
-		manifestConfigPath:     "envs/prod",
-		terraformConfigCommand: terraformCommandPlan,
+		helm.ConfigRepoURL: "https://github.com/acme/infra",
+		manifestConfigPath: "envs/prod",
 	}
 	mk := func(extra map[string]string) ComponentInput {
 		cfg := map[string]string{}
@@ -309,15 +308,14 @@ func TestValidateConfig_UnknownType(t *testing.T) {
 	}
 }
 
-// tfNode builds a minimal valid terraform plan node, overlaying any extra
-// config keys, so a test can focus on the key under test. It carries an explicit
+// tfNode builds a minimal valid terraform node, overlaying any extra config
+// keys, so a test can focus on the key under test. It carries an explicit
 // (non-kubernetes) backend, required now that terraform gets no injected
-// kubeconfig.
+// kubeconfig. command is not authored — it's synthesized per run.
 func tfNode(extra map[string]string) ComponentInput {
 	cfg := map[string]string{
 		helm.ConfigRepoURL:     "https://github.com/acme/infra",
 		manifestConfigPath:     "envs/prod",
-		terraformConfigCommand: terraformCommandPlan,
 		terraformConfigBackend: "s3",
 	}
 	for k, v := range extra {
@@ -363,47 +361,5 @@ func TestValidateTerraformConfig_BackendModeAndCloudCredential(t *testing.T) {
 	badCred := tfNode(map[string]string{terraformConfigCloudCredentialID: "not-a-uuid"})
 	if err := validateDAG([]ComponentInput{badCred}); !errors.Is(err, ErrInvalidConfig) {
 		t.Errorf("bad cloud_credential_id: expected ErrInvalidConfig, got %v", err)
-	}
-}
-
-func TestValidateTerraformApplyRequiresExactlyOnePlan(t *testing.T) {
-	t.Parallel()
-
-	plan := tfNode(nil) // command defaults to plan
-	plan.Name = "tf plan"
-
-	mkApply := func(deps ...uuid.UUID) ComponentInput {
-		a := tfNode(map[string]string{terraformConfigCommand: terraformCommandApply})
-		a.Name = "tf apply"
-		a.DependsOn = deps
-		return a
-	}
-
-	// Apply wired to its plan: valid.
-	if err := validateDAG([]ComponentInput{plan, mkApply(plan.ID)}); err != nil {
-		t.Errorf("apply depending on a plan should be valid, got %v", err)
-	}
-
-	// Apply with no upstream plan: rejected (no preapproved planfile).
-	if err := validateDAG([]ComponentInput{mkApply()}); !errors.Is(err, ErrInvalidConfig) {
-		t.Errorf("apply without a plan: expected ErrInvalidConfig, got %v", err)
-	}
-
-	// Apply depending only on a non-plan node (a helm gate): rejected.
-	h := helmNode(uuid.New())
-	if err := validateDAG([]ComponentInput{h, mkApply(h.ID)}); !errors.Is(err, ErrInvalidConfig) {
-		t.Errorf("apply depending on a non-plan: expected ErrInvalidConfig, got %v", err)
-	}
-
-	// Apply depending on a plan AND a helm gate: still valid (exactly one plan).
-	if err := validateDAG([]ComponentInput{plan, h, mkApply(plan.ID, h.ID)}); err != nil {
-		t.Errorf("apply with a plan plus a non-plan gate should be valid, got %v", err)
-	}
-
-	// Apply depending on two plan nodes: rejected (ambiguous which planfile).
-	plan2 := tfNode(nil)
-	plan2.Name = "tf plan 2"
-	if err := validateDAG([]ComponentInput{plan, plan2, mkApply(plan.ID, plan2.ID)}); !errors.Is(err, ErrInvalidConfig) {
-		t.Errorf("apply depending on two plans: expected ErrInvalidConfig, got %v", err)
 	}
 }

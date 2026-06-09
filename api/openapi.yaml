@@ -2949,14 +2949,17 @@ components:
           description: |
             Type-specific, non-secret parameters (helm: chart_source/repo_url/
             chart/version/git_ref/git_path/values/…; manifest: repo_url/git_ref/
-            path; terraform: repo_url/git_ref/path/command/backend/backend_config/
-            backend_mode/cloud_credential_id). `backend_mode` is `managed`
-            (default — Spacefleet generates the state backend override) or `byo`
-            (use the module's own backend block; `backend_config` entries are
-            passed as `tofu init -backend-config` flags). `cloud_credential_id`
-            is the UUID of an AWS cloud credential used to authenticate a `byo`
-            backend run. The `values` and `backend_config` keys are redacted for
-            callers below editor.
+            path; terraform: repo_url/git_ref/path/backend/backend_config/
+            backend_mode/cloud_credential_id). An OpenTofu component is a single
+            node: it runs `plan` then, once approved (see requires_approval),
+            `apply` — the run expands it into those two steps, so `command` is
+            not authored. `backend_mode` is `managed` (default — Spacefleet
+            generates the state backend override) or `byo` (use the module's own
+            backend block; `backend_config` entries are passed as `tofu init
+            -backend-config` flags). `cloud_credential_id` is the UUID of an AWS
+            cloud credential used to authenticate a `byo` backend run. The
+            `values` and `backend_config` keys are redacted for callers below
+            editor.
         depends_on:
           type: array
           items:

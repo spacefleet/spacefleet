@@ -48,7 +48,13 @@ type GraphSnapshot struct {
 // component-level edges (group references desugared into member ids). group_id
 // records the authored group membership for the run view only.
 type GraphNode struct {
-	ID                   uuid.UUID         `json:"id"`
+	ID uuid.UUID `json:"id"`
+	// ComponentID is the authored component this execution node derives from. It
+	// equals ID for every node except an OpenTofu apply unit, which carries a
+	// synthetic ID (see expandExecutionNodes) but must still resolve its
+	// component-scoped variables and credentials under the authored component id —
+	// so the planner passes ComponentID (not ID) to the resolver.
+	ComponentID          uuid.UUID         `json:"component_id"`
 	Name                 string            `json:"name"`
 	Type                 string            `json:"type"`
 	Config               map[string]string `json:"config"`
@@ -151,13 +157,18 @@ func (s *Service) BeginRun(ctx context.Context, orgID, appID uuid.UUID, action s
 		return nil, rollback(tx, err)
 	}
 
-	for _, c := range comps {
+	// One ComponentRun per execution unit in the snapshot — not per authored
+	// component — so an OpenTofu component's plan and apply units each get their
+	// own durable step row. component_id is the execution-unit id (the worker
+	// correlates snapshot nodes to component runs by it), and the snapshot is the
+	// single source of the derived apply id, so the two always agree.
+	for _, n := range snapshot.Nodes {
 		if err := tx.ComponentRun.Create().
 			SetOrganizationID(orgID).
 			SetWorkflowRunID(run.ID).
-			SetComponentID(c.ID).
-			SetName(c.Name).
-			SetType(string(c.Type)).
+			SetComponentID(n.ID).
+			SetName(n.Name).
+			SetType(n.Type).
 			SetStatus(componentrun.StatusPending).
 			Exec(ctx); err != nil {
 			return nil, rollback(tx, err)
@@ -199,6 +210,7 @@ func snapshotComponents(comps []*ent.Component, groups []*ent.ComponentGroup) Gr
 	for _, c := range comps {
 		n := GraphNode{
 			ID:                c.ID,
+			ComponentID:       c.ID,
 			Name:              c.Name,
 			Type:              string(c.Type),
 			Config:            nonNilStringMap(c.Config),
@@ -248,7 +260,107 @@ func snapshotComponents(comps []*ent.Component, groups []*ent.ComponentGroup) Gr
 		}
 		graphGroups = append(graphGroups, gg)
 	}
-	return GraphSnapshot{Nodes: nodes, Groups: graphGroups}
+	// Expand authored components into their per-run execution units (an OpenTofu
+	// component becomes a plan unit + an apply unit) just before assembling the
+	// snapshot. Groups are unaffected: their members still reference the plan
+	// unit (which keeps the authored id), and dependents are rewired to the apply
+	// unit inside the expansion.
+	return GraphSnapshot{Nodes: expandExecutionNodes(nodes), Groups: graphGroups}
+}
+
+// tofuExecNamespace is the fixed UUIDv5 namespace used to derive an OpenTofu
+// apply unit's id from its authored component id. A constant (not a random
+// value) keeps deriveApplyID deterministic so a River job retry that re-derives
+// from the immutable graph snapshot stays consistent.
+var tofuExecNamespace = uuid.MustParse("6f1d2a3c-9b4e-4c7a-8f2d-0e1a2b3c4d5e")
+
+// deriveApplyID derives the stable id of an OpenTofu component's apply execution
+// unit from the authored component id (the plan unit keeps the authored id).
+func deriveApplyID(componentID uuid.UUID) uuid.UUID {
+	return uuid.NewSHA1(tofuExecNamespace, append([]byte("tofu-apply:"), componentID[:]...))
+}
+
+// expandExecutionNodes turns the authored snapshot nodes into the per-run
+// execution units the scheduler/planner consume. Every node passes through
+// unchanged except an OpenTofu (terraform) component, which splits into two:
+//
+//   - a plan unit (keeps the authored id; command=plan; never gated; never
+//     continue-on-failure, so a failed plan always skips its apply), and
+//   - an apply unit (a derived id; command=apply; carries the authored node's
+//     requires_approval gate and continue_on_failure), depending on the plan.
+//
+// Any other node that depended on the terraform component is rewired to depend
+// on its apply unit, since the deployment only "completes" once apply finishes
+// (a terraform→terraform dependency therefore chains plan→…→apply→plan). Both
+// units carry ComponentID = the authored id so component-scoped variables and
+// credentials resolve under it. This is a pure function (unit-testable).
+func expandExecutionNodes(nodes []GraphNode) []GraphNode {
+	// applyOf maps a terraform component id to its apply unit id, so we can both
+	// emit the apply unit and rewire any dependent's edges onto it.
+	applyOf := make(map[uuid.UUID]uuid.UUID)
+	for _, n := range nodes {
+		if n.Type == TypeTerraform {
+			applyOf[n.ID] = deriveApplyID(n.ID)
+		}
+	}
+	// remap rewrites a dependency on a terraform component to its apply unit.
+	remap := func(deps []uuid.UUID) []uuid.UUID {
+		if len(deps) == 0 {
+			return deps
+		}
+		out := make([]uuid.UUID, len(deps))
+		for i, d := range deps {
+			if a, ok := applyOf[d]; ok {
+				out[i] = a
+			} else {
+				out[i] = d
+			}
+		}
+		return out
+	}
+
+	out := make([]GraphNode, 0, len(nodes)+len(applyOf))
+	for _, n := range nodes {
+		if n.Type != TypeTerraform {
+			n.DependsOn = remap(n.DependsOn)
+			out = append(out, n)
+			continue
+		}
+
+		applyID := applyOf[n.ID]
+
+		plan := n
+		plan.ID = n.ID
+		plan.Name = n.Name + " · plan"
+		plan.DependsOn = remap(n.DependsOn)
+		plan.RequiresApproval = false
+		plan.ContinueOnFailure = false
+		plan.Config = withCommand(n.Config, terraformCommandPlan)
+
+		apply := n
+		apply.ID = applyID
+		apply.Name = n.Name + " · apply"
+		apply.DependsOn = []uuid.UUID{n.ID}
+		apply.RequiresApproval = n.RequiresApproval
+		apply.ContinueOnFailure = n.ContinueOnFailure
+		apply.Config = withCommand(n.Config, terraformCommandApply)
+
+		out = append(out, plan, apply)
+	}
+	return out
+}
+
+// withCommand returns a copy of a terraform config map with the command key set
+// to cmd (plan/apply). The authored component carries no command — it is
+// synthesized here per execution unit — so this never mutates the input map
+// (the plan and apply units must not share one).
+func withCommand(cfg map[string]string, cmd string) map[string]string {
+	out := make(map[string]string, len(cfg)+1)
+	for k, v := range cfg {
+		out[k] = v
+	}
+	out[terraformConfigCommand] = cmd
+	return out
 }
 
 // Approval decisions for ApproveComponentRun.
