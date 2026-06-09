@@ -222,6 +222,18 @@ const (
 	// the cloud. Optional even in byo mode (a backend may use an instance/IRSA
 	// role instead). Not a secret — not redacted in lib/api/workflow.go.
 	terraformConfigCloudCredentialID = "cloud_credential_id"
+	// terraformConfigInitFlags / PlanFlags / ApplyFlags are optional JSON arrays
+	// of extra CLI flag tokens appended to `tofu init` / `tofu plan` / `tofu apply`
+	// respectively (after the flags Spacefleet sets itself). Each array element is
+	// one whole argv token (e.g. "-var=env=prod", "-target=aws_instance.web"),
+	// shell-quoted as a unit when rendered. Because an apply node applies the plan
+	// node's SAVED planfile, plan-time flags (-var/-var-file/-target/-replace)
+	// belong in plan_flags, not apply_flags; apply_flags is for flags valid against
+	// a saved plan (e.g. -parallelism). plan_flags also apply to a preview plan.
+	// Not secrets — not redacted in lib/api/workflow.go.
+	terraformConfigInitFlags  = "init_flags"
+	terraformConfigPlanFlags  = "plan_flags"
+	terraformConfigApplyFlags = "apply_flags"
 )
 
 // Terraform command values.
@@ -276,6 +288,16 @@ func validateTerraformConfig(n ComponentInput) error {
 	if id := n.Config[terraformConfigCloudCredentialID]; id != "" {
 		if _, err := uuid.Parse(id); err != nil {
 			return fmt.Errorf("%w: node %q (terraform) %s must be a UUID: %v", ErrInvalidConfig, n.Name, terraformConfigCloudCredentialID, err)
+		}
+	}
+	// Optional per-command flag lists, each a JSON array of strings — reject a
+	// malformed list at write time rather than failing mid-run in the worker.
+	for _, key := range []string{terraformConfigInitFlags, terraformConfigPlanFlags, terraformConfigApplyFlags} {
+		if raw := n.Config[key]; raw != "" {
+			var flags []string
+			if err := json.Unmarshal([]byte(raw), &flags); err != nil {
+				return fmt.Errorf("%w: node %q (terraform) %s must be a JSON array of strings: %v", ErrInvalidConfig, n.Name, key, err)
+			}
 		}
 	}
 	return nil

@@ -458,6 +458,136 @@ func TestScriptManagedUnchanged(t *testing.T) {
 	}
 }
 
+func TestScriptInitAndPlanFlags(t *testing.T) {
+	// init_flags append after -no-color on init; plan_flags append after the fixed
+	// plan flags, each token shell-quoted as one argument.
+	backend, cfg := s3Backend()
+	s := Script(Apply{
+		Command:       CommandPlan,
+		Action:        ActionDeploy,
+		RepoURL:       "r",
+		Path:          "p",
+		Backend:       backend,
+		BackendConfig: cfg,
+		InitFlags:     []string{"-upgrade"},
+		PlanFlags:     []string{"-var=env=prod", "-target=aws_instance.web"},
+	})
+	if !strings.Contains(s, "tofu init -no-color '-upgrade'\n") {
+		t.Errorf("init flags not appended\n---\n%s", s)
+	}
+	if !strings.Contains(s, "tofu plan -out=tfplan -no-color '-var=env=prod' '-target=aws_instance.web'\n") {
+		t.Errorf("plan flags not appended in order\n---\n%s", s)
+	}
+}
+
+func TestScriptApplyFlagsBeforePlanfile(t *testing.T) {
+	// apply_flags go between -no-color and the positional planfile arg
+	// (tofu apply [options] PLAN).
+	backend, cfg := s3Backend()
+	s := Script(Apply{
+		Command:            CommandApply,
+		Action:             ActionDeploy,
+		RepoURL:            "r",
+		Path:               "p",
+		Backend:            backend,
+		BackendConfig:      cfg,
+		Namespace:          "default",
+		PlanArtifactSecret: "tfplan-run1-plan1",
+		ApplyFlags:         []string{"-parallelism=20"},
+	})
+	if !strings.Contains(s, "tofu apply -no-color '-parallelism=20' tfplan\n") {
+		t.Errorf("apply flags must precede the planfile arg\n---\n%s", s)
+	}
+}
+
+func TestScriptPlanFlagsAppliedToPreviewAndDestroy(t *testing.T) {
+	// plan_flags also reach a preview plan and a destroy plan; apply_flags are inert
+	// on a preview (no apply runs).
+	preview := Script(Apply{
+		Command:    CommandPlan,
+		Action:     ActionPreview,
+		RepoURL:    "r",
+		Path:       "p",
+		Backend:    "s3",
+		PlanFlags:  []string{"-refresh=false"},
+		ApplyFlags: []string{"-parallelism=20"},
+	})
+	if !strings.Contains(preview, "tofu plan -no-color '-refresh=false'\n") {
+		t.Errorf("plan flags must reach a preview plan\n---\n%s", preview)
+	}
+	if strings.Contains(preview, "-parallelism=20") {
+		t.Errorf("apply flags must not appear on a preview (no apply runs)\n---\n%s", preview)
+	}
+	destroy := Script(Apply{
+		Command:   CommandPlan,
+		Action:    ActionUninstall,
+		RepoURL:   "r",
+		Path:      "p",
+		Backend:   "s3",
+		PlanFlags: []string{"-refresh=false"},
+	})
+	if !strings.Contains(destroy, "tofu plan -destroy -out=tfplan -no-color '-refresh=false'\n") {
+		t.Errorf("plan flags must reach a destroy plan\n---\n%s", destroy)
+	}
+}
+
+func TestScriptFlagsShellQuotedAndBlanksSkipped(t *testing.T) {
+	// A flag value with shell metacharacters is quoted as one whole token so it
+	// can't break out of the command line; a blank token is dropped (no bare '').
+	s := Script(Apply{
+		Command:   CommandPlan,
+		Action:    ActionDeploy,
+		RepoURL:   "r",
+		Path:      "p",
+		Backend:   "s3",
+		PlanFlags: []string{"-var=msg=a; rm -rf /", ""},
+	})
+	if !strings.Contains(s, "'-var=msg=a; rm -rf /'") {
+		t.Errorf("flag with metacharacters must be shell-quoted as one token\n---\n%s", s)
+	}
+	if strings.Contains(s, "-no-color ''") {
+		t.Errorf("blank flag token must be skipped\n---\n%s", s)
+	}
+}
+
+func TestScriptBYOInitFlagsAfterBackendConfig(t *testing.T) {
+	// In byo mode init_flags append after the -backend-config flags.
+	s := Script(Apply{
+		Command:     CommandPlan,
+		Action:      ActionDeploy,
+		RepoURL:     "r",
+		Path:        "p",
+		BackendMode: ModeBYO,
+		BackendConfig: map[string]string{
+			"bucket": "my-state",
+		},
+		InitFlags:          []string{"-reconfigure"},
+		PlanArtifactSecret: "tfplan-run1-plan1",
+	})
+	if !strings.Contains(s, "tofu init -no-color -backend-config='bucket=my-state' '-reconfigure'\n") {
+		t.Errorf("byo init_flags must follow the backend-config flags\n---\n%s", s)
+	}
+}
+
+func TestScriptNoFlagsUnchanged(t *testing.T) {
+	// Empty flag slices render exactly as before (no trailing space, no quotes).
+	s := Script(Apply{
+		Command:            CommandApply,
+		Action:             ActionDeploy,
+		RepoURL:            "r",
+		Path:               "p",
+		Backend:            "s3",
+		Namespace:          "default",
+		PlanArtifactSecret: "tfplan-run1-plan1",
+	})
+	if !strings.Contains(s, "tofu init -no-color\n") {
+		t.Errorf("no init flags must yield a plain init\n---\n%s", s)
+	}
+	if !strings.Contains(s, "tofu apply -no-color tfplan\n") {
+		t.Errorf("no apply flags must yield a plain apply\n---\n%s", s)
+	}
+}
+
 func TestScriptAllowsDottedNames(t *testing.T) {
 	s := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "envs/..foo/prod", Backend: "s3"})
 	if strings.Contains(s, "path traversal not allowed") {

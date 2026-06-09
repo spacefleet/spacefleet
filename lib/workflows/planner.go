@@ -179,6 +179,21 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q: %w", node.Name, err)
 	}
 
+	// Optional operator-supplied per-command flags (validated at write time as
+	// JSON string arrays). Each appends to the matching tofu command verbatim.
+	initFlags, err := decodeFlags(node.Config[terraformConfigInitFlags], terraformConfigInitFlags)
+	if err != nil {
+		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q: %w", node.Name, err)
+	}
+	planFlags, err := decodeFlags(node.Config[terraformConfigPlanFlags], terraformConfigPlanFlags)
+	if err != nil {
+		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q: %w", node.Name, err)
+	}
+	applyFlags, err := decodeFlags(node.Config[terraformConfigApplyFlags], terraformConfigApplyFlags)
+	if err != nil {
+		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q: %w", node.Name, err)
+	}
+
 	// Backend mode + an optional cloud credential (byo mode). Validation already
 	// gated these at write time, so a blank cloud_credential_id parses to uuid.Nil
 	// and any parse error is ignored here (it can't occur for a validated config).
@@ -220,6 +235,9 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		BackendMode:        backendMode,
 		HasCloudAuth:       resolved.HasCloudAuth,
 		PlanArtifactSecret: planArtifactSecret,
+		InitFlags:          initFlags,
+		PlanFlags:          planFlags,
+		ApplyFlags:         applyFlags,
 	})
 
 	return tekton.RunRequest{
@@ -271,6 +289,23 @@ func decodeBackendConfig(encoded string) (map[string]string, error) {
 		out[k] = fmt.Sprintf("%v", v)
 	}
 	return out, nil
+}
+
+// decodeFlags parses the JSON string-array a terraform component stores under an
+// {init,plan,apply}_flags key into the flag-token slice the script renderer
+// appends to the matching tofu command. An empty or absent value yields nil (no
+// extra flags). The key name is threaded in only for a clear error message;
+// validateTerraformConfig already rejects a malformed array at write time, so
+// this should not fail for a validated config.
+func decodeFlags(encoded, key string) ([]string, error) {
+	if encoded == "" {
+		return nil, nil
+	}
+	var flags []string
+	if err := json.Unmarshal([]byte(encoded), &flags); err != nil {
+		return nil, fmt.Errorf("invalid %s (expected a JSON array of strings): %w", key, err)
+	}
+	return flags, nil
 }
 
 // tofuPlanArtifactSecret is the name of the Kubernetes Secret the plan node

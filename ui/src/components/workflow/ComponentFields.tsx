@@ -604,7 +604,120 @@ function TerraformConfig({
           />
         )
       )}
+
+      <FlagsEditor
+        label="Extra init flags"
+        help="Optional flags appended to tofu init, one per box (e.g. -upgrade, -reconfigure)."
+        value={config.init_flags}
+        onChange={(v) => setConfig("init_flags", v)}
+        disabled={disabled}
+      />
+      <FlagsEditor
+        label="Extra plan flags"
+        help="Optional flags appended to tofu plan, one per box (e.g. -var=env=prod, -target=aws_instance.web). Variables and targets belong here — apply re-uses this reviewed plan."
+        value={config.plan_flags}
+        onChange={(v) => setConfig("plan_flags", v)}
+        disabled={disabled}
+      />
+      <FlagsEditor
+        label="Extra apply flags"
+        help="Optional flags appended to tofu apply, one per box (e.g. -parallelism=20). Apply uses the saved plan, so plan-time flags like -var have no effect here."
+        value={config.apply_flags}
+        onChange={(v) => setConfig("apply_flags", v)}
+        disabled={disabled}
+      />
     </>
+  );
+}
+
+// parseFlags defensively parses the JSON string-array a terraform node stores
+// under an {init,plan,apply}_flags key into a flat list of flag tokens. A
+// missing/invalid value yields no rows (the editor starts empty).
+function parseFlags(raw: string | undefined): string[] {
+  if (!raw || raw.trim() === "") return [];
+  try {
+    const arr = JSON.parse(raw) as unknown;
+    if (!Array.isArray(arr)) return [];
+    return arr.map((v) => (v == null ? "" : String(v)));
+  } catch {
+    return [];
+  }
+}
+
+// serializeFlags turns the flag tokens back into a JSON string-array, dropping
+// blank entries. An empty list serializes to "" so the key is omitted on save.
+function serializeFlags(flags: string[]): string {
+  const kept = flags.filter((f) => f.trim() !== "");
+  if (kept.length === 0) return "";
+  return JSON.stringify(kept);
+}
+
+// FlagsEditor edits an ordered list of CLI flag tokens, serialized to the JSON
+// string-array a terraform node stores in config (init_flags/plan_flags/
+// apply_flags). One whole flag per box (e.g. "-var=env=prod"); a flag taking a
+// separate value is two boxes ("-var-file", "prod.tfvars") or one "=" box.
+// Sharp corners, neutral palette per brand.
+function FlagsEditor({
+  label,
+  help,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  help?: string;
+  value: string | undefined;
+  onChange: (serialized: string) => void;
+  disabled: boolean;
+}) {
+  const flags = parseFlags(value);
+  function emit(next: string[]) {
+    onChange(serializeFlags(next));
+  }
+  return (
+    <div>
+      <p className="mb-1 text-sm font-medium text-neutral-700">{label}</p>
+      {help && <p className="mb-2 text-xs text-neutral-500">{help}</p>}
+      {flags.length === 0 ? (
+        <p className="text-xs text-neutral-500">No flags.</p>
+      ) : (
+        <ol className="space-y-2">
+          {flags.map((flag, i) => (
+            <li key={i} className="flex gap-1">
+              <input
+                type="text"
+                aria-label={`Flag ${i + 1}`}
+                className="flex-1 border border-neutral-300 px-2 py-1 font-mono text-xs"
+                placeholder="-var=env=prod"
+                value={flag}
+                onChange={(e) =>
+                  emit(flags.map((f, j) => (j === i ? e.target.value : f)))
+                }
+                disabled={disabled}
+              />
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={() => emit(flags.filter((_, j) => j !== i))}
+                  className="px-2 text-xs text-neutral-500 hover:text-red-600"
+                >
+                  Remove
+                </button>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      {!disabled && (
+        <button
+          type="button"
+          onClick={() => emit([...flags, ""])}
+          className="mt-2 text-sm font-medium text-neutral-700 hover:text-black"
+        >
+          + Add flag
+        </button>
+      )}
+    </div>
   );
 }
 

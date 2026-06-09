@@ -2089,8 +2089,13 @@ export interface components {
              *     generates the state backend override) or `byo` (use the module's own
              *     backend block; `backend_config` entries are passed as `tofu init
              *     -backend-config` flags). `cloud_credential_id` is the UUID of an AWS
-             *     cloud credential used to authenticate a `byo` backend run. The
-             *     `values` and `backend_config` keys are redacted for callers below
+             *     cloud credential used to authenticate a `byo` backend run.
+             *     `init_flags`/`plan_flags`/`apply_flags` are optional JSON arrays of
+             *     extra CLI flag tokens appended to `tofu init`/`plan`/`apply` (one whole
+             *     argument per element, e.g. `["-var=env=prod","-target=aws_instance.web"]`);
+             *     since `apply` applies the plan step's saved plan, plan-time flags
+             *     (`-var`/`-var-file`/`-target`) go in `plan_flags`, not `apply_flags`.
+             *     The `values` and `backend_config` keys are redacted for callers below
              *     editor.
              */
             config: {

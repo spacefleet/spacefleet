@@ -363,3 +363,25 @@ func TestValidateTerraformConfig_BackendModeAndCloudCredential(t *testing.T) {
 		t.Errorf("bad cloud_credential_id: expected ErrInvalidConfig, got %v", err)
 	}
 }
+
+func TestValidateTerraformConfig_Flags(t *testing.T) {
+	t.Parallel()
+
+	for _, key := range []string{terraformConfigInitFlags, terraformConfigPlanFlags, terraformConfigApplyFlags} {
+		// A well-formed JSON string array is accepted.
+		good := tfNode(map[string]string{key: `["-var=env=prod","-target=aws_instance.web"]`})
+		if err := validateDAG([]ComponentInput{good}); err != nil {
+			t.Errorf("%s valid array: unexpected error %v", key, err)
+		}
+		// A non-array JSON (object) → ErrInvalidConfig.
+		obj := tfNode(map[string]string{key: `{"-var":"env=prod"}`})
+		if err := validateDAG([]ComponentInput{obj}); !errors.Is(err, ErrInvalidConfig) {
+			t.Errorf("%s object: expected ErrInvalidConfig, got %v", key, err)
+		}
+		// Malformed JSON → ErrInvalidConfig.
+		bad := tfNode(map[string]string{key: `[not json`})
+		if err := validateDAG([]ComponentInput{bad}); !errors.Is(err, ErrInvalidConfig) {
+			t.Errorf("%s malformed: expected ErrInvalidConfig, got %v", key, err)
+		}
+	}
+}

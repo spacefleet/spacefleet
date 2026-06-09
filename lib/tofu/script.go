@@ -164,6 +164,23 @@ type Apply struct {
 	// an apply node has no reviewed plan to apply, so it fails closed. The planner
 	// sets it (keyed off the plan node's id) for non-preview plan/apply nodes.
 	PlanArtifactSecret string
+	// InitFlags, PlanFlags, and ApplyFlags are optional operator-supplied CLI flag
+	// tokens appended verbatim (each shell-quoted as one whole argv token) to
+	// `tofu init`, `tofu plan`, and `tofu apply` respectively — after the flags
+	// this renderer always sets (-no-color, -out, the -backend-config flags). Each
+	// slice element is one argument (e.g. "-var=env=prod", "-target=aws_instance.web"),
+	// so a flag that takes a separate value is two elements ("-var-file", "prod.tfvars")
+	// or one "=" element ("-var-file=prod.tfvars").
+	//
+	// PlanFlags also apply to a preview (which is always a read-only plan) and to
+	// an uninstall's destroy plan. Because an apply node applies the plan node's
+	// SAVED planfile rather than re-planning, plan-time flags (-var/-var-file/
+	// -target/-replace) belong in PlanFlags, not ApplyFlags — ApplyFlags is only
+	// for flags valid against a saved plan (e.g. -parallelism). They are inert on a
+	// preview (no apply runs) and on the fail-closed apply guard.
+	InitFlags  []string
+	PlanFlags  []string
+	ApplyFlags []string
 }
 
 // Script renders the /bin/sh script the terraform step runs. It clones the root
@@ -251,6 +268,7 @@ func Script(a Apply) string {
 		for _, k := range keys {
 			fmt.Fprintf(&b, " -backend-config=%s", shQuote(k+"="+a.BackendConfig[k]))
 		}
+		appendFlags(&b, a.InitFlags)
 		b.WriteString("\n")
 	} else {
 		// Managed mode: generate the backend override so the root module's state
@@ -258,7 +276,9 @@ func Script(a Apply) string {
 		// backend_override.tf is read by tofu init alongside the module's own .tf
 		// files; an *_override.tf file merges over a matching block, so this wins.
 		b.WriteString(backendOverride(a))
-		b.WriteString("tofu init -no-color\n")
+		b.WriteString("tofu init -no-color")
+		appendFlags(&b, a.InitFlags)
+		b.WriteString("\n")
 	}
 
 	preview := a.Action == ActionPreview
@@ -277,7 +297,10 @@ func Script(a Apply) string {
 			return b.String()
 		}
 		b.WriteString(restorePlanfile(a))
-		fmt.Fprintf(&b, "tofu apply -no-color %s\n", PlanfileName)
+		// Apply flags go before the positional planfile arg (tofu apply [options] PLAN).
+		b.WriteString("tofu apply -no-color")
+		appendFlags(&b, a.ApplyFlags)
+		fmt.Fprintf(&b, " %s\n", PlanfileName)
 		b.WriteString(deletePlanfileSecret(a))
 	default:
 		// plan node, or any preview: a read-only plan. The stdout is the review
@@ -285,17 +308,21 @@ func Script(a Apply) string {
 		// saves the planfile and hands it to its apply node through the Secret.
 		if preview {
 			if destroy {
-				b.WriteString("tofu plan -destroy -no-color\n")
+				b.WriteString("tofu plan -destroy -no-color")
 			} else {
-				b.WriteString("tofu plan -no-color\n")
+				b.WriteString("tofu plan -no-color")
 			}
+			appendFlags(&b, a.PlanFlags)
+			b.WriteString("\n")
 			break
 		}
 		if destroy {
-			fmt.Fprintf(&b, "tofu plan -destroy -out=%s -no-color\n", PlanfileName)
+			fmt.Fprintf(&b, "tofu plan -destroy -out=%s -no-color", PlanfileName)
 		} else {
-			fmt.Fprintf(&b, "tofu plan -out=%s -no-color\n", PlanfileName)
+			fmt.Fprintf(&b, "tofu plan -out=%s -no-color", PlanfileName)
 		}
+		appendFlags(&b, a.PlanFlags)
+		b.WriteString("\n")
 		if a.PlanArtifactSecret != "" {
 			b.WriteString(storePlanfile(a))
 		}
@@ -377,6 +404,21 @@ func backendOverride(a Apply) string {
 // resolved SHA into chart_revision unchanged (no worker change). If lib/helm's
 // marker ever changes, update this in lockstep.
 const revChartPrefix = "SPACEFLEET_CHART_REVISION="
+
+// appendFlags writes each operator-supplied flag token to b as a space-separated,
+// shell-quoted argument, so a flag value can't break out of the command line into
+// the script. Each element is treated as one whole argv token (quoted as a unit);
+// blank tokens are skipped so a stray empty entry doesn't emit a bare ”. The
+// caller has already written the command and its fixed flags, with no trailing
+// newline yet.
+func appendFlags(b *strings.Builder, flags []string) {
+	for _, f := range flags {
+		if f == "" {
+			continue
+		}
+		fmt.Fprintf(b, " %s", shQuote(f))
+	}
+}
 
 // shQuote single-quotes a value for safe interpolation into the /bin/sh script,
 // escaping any embedded single quotes. Replicated from lib/helm/lib/manifest
