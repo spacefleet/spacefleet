@@ -26,7 +26,10 @@ func registerRoutes(mux *http.ServeMux, cfg *config.Config, deps api.ServerDeps,
 	// /api/*. oapi-codegen applies middlewares in reverse, so the last
 	// entry wraps outermost. verifier is the bundled-Dex (OIDC) ID-token
 	// verifier; if it is nil, RequireAuth fails closed (see lib/auth).
-	api.HandlerWithOptions(api.NewStrictHandler(srv, nil), api.StdHTTPServerOptions{
+	// StrictErrorOptions keeps decode/handler errors on the JSON Error
+	// contract instead of the generated text/plain defaults, which echo raw
+	// internal error strings to clients.
+	api.HandlerWithOptions(api.NewStrictHandlerWithOptions(srv, nil, api.StrictErrorOptions()), api.StdHTTPServerOptions{
 		BaseRouter: mux,
 		Middlewares: []api.MiddlewareFunc{
 			// OrgContext lifts X-Organization-ID onto the request context for

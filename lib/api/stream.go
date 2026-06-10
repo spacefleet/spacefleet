@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -559,13 +558,5 @@ func toAPINodes(nodes []k8s.Node) []Node {
 // the Error schema the typed handlers use. Only valid before the event-stream
 // headers are written.
 func writeStreamError(w http.ResponseWriter, status int, code, msg string) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	// Marshal the proper Error struct so a message carrying a quote or backslash
-	// (e.g. a raw k8s error) still produces valid JSON.
-	body, err := json.Marshal(Error{Code: code, Message: msg})
-	if err != nil {
-		return
-	}
-	_, _ = w.Write(body)
+	writeJSONError(w, status, code, msg)
 }

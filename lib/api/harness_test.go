@@ -41,7 +41,7 @@ func newTestHandler(deps ServerDeps) http.Handler {
 
 	mux := http.NewServeMux()
 
-	HandlerWithOptions(NewStrictHandler(srv, nil), StdHTTPServerOptions{
+	HandlerWithOptions(NewStrictHandlerWithOptions(srv, nil, StrictErrorOptions()), StdHTTPServerOptions{
 		BaseRouter: mux,
 		Middlewares: []MiddlewareFunc{
 			MiddlewareFunc(auth.OrgContext),
