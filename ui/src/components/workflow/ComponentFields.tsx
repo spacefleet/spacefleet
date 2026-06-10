@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { components } from "../../api/schema";
 import { CHART_SOURCES } from "../chartSources";
@@ -78,14 +79,6 @@ export function ComponentFields({
   }
 
   const chartSource = (component.config.chart_source as ChartSource) || "http_repo";
-  const valuesRows = parseValuesSources(component.config.values_sources);
-
-  function setValuesRows(rows: ValuesSourceRow[]) {
-    onChange({
-      ...component,
-      config: { ...component.config, values_sources: serializeValuesSources(rows) },
-    });
-  }
 
   // A repository can be picked when the GitHub App is configured and the org has
   // at least one installation; otherwise the user types the URL by hand.
@@ -103,16 +96,14 @@ export function ComponentFields({
       });
   }
 
-  // pickValuesSourceRepo is the same idea for a git values source row: it must
-  // update the row's repo_url and the component-level installation in one
-  // onChange so neither change clobbers the other.
-  function pickValuesSourceRepo(rowIndex: number, repo: GitHubRepository) {
-    const rows = valuesRows.map((r, i) =>
-      i === rowIndex ? { ...r, repo_url: repo.clone_url } : r,
-    );
+  // pickValuesSourceRepo is the same idea for a git values source row: the
+  // editor hands us its rows already serialized (with the picked repo URL
+  // applied) so the config key and the component-level installation land in
+  // one onChange and neither change clobbers the other.
+  function pickValuesSourceRepo(serialized: string, repo: GitHubRepository) {
     onChange({
       ...component,
-      config: { ...component.config, values_sources: serializeValuesSources(rows) },
+      config: { ...component.config, values_sources: serialized },
       github_installation_id: repo.installation_id,
     });
   }
@@ -141,8 +132,6 @@ export function ComponentFields({
           config={component.config}
           chartSource={chartSource}
           setConfig={setConfig}
-          valuesRows={valuesRows}
-          setValuesRows={setValuesRows}
           repoUrlPicker={repoUrlPicker}
           canPickRepo={canPickRepo}
           onPickValuesSourceRepo={pickValuesSourceRepo}
@@ -300,8 +289,6 @@ function HelmConfig({
   config,
   chartSource,
   setConfig,
-  valuesRows,
-  setValuesRows,
   repoUrlPicker,
   canPickRepo,
   onPickValuesSourceRepo,
@@ -310,11 +297,9 @@ function HelmConfig({
   config: Record<string, string>;
   chartSource: ChartSource;
   setConfig: (key: string, value: string) => void;
-  valuesRows: ValuesSourceRow[];
-  setValuesRows: (rows: ValuesSourceRow[]) => void;
   repoUrlPicker: ReactNode;
   canPickRepo: boolean;
-  onPickValuesSourceRepo: (rowIndex: number, repo: GitHubRepository) => void;
+  onPickValuesSourceRepo: (serialized: string, repo: GitHubRepository) => void;
   disabled: boolean;
 }) {
   const source = CHART_SOURCES.find((s) => s.value === chartSource) ?? CHART_SOURCES[0];
@@ -375,8 +360,8 @@ function HelmConfig({
       </Field>
 
       <ValuesSourcesEditor
-        rows={valuesRows}
-        onChange={setValuesRows}
+        value={config.values_sources}
+        onChange={(v) => setConfig("values_sources", v)}
         canPickRepo={canPickRepo}
         onPickRepo={onPickValuesSourceRepo}
         disabled={disabled}
@@ -737,6 +722,35 @@ function serializeFlags(flags: string[]): string {
   return JSON.stringify(kept);
 }
 
+// useDraftRows keeps a row-list editor's rows in local state so a just-added
+// blank row can exist on screen even though the serializer drops blanks —
+// deriving rows from the serialized value on every render made "+ Add" a
+// silent no-op (the new empty row vanished in the serialize/parse round-trip).
+// It resyncs from `value` only when a change didn't come from this editor
+// (e.g. the page switches to a different node). `commit` stores the next rows
+// locally and returns their serialized form for the caller to emit.
+function useDraftRows<T>(
+  value: string | undefined,
+  parse: (raw: string | undefined) => T[],
+  serialize: (rows: T[]) => string,
+): [T[], (next: T[]) => string] {
+  const [rows, setRows] = useState<T[]>(() => parse(value));
+  const lastEmitted = useRef(value ?? "");
+  useEffect(() => {
+    if ((value ?? "") !== lastEmitted.current) {
+      lastEmitted.current = value ?? "";
+      setRows(parse(value));
+    }
+  }, [value, parse]);
+  function commit(next: T[]): string {
+    setRows(next);
+    const serialized = serialize(next);
+    lastEmitted.current = serialized;
+    return serialized;
+  }
+  return [rows, commit];
+}
+
 // FlagsEditor edits an ordered list of CLI flag tokens, serialized to the JSON
 // string-array a terraform node stores in config (init_flags/plan_flags/
 // apply_flags). One whole flag per box (e.g. "-var=env=prod"); a flag taking a
@@ -755,9 +769,9 @@ function FlagsEditor({
   onChange: (serialized: string) => void;
   disabled: boolean;
 }) {
-  const flags = parseFlags(value);
+  const [flags, commit] = useDraftRows(value, parseFlags, serializeFlags);
   function emit(next: string[]) {
-    onChange(serializeFlags(next));
+    onChange(commit(next));
   }
   return (
     <div>
@@ -809,20 +823,36 @@ function FlagsEditor({
 // ValuesSourcesEditor edits the ordered list of git value sources that the
 // helm component serializes into the config.values_sources JSON string.
 function ValuesSourcesEditor({
-  rows,
+  value,
   onChange,
   canPickRepo,
   onPickRepo,
   disabled,
 }: {
-  rows: ValuesSourceRow[];
-  onChange: (rows: ValuesSourceRow[]) => void;
+  value: string | undefined;
+  onChange: (serialized: string) => void;
   canPickRepo: boolean;
-  onPickRepo: (rowIndex: number, repo: GitHubRepository) => void;
+  onPickRepo: (serialized: string, repo: GitHubRepository) => void;
   disabled: boolean;
 }) {
-  function update(i: number, key: keyof ValuesSourceRow, value: string) {
-    onChange(rows.map((r, j) => (j === i ? { ...r, [key]: value } : r)));
+  const [rows, commit] = useDraftRows(
+    value,
+    parseValuesSources,
+    serializeValuesSources,
+  );
+  function emit(next: ValuesSourceRow[]) {
+    onChange(commit(next));
+  }
+  function update(i: number, key: keyof ValuesSourceRow, v: string) {
+    emit(rows.map((r, j) => (j === i ? { ...r, [key]: v } : r)));
+  }
+  // A picked repo goes through commit too, then up via onPickRepo so the
+  // parent can pair the rows with the repo's installation in one update.
+  function pickRepo(i: number, repo: GitHubRepository) {
+    const next = rows.map((r, j) =>
+      j === i ? { ...r, repo_url: repo.clone_url } : r,
+    );
+    onPickRepo(commit(next), repo);
   }
   return (
     <div>
@@ -844,7 +874,7 @@ function ValuesSourcesEditor({
                 {!disabled && (
                   <button
                     type="button"
-                    onClick={() => onChange(rows.filter((_, j) => j !== i))}
+                    onClick={() => emit(rows.filter((_, j) => j !== i))}
                     className="text-xs text-neutral-500 hover:text-red-600"
                   >
                     Remove
@@ -855,7 +885,7 @@ function ValuesSourcesEditor({
                 <div className="mb-1">
                   <RepositoryPicker
                     label="Select repository"
-                    onSelect={(repo) => onPickRepo(i, repo)}
+                    onSelect={(repo) => pickRepo(i, repo)}
                   />
                 </div>
               )}
@@ -895,7 +925,7 @@ function ValuesSourcesEditor({
       {!disabled && (
         <button
           type="button"
-          onClick={() => onChange([...rows, { repo_url: "", path: "" }])}
+          onClick={() => emit([...rows, { repo_url: "", path: "" }])}
           className="mt-2 text-sm font-medium text-neutral-700 hover:text-black"
         >
           + Add values source
