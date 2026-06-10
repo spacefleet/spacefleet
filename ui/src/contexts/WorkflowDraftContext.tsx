@@ -23,6 +23,7 @@ import { api } from "../api/client";
 import { useOrg } from "./OrgContext";
 import type { components } from "../api/schema";
 import { githubAppEnabled } from "../lib/appConfig";
+import { TOFU_SEED_VERSION } from "../lib/tofuVersions";
 import type { BuilderNodeData, GroupNodeData } from "../components/workflow/nodes";
 import type { EditableComponent } from "../components/workflow/ComponentFields";
 
@@ -113,7 +114,10 @@ function seedComponent(id: string, type: ComponentType): EditableComponent {
     case "helm":
       return { ...base, name: "helm release", config: { chart_source: "http_repo" }, requires_approval: false };
     case "terraform":
-      return { ...base, name: "opentofu", config: { backend: "kubernetes" }, requires_approval: true };
+      // New nodes run the newest supported OpenTofu line — which locks state
+      // automatically (native s3 locking); only pre-existing nodes (no
+      // tofu_version) stay on the server's older default line.
+      return { ...base, name: "opentofu", config: { backend: "s3", tofu_version: TOFU_SEED_VERSION }, requires_approval: true };
     default:
       return { ...base, name: "manifest apply", config: {}, requires_approval: false };
   }

@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -208,5 +209,105 @@ func TestResolve_NoCloudCredential(t *testing.T) {
 	}
 	if _, ok := out.Files[tofu.AWSEnvFile]; ok {
 		t.Errorf("Files[%q] present when no cloud credential set", tofu.AWSEnvFile)
+	}
+}
+
+// TestResolve_DynamoLockTable confirms the first-party locking wiring: a
+// terraform run that names a DynamoDB lock table gets it ensured at resolve
+// time, with the run's materialized credential env and the backend's region —
+// and an ensure failure fails the resolve loudly.
+func TestResolve_DynamoLockTable(t *testing.T) {
+	t.Parallel()
+
+	cloud := fakeCloudCreds{resolved: cloudcredentials.Resolved{
+		Provider: cloudcredential.ProviderAWS,
+		Config:   map[string]string{cloudcredentials.ConfigKeyAWSRegion: "eu-central-1"},
+		Secrets: map[string]string{
+			cloudcredentials.CredKeyAWSAccessKeyID: "AKIAEXAMPLE",
+			cloudcredentials.CredKeyAWSSecretKey:   "supersecret",
+		},
+	}}
+
+	r := NewResolver(fakeConns{}, nil, nil, cloud, nil)
+	var gotEnv map[string]string
+	var gotRegion, gotTable string
+	r.ensureLockTable = func(_ context.Context, env map[string]string, region, table string) error {
+		gotEnv, gotRegion, gotTable = env, region, table
+		return nil
+	}
+
+	clusterID := uuid.New()
+	_, err := r.Resolve(context.Background(), RunInputs{
+		OrgID:              uuid.New(),
+		RunnerClusterID:    clusterID,
+		CloudCredentialID:  uuid.New(),
+		DynamoDBLockTable:  "tf-locks",
+		DynamoDBLockRegion: "us-west-2",
+		PullsChart:         true,
+	})
+	if err != nil {
+		t.Fatalf("Resolve: unexpected error %v", err)
+	}
+	if gotTable != "tf-locks" {
+		t.Errorf("ensured table %q, want tf-locks", gotTable)
+	}
+	// The backend's region, not the credential's default, locates the table.
+	if gotRegion != "us-west-2" {
+		t.Errorf("ensured in region %q, want us-west-2 (the backend region)", gotRegion)
+	}
+	if gotEnv["AWS_ACCESS_KEY_ID"] != "AKIAEXAMPLE" {
+		t.Errorf("ensure ran with env %v, want the run's materialized credential", gotEnv)
+	}
+}
+
+func TestResolve_DynamoLockTable_EnsureFailureIsFatal(t *testing.T) {
+	t.Parallel()
+
+	cloud := fakeCloudCreds{resolved: cloudcredentials.Resolved{
+		Provider: cloudcredential.ProviderAWS,
+		Secrets: map[string]string{
+			cloudcredentials.CredKeyAWSAccessKeyID: "AKIAEXAMPLE",
+			cloudcredentials.CredKeyAWSSecretKey:   "supersecret",
+		},
+	}}
+	r := NewResolver(fakeConns{}, nil, nil, cloud, nil)
+	r.ensureLockTable = func(context.Context, map[string]string, string, string) error {
+		return errors.New("create denied")
+	}
+
+	clusterID := uuid.New()
+	_, err := r.Resolve(context.Background(), RunInputs{
+		OrgID:             uuid.New(),
+		RunnerClusterID:   clusterID,
+		CloudCredentialID: uuid.New(),
+		DynamoDBLockTable: "tf-locks",
+		PullsChart:        true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "create denied") {
+		t.Fatalf("Resolve err = %v, want the ensure failure", err)
+	}
+}
+
+// TestResolve_DynamoLockTable_NoCredential confirms ensure is skipped for an
+// instance-role run (no cloud credential): this process doesn't hold the
+// runner pod's identity, so the table must pre-exist and resolve must not
+// fail.
+func TestResolve_DynamoLockTable_NoCredential(t *testing.T) {
+	t.Parallel()
+
+	r := NewResolver(fakeConns{}, nil, nil, nil, nil)
+	r.ensureLockTable = func(context.Context, map[string]string, string, string) error {
+		t.Error("ensureLockTable must not run without a cloud credential")
+		return nil
+	}
+
+	clusterID := uuid.New()
+	if _, err := r.Resolve(context.Background(), RunInputs{
+		OrgID:             uuid.New(),
+		RunnerClusterID:   clusterID,
+		DynamoDBLockTable: "tf-locks",
+		PullsChart:        true,
+	}); err != nil {
+		t.Fatalf("Resolve: unexpected error %v", err)
 	}
 }

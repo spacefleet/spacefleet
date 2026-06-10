@@ -131,7 +131,7 @@ func (w *WorkflowRunWorker) planManifest(ctx context.Context, app *ent.Applicati
 // component. It runs on the app-level runner cluster, reads the command/backend
 // from the component config, calls the shared resolver (lib/deploy) for the
 // optional git token + cloud credential, and renders the plan/apply script via
-// tofu.Script in tofu.DefaultImage.
+// tofu.Script in the image pinned for the component's tofu_version.
 //
 // A terraform component has no cluster target, so no kubeconfig is injected and
 // the implicit kubernetes state backend is unavailable — the component must name
@@ -172,12 +172,21 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		planArtifactSecret = tofuPlanArtifactSecret(runID, planID)
 	}
 
-	// Decode an optional custom backend_config (validated at write time in
-	// validateTerraformConfig); ignored for the kubernetes default backend.
+	// Resolve the OpenTofu line this component runs (validated at write time;
+	// empty = the default line). A stale row authored before that validation
+	// could still carry an unknown value — fail loudly rather than guessing.
+	version, ok := tofu.ResolveVersion(node.Config[terraformConfigVersion])
+	if !ok {
+		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q: unsupported %s %q", node.Name, terraformConfigVersion, node.Config[terraformConfigVersion])
+	}
+
+	// Decode the backend settings (validated at write time in
+	// validateTerraformConfig).
 	backendConfig, err := decodeBackendConfig(node.Config[terraformConfigBackendConfig])
 	if err != nil {
 		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q: %w", node.Name, err)
 	}
+	backendConfig = withNativeLocking(backendConfig, node.Config[terraformConfigBackend], version)
 
 	// Optional operator-supplied per-command flags (validated at write time as
 	// JSON string arrays). Each appends to the matching tofu command verbatim.
@@ -194,10 +203,10 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q: %w", node.Name, err)
 	}
 
-	// Backend mode + an optional cloud credential (byo mode). Validation already
-	// gated these at write time, so a blank cloud_credential_id parses to uuid.Nil
-	// and any parse error is ignored here (it can't occur for a validated config).
-	backendMode := node.Config[terraformConfigBackendMode]
+	// An optional cloud credential (state-backend + provider auth). Validation
+	// already gated this at write time, so a blank cloud_credential_id parses to
+	// uuid.Nil and any parse error is ignored here (it can't occur for a
+	// validated config).
 	cloudCredentialID, _ := uuid.Parse(node.Config[terraformConfigCloudCredentialID])
 
 	// A terraform component has no cluster target (TargetClusterID is uuid.Nil), so
@@ -216,7 +225,13 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		ChartCredentialID:    uuid.Nil,
 		GitHubInstallationID: deref(node.GitHubInstallationID),
 		CloudCredentialID:    cloudCredentialID,
-		PullsChart:           pullsChart,
+		// When the backend names a DynamoDB lock table, the resolver ensures it
+		// exists (creating it if needed) with the run's cloud credential — the
+		// table lives in the backend's region. Every command needs the ensure
+		// (plan, apply, and preview all acquire the state lock).
+		DynamoDBLockTable:  backendConfig[s3BackendKeyDynamoTable],
+		DynamoDBLockRegion: backendConfig[s3BackendKeyRegion],
+		PullsChart:         pullsChart,
 	})
 	if err != nil {
 		return tekton.RunRequest{}, err
@@ -232,7 +247,6 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		BackendConfig:      backendConfig,
 		Namespace:          helm.RunNamespace,
 		HasGitToken:        resolved.HasGitToken,
-		BackendMode:        backendMode,
 		HasCloudAuth:       resolved.HasCloudAuth,
 		PlanArtifactSecret: planArtifactSecret,
 		InitFlags:          initFlags,
@@ -246,13 +260,37 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		ExistingRun: existingRun,
 		Spec: tekton.RunSpec{
 			Name:      tofuRunPrefix(node),
-			Image:     tofu.DefaultImage,
+			Image:     version.Image,
 			Script:    script,
 			Files:     resolved.Files,
 			Env:       resolved.Env,
 			SecretEnv: resolved.SecretEnv,
 		},
 	}, nil
+}
+
+// withNativeLocking turns on the s3 backend's native lockfile locking
+// (`use_lockfile = true` in the rendered backend_override.tf) for OpenTofu
+// lines that support it. Locking is deliberately not something a user opts
+// into: from 1.10 the lock is a conditional write of `<state key>.tflock` in
+// the state bucket itself, so it costs nothing to have and protects every run
+// against concurrent state corruption. An explicit use_lockfile already in
+// backend_config (an API author's escape hatch) is respected, and a
+// dynamodb_table passes through untouched — running both locks is OpenTofu's
+// documented posture for migrating off DynamoDB locking.
+func withNativeLocking(cfg map[string]string, backend string, v tofu.Version) map[string]string {
+	if !v.NativeS3Lock || backend != tofu.BackendS3 {
+		return cfg
+	}
+	if _, explicit := cfg[s3BackendKeyLockfile]; explicit {
+		return cfg
+	}
+	out := make(map[string]string, len(cfg)+1)
+	for k, val := range cfg {
+		out[k] = val
+	}
+	out[s3BackendKeyLockfile] = "true"
+	return out
 }
 
 // tofuActionFor maps a workflow run action to the tofu script action. deploy →
@@ -274,8 +312,8 @@ func tofuActionFor(action string) (string, error) {
 
 // decodeBackendConfig parses the JSON object a terraform component stores under
 // the backend_config key into a flat string map for the script renderer. An
-// empty or absent value yields nil (the kubernetes default backend needs none).
-// Values are stringified so the renderer can emit them as HCL strings.
+// empty or absent value yields nil. Values are stringified so the renderer can
+// emit them as HCL strings.
 func decodeBackendConfig(encoded string) (map[string]string, error) {
 	if encoded == "" {
 		return nil, nil

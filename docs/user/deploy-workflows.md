@@ -14,8 +14,8 @@ them in the right order, in parallel where the order allows it.
 
 1. Open **Applications** and select the application you want to work on.
 2. Select **Workflow** to open the builder canvas.
-3. Add a component with **Helm** or **Manifest**. It appears as a node on the
-   canvas.
+3. Add a component with **Helm**, **Manifest**, or **OpenTofu**. It appears as
+   a node on the canvas.
 4. Select a node to edit it in the side panel:
    - **Name** — a label for the step.
    - For a **Helm** component, where the chart comes from (an HTTP Helm
@@ -24,6 +24,9 @@ them in the right order, in parallel where the order allows it.
      private chart, attach a chart credential or GitHub App installation.
    - For a **Manifest** component, the Git repository, branch or tag, and the
      path to the manifests to apply.
+   - For an **OpenTofu** component, the Git repository, branch or tag, and the
+     working path holding your OpenTofu files, plus the state backend — see
+     [OpenTofu components](#opentofu-components).
    - **Target cluster** and **target namespace** — optional per-step overrides.
      Leave them blank to use the application's defaults; set them to send a
      particular step to a different cluster or namespace.
@@ -40,6 +43,55 @@ The **values** you give a Helm component can contain secrets (passwords, tokens)
 They are stored with the application and are only shown back to members who can
 edit the application; members with view-only access see the rest of a step's
 configuration but not its values.
+
+## OpenTofu components
+
+An OpenTofu component runs your infrastructure code with
+[OpenTofu](https://opentofu.org). One node does the full cycle: every run
+first produces a **plan** for review; the **apply** then waits for a human
+approval by default (turn on **Auto-approve apply** to skip the pause). The
+apply always executes exactly the plan that was reviewed — if someone changed
+the infrastructure in between, the run fails loudly instead of applying
+something different.
+
+### OpenTofu version
+
+Each component picks the OpenTofu release it runs. New components default to
+the latest supported release; existing components keep the release they were
+created with until you change it. Upgrading is always safe for your state;
+OpenTofu does not guarantee that a newer release's state can be read by an
+older one, so treat a downgrade as one-way unless you know otherwise.
+
+### State backend
+
+The component's state always lives where the component says — Spacefleet
+configures your module's backend at run time, overriding any backend block in
+your code. Point the **bucket**, **state key**, and **region** at an Amazon S3
+location (an existing state file there is adopted in place). Attach a **cloud
+credential** for the run to sign in with, or leave it on the runner's own
+instance role.
+
+### State locking
+
+Locking prevents two runs (or a run and a colleague's laptop) from writing the
+same state at once and corrupting it.
+
+- **OpenTofu 1.10 and newer** — locking is automatic. State is locked in the
+  state bucket itself during every plan and apply; there is nothing to set up
+  and no extra infrastructure. If your bucket policy is scoped to the exact
+  state key, widen it slightly: the lock is an object next to your state named
+  `<state key>.tflock`.
+- **OpenTofu 1.9** — name a **DynamoDB lock table**. If the table doesn't
+  exist, Spacefleet creates it for you (when a cloud credential is attached;
+  a run on the runner's instance role needs the table to already exist). The
+  credential needs DynamoDB `DescribeTable`, `GetItem`, `PutItem`, and
+  `DeleteItem` on the table — plus `CreateTable` if you want it created for
+  you. Leaving the field empty means no locking.
+
+Moving an existing state from DynamoDB locking to the automatic kind: pick
+OpenTofu 1.10 or newer and keep the lock table named for as long as anything
+else (CI, laptops) still locks that state via DynamoDB — both locks are held
+together. Once nothing else uses the table, clear the field.
 
 ## Run the workflow
 

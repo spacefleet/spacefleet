@@ -103,7 +103,7 @@ func runWorker(_ []string) {
 	// The workflow run worker resolves each component's run inputs through the
 	// shared lib/deploy resolver, built over five deps: the clusters connection
 	// resolver, the chart-credentials resolver, the GitHub installations token
-	// minter, the cloud-credentials resolver (for a terraform byo-backend run),
+	// minter, the cloud-credentials resolver (for a terraform run's cloud auth),
 	// and the variables resolver (the env injected into every component job).
 	workflowsSvc := workflows.NewService(entClient)
 	variablesSvc := variables.NewService(entClient, sealer)

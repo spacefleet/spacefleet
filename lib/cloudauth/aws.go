@@ -40,15 +40,35 @@ var newSTSClient = func(cfg aws.Config) stscreds.AssumeRoleAPIClient {
 // Region (non-secret) is returned separately so the caller can route it to the
 // pod env while the keys go into a mounted secret file.
 func AWSEnv(ctx context.Context, r cloudcredentials.Resolved) (secret map[string]string, region string, err error) {
+	accessKey, secretKey, sessionToken, region, err := awsCredentials(ctx, r)
+	if err != nil {
+		return nil, "", err
+	}
+	secret = map[string]string{
+		"AWS_ACCESS_KEY_ID":     accessKey,
+		"AWS_SECRET_ACCESS_KEY": secretKey,
+	}
+	if sessionToken != "" {
+		secret["AWS_SESSION_TOKEN"] = sessionToken
+	}
+	return secret, region, nil
+}
+
+// awsCredentials resolves the effective AWS credential material for r —
+// validating the provider and key presence and pre-assuming any role via STS —
+// so every cloudauth entry point (the step env materializer above, the
+// lock-table ensure in dynamolock.go) authenticates as exactly the same
+// principal the run will.
+func awsCredentials(ctx context.Context, r cloudcredentials.Resolved) (accessKey, secretKey, sessionToken, region string, err error) {
 	if r.Provider != cloudcredential.ProviderAWS {
-		return nil, "", fmt.Errorf("cloudauth: provider %q not supported for terraform backend auth (v1 is aws only)", r.Provider)
+		return "", "", "", "", fmt.Errorf("cloudauth: provider %q not supported for terraform backend auth (v1 is aws only)", r.Provider)
 	}
 
-	accessKey := r.Secrets[cloudcredentials.CredKeyAWSAccessKeyID]
-	secretKey := r.Secrets[cloudcredentials.CredKeyAWSSecretKey]
-	sessionToken := r.Secrets[cloudcredentials.CredKeyAWSSessionToken]
+	accessKey = r.Secrets[cloudcredentials.CredKeyAWSAccessKeyID]
+	secretKey = r.Secrets[cloudcredentials.CredKeyAWSSecretKey]
+	sessionToken = r.Secrets[cloudcredentials.CredKeyAWSSessionToken]
 	if accessKey == "" || secretKey == "" {
-		return nil, "", fmt.Errorf("cloudauth: aws credential is missing access_key_id or secret_access_key")
+		return "", "", "", "", fmt.Errorf("cloudauth: aws credential is missing access_key_id or secret_access_key")
 	}
 
 	region = r.Config[cloudcredentials.ConfigKeyAWSRegion]
@@ -62,26 +82,19 @@ func AWSEnv(ctx context.Context, r cloudcredentials.Resolved) (secret map[string
 			),
 		)
 		if err != nil {
-			return nil, "", fmt.Errorf("cloudauth: load aws config: %w", err)
+			return "", "", "", "", fmt.Errorf("cloudauth: load aws config: %w", err)
 		}
 		assumed := aws.NewCredentialsCache(
 			stscreds.NewAssumeRoleProvider(newSTSClient(cfg), roleARN),
 		)
 		got, err := assumed.Retrieve(ctx)
 		if err != nil {
-			return nil, "", fmt.Errorf("cloudauth: assume role %q: %w", roleARN, err)
+			return "", "", "", "", fmt.Errorf("cloudauth: assume role %q: %w", roleARN, err)
 		}
 		accessKey = got.AccessKeyID
 		secretKey = got.SecretAccessKey
 		sessionToken = got.SessionToken
 	}
 
-	secret = map[string]string{
-		"AWS_ACCESS_KEY_ID":     accessKey,
-		"AWS_SECRET_ACCESS_KEY": secretKey,
-	}
-	if sessionToken != "" {
-		secret["AWS_SESSION_TOKEN"] = sessionToken
-	}
-	return secret, region, nil
+	return accessKey, secretKey, sessionToken, region, nil
 }

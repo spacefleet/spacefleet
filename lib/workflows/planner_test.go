@@ -8,6 +8,7 @@ import (
 
 	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/manifest"
+	"github.com/spacefleet/spacefleet/lib/tofu"
 )
 
 func TestHelmActionFor(t *testing.T) {
@@ -184,5 +185,51 @@ func TestTofuPlanArtifactSecret(t *testing.T) {
 	}
 	if name == "" || name != sanitizeLabel(name) {
 		t.Fatalf("secret name is not a sanitized label: %q", name)
+	}
+}
+
+func TestWithNativeLocking(t *testing.T) {
+	t.Parallel()
+
+	native, ok := tofu.ResolveVersion("1.12")
+	if !ok || !native.NativeS3Lock {
+		t.Fatal("test premise: 1.12 must be a native-locking line")
+	}
+	old, ok := tofu.ResolveVersion("1.9")
+	if !ok || old.NativeS3Lock {
+		t.Fatal("test premise: 1.9 must not be a native-locking line")
+	}
+
+	base := map[string]string{"bucket": "b", "key": "k", "region": "us-east-1"}
+
+	// A native-locking line gets use_lockfile=true injected — without mutating
+	// the caller's map.
+	got := withNativeLocking(base, tofu.BackendS3, native)
+	if got[s3BackendKeyLockfile] != "true" {
+		t.Errorf("native line: use_lockfile = %q, want true", got[s3BackendKeyLockfile])
+	}
+	if _, mutated := base[s3BackendKeyLockfile]; mutated {
+		t.Error("withNativeLocking mutated the input map")
+	}
+
+	// Everything else passes through unchanged (incl. dynamodb_table — running
+	// both locks is OpenTofu's migration posture).
+	withTable := map[string]string{"bucket": "b", "key": "k", "region": "us-east-1", s3BackendKeyDynamoTable: "tf-locks"}
+	got = withNativeLocking(withTable, tofu.BackendS3, native)
+	if got[s3BackendKeyDynamoTable] != "tf-locks" || got[s3BackendKeyLockfile] != "true" {
+		t.Errorf("native line + dynamodb_table: got %v, want both locks", got)
+	}
+
+	// An explicit use_lockfile (API author's escape hatch) is respected.
+	explicit := map[string]string{"bucket": "b", "key": "k", "region": "us-east-1", s3BackendKeyLockfile: "false"}
+	got = withNativeLocking(explicit, tofu.BackendS3, native)
+	if got[s3BackendKeyLockfile] != "false" {
+		t.Errorf("explicit opt-out overridden: use_lockfile = %q", got[s3BackendKeyLockfile])
+	}
+
+	// Pre-1.10 lines are untouched — 1.9's s3 backend rejects the argument.
+	got = withNativeLocking(base, tofu.BackendS3, old)
+	if _, set := got[s3BackendKeyLockfile]; set {
+		t.Errorf("1.9 line: use_lockfile must not be injected, got %v", got)
 	}
 }

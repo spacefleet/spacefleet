@@ -1,12 +1,13 @@
 // Package tofu renders the shell script an OpenTofu (Terraform) workflow
 // component runs: clone a git repo at a ref, cd into the root module, configure
-// the state backend (a generated backend_override.tf in managed mode, or the
-// module's own backend block plus `-backend-config` flags in byo mode),
-// `tofu init`, then `tofu plan` or `tofu apply`
+// the state backend (a generated backend_override.tf — the backend is always
+// managed by Spacefleet, so state lands where the component config says
+// regardless of any backend block the module ships with), `tofu init`, then
+// `tofu plan` or `tofu apply`
 // against the target. Like lib/helm and lib/manifest, Go never runs tofu itself
 // — it only emits the /bin/sh script and lets lib/tekton inject the credential
-// files (the target kubeconfig the Kubernetes backend uses, and, for a private
-// repo, the git-credentials line). This package is a pure renderer: no I/O, no
+// files (the git-credentials line for a private repo, the AWS env file for
+// cloud auth). This package is a pure renderer: no I/O, no
 // ent dependency, unit tested with plain string assertions, mirroring
 // lib/manifest/apply.go's Script.
 //
@@ -37,29 +38,18 @@ import (
 	"github.com/spacefleet/spacefleet/lib/tekton"
 )
 
-// DefaultImage is the OpenTofu CLI image the terraform step runs in.
-//
-// We pin a pre-1.10 OpenTofu *default* image tag because it is built FROM
-// alpine and runs `apk add --no-cache git bash openssh`, so it bundles git —
-// which the step needs to clone the root module — alongside the tofu binary.
-//
-// Bundling caveat: starting with OpenTofu 1.10 the project only publishes the
-// `-minimal` image (just the tofu binary, no git/bash) and no longer supports
-// using its image as a base. So this pin cannot simply float forward to the
-// latest tag without losing git. Upgrading past 1.9.x therefore requires
-// publishing a small first-party runner image (multi-stage: copy the tofu
-// binary from `ghcr.io/opentofu/opentofu:<ver>-minimal` onto an alpine base
-// that `apk add git`), the same wrapper-image follow-up noted for the
-// helm-diff plugin. The const is the single place to change when that lands.
-const DefaultImage = "ghcr.io/opentofu/opentofu:1.9.1"
+// The CLI image the step runs in is per-version — see versions.go (the
+// Version registry); the planner resolves the component's tofu_version to a
+// pinned image there.
 
 // File names injected into the terraform step (keys in tekton.RunSpec.Files),
 // mounted under tekton.CredsMountPath. They match the helm/manifest renderer
 // names because the shared resolver (lib/deploy) assembles the same Files map: a
-// git-credentials line for a private github.com clone and, in byo mode, the AWS
-// env file. A terraform component has no cluster target, so no kubeconfig is
-// injected. Kept as local constants so this package does not import lib/helm for
-// them (avoiding an import cycle and decoupling the renderers).
+// git-credentials line for a private github.com clone and, when a cloud
+// credential is attached, the AWS env file. A terraform component has no cluster
+// target, so no kubeconfig is injected. Kept as local constants so this package
+// does not import lib/helm for them (avoiding an import cycle and decoupling the
+// renderers).
 const (
 	// GitCredentialsFile carries a git credential line
 	// (https://x-access-token:<token>@github.com) for a private-Git repo, wired
@@ -67,11 +57,12 @@ const (
 	// from the mounted file at runtime and never lands in the script string, the
 	// clone's argv, the TaskRun manifest, or the workspace's .git/config.
 	GitCredentialsFile = "git-credentials"
-	// AWSEnvFile carries `export K='V'` lines for cloud (AWS) authentication in
-	// the byo backend mode. When Apply.HasCloudAuth is set the script sources it
+	// AWSEnvFile carries `export K='V'` lines for cloud (AWS) authentication —
+	// the s3 state backend and the module's AWS providers read it from the
+	// process env. When Apply.HasCloudAuth is set the script sources it
 	// (`. <mount>/aws.env`) before `tofu init`, so the credential values live only
 	// in the mounted file + the step's process env — never in the script string
-	// or the TaskRun manifest, exactly as the kubeconfig/git-credentials files do.
+	// or the TaskRun manifest, exactly as the git-credentials file does.
 	AWSEnvFile = "aws.env"
 )
 
@@ -99,23 +90,12 @@ const (
 // the PlanArtifactSecret.
 const PlanfileName = "tfplan"
 
-// DefaultBackend names the Kubernetes state backend. A terraform component has
-// no injected kubeconfig, so this backend is unavailable and a component must
-// name an explicit backend instead; the workflow validation rejects this value
-// (and an unset backend in managed mode). Kept as the reserved name the
-// validation checks against.
-const DefaultBackend = "kubernetes"
-
-// Backend modes select how state backend configuration is wired. Managed (the
-// default, also when empty) generates a backend_override.tf so state lands where
-// we decide. BYO ("bring your own") uses the module's OWN backend block
-// untouched — no override is written; any partial-backend values are passed as
-// `tofu init -backend-config=k=v` flags and cloud auth is sourced from the
-// mounted AWSEnvFile.
-const (
-	ModeManaged = "managed"
-	ModeBYO     = "byo"
-)
+// BackendS3 names the Amazon S3 state backend — the only supported backend
+// type today (the workflow validation enforces it; more types will join this
+// list). The backend is always managed by Spacefleet: the script writes a
+// backend_override.tf so the root module's state lands where the component
+// config says, regardless of any backend block the module ships with.
+const BackendS3 = "s3"
 
 // Apply is the inputs Script needs to render the terraform shell script.
 type Apply struct {
@@ -130,14 +110,12 @@ type Apply struct {
 	GitRef string
 	// Path is the working directory within the repo holding the root module.
 	Path string
-	// Backend names the state backend (managed mode). Required and non-kubernetes
-	// — a terraform component has no injected kubeconfig, so the implicit
-	// kubernetes backend is unavailable (the workflow validation enforces this).
+	// Backend names the state backend (BackendS3 is the only supported value
+	// today; the workflow validation enforces it).
 	Backend string
-	// BackendConfig is the decoded backend settings rendered into
-	// backend_override.tf as `key = "value"` lines for a managed custom backend
-	// (S3/GCS/pg/etc.), or passed as `-backend-config` init flags in byo mode.
-	// Values are rendered verbatim as HCL strings.
+	// BackendConfig is the decoded backend settings (e.g. the s3
+	// bucket/key/region) rendered into backend_override.tf as `key = "value"`
+	// lines. Values are rendered verbatim as HCL strings.
 	BackendConfig map[string]string
 	// Namespace is the runner-cluster namespace the planfile-handover Secret is
 	// stored in (the same namespace the TaskRun runs in).
@@ -146,15 +124,10 @@ type Apply struct {
 	// GitCredentialsFile + a credential helper, set by the resolver when the
 	// component has a GitHub App installation attached.
 	HasGitToken bool
-	// BackendMode selects how the state backend is wired: "" or ModeManaged
-	// generate a backend_override.tf (the current behavior); ModeBYO uses the
-	// module's own backend block, writing no override and passing BackendConfig
-	// entries as `tofu init -backend-config=k=v` flags.
-	BackendMode string
 	// HasCloudAuth, when set, sources the mounted AWSEnvFile (cloud/AWS
-	// credentials as `export K='V'` lines) before `tofu init` so the byo backend
-	// and providers authenticate from the process env. The values never appear in
-	// the script string or manifest.
+	// credentials as `export K='V'` lines) before `tofu init` so the state
+	// backend and the module's providers authenticate from the process env. The
+	// values never appear in the script string or manifest.
 	HasCloudAuth bool
 	// PlanArtifactSecret is the name of the Kubernetes Secret (in Namespace, on
 	// the cluster the injected kubeconfig points at) the planfile is handed over
@@ -184,10 +157,9 @@ type Apply struct {
 }
 
 // Script renders the /bin/sh script the terraform step runs. It clones the root
-// module, cds into the working path, then in managed mode writes a generated
-// backend_override.tf (a named, non-kubernetes backend from Backend +
-// BackendConfig) or in byo mode uses the module's own backend block, runs
-// `tofu init`, then plans or applies per Command/Action:
+// module, cds into the working path, writes the generated backend_override.tf
+// (the named backend from Backend + BackendConfig), runs `tofu init`, then
+// plans or applies per Command/Action:
 //
 //   - Command=plan, deploy:    tofu plan -out=tfplan -no-color, then store tfplan
 //   - Command=plan, uninstall: tofu plan -destroy -out=tfplan -no-color, then store
@@ -246,40 +218,22 @@ func Script(a Apply) string {
 	// with the runner's in-cluster credentials (the step's own service account),
 	// since the job already runs in the runner cluster.
 
-	// In byo mode with cloud auth, source the mounted AWS env file so the
-	// credential values enter the process env before init — they live only in the
-	// mounted file + env, never in the script string or the TaskRun manifest. `. `
-	// is the POSIX `source` builtin for /bin/sh.
+	// With cloud auth, source the mounted AWS env file so the credential values
+	// enter the process env before init — they live only in the mounted file +
+	// env, never in the script string or the TaskRun manifest. `. ` is the POSIX
+	// `source` builtin for /bin/sh.
 	if a.HasCloudAuth {
 		fmt.Fprintf(&b, ". %s\n", tekton.CredsMountPath+"/"+AWSEnvFile)
 	}
 
-	if a.BackendMode == ModeBYO {
-		// BYO mode: use the module's own backend block — write no override. Pass
-		// any partial-backend values as `-backend-config=k=v` flags in sorted key
-		// order (stable output), each whole token shell-quoted, matching how a real
-		// partial backend is filled at init time.
-		b.WriteString("tofu init -no-color")
-		keys := make([]string, 0, len(a.BackendConfig))
-		for k := range a.BackendConfig {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			fmt.Fprintf(&b, " -backend-config=%s", shQuote(k+"="+a.BackendConfig[k]))
-		}
-		appendFlags(&b, a.InitFlags)
-		b.WriteString("\n")
-	} else {
-		// Managed mode: generate the backend override so the root module's state
-		// lands where we decide regardless of any backend block it ships with.
-		// backend_override.tf is read by tofu init alongside the module's own .tf
-		// files; an *_override.tf file merges over a matching block, so this wins.
-		b.WriteString(backendOverride(a))
-		b.WriteString("tofu init -no-color")
-		appendFlags(&b, a.InitFlags)
-		b.WriteString("\n")
-	}
+	// Generate the backend override so the root module's state lands where we
+	// decide regardless of any backend block it ships with. backend_override.tf
+	// is read by tofu init alongside the module's own .tf files; an *_override.tf
+	// file merges over a matching block, so this wins.
+	b.WriteString(backendOverride(a))
+	b.WriteString("tofu init -no-color")
+	appendFlags(&b, a.InitFlags)
+	b.WriteString("\n")
 
 	preview := a.Action == ActionPreview
 	destroy := a.Action == ActionUninstall
@@ -373,11 +327,11 @@ func deletePlanfileSecret(a Apply) string {
 		shQuote(a.PlanArtifactSecret), shQuote(a.Namespace))
 }
 
-// backendOverride renders the backend_override.tf the step writes before init
-// in managed mode. It emits the named backend (a.Backend, a required
-// non-kubernetes backend) with the BackendConfig key/values rendered as HCL
-// strings, in sorted key order for a stable (testable) output. The heredoc is
-// single-quoted ('EOF') so nothing in the body is shell-expanded.
+// backendOverride renders the backend_override.tf the step writes before init.
+// It emits the named backend (a.Backend, e.g. s3) with the BackendConfig
+// key/values rendered as HCL strings, in sorted key order for a stable
+// (testable) output. The heredoc is single-quoted ('EOF') so nothing in the
+// body is shell-expanded.
 func backendOverride(a Apply) string {
 	var body strings.Builder
 	fmt.Fprintf(&body, "terraform {\n  backend %q {\n", a.Backend)

@@ -277,7 +277,9 @@ describe("WorkflowCanvas", () => {
     expect(tf[0].config.command).toBeUndefined();
     // Gated by default (apply pauses for review).
     expect(tf[0].requires_approval).toBe(true);
-    expect(tf[0].config.backend).toBe("kubernetes");
+    expect(tf[0].config.backend).toBe("s3");
+    // New nodes are seeded onto the newest OpenTofu line (native locking).
+    expect(tf[0].config.tofu_version).toBe("1.12");
   });
 
   it("reloading the create page re-seeds the form instead of 'node not found'", async () => {
@@ -311,12 +313,17 @@ describe("WorkflowCanvas", () => {
   });
 
   // A terraform plan node already loaded in the workflow, so we can open it in
-  // the node editor and exercise the backend-mode control directly.
+  // the node editor and exercise the S3 backend fields directly.
   const tfPlan = {
     id: "33333333-3333-3333-3333-333333333333",
     name: "terraform plan",
     type: "terraform",
-    config: { command: "plan", backend: "kubernetes" },
+    config: {
+      command: "plan",
+      backend: "s3",
+      backend_config:
+        '{"bucket":"my-state","key":"prod/terraform.tfstate","region":"us-east-1"}',
+    },
     depends_on: [],
     continue_on_failure: false,
     target_namespace: "",
@@ -349,24 +356,117 @@ describe("WorkflowCanvas", () => {
     );
   }
 
-  it("byo backend mode shows the cloud-credential picker; managed hides it and shows the state backend", async () => {
-    defaultGets([tfPlan], [], [
-      { id: "cc-aws", name: "prod-aws", provider: "aws", config: {} },
-    ]);
+  it("the S3 backend fields read from and write to backend_config", async () => {
+    defaultGets([tfPlan], [], []);
     await openTerraformEditor();
 
-    const backendSelect = selectWithOption(/bring your own/i);
-    // Managed by default: State backend select present, no Cloud credential picker.
-    expect(querySelectWithOption(/kubernetes \(default\)/i)).toBeDefined();
-    expect(querySelectWithOption(/use instance role/i)).toBeUndefined();
+    // The state backend is fixed to S3 and the dedicated fields are populated
+    // from the stored backend_config JSON.
+    expect(querySelectWithOption(/amazon s3/i)).toBeDefined();
+    const bucket = screen.getByPlaceholderText(
+      "my-terraform-state",
+    ) as HTMLInputElement;
+    expect(bucket.value).toBe("my-state");
+    const key = screen.getByPlaceholderText(
+      "envs/prod/terraform.tfstate",
+    ) as HTMLInputElement;
+    expect(key.value).toBe("prod/terraform.tfstate");
+    const region = screen.getByPlaceholderText("us-east-1") as HTMLInputElement;
+    expect(region.value).toBe("us-east-1");
 
-    await userEvent.selectOptions(backendSelect, "byo");
-    expect(querySelectWithOption(/use instance role/i)).toBeDefined();
-    expect(querySelectWithOption(/kubernetes \(default\)/i)).toBeUndefined();
+    // Editing a field serializes back into the backend_config JSON the save
+    // payload carries.
+    await userEvent.clear(bucket);
+    await userEvent.type(bucket, "other-state");
+    await userEvent.click(screen.getByRole("button", { name: /save node/i }));
+    await waitFor(() => expect(mockApi.PUT).toHaveBeenCalled(), {
+      timeout: 2000,
+    });
+    const body = mockApi.PUT.mock.calls[0][1].body as {
+      components: { id: string; config: Record<string, string> }[];
+    };
+    const tf = body.components.find((c) => c.id === tfPlan.id);
+    expect(tf?.config.backend).toBe("s3");
+    expect(JSON.parse(tf?.config.backend_config ?? "{}")).toEqual({
+      bucket: "other-state",
+      key: "prod/terraform.tfstate",
+      region: "us-east-1",
+    });
+  });
 
-    await userEvent.selectOptions(backendSelect, "managed");
-    expect(querySelectWithOption(/use instance role/i)).toBeUndefined();
-    expect(querySelectWithOption(/kubernetes \(default\)/i)).toBeDefined();
+  it("the OpenTofu version select adapts the locking UI and writes tofu_version", async () => {
+    defaultGets([tfPlan], [], []);
+    await openTerraformEditor();
+
+    // A node from before tofu_version existed shows the server's default line
+    // — which locks via DynamoDB, so the lock-table field is the recommended
+    // path and there is no "automatic" note.
+    const version = selectWithOption(/1\.12 \(latest\)/);
+    expect(version.value).toBe("1.9");
+    expect(screen.queryByText(/state locking is automatic/i)).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("(no locking)")).toBeInTheDocument();
+
+    // Switching to a native-locking line flips the section: automatic note,
+    // and the DynamoDB table demoted to a migration-only field.
+    await userEvent.selectOptions(version, "1.12");
+    expect(screen.getByText(/state locking is automatic/i)).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("(no locking)")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("(not needed)")).toBeInTheDocument();
+
+    // The choice persists into the saved config.
+    await userEvent.click(screen.getByRole("button", { name: /save node/i }));
+    await waitFor(() => expect(mockApi.PUT).toHaveBeenCalled(), {
+      timeout: 2000,
+    });
+    const body = mockApi.PUT.mock.calls[0][1].body as {
+      components: { id: string; config: Record<string, string> }[];
+    };
+    const tf = body.components.find((c) => c.id === tfPlan.id);
+    expect(tf?.config.tofu_version).toBe("1.12");
+  });
+
+  it("the DynamoDB lock table writes dynamodb_table into backend_config", async () => {
+    defaultGets([tfPlan], [], []);
+    await openTerraformEditor();
+
+    const table = screen.getByPlaceholderText("(no locking)") as HTMLInputElement;
+    await userEvent.type(table, "tf-locks");
+    await userEvent.click(screen.getByRole("button", { name: /save node/i }));
+    await waitFor(() => expect(mockApi.PUT).toHaveBeenCalled(), {
+      timeout: 2000,
+    });
+    const body = mockApi.PUT.mock.calls[0][1].body as {
+      components: { id: string; config: Record<string, string> }[];
+    };
+    const tf = body.components.find((c) => c.id === tfPlan.id);
+    expect(JSON.parse(tf?.config.backend_config ?? "{}").dynamodb_table).toBe(
+      "tf-locks",
+    );
+  });
+
+  it("the encrypt toggle reveals the KMS key field and writes encrypt into backend_config", async () => {
+    defaultGets([tfPlan], [], []);
+    await openTerraformEditor();
+
+    // Off by default (not in the stored config): no KMS field.
+    const encrypt = screen.getByRole("checkbox", {
+      name: /encrypt state at rest/i,
+    }) as HTMLInputElement;
+    expect(encrypt.checked).toBe(false);
+    expect(screen.queryByPlaceholderText("(SSE-S3)")).not.toBeInTheDocument();
+
+    await userEvent.click(encrypt);
+    expect(screen.getByPlaceholderText("(SSE-S3)")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /save node/i }));
+    await waitFor(() => expect(mockApi.PUT).toHaveBeenCalled(), {
+      timeout: 2000,
+    });
+    const body = mockApi.PUT.mock.calls[0][1].body as {
+      components: { id: string; config: Record<string, string> }[];
+    };
+    const tf = body.components.find((c) => c.id === tfPlan.id);
+    expect(JSON.parse(tf?.config.backend_config ?? "{}").encrypt).toBe("true");
   });
 
   it("the cloud-credential picker lists only aws-provider credentials", async () => {
@@ -376,7 +476,6 @@ describe("WorkflowCanvas", () => {
     ]);
     await openTerraformEditor();
 
-    await userEvent.selectOptions(selectWithOption(/bring your own/i), "byo");
     const picker = selectWithOption(/use instance role/i);
     const optionLabels = Array.from(picker.options).map((o) => o.textContent);
     expect(optionLabels).toContain("prod-aws");

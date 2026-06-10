@@ -5,10 +5,8 @@ import (
 	"testing"
 )
 
-// s3Backend is a representative managed, non-kubernetes backend used across the
-// tests that don't care about backend specifics — a terraform component has no
-// injected kubeconfig, so the implicit kubernetes backend is unavailable and an
-// explicit backend is always configured.
+// s3Backend is the s3 state backend (the only supported type) with its required
+// settings, used across the tests that don't care about backend specifics.
 func s3Backend() (string, map[string]string) {
 	return "s3", map[string]string{
 		"bucket": "my-state",
@@ -321,33 +319,15 @@ func TestScriptRejectsPathTraversal(t *testing.T) {
 	}
 }
 
-func TestScriptBYONoBackendOverride(t *testing.T) {
+func TestScriptCloudAuthSourcesEnvFile(t *testing.T) {
+	backend, cfg := s3Backend()
 	s := Script(Apply{
 		Command:            CommandApply,
 		Action:             ActionDeploy,
 		RepoURL:            "r",
 		Path:               "p",
-		BackendMode:        ModeBYO,
-		PlanArtifactSecret: "tfplan-run1-plan1",
-	})
-	if strings.Contains(s, "backend_override.tf") || strings.Contains(s, "cat > backend_override.tf") {
-		t.Errorf("byo mode must not write a backend override\n---\n%s", s)
-	}
-	if strings.Contains(s, "backend \"kubernetes\"") {
-		t.Errorf("byo mode must not emit the kubernetes default backend\n---\n%s", s)
-	}
-	if !strings.Contains(s, "tofu init -no-color") {
-		t.Errorf("byo mode must still init\n---\n%s", s)
-	}
-}
-
-func TestScriptBYOCloudAuthSourcesEnvFile(t *testing.T) {
-	s := Script(Apply{
-		Command:            CommandApply,
-		Action:             ActionDeploy,
-		RepoURL:            "r",
-		Path:               "p",
-		BackendMode:        ModeBYO,
+		Backend:            backend,
+		BackendConfig:      cfg,
 		HasCloudAuth:       true,
 		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
@@ -355,19 +335,21 @@ func TestScriptBYOCloudAuthSourcesEnvFile(t *testing.T) {
 	if !strings.Contains(s, srcLine) {
 		t.Errorf("cloud auth must source the aws env file\n---\n%s", s)
 	}
-	// The source line must come before tofu init.
+	// The source line must come before tofu init so the backend authenticates.
 	if i, j := strings.Index(s, srcLine), strings.Index(s, "tofu init"); i < 0 || j < 0 || i >= j {
 		t.Errorf("source line must precede tofu init (i=%d j=%d)\n---\n%s", i, j, s)
 	}
 }
 
-func TestScriptBYONoCloudAuthNoEnvFile(t *testing.T) {
+func TestScriptNoCloudAuthNoEnvFile(t *testing.T) {
+	backend, cfg := s3Backend()
 	s := Script(Apply{
 		Command:            CommandApply,
 		Action:             ActionDeploy,
 		RepoURL:            "r",
 		Path:               "p",
-		BackendMode:        ModeBYO,
+		Backend:            backend,
+		BackendConfig:      cfg,
 		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
 	if strings.Contains(s, "aws.env") {
@@ -375,65 +357,18 @@ func TestScriptBYONoCloudAuthNoEnvFile(t *testing.T) {
 	}
 }
 
-func TestScriptBYOBackendConfigFlags(t *testing.T) {
+func TestScriptGolden(t *testing.T) {
+	// Byte-for-byte guard: a representative Apply renders exactly this output —
+	// the s3 backend override written before init and no injected KUBECONFIG.
+	backend, cfg := s3Backend()
 	s := Script(Apply{
-		Command:     CommandApply,
-		Action:      ActionDeploy,
-		RepoURL:     "r",
-		Path:        "p",
-		BackendMode: ModeBYO,
-		BackendConfig: map[string]string{
-			"bucket": "my-state",
-			"region": "us-east-1",
-			"key":    "prod/terraform.tfstate",
-		},
-		PlanArtifactSecret: "tfplan-run1-plan1",
+		Command:       CommandPlan,
+		Action:        ActionDeploy,
+		RepoURL:       "https://github.com/acme/infra.git",
+		Path:          "envs/prod",
+		Backend:       backend,
+		BackendConfig: cfg,
 	})
-	want := "tofu init -no-color -backend-config='bucket=my-state' -backend-config='key=prod/terraform.tfstate' -backend-config='region=us-east-1'\n"
-	if !strings.Contains(s, want) {
-		t.Errorf("byo init missing sorted backend-config flags\nwant: %s\n---\n%s", want, s)
-	}
-	if strings.Contains(s, "backend_override.tf") {
-		t.Errorf("byo mode must not write a backend override\n---\n%s", s)
-	}
-}
-
-func TestScriptBYOEmptyBackendConfigPlainInit(t *testing.T) {
-	s := Script(Apply{
-		Command:            CommandApply,
-		Action:             ActionDeploy,
-		RepoURL:            "r",
-		Path:               "p",
-		BackendMode:        ModeBYO,
-		PlanArtifactSecret: "tfplan-run1-plan1",
-	})
-	if !strings.Contains(s, "tofu init -no-color\n") {
-		t.Errorf("empty backend config must yield a plain init\n---\n%s", s)
-	}
-	if strings.Contains(s, "-backend-config=") {
-		t.Errorf("empty backend config must not emit any flags\n---\n%s", s)
-	}
-}
-
-func TestScriptManagedUnchanged(t *testing.T) {
-	// Byte-for-byte guard for managed mode: a representative managed Apply renders
-	// exactly this output — a named (non-kubernetes) backend override and no
-	// injected KUBECONFIG.
-	mk := func(mode string) string {
-		return Script(Apply{
-			Command: CommandPlan,
-			Action:  ActionDeploy,
-			RepoURL: "https://github.com/acme/infra.git",
-			Path:    "envs/prod",
-			Backend: "s3",
-			BackendConfig: map[string]string{
-				"bucket": "my-state",
-				"key":    "prod/terraform.tfstate",
-				"region": "us-east-1",
-			},
-			BackendMode: mode,
-		})
-	}
 	want := "#!/bin/sh\nset -e\n" +
 		"git clone --depth 1 'https://github.com/acme/infra.git' /src\n" +
 		"echo \"SPACEFLEET_CHART_REVISION=$(git -C /src rev-parse HEAD)\"\n" +
@@ -449,12 +384,8 @@ func TestScriptManagedUnchanged(t *testing.T) {
 		"EOF\n" +
 		"tofu init -no-color\n" +
 		"tofu plan -out=tfplan -no-color\n"
-	if s := mk(""); s != want {
-		t.Errorf("managed output changed\n got: %q\nwant: %q", s, want)
-	}
-	// Explicit ModeManaged is identical to empty.
-	if s := mk(ModeManaged); s != want {
-		t.Errorf("explicit managed mode differs from empty\n got: %q\nwant: %q", s, want)
+	if s != want {
+		t.Errorf("rendered script changed\n got: %q\nwant: %q", s, want)
 	}
 }
 
@@ -547,25 +478,6 @@ func TestScriptFlagsShellQuotedAndBlanksSkipped(t *testing.T) {
 	}
 	if strings.Contains(s, "-no-color ''") {
 		t.Errorf("blank flag token must be skipped\n---\n%s", s)
-	}
-}
-
-func TestScriptBYOInitFlagsAfterBackendConfig(t *testing.T) {
-	// In byo mode init_flags append after the -backend-config flags.
-	s := Script(Apply{
-		Command:     CommandPlan,
-		Action:      ActionDeploy,
-		RepoURL:     "r",
-		Path:        "p",
-		BackendMode: ModeBYO,
-		BackendConfig: map[string]string{
-			"bucket": "my-state",
-		},
-		InitFlags:          []string{"-reconfigure"},
-		PlanArtifactSecret: "tfplan-run1-plan1",
-	})
-	if !strings.Contains(s, "tofu init -no-color -backend-config='bucket=my-state' '-reconfigure'\n") {
-		t.Errorf("byo init_flags must follow the backend-config flags\n---\n%s", s)
 	}
 }
 

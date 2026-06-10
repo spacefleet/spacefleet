@@ -2082,14 +2082,26 @@ export interface components {
              * @description Type-specific, non-secret parameters (helm: chart_source/repo_url/
              *     chart/version/git_ref/git_path/values/…; manifest: repo_url/git_ref/
              *     path; terraform: repo_url/git_ref/path/backend/backend_config/
-             *     backend_mode/cloud_credential_id). An OpenTofu component is a single
+             *     cloud_credential_id). An OpenTofu component is a single
              *     node: it runs `plan` then, once approved (see requires_approval),
              *     `apply` — the run expands it into those two steps, so `command` is
-             *     not authored. `backend_mode` is `managed` (default — Spacefleet
-             *     generates the state backend override) or `byo` (use the module's own
-             *     backend block; `backend_config` entries are passed as `tofu init
-             *     -backend-config` flags). `cloud_credential_id` is the UUID of an AWS
-             *     cloud credential used to authenticate a `byo` backend run.
+             *     not authored. `tofu_version` optionally selects the OpenTofu
+             *     release line the component runs (e.g. `1.12`; empty runs the
+             *     platform default line). The state backend is managed by Spacefleet
+             *     (the run writes a backend override into the module, so state lands
+             *     where this config says regardless of any backend block in code):
+             *     `backend` must be `s3` (the only supported type today) and
+             *     `backend_config` is a JSON object of its settings —
+             *     `bucket`/`key`/`region` required; `dynamodb_table`, `encrypt`, and
+             *     `kms_key_id` optional. State locking: on OpenTofu 1.10+ the run
+             *     locks state natively in S3 automatically (no setup; set
+             *     `use_lockfile` explicitly in `backend_config` only to override
+             *     that, and only on 1.10+). On older lines, name a `dynamodb_table`
+             *     — when a cloud credential is attached, Spacefleet creates the
+             *     table if it doesn't exist.
+             *     `cloud_credential_id` is the UUID of an AWS cloud credential the run
+             *     signs in with (state backend + the module's AWS providers); empty
+             *     uses the runner's own role.
              *     `init_flags`/`plan_flags`/`apply_flags` are optional JSON arrays of
              *     extra CLI flag tokens appended to `tofu init`/`plan`/`apply` (one whole
              *     argument per element, e.g. `["-var=env=prod","-target=aws_instance.web"]`);

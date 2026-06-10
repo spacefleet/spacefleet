@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
 import type { components } from "../../api/schema";
 import { CHART_SOURCES } from "../chartSources";
+import {
+  TOFU_DEFAULT_VERSION,
+  TOFU_VERSIONS,
+  tofuNativeLock,
+} from "../../lib/tofuVersions";
 import { RepositoryPicker } from "./RepositoryPicker";
 import {
   parseValuesSources,
@@ -428,20 +433,20 @@ function ManifestConfig({
   );
 }
 
-// TerraformConfig edits an OpenTofu node: the git source (repo_url/ref/path)
-// and the backend. There is no command field — an OpenTofu node is a single
-// step that runs plan then (once approved) apply; the run synthesizes those two
-// commands, so the user configures the source once here.
+// TerraformConfig edits an OpenTofu node: the git source (repo_url/ref/path),
+// the managed state backend, and the cloud credential the run signs in with.
+// There is no command field — an OpenTofu node is a single step that runs plan
+// then (once approved) apply; the run synthesizes those two commands, so the
+// user configures the source once here.
 //
-// Backend mode (config.backend_mode, default "managed") splits two worlds:
-//   - managed: Spacefleet manages state (Kubernetes default, or a custom
-//     backend it configures) — the existing State backend select + backend_config.
-//   - byo ("bring your own"): the module's own backend {} block is used and
-//     Spacefleet signs in with an aws cloud credential (config.cloud_credential_id,
-//     empty = instance role). backend_config becomes optional partial
-//     -backend-config settings.
-// Secret backend values get the same redaction treatment as helm inline values
-// (see lib/api workflow secret keys).
+// The state backend is always managed: Spacefleet writes a backend override
+// into the module at init, so state lands where this config says regardless of
+// any backend block in code (pointing the fields at existing state adopts it
+// in place). S3 is the only supported backend type today; its settings are
+// dedicated fields that serialize into the config.backend_config JSON object
+// the server validates and renders. backend_config gets the same redaction
+// treatment as helm inline values (see lib/api workflow secret keys), so
+// non-editors see blank fields.
 function TerraformConfig({
   config,
   setConfig,
@@ -455,23 +460,43 @@ function TerraformConfig({
   cloudCredentials: CloudCredential[];
   disabled: boolean;
 }) {
-  // Missing/empty backend_mode means the original managed behavior (back-compat).
-  const backendMode = config.backend_mode === "byo" ? "byo" : "managed";
-  const isByo = backendMode === "byo";
-  const backend = config.backend || "kubernetes";
-  const isCustom = backend !== "kubernetes";
-  const backendRows = parseBackendConfig(config.backend_config);
+  const s3 = parseBackendConfig(config.backend_config);
+  const encrypt = s3.encrypt === "true";
+
+  // The OpenTofu line this component runs (absent = the server's default
+  // line) decides the locking story below: 1.10+ locks state natively in the
+  // bucket — automatic, nothing to set up — while 1.9 locks via a DynamoDB
+  // table.
+  const tofuVersion = config.tofu_version || TOFU_DEFAULT_VERSION;
+  const nativeLock = tofuNativeLock(config.tofu_version);
 
   // Only aws credentials can be injected into the OpenTofu run for now.
   const awsCredentials = cloudCredentials.filter((c) => c.provider === "aws");
 
-  function setBackend(next: string) {
-    // Switching back to the Kubernetes default drops any custom backend_config.
-    setConfig("backend", next);
-    if (next === "kubernetes") setConfig("backend_config", "");
+  // setS3 updates one backend setting, dropping emptied keys so the stored
+  // JSON holds only what's set ("" omits backend_config entirely on save).
+  function writeS3(next: Record<string, string>) {
+    setConfig(
+      "backend_config",
+      Object.keys(next).length === 0 ? "" : JSON.stringify(next),
+    );
   }
-  function setBackendRows(rows: KeyValueRow[]) {
-    setConfig("backend_config", serializeBackendConfig(rows));
+  function setS3(key: string, value: string) {
+    const next = { ...s3 };
+    if (value === "") delete next[key];
+    else next[key] = value;
+    writeS3(next);
+  }
+  function setEncrypt(on: boolean) {
+    const next = { ...s3 };
+    if (on) {
+      next.encrypt = "true";
+    } else {
+      delete next.encrypt;
+      // A KMS key is only meaningful with encryption on.
+      delete next.kms_key_id;
+    }
+    writeS3(next);
   }
 
   return (
@@ -509,100 +534,160 @@ function TerraformConfig({
       </Field>
 
       <Field
-        label="Backend"
-        help={
-          isByo
-            ? "Spacefleet uses the backend declared in your module and signs in with this credential. Run plan first — a no changes result confirms your existing state was read."
-            : undefined
-        }
+        label="OpenTofu version"
+        help="The OpenTofu release this component runs. 1.10 and newer lock state automatically — no lock table needed."
       >
         <select
           className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
-          value={backendMode}
-          onChange={(e) => setConfig("backend_mode", e.target.value)}
+          value={tofuVersion}
+          onChange={(e) => setConfig("tofu_version", e.target.value)}
           disabled={disabled}
         >
-          <option value="managed">Managed (Kubernetes)</option>
-          <option value="byo">Bring your own (from code)</option>
+          {/* A stored value outside the supported list (shouldn't happen —
+              the server validates) still renders, so the select never lies
+              about what's saved. */}
+          {!TOFU_VERSIONS.some((v) => v.minor === tofuVersion) && (
+            <option value={tofuVersion}>{tofuVersion} (unsupported)</option>
+          )}
+          {TOFU_VERSIONS.map((v, i) => (
+            <option key={v.minor} value={v.minor}>
+              {v.minor}
+              {i === 0 ? " (latest)" : ""}
+            </option>
+          ))}
         </select>
       </Field>
 
-      {!isByo && (
-        <Field
-          label="State backend"
-          help="Kubernetes (default) stores state as Secrets in the target cluster — zero config. Choose Custom to point at S3/GCS/azurerm/pg/etc."
+      <Field
+        label="State backend"
+        help="Where this component's OpenTofu state lives. Spacefleet configures your module to use it at init (overriding any backend block in code) — to adopt existing state, point it at the bucket and key your state is already in."
+      >
+        <select
+          className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+          value={config.backend || "s3"}
+          onChange={(e) => setConfig("backend", e.target.value)}
+          disabled={disabled}
         >
-          <select
-            className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
-            value={isCustom ? "custom" : "kubernetes"}
-            onChange={(e) =>
-              setBackend(e.target.value === "custom" ? "s3" : "kubernetes")
-            }
-            disabled={disabled}
-          >
-            <option value="kubernetes">Kubernetes (default)</option>
-            <option value="custom">Custom</option>
-          </select>
-        </Field>
-      )}
+          <option value="s3">Amazon S3</option>
+        </select>
+      </Field>
 
-      {isByo && (
-        <Field
-          label="Cloud credential"
-          help="Optional — the AWS credential Spacefleet signs in with. Leave as instance role to use the runner's own role."
+      <Field
+        label="Cloud credential"
+        help="The AWS credential the run signs in with — used for the state bucket and your module's AWS providers. Leave as instance role to use the runner's own role."
+      >
+        <select
+          className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+          value={config.cloud_credential_id ?? ""}
+          onChange={(e) => setConfig("cloud_credential_id", e.target.value)}
+          disabled={disabled}
         >
-          <select
-            className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
-            value={config.cloud_credential_id ?? ""}
-            onChange={(e) => setConfig("cloud_credential_id", e.target.value)}
-            disabled={disabled}
-          >
-            <option value="">(none — use instance role)</option>
-            {awsCredentials.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-      )}
+          <option value="">(none — use instance role)</option>
+          {awsCredentials.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </Field>
 
-      {!isByo && isCustom && (
+      <Field label="Bucket" help="The S3 bucket holding the state.">
+        <input
+          type="text"
+          className="w-full border border-neutral-300 px-3 py-2 text-sm"
+          placeholder="my-terraform-state"
+          value={s3.bucket ?? ""}
+          onChange={(e) => setS3("bucket", e.target.value)}
+          disabled={disabled}
+        />
+      </Field>
+      <Field
+        label="State key"
+        help="Object path of the state file in the bucket — must be unique per component."
+      >
+        <input
+          type="text"
+          className="w-full border border-neutral-300 px-3 py-2 text-sm"
+          placeholder="envs/prod/terraform.tfstate"
+          value={s3.key ?? ""}
+          onChange={(e) => setS3("key", e.target.value)}
+          disabled={disabled}
+        />
+      </Field>
+      <Field label="Region" help="AWS region of the bucket.">
+        <input
+          type="text"
+          className="w-full border border-neutral-300 px-3 py-2 text-sm"
+          placeholder="us-east-1"
+          value={s3.region ?? ""}
+          onChange={(e) => setS3("region", e.target.value)}
+          disabled={disabled}
+        />
+      </Field>
+      {nativeLock ? (
+        <>
+          <div className="border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-600">
+            <span className="font-medium text-neutral-700">
+              State locking is automatic.
+            </span>{" "}
+            OpenTofu {tofuVersion} locks state in the bucket itself during
+            every plan and apply, so concurrent runs can't corrupt it — there's
+            nothing to set up.
+          </div>
+          <Field
+            label="DynamoDB lock table"
+            help="Optional. Only needed while this state is also used outside Spacefleet with DynamoDB locking — both locks are held, so you can migrate off the table safely."
+          >
+            <input
+              type="text"
+              className="w-full border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="(not needed)"
+              value={s3.dynamodb_table ?? ""}
+              onChange={(e) => setS3("dynamodb_table", e.target.value)}
+              disabled={disabled}
+            />
+          </Field>
+        </>
+      ) : (
         <Field
-          label="Backend type"
-          help="The OpenTofu backend name, e.g. s3, gcs, azurerm, pg."
+          label="DynamoDB lock table"
+          help="Recommended. Locks state during plan and apply so concurrent runs can't corrupt it — Spacefleet creates the table if it doesn't exist (with a cloud credential attached; instance-role runs need an existing table). Or pick OpenTofu 1.10+ above for automatic locking with no table at all."
         >
           <input
             type="text"
             className="w-full border border-neutral-300 px-3 py-2 text-sm"
-            placeholder="s3"
-            value={backend}
-            onChange={(e) => setConfig("backend", e.target.value)}
+            placeholder="(no locking)"
+            value={s3.dynamodb_table ?? ""}
+            onChange={(e) => setS3("dynamodb_table", e.target.value)}
             disabled={disabled}
           />
         </Field>
       )}
 
-      {isByo ? (
-        <KeyValueEditor
-          label="Partial backend settings (-backend-config)"
-          help="Optional. These fill a partial backend {} block in your module at init — e.g. bucket, key, region left out of code. Secret values are redacted from non-editors."
-          addLabel="+ Add backend setting"
-          rows={backendRows}
-          onChange={setBackendRows}
+      <label className="flex items-center gap-2 text-sm text-neutral-700">
+        <input
+          type="checkbox"
+          className="h-4 w-4 accent-black"
+          checked={encrypt}
+          onChange={(e) => setEncrypt(e.target.checked)}
           disabled={disabled}
         />
-      ) : (
-        isCustom && (
-          <KeyValueEditor
-            label="Backend configuration"
-            help="Keys passed to the backend (e.g. bucket, region). Secret values are redacted from non-editors."
-            addLabel="+ Add backend setting"
-            rows={backendRows}
-            onChange={setBackendRows}
+        Encrypt state at rest
+      </label>
+      {encrypt && (
+        <Field
+          label="KMS key"
+          help="Optional. KMS key ARN or ID for SSE-KMS; empty uses SSE-S3 (AES-256)."
+        >
+          <input
+            type="text"
+            className="w-full border border-neutral-300 px-3 py-2 text-sm"
+            placeholder="(SSE-S3)"
+            value={s3.kms_key_id ?? ""}
+            onChange={(e) => setS3("kms_key_id", e.target.value)}
             disabled={disabled}
           />
-        )
+        </Field>
       )}
 
       <FlagsEditor
@@ -820,113 +905,23 @@ function ValuesSourcesEditor({
   );
 }
 
-// A backend_config entry as an editable row. The list serializes to the JSON
-// object string the terraform node stores in config.backend_config (which the
-// server validates as a JSON object).
-interface KeyValueRow {
-  key: string;
-  value: string;
-}
-
-// parseBackendConfig defensively parses the JSON-object string into rows. A
-// missing/invalid value yields no rows (the editor starts empty).
-function parseBackendConfig(raw: string | undefined): KeyValueRow[] {
-  if (!raw || raw.trim() === "") return [];
+// parseBackendConfig defensively parses the JSON-object string the terraform
+// node stores in config.backend_config into a flat string map. A
+// missing/invalid value yields an empty object (the fields start blank).
+function parseBackendConfig(raw: string | undefined): Record<string, string> {
+  if (!raw || raw.trim() === "") return {};
   try {
     const obj = JSON.parse(raw) as unknown;
-    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return [];
-    return Object.entries(obj as Record<string, unknown>).map(([key, value]) => ({
-      key,
-      value: value == null ? "" : String(value),
-    }));
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
+    return Object.fromEntries(
+      Object.entries(obj as Record<string, unknown>).map(([key, value]) => [
+        key,
+        value == null ? "" : String(value),
+      ]),
+    );
   } catch {
-    return [];
+    return {};
   }
-}
-
-// serializeBackendConfig turns the rows back into a JSON-object string, dropping
-// blank-keyed rows. An empty list serializes to "" so the key is omitted on save.
-function serializeBackendConfig(rows: KeyValueRow[]): string {
-  const obj: Record<string, string> = {};
-  for (const r of rows) {
-    if (r.key.trim() !== "") obj[r.key] = r.value;
-  }
-  if (Object.keys(obj).length === 0) return "";
-  return JSON.stringify(obj);
-}
-
-// KeyValueEditor edits a flat string→string map (used for the terraform backend
-// config). Sharp corners, neutral palette per brand.
-function KeyValueEditor({
-  label,
-  help,
-  addLabel,
-  rows,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  help?: string;
-  addLabel: string;
-  rows: KeyValueRow[];
-  onChange: (rows: KeyValueRow[]) => void;
-  disabled: boolean;
-}) {
-  function update(i: number, key: keyof KeyValueRow, value: string) {
-    onChange(rows.map((r, j) => (j === i ? { ...r, [key]: value } : r)));
-  }
-  return (
-    <div>
-      <p className="mb-1 text-sm font-medium text-neutral-700">{label}</p>
-      {help && <p className="mb-2 text-xs text-neutral-500">{help}</p>}
-      {rows.length === 0 ? (
-        <p className="text-xs text-neutral-500">No settings.</p>
-      ) : (
-        <ol className="space-y-2">
-          {rows.map((row, i) => (
-            <li key={i} className="flex gap-1">
-              <input
-                type="text"
-                aria-label={`Setting ${i + 1} key`}
-                className="w-1/3 border border-neutral-300 px-2 py-1 text-xs"
-                placeholder="key"
-                value={row.key}
-                onChange={(e) => update(i, "key", e.target.value)}
-                disabled={disabled}
-              />
-              <input
-                type="text"
-                aria-label={`Setting ${i + 1} value`}
-                className="flex-1 border border-neutral-300 px-2 py-1 text-xs"
-                placeholder="value"
-                value={row.value}
-                onChange={(e) => update(i, "value", e.target.value)}
-                disabled={disabled}
-              />
-              {!disabled && (
-                <button
-                  type="button"
-                  onClick={() => onChange(rows.filter((_, j) => j !== i))}
-                  className="px-2 text-xs text-neutral-500 hover:text-red-600"
-                >
-                  Remove
-                </button>
-              )}
-            </li>
-          ))}
-        </ol>
-      )}
-      {!disabled && (
-        <button
-          type="button"
-          onClick={() => onChange([...rows, { key: "", value: "" }])}
-          className="mt-2 text-sm font-medium text-neutral-700 hover:text-black"
-        >
-          {addLabel}
-        </button>
-      )}
-    </div>
-  );
 }
 
 function Field({

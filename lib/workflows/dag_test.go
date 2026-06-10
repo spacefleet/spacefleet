@@ -1,12 +1,15 @@
 package workflows
 
 import (
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 
 	"github.com/spacefleet/spacefleet/lib/helm"
+	"github.com/spacefleet/spacefleet/lib/tofu"
 )
 
 // helmNode builds a minimal valid helm node with the given id and dependencies,
@@ -265,39 +268,53 @@ func TestValidateConfig_TargetRules(t *testing.T) {
 	}
 }
 
-// TestValidateTerraformRequiresExplicitBackend proves a terraform node with no
-// explicit backend (empty, or the kubernetes default, in managed mode) is
-// rejected — it has no injected kubeconfig.
-func TestValidateTerraformRequiresExplicitBackend(t *testing.T) {
-	base := map[string]string{
-		helm.ConfigRepoURL: "https://github.com/acme/infra",
-		manifestConfigPath: "envs/prod",
+// TestValidateTerraformBackend proves the state backend must be the supported
+// s3 type with its required settings — an unsupported (or absent) backend or a
+// missing required setting is rejected at write time.
+func TestValidateTerraformBackend(t *testing.T) {
+	// Full s3 config (the tfNode default) → valid.
+	if err := validateDAG([]ComponentInput{tfNode(nil)}); err != nil {
+		t.Errorf("s3 backend with full config: unexpected error %v", err)
 	}
-	mk := func(extra map[string]string) ComponentInput {
-		cfg := map[string]string{}
-		for k, v := range base {
-			cfg[k] = v
+	// No backend → rejected.
+	noBackend := tfNode(nil)
+	delete(noBackend.Config, terraformConfigBackend)
+	if err := validateDAG([]ComponentInput{noBackend}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("no backend: expected ErrInvalidConfig, got %v", err)
+	}
+	// Unsupported backend types (including the old kubernetes default) → rejected.
+	for _, backend := range []string{"kubernetes", "gcs", "pg"} {
+		n := tfNode(map[string]string{terraformConfigBackend: backend})
+		if err := validateDAG([]ComponentInput{n}); !errors.Is(err, ErrInvalidConfig) {
+			t.Errorf("backend=%q: expected ErrInvalidConfig, got %v", backend, err)
 		}
-		for k, v := range extra {
-			cfg[k] = v
+	}
+	// A missing required s3 setting → rejected.
+	for _, key := range []string{"bucket", "key", "region"} {
+		n := tfNode(nil)
+		cfg := map[string]string{"bucket": "my-state", "key": "prod/terraform.tfstate", "region": "us-east-1"}
+		delete(cfg, key)
+		b, _ := json.Marshal(cfg)
+		n.Config[terraformConfigBackendConfig] = string(b)
+		if err := validateDAG([]ComponentInput{n}); !errors.Is(err, ErrInvalidConfig) {
+			t.Errorf("s3 config without %q: expected ErrInvalidConfig, got %v", key, err)
 		}
-		return ComponentInput{ID: uuid.New(), Name: "tf", Type: TypeTerraform, Config: cfg}
 	}
-	// Managed mode, no backend → rejected.
-	if err := validateDAG([]ComponentInput{mk(nil)}); !errors.Is(err, ErrInvalidConfig) {
-		t.Errorf("managed mode without a backend: expected ErrInvalidConfig, got %v", err)
+	// Absent backend_config entirely → rejected (the required settings are missing).
+	noCfg := tfNode(nil)
+	delete(noCfg.Config, terraformConfigBackendConfig)
+	if err := validateDAG([]ComponentInput{noCfg}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("no backend_config: expected ErrInvalidConfig, got %v", err)
 	}
-	// Managed mode, kubernetes backend → rejected.
-	if err := validateDAG([]ComponentInput{mk(map[string]string{terraformConfigBackend: "kubernetes"})}); !errors.Is(err, ErrInvalidConfig) {
-		t.Errorf("managed kubernetes backend: expected ErrInvalidConfig, got %v", err)
+	// Malformed backend_config JSON → rejected.
+	bad := tfNode(map[string]string{terraformConfigBackendConfig: `[not json`})
+	if err := validateDAG([]ComponentInput{bad}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("malformed backend_config: expected ErrInvalidConfig, got %v", err)
 	}
-	// Managed mode, explicit s3 backend → valid.
-	if err := validateDAG([]ComponentInput{mk(map[string]string{terraformConfigBackend: "s3"})}); err != nil {
-		t.Errorf("managed s3 backend: unexpected error %v", err)
-	}
-	// BYO mode (module owns its backend) → valid even with no backend key.
-	if err := validateDAG([]ComponentInput{mk(map[string]string{terraformConfigBackendMode: "byo"})}); err != nil {
-		t.Errorf("byo mode: unexpected error %v", err)
+	// Optional s3 settings are accepted alongside the required ones.
+	extra := tfNode(map[string]string{terraformConfigBackendConfig: `{"bucket":"my-state","key":"prod/terraform.tfstate","region":"us-east-1","dynamodb_table":"tf-locks","encrypt":"true","kms_key_id":"arn:aws:kms:us-east-1:1:key/k"}`})
+	if err := validateDAG([]ComponentInput{extra}); err != nil {
+		t.Errorf("optional s3 settings: unexpected error %v", err)
 	}
 }
 
@@ -309,14 +326,15 @@ func TestValidateConfig_UnknownType(t *testing.T) {
 }
 
 // tfNode builds a minimal valid terraform node, overlaying any extra config
-// keys, so a test can focus on the key under test. It carries an explicit
-// (non-kubernetes) backend, required now that terraform gets no injected
-// kubeconfig. command is not authored — it's synthesized per run.
+// keys, so a test can focus on the key under test. It carries the s3 state
+// backend with its required settings. command is not authored — it's
+// synthesized per run.
 func tfNode(extra map[string]string) ComponentInput {
 	cfg := map[string]string{
-		helm.ConfigRepoURL:     "https://github.com/acme/infra",
-		manifestConfigPath:     "envs/prod",
-		terraformConfigBackend: "s3",
+		helm.ConfigRepoURL:           "https://github.com/acme/infra",
+		manifestConfigPath:           "envs/prod",
+		terraformConfigBackend:       "s3",
+		terraformConfigBackendConfig: `{"bucket":"my-state","key":"prod/terraform.tfstate","region":"us-east-1"}`,
 	}
 	for k, v := range extra {
 		cfg[k] = v
@@ -324,35 +342,17 @@ func tfNode(extra map[string]string) ComponentInput {
 	return ComponentInput{ID: uuid.New(), Name: "tf", Type: TypeTerraform, Config: cfg}
 }
 
-func TestValidateTerraformConfig_BackendModeAndCloudCredential(t *testing.T) {
+func TestValidateTerraformConfig_CloudCredential(t *testing.T) {
 	t.Parallel()
 
-	// Valid backend modes (managed, byo) and absent (defaults managed).
-	for _, mode := range []string{"", "managed", "byo"} {
-		n := tfNode(map[string]string{terraformConfigBackendMode: mode})
-		if err := validateDAG([]ComponentInput{n}); err != nil {
-			t.Errorf("backend_mode=%q: unexpected error %v", mode, err)
-		}
-	}
-
-	// Invalid backend mode → ErrInvalidConfig.
-	bad := tfNode(map[string]string{terraformConfigBackendMode: "nonsense"})
-	if err := validateDAG([]ComponentInput{bad}); !errors.Is(err, ErrInvalidConfig) {
-		t.Errorf("bad backend_mode: expected ErrInvalidConfig, got %v", err)
-	}
-
-	// byo mode WITHOUT a cloud credential is valid (an instance/IRSA role may
-	// authenticate the backend).
-	byoNoCred := tfNode(map[string]string{terraformConfigBackendMode: "byo"})
-	if err := validateDAG([]ComponentInput{byoNoCred}); err != nil {
-		t.Errorf("byo without credential: unexpected error %v", err)
+	// No cloud credential is valid (an instance/IRSA role may authenticate the
+	// backend and providers).
+	if err := validateDAG([]ComponentInput{tfNode(nil)}); err != nil {
+		t.Errorf("no credential: unexpected error %v", err)
 	}
 
 	// Valid cloud_credential_id UUID.
-	goodCred := tfNode(map[string]string{
-		terraformConfigBackendMode:       "byo",
-		terraformConfigCloudCredentialID: uuid.New().String(),
-	})
+	goodCred := tfNode(map[string]string{terraformConfigCloudCredentialID: uuid.New().String()})
 	if err := validateDAG([]ComponentInput{goodCred}); err != nil {
 		t.Errorf("valid cloud_credential_id: unexpected error %v", err)
 	}
@@ -382,6 +382,65 @@ func TestValidateTerraformConfig_Flags(t *testing.T) {
 		bad := tfNode(map[string]string{key: `[not json`})
 		if err := validateDAG([]ComponentInput{bad}); !errors.Is(err, ErrInvalidConfig) {
 			t.Errorf("%s malformed: expected ErrInvalidConfig, got %v", key, err)
+		}
+	}
+}
+
+func TestValidateTerraformConfig_TofuVersion(t *testing.T) {
+	t.Parallel()
+
+	// Absent tofu_version is valid (the default line applies).
+	if err := validateDAG([]ComponentInput{tfNode(nil)}); err != nil {
+		t.Errorf("no tofu_version: unexpected error %v", err)
+	}
+
+	// Every supported line is accepted.
+	for _, v := range tofu.Versions {
+		n := tfNode(map[string]string{terraformConfigVersion: v.Minor})
+		if err := validateDAG([]ComponentInput{n}); err != nil {
+			t.Errorf("tofu_version %q: unexpected error %v", v.Minor, err)
+		}
+	}
+
+	// An unsupported line → ErrInvalidConfig naming the supported ones.
+	bad := tfNode(map[string]string{terraformConfigVersion: "0.11"})
+	err := validateDAG([]ComponentInput{bad})
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("tofu_version 0.11: expected ErrInvalidConfig, got %v", err)
+	}
+	if !strings.Contains(err.Error(), tofu.DefaultVersion) {
+		t.Errorf("error should list the supported lines, got: %v", err)
+	}
+}
+
+func TestValidateTerraformConfig_UseLockfileNeedsNativeLocking(t *testing.T) {
+	t.Parallel()
+
+	withLockfile := `{"bucket":"my-state","key":"prod/terraform.tfstate","region":"us-east-1","use_lockfile":"true"}`
+
+	// use_lockfile on the (pre-1.10) default line → rejected at write time
+	// rather than failing `tofu init` mid-run on the unknown argument.
+	implicitDefault := tfNode(map[string]string{terraformConfigBackendConfig: withLockfile})
+	if err := validateDAG([]ComponentInput{implicitDefault}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("use_lockfile on default line: expected ErrInvalidConfig, got %v", err)
+	}
+	explicitOld := tfNode(map[string]string{
+		terraformConfigVersion:       "1.9",
+		terraformConfigBackendConfig: withLockfile,
+	})
+	if err := validateDAG([]ComponentInput{explicitOld}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("use_lockfile on 1.9: expected ErrInvalidConfig, got %v", err)
+	}
+
+	// On a native-locking line it's accepted — including an explicit opt-out,
+	// which is the API author's escape hatch from the automatic injection.
+	for _, raw := range []string{withLockfile, strings.ReplaceAll(withLockfile, `"true"`, `"false"`)} {
+		n := tfNode(map[string]string{
+			terraformConfigVersion:       "1.12",
+			terraformConfigBackendConfig: raw,
+		})
+		if err := validateDAG([]ComponentInput{n}); err != nil {
+			t.Errorf("use_lockfile on 1.12 (%s): unexpected error %v", raw, err)
 		}
 	}
 }

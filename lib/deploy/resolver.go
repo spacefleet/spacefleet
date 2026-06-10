@@ -53,9 +53,9 @@ type GitTokenResolver interface {
 }
 
 // CloudCredentialResolver decrypts an org-scoped cloud credential (AWS, etc.),
-// for a terraform component running in byo backend mode that authenticates to
-// the cloud. May be nil (no cloud-credentials service wired), in which case a
-// run referencing a credential fails with a clear error.
+// for a terraform component that authenticates to the cloud (the state backend
+// and the module's providers). May be nil (no cloud-credentials service wired),
+// in which case a run referencing a credential fails with a clear error.
 type CloudCredentialResolver interface {
 	Resolve(ctx context.Context, orgID, id uuid.UUID) (cloudcredentials.Resolved, error)
 }
@@ -79,6 +79,10 @@ type Resolver struct {
 	gitTokens  GitTokenResolver
 	cloudCreds CloudCredentialResolver
 	vars       VariableResolver
+	// ensureLockTable provisions a missing DynamoDB state-lock table before a
+	// run (cloudauth.EnsureLockTable in production); a field so tests exercise
+	// the wiring without an AWS call.
+	ensureLockTable func(ctx context.Context, env map[string]string, region, table string) error
 }
 
 // NewResolver builds a Resolver over the connection, credential, git-token,
@@ -87,7 +91,7 @@ type Resolver struct {
 // "not configured" error, and a nil variable resolver simply injects no
 // variables.
 func NewResolver(conns ConnResolver, creds CredentialResolver, gitTokens GitTokenResolver, cloudCreds CloudCredentialResolver, vars VariableResolver) *Resolver {
-	return &Resolver{conns: conns, creds: creds, gitTokens: gitTokens, cloudCreds: cloudCreds, vars: vars}
+	return &Resolver{conns: conns, creds: creds, gitTokens: gitTokens, cloudCreds: cloudCreds, vars: vars, ensureLockTable: cloudauth.EnsureLockTable}
 }
 
 // RunInputs is the generic description of one helm run the resolver needs,
@@ -110,8 +114,20 @@ type RunInputs struct {
 	ChartCredentialID    uuid.UUID
 	GitHubInstallationID uuid.UUID
 	// CloudCredentialID is the org-scoped cloud credential to authenticate a
-	// terraform byo-backend run to the cloud (AWS). uuid.Nil when none.
+	// terraform run to the cloud (AWS). uuid.Nil when none.
 	CloudCredentialID uuid.UUID
+	// DynamoDBLockTable, when set (a terraform component whose s3 backend names
+	// a DynamoDB state-lock table), is ensured to exist at resolve time —
+	// created with the LockID schema OpenTofu requires when missing — using the
+	// run's cloud credential, so naming a table is all a user does to get
+	// locking. Ignored when no CloudCredentialID is attached: an instance-role
+	// run authenticates as the runner pod, an identity this process doesn't
+	// hold, so there the table must pre-exist.
+	DynamoDBLockTable string
+	// DynamoDBLockRegion is the region the lock table lives in — the s3
+	// backend's region (OpenTofu resolves the lock table in the backend region,
+	// not the credential's default region).
+	DynamoDBLockRegion string
 	// PullsChart is false only for uninstall (which pulls nothing), so the chart
 	// credential and git token are skipped.
 	PullsChart bool
@@ -231,8 +247,8 @@ func (r *Resolver) Resolve(ctx context.Context, in RunInputs) (Resolved, error) 
 		out.HasGitToken = true
 	}
 
-	// Attach a cloud credential, when one is set (terraform byo backend mode):
-	// resolve (decrypt) it, materialize the AWS env (pre-assuming any role via
+	// Attach a cloud credential, when one is set (a terraform component): resolve
+	// (decrypt) it, materialize the AWS env (pre-assuming any role via
 	// STS), and write the secret keys into a sourceable env file as `export
 	// K='V'` lines. The keys (access/secret/token) land ONLY in the mounted file
 	// — never in out.Env, the script string, or the TaskRun manifest, exactly as
@@ -261,6 +277,20 @@ func (r *Resolver) Resolve(ctx context.Context, in RunInputs) (Resolved, error) 
 			out.Env["AWS_REGION"] = region
 		}
 		out.HasCloudAuth = true
+
+		// First-party DynamoDB state locking: when the component names a lock
+		// table, make sure it exists before the step runs — created with the
+		// schema OpenTofu requires when missing — using the same materialized
+		// credential the step gets (no second STS round trip). Idempotent and
+		// cheap (one DescribeTable when the table exists), so it runs for both
+		// the plan and apply units. A definitely-missing table that cannot be
+		// created fails the run here, with a clearer error than a mid-step
+		// lock failure.
+		if in.DynamoDBLockTable != "" {
+			if err := r.ensureLockTable(ctx, secretEnv, in.DynamoDBLockRegion, in.DynamoDBLockTable); err != nil {
+				return Resolved{}, err
+			}
+		}
 	}
 
 	// Keep Env and SecretEnv disjoint: a credential-injected or non-secret key

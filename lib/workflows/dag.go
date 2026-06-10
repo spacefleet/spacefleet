@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -204,24 +205,30 @@ const (
 	// splits at run time into a plan unit and an apply unit (the apply gated by the
 	// component's requires_approval) — this key is synthesized per unit there.
 	terraformConfigCommand = "command"
-	// terraformConfigBackend names the OpenTofu state backend. Defaults to
-	// "kubernetes" (state stored as Secrets in the runner cluster) when empty.
+	// terraformConfigBackend names the OpenTofu state backend Spacefleet
+	// configures (it writes a backend_override.tf into the module, so state
+	// lands where this config says regardless of any backend block in code).
+	// Required; tofu.BackendS3 is the only supported value today.
 	terraformConfigBackend = "backend"
-	// terraformConfigBackendConfig is an optional JSON object of backend
-	// settings (e.g. S3 bucket/region, pg conn_str). Rendered into the generated
-	// backend_override.tf. Secret values here get the same redaction treatment as
-	// helm inline values (see lib/api/workflow.go secretConfigKeys).
+	// terraformConfigBackendConfig is a JSON object of the backend's settings,
+	// rendered into the generated backend_override.tf. For s3: bucket, key, and
+	// region are required; dynamodb_table, encrypt, and kms_key_id are optional.
+	// Secret values here get the same redaction treatment as helm inline values
+	// (see lib/api/workflow.go secretConfigKeys).
 	terraformConfigBackendConfig = "backend_config"
-	// terraformConfigBackendMode selects how the state backend is wired:
-	// tofu.ModeManaged (default, also when empty) generates a backend_override.tf;
-	// tofu.ModeBYO uses the module's own backend block and passes backend_config
-	// entries as `-backend-config` init flags.
-	terraformConfigBackendMode = "backend_mode"
 	// terraformConfigCloudCredentialID names an org-scoped cloud credential
-	// (an aws credential id, a UUID) used to authenticate a byo-backend run to
-	// the cloud. Optional even in byo mode (a backend may use an instance/IRSA
-	// role instead). Not a secret — not redacted in lib/api/workflow.go.
+	// (an aws credential id, a UUID) used to authenticate the run to the cloud —
+	// the state backend and the module's AWS providers read it from the process
+	// env. Optional (the runner may authenticate via an instance/IRSA role
+	// instead). Not a secret — not redacted in lib/api/workflow.go.
 	terraformConfigCloudCredentialID = "cloud_credential_id"
+	// terraformConfigVersion selects the OpenTofu release line the component
+	// runs (e.g. "1.12"); see lib/tofu's Version registry for the supported
+	// list. Optional — empty runs the default line (tofu.DefaultVersion), so
+	// components authored before this key existed keep their behavior. On
+	// lines with native s3 locking (1.10+) the planner turns `use_lockfile`
+	// on automatically.
+	terraformConfigVersion = "tofu_version"
 	// terraformConfigInitFlags / PlanFlags / ApplyFlags are optional JSON arrays
 	// of extra CLI flag tokens appended to `tofu init` / `tofu plan` / `tofu apply`
 	// respectively (after the flags Spacefleet sets itself). Each array element is
@@ -242,14 +249,33 @@ const (
 	terraformCommandApply = "apply"
 )
 
+// s3 backend_config keys the platform itself reads or writes — the rest of
+// the object passes through to the rendered backend_override.tf verbatim.
+const (
+	// s3BackendKeyRegion is where the bucket (and any DynamoDB lock table)
+	// lives; required, validated below.
+	s3BackendKeyRegion = "region"
+	// s3BackendKeyDynamoTable names the optional DynamoDB state-lock table.
+	// When set with a cloud credential attached, the resolver ensures the
+	// table exists before each run (first-party locking — see
+	// cloudauth.EnsureLockTable).
+	s3BackendKeyDynamoTable = "dynamodb_table"
+	// s3BackendKeyLockfile is OpenTofu ≥1.10's native S3 locking switch. The
+	// planner injects "true" automatically on lines that support it; an
+	// explicit value here (API authors) is respected, and validation rejects
+	// it on lines that would choke on the unknown backend argument.
+	s3BackendKeyLockfile = "use_lockfile"
+)
+
 // validateTerraformConfig checks a terraform node's config: a git repo_url + a
-// working path are required, and backend_config — when present — must parse as a
-// JSON object (so a malformed override is rejected at write time rather than
-// failing mid-run in the worker). The plan/apply command is NOT authored: an
-// OpenTofu component is one node, expanded into a plan unit + an apply unit at
-// run time (see expandExecutionNodes), so command is synthesized, not validated
-// here. backend is optional (defaults to kubernetes). Failures wrap
-// ErrInvalidConfig so a handler maps them to a 400.
+// working path are required, the state backend must be a supported type (s3
+// only today), and backend_config must be a JSON object carrying that backend's
+// required settings (bucket/key/region for s3) — so a broken override is
+// rejected at write time rather than failing mid-run in the worker. The
+// plan/apply command is NOT authored: an OpenTofu component is one node,
+// expanded into a plan unit + an apply unit at run time (see
+// expandExecutionNodes), so command is synthesized, not validated here.
+// Failures wrap ErrInvalidConfig so a handler maps them to a 400.
 func validateTerraformConfig(n ComponentInput) error {
 	// A terraform component manages cloud/infra, not a Kubernetes workload, so it
 	// carries no cluster/namespace target — reject one if the canvas sends it.
@@ -262,29 +288,39 @@ func validateTerraformConfig(n ComponentInput) error {
 	if err := requireConfig(n, helm.ConfigRepoURL, manifestConfigPath); err != nil {
 		return err
 	}
-	// With no target cluster there is no injected kubeconfig, so the implicit
-	// kubernetes state backend is unavailable: a terraform component must name an
-	// explicit backend — either byo mode (the module owns its backend block) or a
-	// managed backend other than kubernetes (e.g. s3, pg).
-	backend := n.Config[terraformConfigBackend]
-	if n.Config[terraformConfigBackendMode] != tofu.ModeBYO && (backend == "" || backend == tofu.DefaultBackend) {
-		return fmt.Errorf("%w: node %q (terraform) requires an explicit state backend: set %q to byo, or set %q to a backend other than %q", ErrInvalidConfig, n.Name, terraformConfigBackendMode, terraformConfigBackend, tofu.DefaultBackend)
+	// The state backend is always managed by Spacefleet (the run writes a backend
+	// override into the module), so the component must name a supported backend
+	// type and supply its required settings — a broken or missing backend fails
+	// here, at write time, not mid-run in the worker.
+	if backend := n.Config[terraformConfigBackend]; backend != tofu.BackendS3 {
+		return fmt.Errorf("%w: node %q (terraform) %s must be %q (the only supported state backend)", ErrInvalidConfig, n.Name, terraformConfigBackend, tofu.BackendS3)
 	}
+	var backendCfg map[string]any
 	if raw := n.Config[terraformConfigBackendConfig]; raw != "" {
-		var obj map[string]any
-		if err := json.Unmarshal([]byte(raw), &obj); err != nil {
+		if err := json.Unmarshal([]byte(raw), &backendCfg); err != nil {
 			return fmt.Errorf("%w: node %q (terraform) %s must be a JSON object: %v", ErrInvalidConfig, n.Name, terraformConfigBackendConfig, err)
 		}
 	}
-	if mode := n.Config[terraformConfigBackendMode]; mode != "" {
-		switch mode {
-		case tofu.ModeManaged, tofu.ModeBYO:
-		default:
-			return fmt.Errorf("%w: node %q (terraform) %s has unknown value %q (one of %q, %q)", ErrInvalidConfig, n.Name, terraformConfigBackendMode, mode, tofu.ModeManaged, tofu.ModeBYO)
+	for _, key := range []string{"bucket", "key", s3BackendKeyRegion} {
+		if s, _ := backendCfg[key].(string); s == "" {
+			return fmt.Errorf("%w: node %q (terraform) the s3 state backend requires %q in %s", ErrInvalidConfig, n.Name, key, terraformConfigBackendConfig)
 		}
 	}
-	// A cloud credential is optional even in byo mode — a backend may authenticate
-	// via an instance/IRSA role — but when present it must be a valid UUID.
+	// The OpenTofu line is optional (empty = the default line) but must be a
+	// supported one, so an unknown value 400s at write time instead of failing
+	// in the worker.
+	version, ok := tofu.ResolveVersion(n.Config[terraformConfigVersion])
+	if !ok {
+		return fmt.Errorf("%w: node %q (terraform) %s %q is not supported (supported: %s)", ErrInvalidConfig, n.Name, terraformConfigVersion, n.Config[terraformConfigVersion], supportedTofuVersions())
+	}
+	// use_lockfile is meaningful only on lines with native s3 locking — older
+	// lines fail `tofu init` on the unknown backend argument, so reject the
+	// combination here with an actionable message instead.
+	if _, set := backendCfg[s3BackendKeyLockfile]; set && !version.NativeS3Lock {
+		return fmt.Errorf("%w: node %q (terraform) %s requires OpenTofu 1.10 or newer (%s is %q)", ErrInvalidConfig, n.Name, s3BackendKeyLockfile, terraformConfigVersion, version.Minor)
+	}
+	// A cloud credential is optional — the runner may authenticate via an
+	// instance/IRSA role — but when present it must be a valid UUID.
 	if id := n.Config[terraformConfigCloudCredentialID]; id != "" {
 		if _, err := uuid.Parse(id); err != nil {
 			return fmt.Errorf("%w: node %q (terraform) %s must be a UUID: %v", ErrInvalidConfig, n.Name, terraformConfigCloudCredentialID, err)
@@ -301,6 +337,16 @@ func validateTerraformConfig(n ComponentInput) error {
 		}
 	}
 	return nil
+}
+
+// supportedTofuVersions renders the supported OpenTofu lines for the
+// tofu_version validation error, newest first (e.g. "1.12, 1.11, 1.10, 1.9").
+func supportedTofuVersions() string {
+	minors := make([]string, 0, len(tofu.Versions))
+	for _, v := range tofu.Versions {
+		minors = append(minors, v.Minor)
+	}
+	return strings.Join(minors, ", ")
 }
 
 // requireConfig checks each named config key is present and non-empty on the node.
