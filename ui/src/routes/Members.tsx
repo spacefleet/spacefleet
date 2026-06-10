@@ -163,6 +163,10 @@ export function Members() {
       {invites.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-neutral-700">Pending invitations</h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            Invite links are shown only when created. To get a new link for an
+            address, invite it again — the old link stops working.
+          </p>
           <div className="mt-2 border border-neutral-200 bg-white">
             <table className="w-full text-sm">
               <thead>
@@ -182,11 +186,10 @@ export function Members() {
                       {new Date(inv.expires_at).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <CopyLinkButton url={inv.accept_url} />
                       <button
                         type="button"
                         onClick={() => void onRevoke(inv.id)}
-                        className="ml-4 inline-flex items-center gap-1.5 text-red-500 hover:text-red-700"
+                        className="inline-flex items-center gap-1.5 text-red-500 hover:text-red-700"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                         Revoke
@@ -226,7 +229,7 @@ function InviteForm({ onInvited }: { onInvited: (inv: Invitation) => void }) {
       return;
     }
     onInvited(data.invitation);
-    setResult({ url: data.invitation.accept_url, emailSent: data.email_sent });
+    setResult({ url: data.accept_url, emailSent: data.email_sent });
     setEmail("");
   }
 

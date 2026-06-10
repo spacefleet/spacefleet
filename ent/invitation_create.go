@@ -51,9 +51,9 @@ func (_c *InvitationCreate) SetNillableRole(v *invitation.Role) *InvitationCreat
 	return _c
 }
 
-// SetToken sets the "token" field.
-func (_c *InvitationCreate) SetToken(v string) *InvitationCreate {
-	_c.mutation.SetToken(v)
+// SetTokenHash sets the "token_hash" field.
+func (_c *InvitationCreate) SetTokenHash(v string) *InvitationCreate {
+	_c.mutation.SetTokenHash(v)
 	return _c
 }
 
@@ -212,8 +212,8 @@ func (_c *InvitationCreate) check() error {
 			return &ValidationError{Name: "role", err: fmt.Errorf(`ent: validator failed for field "Invitation.role": %w`, err)}
 		}
 	}
-	if _, ok := _c.mutation.Token(); !ok {
-		return &ValidationError{Name: "token", err: errors.New(`ent: missing required field "Invitation.token"`)}
+	if _, ok := _c.mutation.TokenHash(); !ok {
+		return &ValidationError{Name: "token_hash", err: errors.New(`ent: missing required field "Invitation.token_hash"`)}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Invitation.status"`)}
@@ -276,9 +276,9 @@ func (_c *InvitationCreate) createSpec() (*Invitation, *sqlgraph.CreateSpec) {
 		_spec.SetField(invitation.FieldRole, field.TypeEnum, value)
 		_node.Role = value
 	}
-	if value, ok := _c.mutation.Token(); ok {
-		_spec.SetField(invitation.FieldToken, field.TypeString, value)
-		_node.Token = value
+	if value, ok := _c.mutation.TokenHash(); ok {
+		_spec.SetField(invitation.FieldTokenHash, field.TypeString, value)
+		_node.TokenHash = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(invitation.FieldStatus, field.TypeEnum, value)
@@ -473,8 +473,8 @@ func (u *InvitationUpsertOne) UpdateNewValues() *InvitationUpsertOne {
 		if _, exists := u.create.mutation.OrganizationID(); exists {
 			s.SetIgnore(invitation.FieldOrganizationID)
 		}
-		if _, exists := u.create.mutation.Token(); exists {
-			s.SetIgnore(invitation.FieldToken)
+		if _, exists := u.create.mutation.TokenHash(); exists {
+			s.SetIgnore(invitation.FieldTokenHash)
 		}
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(invitation.FieldCreatedAt)
@@ -794,8 +794,8 @@ func (u *InvitationUpsertBulk) UpdateNewValues() *InvitationUpsertBulk {
 			if _, exists := b.mutation.OrganizationID(); exists {
 				s.SetIgnore(invitation.FieldOrganizationID)
 			}
-			if _, exists := b.mutation.Token(); exists {
-				s.SetIgnore(invitation.FieldToken)
+			if _, exists := b.mutation.TokenHash(); exists {
+				s.SetIgnore(invitation.FieldTokenHash)
 			}
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(invitation.FieldCreatedAt)

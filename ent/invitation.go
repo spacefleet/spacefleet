@@ -25,8 +25,8 @@ type Invitation struct {
 	Email string `json:"email,omitempty"`
 	// Role holds the value of the "role" field.
 	Role invitation.Role `json:"role,omitempty"`
-	// Token holds the value of the "token" field.
-	Token string `json:"-"`
+	// TokenHash holds the value of the "token_hash" field.
+	TokenHash string `json:"-"`
 	// Status holds the value of the "status" field.
 	Status invitation.Status `json:"status,omitempty"`
 	// ExpiresAt holds the value of the "expires_at" field.
@@ -70,7 +70,7 @@ func (*Invitation) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case invitation.FieldInvitedBy:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
-		case invitation.FieldEmail, invitation.FieldRole, invitation.FieldToken, invitation.FieldStatus:
+		case invitation.FieldEmail, invitation.FieldRole, invitation.FieldTokenHash, invitation.FieldStatus:
 			values[i] = new(sql.NullString)
 		case invitation.FieldExpiresAt, invitation.FieldAcceptedAt, invitation.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -115,11 +115,11 @@ func (_m *Invitation) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Role = invitation.Role(value.String)
 			}
-		case invitation.FieldToken:
+		case invitation.FieldTokenHash:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field token", values[i])
+				return fmt.Errorf("unexpected type %T for field token_hash", values[i])
 			} else if value.Valid {
-				_m.Token = value.String
+				_m.TokenHash = value.String
 			}
 		case invitation.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -203,7 +203,7 @@ func (_m *Invitation) String() string {
 	builder.WriteString("role=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Role))
 	builder.WriteString(", ")
-	builder.WriteString("token=<sensitive>")
+	builder.WriteString("token_hash=<sensitive>")
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Status))

@@ -1370,8 +1370,6 @@ export interface components {
             expires_at: string;
             /** Format: date-time */
             created_at: string;
-            /** @description The copy-able invite link an admin can share. */
-            accept_url: string;
         };
         InvitationCreateRequest: {
             email: string;
@@ -1379,6 +1377,13 @@ export interface components {
         };
         InvitationCreateResult: {
             invitation: components["schemas"]["Invitation"];
+            /**
+             * @description The copy-able invite link an admin can share. Only the token's hash
+             *     is stored, so this is the only time the link is available — listing
+             *     invitations does not return it (re-inviting the same address issues
+             *     a fresh link and supersedes this one).
+             */
+            accept_url: string;
             /**
              * @description Whether an invitation email was enqueued. False when email isn't
              *     configured (or enqueueing failed) — share the accept_url manually.

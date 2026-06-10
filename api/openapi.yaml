@@ -1775,7 +1775,7 @@ components:
     Invitation:
       type: object
       description: A pending (or resolved) invitation to join the organization.
-      required: [id, email, role, status, expires_at, created_at, accept_url]
+      required: [id, email, role, status, expires_at, created_at]
       properties:
         id:
           type: string
@@ -1792,9 +1792,6 @@ components:
         created_at:
           type: string
           format: date-time
-        accept_url:
-          type: string
-          description: The copy-able invite link an admin can share.
 
     InvitationCreateRequest:
       type: object
@@ -1809,10 +1806,17 @@ components:
 
     InvitationCreateResult:
       type: object
-      required: [invitation, email_sent]
+      required: [invitation, accept_url, email_sent]
       properties:
         invitation:
           $ref: "#/components/schemas/Invitation"
+        accept_url:
+          type: string
+          description: |
+            The copy-able invite link an admin can share. Only the token's hash
+            is stored, so this is the only time the link is available — listing
+            invitations does not return it (re-inviting the same address issues
+            a fresh link and supersedes this one).
         email_sent:
           type: boolean
           description: |

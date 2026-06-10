@@ -66,9 +66,9 @@ func Email(v string) predicate.Invitation {
 	return predicate.Invitation(sql.FieldEQ(FieldEmail, v))
 }
 
-// Token applies equality check predicate on the "token" field. It's identical to TokenEQ.
-func Token(v string) predicate.Invitation {
-	return predicate.Invitation(sql.FieldEQ(FieldToken, v))
+// TokenHash applies equality check predicate on the "token_hash" field. It's identical to TokenHashEQ.
+func TokenHash(v string) predicate.Invitation {
+	return predicate.Invitation(sql.FieldEQ(FieldTokenHash, v))
 }
 
 // ExpiresAt applies equality check predicate on the "expires_at" field. It's identical to ExpiresAtEQ.
@@ -196,69 +196,69 @@ func RoleNotIn(vs ...Role) predicate.Invitation {
 	return predicate.Invitation(sql.FieldNotIn(FieldRole, vs...))
 }
 
-// TokenEQ applies the EQ predicate on the "token" field.
-func TokenEQ(v string) predicate.Invitation {
-	return predicate.Invitation(sql.FieldEQ(FieldToken, v))
+// TokenHashEQ applies the EQ predicate on the "token_hash" field.
+func TokenHashEQ(v string) predicate.Invitation {
+	return predicate.Invitation(sql.FieldEQ(FieldTokenHash, v))
 }
 
-// TokenNEQ applies the NEQ predicate on the "token" field.
-func TokenNEQ(v string) predicate.Invitation {
-	return predicate.Invitation(sql.FieldNEQ(FieldToken, v))
+// TokenHashNEQ applies the NEQ predicate on the "token_hash" field.
+func TokenHashNEQ(v string) predicate.Invitation {
+	return predicate.Invitation(sql.FieldNEQ(FieldTokenHash, v))
 }
 
-// TokenIn applies the In predicate on the "token" field.
-func TokenIn(vs ...string) predicate.Invitation {
-	return predicate.Invitation(sql.FieldIn(FieldToken, vs...))
+// TokenHashIn applies the In predicate on the "token_hash" field.
+func TokenHashIn(vs ...string) predicate.Invitation {
+	return predicate.Invitation(sql.FieldIn(FieldTokenHash, vs...))
 }
 
-// TokenNotIn applies the NotIn predicate on the "token" field.
-func TokenNotIn(vs ...string) predicate.Invitation {
-	return predicate.Invitation(sql.FieldNotIn(FieldToken, vs...))
+// TokenHashNotIn applies the NotIn predicate on the "token_hash" field.
+func TokenHashNotIn(vs ...string) predicate.Invitation {
+	return predicate.Invitation(sql.FieldNotIn(FieldTokenHash, vs...))
 }
 
-// TokenGT applies the GT predicate on the "token" field.
-func TokenGT(v string) predicate.Invitation {
-	return predicate.Invitation(sql.FieldGT(FieldToken, v))
+// TokenHashGT applies the GT predicate on the "token_hash" field.
+func TokenHashGT(v string) predicate.Invitation {
+	return predicate.Invitation(sql.FieldGT(FieldTokenHash, v))
 }
 
-// TokenGTE applies the GTE predicate on the "token" field.
-func TokenGTE(v string) predicate.Invitation {
-	return predicate.Invitation(sql.FieldGTE(FieldToken, v))
+// TokenHashGTE applies the GTE predicate on the "token_hash" field.
+func TokenHashGTE(v string) predicate.Invitation {
+	return predicate.Invitation(sql.FieldGTE(FieldTokenHash, v))
 }
 
-// TokenLT applies the LT predicate on the "token" field.
-func TokenLT(v string) predicate.Invitation {
-	return predicate.Invitation(sql.FieldLT(FieldToken, v))
+// TokenHashLT applies the LT predicate on the "token_hash" field.
+func TokenHashLT(v string) predicate.Invitation {
+	return predicate.Invitation(sql.FieldLT(FieldTokenHash, v))
 }
 
-// TokenLTE applies the LTE predicate on the "token" field.
-func TokenLTE(v string) predicate.Invitation {
-	return predicate.Invitation(sql.FieldLTE(FieldToken, v))
+// TokenHashLTE applies the LTE predicate on the "token_hash" field.
+func TokenHashLTE(v string) predicate.Invitation {
+	return predicate.Invitation(sql.FieldLTE(FieldTokenHash, v))
 }
 
-// TokenContains applies the Contains predicate on the "token" field.
-func TokenContains(v string) predicate.Invitation {
-	return predicate.Invitation(sql.FieldContains(FieldToken, v))
+// TokenHashContains applies the Contains predicate on the "token_hash" field.
+func TokenHashContains(v string) predicate.Invitation {
+	return predicate.Invitation(sql.FieldContains(FieldTokenHash, v))
 }
 
-// TokenHasPrefix applies the HasPrefix predicate on the "token" field.
-func TokenHasPrefix(v string) predicate.Invitation {
-	return predicate.Invitation(sql.FieldHasPrefix(FieldToken, v))
+// TokenHashHasPrefix applies the HasPrefix predicate on the "token_hash" field.
+func TokenHashHasPrefix(v string) predicate.Invitation {
+	return predicate.Invitation(sql.FieldHasPrefix(FieldTokenHash, v))
 }
 
-// TokenHasSuffix applies the HasSuffix predicate on the "token" field.
-func TokenHasSuffix(v string) predicate.Invitation {
-	return predicate.Invitation(sql.FieldHasSuffix(FieldToken, v))
+// TokenHashHasSuffix applies the HasSuffix predicate on the "token_hash" field.
+func TokenHashHasSuffix(v string) predicate.Invitation {
+	return predicate.Invitation(sql.FieldHasSuffix(FieldTokenHash, v))
 }
 
-// TokenEqualFold applies the EqualFold predicate on the "token" field.
-func TokenEqualFold(v string) predicate.Invitation {
-	return predicate.Invitation(sql.FieldEqualFold(FieldToken, v))
+// TokenHashEqualFold applies the EqualFold predicate on the "token_hash" field.
+func TokenHashEqualFold(v string) predicate.Invitation {
+	return predicate.Invitation(sql.FieldEqualFold(FieldTokenHash, v))
 }
 
-// TokenContainsFold applies the ContainsFold predicate on the "token" field.
-func TokenContainsFold(v string) predicate.Invitation {
-	return predicate.Invitation(sql.FieldContainsFold(FieldToken, v))
+// TokenHashContainsFold applies the ContainsFold predicate on the "token_hash" field.
+func TokenHashContainsFold(v string) predicate.Invitation {
+	return predicate.Invitation(sql.FieldContainsFold(FieldTokenHash, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

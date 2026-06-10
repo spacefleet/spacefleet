@@ -22,8 +22,8 @@ const (
 	FieldEmail = "email"
 	// FieldRole holds the string denoting the role field in the database.
 	FieldRole = "role"
-	// FieldToken holds the string denoting the token field in the database.
-	FieldToken = "token"
+	// FieldTokenHash holds the string denoting the token_hash field in the database.
+	FieldTokenHash = "token_hash"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldExpiresAt holds the string denoting the expires_at field in the database.
@@ -53,7 +53,7 @@ var Columns = []string{
 	FieldOrganizationID,
 	FieldEmail,
 	FieldRole,
-	FieldToken,
+	FieldTokenHash,
 	FieldStatus,
 	FieldExpiresAt,
 	FieldAcceptedAt,
@@ -157,9 +157,9 @@ func ByRole(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRole, opts...).ToFunc()
 }
 
-// ByToken orders the results by the token field.
-func ByToken(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldToken, opts...).ToFunc()
+// ByTokenHash orders the results by the token_hash field.
+func ByTokenHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTokenHash, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.

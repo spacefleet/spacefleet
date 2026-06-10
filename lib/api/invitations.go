@@ -31,7 +31,7 @@ func (s *Server) ListInvitations(ctx context.Context, _ ListInvitationsRequestOb
 	}
 	out := make([]Invitation, 0, len(list))
 	for _, inv := range list {
-		out = append(out, s.toAPIInvitation(inv))
+		out = append(out, toAPIInvitation(inv))
 	}
 	return ListInvitations200JSONResponse(out), nil
 }
@@ -58,22 +58,25 @@ func (s *Server) CreateInvitation(ctx context.Context, req CreateInvitationReque
 		return errResp[CreateInvitationdefaultJSONResponse](http.StatusBadRequest, "bad_request", "email is required"), nil
 	}
 
-	inv, err := s.invites.Create(ctx, m.OrganizationID, recipient, invitation.Role(req.Body.Role), m.UserID)
+	inv, token, err := s.invites.Create(ctx, m.OrganizationID, recipient, invitation.Role(req.Body.Role), m.UserID)
 	if err != nil {
 		return nil, err
 	}
 
-	apiInv := s.toAPIInvitation(inv)
+	// Only the token's hash is stored, so the accept link can be built only
+	// here, from the plaintext token Create returned.
+	acceptURL := s.externalURL + "/invite/" + token
 
 	// Best-effort email on top of the link. Look up the org name for the body;
 	// if that fails, skip the email rather than failing the request.
 	emailSent := false
 	if org, oerr := s.orgs.Get(ctx, m.OrganizationID); oerr == nil {
-		emailSent = s.enqueueInviteEmail(ctx, emailArgs(apiInv, org.Name))
+		emailSent = s.enqueueInviteEmail(ctx, emailArgs(inv, org.Name, acceptURL))
 	}
 
 	return CreateInvitation201JSONResponse(InvitationCreateResult{
-		Invitation: apiInv,
+		Invitation: toAPIInvitation(inv),
+		AcceptUrl:  acceptURL,
 		EmailSent:  emailSent,
 	}), nil
 }
@@ -159,9 +162,10 @@ func (s *Server) AcceptInvitation(ctx context.Context, req AcceptInvitationReque
 	return AcceptInvitation200JSONResponse(toAPIOrganization(org)), nil
 }
 
-// toAPIInvitation maps an invitation to the API type, building its accept link
-// from the configured external base URL and the (non-JSON) token.
-func (s *Server) toAPIInvitation(inv *ent.Invitation) Invitation {
+// toAPIInvitation maps an invitation to the API type. The accept link is not
+// part of it — only the token's hash is stored, so the link exists only in the
+// create response.
+func toAPIInvitation(inv *ent.Invitation) Invitation {
 	return Invitation{
 		Id:        inv.ID,
 		Email:     inv.Email,
@@ -169,17 +173,16 @@ func (s *Server) toAPIInvitation(inv *ent.Invitation) Invitation {
 		Status:    InvitationStatus(inv.Status),
 		ExpiresAt: inv.ExpiresAt,
 		CreatedAt: inv.CreatedAt,
-		AcceptUrl: s.externalURL + "/invite/" + inv.Token,
 	}
 }
 
-// emailArgs builds the invite-email job args from an already-mapped invitation
-// and the organization's name.
-func emailArgs(inv Invitation, orgName string) email.InviteEmailArgs {
+// emailArgs builds the invite-email job args from the invitation, the
+// organization's name, and the accept link built at create time.
+func emailArgs(inv *ent.Invitation, orgName, acceptURL string) email.InviteEmailArgs {
 	return email.InviteEmailArgs{
 		To:        inv.Email,
 		OrgName:   orgName,
 		Role:      string(inv.Role),
-		AcceptURL: inv.AcceptUrl,
+		AcceptURL: acceptURL,
 	}
 }

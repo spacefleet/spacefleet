@@ -5,14 +5,18 @@
 // The token is the sole authority on accept: whoever holds a valid, unexpired
 // link and is signed in joins with the invitation's role. The recorded email is
 // for display and email delivery only — it is not checked against the accepting
-// user. Invitations expire 30 days after creation and are marked
+// user. Only a SHA-256 hash of the token is persisted; the plaintext exists
+// only in the link Create returns, so a database read can't yield live invite
+// links. Invitations expire 30 days after creation and are marked
 // accepted/revoked rather than deleted so admins can see the history.
 package invitations
 
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -48,20 +52,22 @@ func NewService(entClient *ent.Client) *Service {
 // Create issues a new pending invitation for email to join orgID with role.
 // Any existing pending invitation for the same address in the same org is
 // revoked first, so an admin re-inviting someone always produces exactly one
-// live link. invitedBy records who issued it (for audit); pass uuid.Nil to omit.
-func (s *Service) Create(ctx context.Context, orgID uuid.UUID, email string, role invitation.Role, invitedBy uuid.UUID) (*ent.Invitation, error) {
+// live link. invitedBy records who issued it (for audit); pass uuid.Nil to
+// omit. The returned token is the bearer secret for the invite link — only its
+// hash is stored, so this is the caller's one chance to see it.
+func (s *Service) Create(ctx context.Context, orgID uuid.UUID, email string, role invitation.Role, invitedBy uuid.UUID) (*ent.Invitation, string, error) {
 	email = strings.TrimSpace(email)
 	if email == "" {
-		return nil, errors.New("invitations: email is required")
+		return nil, "", errors.New("invitations: email is required")
 	}
 	token, err := newToken()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	tx, err := s.ent.Tx(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	// Supersede any live invitation for this address so only one link works.
 	if _, err := tx.Invitation.Update().
@@ -72,26 +78,26 @@ func (s *Service) Create(ctx context.Context, orgID uuid.UUID, email string, rol
 		).
 		SetStatus(invitation.StatusRevoked).
 		Save(ctx); err != nil {
-		return nil, rollback(tx, err)
+		return nil, "", rollback(tx, err)
 	}
 
 	create := tx.Invitation.Create().
 		SetOrganizationID(orgID).
 		SetEmail(email).
 		SetRole(role).
-		SetToken(token).
+		SetTokenHash(hashToken(token)).
 		SetExpiresAt(time.Now().Add(TTL))
 	if invitedBy != uuid.Nil {
 		create = create.SetInvitedBy(invitedBy)
 	}
 	inv, err := create.Save(ctx)
 	if err != nil {
-		return nil, rollback(tx, err)
+		return nil, "", rollback(tx, err)
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return inv, nil
+	return inv, token, nil
 }
 
 // ListPending returns an organization's pending invitations, newest first.
@@ -127,10 +133,10 @@ func (s *Service) Revoke(ctx context.Context, orgID, id uuid.UUID) error {
 }
 
 // Lookup returns the invitation for a token with its organization eager-loaded.
-// Not org-scoped — the token is the lookup key for the accept flow.
+// Not org-scoped — the (hashed) token is the lookup key for the accept flow.
 func (s *Service) Lookup(ctx context.Context, token string) (*ent.Invitation, error) {
 	return s.ent.Invitation.Query().
-		Where(invitation.TokenEQ(token)).
+		Where(invitation.TokenHashEQ(hashToken(token))).
 		WithOrganization().
 		Only(ctx)
 }
@@ -146,7 +152,7 @@ func (s *Service) Accept(ctx context.Context, token string, userID uuid.UUID) (*
 		return nil, err
 	}
 	inv, err := tx.Invitation.Query().
-		Where(invitation.TokenEQ(token)).
+		Where(invitation.TokenHashEQ(hashToken(token))).
 		Only(ctx)
 	if err != nil {
 		return nil, rollback(tx, err)
@@ -199,6 +205,14 @@ func newToken() (string, error) {
 		return "", fmt.Errorf("invitations: generate token: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+// hashToken is the stored form of a token: SHA-256, hex-encoded. A plain hash
+// (no salt/KDF) is enough because tokens carry 256 bits of entropy — the hash
+// only needs to stop a database read from yielding usable invite links.
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 // rollback wraps tx.Rollback so a failed mutation surfaces both the original

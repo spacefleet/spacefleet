@@ -460,7 +460,7 @@ var (
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "email", Type: field.TypeString},
 		{Name: "role", Type: field.TypeEnum, Enums: []string{"admin", "editor", "viewer"}, Default: "viewer"},
-		{Name: "token", Type: field.TypeString, Unique: true},
+		{Name: "token_hash", Type: field.TypeString, Unique: true},
 		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "accepted", "revoked"}, Default: "pending"},
 		{Name: "expires_at", Type: field.TypeTime},
 		{Name: "accepted_at", Type: field.TypeTime, Nullable: true},

@@ -9648,7 +9648,7 @@ type InvitationMutation struct {
 	id                  *uuid.UUID
 	email               *string
 	role                *invitation.Role
-	token               *string
+	token_hash          *string
 	status              *invitation.Status
 	expires_at          *time.Time
 	accepted_at         *time.Time
@@ -9874,40 +9874,40 @@ func (m *InvitationMutation) ResetRole() {
 	m.role = nil
 }
 
-// SetToken sets the "token" field.
-func (m *InvitationMutation) SetToken(s string) {
-	m.token = &s
+// SetTokenHash sets the "token_hash" field.
+func (m *InvitationMutation) SetTokenHash(s string) {
+	m.token_hash = &s
 }
 
-// Token returns the value of the "token" field in the mutation.
-func (m *InvitationMutation) Token() (r string, exists bool) {
-	v := m.token
+// TokenHash returns the value of the "token_hash" field in the mutation.
+func (m *InvitationMutation) TokenHash() (r string, exists bool) {
+	v := m.token_hash
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldToken returns the old "token" field's value of the Invitation entity.
+// OldTokenHash returns the old "token_hash" field's value of the Invitation entity.
 // If the Invitation object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *InvitationMutation) OldToken(ctx context.Context) (v string, err error) {
+func (m *InvitationMutation) OldTokenHash(ctx context.Context) (v string, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldToken is only allowed on UpdateOne operations")
+		return v, errors.New("OldTokenHash is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldToken requires an ID field in the mutation")
+		return v, errors.New("OldTokenHash requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldToken: %w", err)
+		return v, fmt.Errorf("querying old value for OldTokenHash: %w", err)
 	}
-	return oldValue.Token, nil
+	return oldValue.TokenHash, nil
 }
 
-// ResetToken resets all changes to the "token" field.
-func (m *InvitationMutation) ResetToken() {
-	m.token = nil
+// ResetTokenHash resets all changes to the "token_hash" field.
+func (m *InvitationMutation) ResetTokenHash() {
+	m.token_hash = nil
 }
 
 // SetStatus sets the "status" field.
@@ -10187,8 +10187,8 @@ func (m *InvitationMutation) Fields() []string {
 	if m.role != nil {
 		fields = append(fields, invitation.FieldRole)
 	}
-	if m.token != nil {
-		fields = append(fields, invitation.FieldToken)
+	if m.token_hash != nil {
+		fields = append(fields, invitation.FieldTokenHash)
 	}
 	if m.status != nil {
 		fields = append(fields, invitation.FieldStatus)
@@ -10219,8 +10219,8 @@ func (m *InvitationMutation) Field(name string) (ent.Value, bool) {
 		return m.Email()
 	case invitation.FieldRole:
 		return m.Role()
-	case invitation.FieldToken:
-		return m.Token()
+	case invitation.FieldTokenHash:
+		return m.TokenHash()
 	case invitation.FieldStatus:
 		return m.Status()
 	case invitation.FieldExpiresAt:
@@ -10246,8 +10246,8 @@ func (m *InvitationMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldEmail(ctx)
 	case invitation.FieldRole:
 		return m.OldRole(ctx)
-	case invitation.FieldToken:
-		return m.OldToken(ctx)
+	case invitation.FieldTokenHash:
+		return m.OldTokenHash(ctx)
 	case invitation.FieldStatus:
 		return m.OldStatus(ctx)
 	case invitation.FieldExpiresAt:
@@ -10288,12 +10288,12 @@ func (m *InvitationMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRole(v)
 		return nil
-	case invitation.FieldToken:
+	case invitation.FieldTokenHash:
 		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetToken(v)
+		m.SetTokenHash(v)
 		return nil
 	case invitation.FieldStatus:
 		v, ok := value.(invitation.Status)
@@ -10403,8 +10403,8 @@ func (m *InvitationMutation) ResetField(name string) error {
 	case invitation.FieldRole:
 		m.ResetRole()
 		return nil
-	case invitation.FieldToken:
-		m.ResetToken()
+	case invitation.FieldTokenHash:
+		m.ResetTokenHash()
 		return nil
 	case invitation.FieldStatus:
 		m.ResetStatus()
