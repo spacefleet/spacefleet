@@ -83,7 +83,9 @@ config:
     # message From: header, so it must be a bare address with no display name,
     # e.g. "no-reply@example.com". Empty disables email.
     from: ""
-    # -- Upgrade the connection with STARTTLS after connecting.
+    # -- Upgrade the connection with STARTTLS after connecting. When true, a
+    # server that doesn't offer STARTTLS is a send error (no cleartext
+    # fallback); set false only for a server with no TLS at all.
     startTLS: true
 
   # GitHub App for pulling Helm charts from private Git repositories. Register

@@ -49,8 +49,11 @@ type Config struct {
 	Password string
 	From     string
 	// StartTLS upgrades the connection with STARTTLS after connecting (the usual
-	// submission setup on port 587). When the server doesn't advertise STARTTLS
-	// (e.g. a local catcher like MailHog) the upgrade is skipped.
+	// submission setup on port 587). When set, a server that doesn't advertise
+	// STARTTLS is a hard error — silently continuing would hand the credentials
+	// and message (with its invite token) to a capability-stripping MITM. For a
+	// server with no TLS at all (e.g. a local catcher like MailHog) set it to
+	// false explicitly.
 	StartTLS bool
 }
 
@@ -92,10 +95,11 @@ func (s *SMTPSender) Send(ctx context.Context, msg Message) error {
 	defer func() { _ = c.Close() }()
 
 	if s.cfg.StartTLS {
-		if ok, _ := c.Extension("STARTTLS"); ok {
-			if err := c.StartTLS(&tls.Config{ServerName: s.cfg.Host}); err != nil {
-				return fmt.Errorf("email: starttls: %w", err)
-			}
+		if ok, _ := c.Extension("STARTTLS"); !ok {
+			return fmt.Errorf("email: server %s does not advertise STARTTLS; refusing to continue in cleartext (set SMTP_STARTTLS=false only for a server that genuinely has no TLS)", addr)
+		}
+		if err := c.StartTLS(&tls.Config{ServerName: s.cfg.Host}); err != nil {
+			return fmt.Errorf("email: starttls: %w", err)
 		}
 	}
 

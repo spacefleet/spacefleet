@@ -44,7 +44,7 @@ Spacefleet reads the following, set by the Helm chart under `config.smtp`:
 | `config.smtp.from` | `SMTP_FROM` | _(empty)_ | Envelope/From address. **Empty disables email.** |
 | `config.smtp.username` | `SMTP_USERNAME` | _(empty)_ | Auth username. Omit for an unauthenticated relay. |
 | `config.smtp.password` | `SMTP_PASSWORD` | _(empty)_ | Auth password — **a secret**, see below. |
-| `config.smtp.startTLS` | `SMTP_STARTTLS` | `true` | Upgrade the connection with STARTTLS after connecting (the usual port-587 setup). |
+| `config.smtp.startTLS` | `SMTP_STARTTLS` | `true` | Upgrade the connection with STARTTLS after connecting (the usual port-587 setup). When enabled, a server that doesn't offer STARTTLS is a send error — mail is never downgraded to cleartext. |
 
 **Email is enabled only when both `host` and `from` are set.** With either
 empty, Spacefleet treats email as off.
@@ -140,8 +140,10 @@ arrives. If it doesn't:
   -- printenv SMTP_PASSWORD` (or that your `envFrom` Secret exists in the same
   namespace with the key spelled exactly `SMTP_PASSWORD`).
 - **Match TLS to your server** — most submission servers want
-  `config.smtp.startTLS=true` on port `587`; set it to `false` only for a server
-  that doesn't offer STARTTLS (e.g. a local test catcher).
+  `config.smtp.startTLS=true` on port `587`. With it enabled, a server that
+  doesn't offer STARTTLS fails the send (look for "does not advertise STARTTLS"
+  in the worker logs) rather than falling back to cleartext; set it to `false`
+  only for a server with no TLS at all (e.g. a local test catcher).
 
 ## See also
 

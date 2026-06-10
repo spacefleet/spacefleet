@@ -114,7 +114,9 @@ type Config struct {
 	SMTPPassword string
 	SMTPFrom     string
 	// SMTPStartTLS upgrades the connection with STARTTLS after connecting (the
-	// common submission setup on port 587). Default true.
+	// common submission setup on port 587). Default true. When set, a server
+	// that doesn't offer STARTTLS is a hard send error — there is no silent
+	// cleartext fallback; set it to false for a TLS-less server (local catcher).
 	SMTPStartTLS bool
 
 	// GitHub App config, for pulling charts from private Git repositories. The
