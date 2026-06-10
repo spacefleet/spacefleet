@@ -1219,8 +1219,10 @@ export interface paths {
          * Record a GitHub App installation from the connect callback
          * @description Org-scoped, editor or above. Called by the SPA after GitHub redirects
          *     back from the install flow. The state token (issued by connect-url) is
-         *     verified to bind the installation to the initiating organization, and the
-         *     installation is confirmed against the GitHub App before it is recorded.
+         *     verified to bind the installation to the initiating organization, and
+         *     the OAuth authorization code is exchanged to confirm the user who
+         *     completed the install has access to the installation, before it is
+         *     recorded.
          */
         post: operations["createGitHubInstallation"];
         delete?: never;
@@ -2035,6 +2037,13 @@ export interface components {
              *     through GitHub's redirect; binds the installation to this org.
              */
             state: string;
+            /**
+             * @description The OAuth authorization code GitHub appended to the callback
+             *     redirect. Exchanged server-side for a user token to verify the
+             *     user completing the install can actually access the claimed
+             *     installation — without it an installation cannot be linked.
+             */
+            code: string;
         };
         GitHubConnectUrl: {
             /** @description The GitHub App install URL to redirect the browser to. */

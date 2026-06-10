@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -29,16 +30,24 @@ func testKeyPEM(t *testing.T) string {
 }
 
 func TestNewRejectsBadKey(t *testing.T) {
-	if _, err := New(123, "not a pem"); err == nil {
+	if _, err := New(123, "not a pem", "client-id", "client-secret"); err == nil {
 		t.Fatal("expected an error for an unparseable key")
 	}
-	if _, err := New(0, testKeyPEM(t)); err == nil {
+	if _, err := New(0, testKeyPEM(t), "client-id", "client-secret"); err == nil {
 		t.Fatal("expected an error for a zero app id")
+	}
+	// The OAuth client credentials are mandatory: without them the connect
+	// callback can't verify the installing user owns the installation.
+	if _, err := New(123, testKeyPEM(t), "", "client-secret"); err == nil {
+		t.Fatal("expected an error for a missing client id")
+	}
+	if _, err := New(123, testKeyPEM(t), "client-id", ""); err == nil {
+		t.Fatal("expected an error for a missing client secret")
 	}
 }
 
 func TestAppJWT(t *testing.T) {
-	a, err := New(456, testKeyPEM(t))
+	a, err := New(456, testKeyPEM(t), "client-id", "client-secret")
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
@@ -61,7 +70,7 @@ func TestAppJWT(t *testing.T) {
 	}
 }
 
-func TestInstallationTokenAndGetInstallation(t *testing.T) {
+func TestInstallationToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") == "" {
 			t.Errorf("missing Authorization header on %s", r.URL.Path)
@@ -70,15 +79,13 @@ func TestInstallationTokenAndGetInstallation(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/app/installations/99/access_tokens":
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"token":"ghs_minted","expires_at":"2026-06-03T12:00:00Z"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/app/installations/99":
-			_, _ = w.Write([]byte(`{"account":{"login":"acme","type":"Organization"}}`))
 		default:
 			http.Error(w, "unexpected", http.StatusNotFound)
 		}
 	}))
 	defer srv.Close()
 
-	a, err := New(1, testKeyPEM(t))
+	a, err := New(1, testKeyPEM(t), "client-id", "client-secret")
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
@@ -91,13 +98,99 @@ func TestInstallationTokenAndGetInstallation(t *testing.T) {
 	if tok != "ghs_minted" {
 		t.Errorf("token = %q, want ghs_minted", tok)
 	}
+}
 
-	inst, err := a.GetInstallation(context.Background(), 99)
+// newVerifyServer stubs the two endpoints VerifyUserInstallation hits: the
+// OAuth code exchange (form-encoded, on the web origin) and the user
+// installation list (on the API origin, authenticated with the exchanged user
+// token). Both origins are served by the same httptest server here.
+func newVerifyServer(t *testing.T, installationsJSON string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/login/oauth/access_token":
+			if err := r.ParseForm(); err != nil {
+				t.Errorf("parse exchange form: %v", err)
+			}
+			if r.FormValue("client_id") != "client-id" || r.FormValue("client_secret") != "client-secret" {
+				t.Errorf("exchange sent client %q/%q, want client-id/client-secret", r.FormValue("client_id"), r.FormValue("client_secret"))
+			}
+			if r.FormValue("code") != "good-code" {
+				_, _ = w.Write([]byte(`{"error":"bad_verification_code","error_description":"The code passed is incorrect or expired."}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"access_token":"ghu_user","token_type":"bearer"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/user/installations":
+			if got := r.Header.Get("Authorization"); got != "token ghu_user" {
+				t.Errorf("Authorization = %q, want token ghu_user", got)
+			}
+			_, _ = w.Write([]byte(installationsJSON))
+		default:
+			http.Error(w, "unexpected "+r.URL.Path, http.StatusNotFound)
+		}
+	}))
+}
+
+func TestVerifyUserInstallation(t *testing.T) {
+	srv := newVerifyServer(t, `{"installations":[
+		{"id":7,"account":{"login":"other","type":"User"}},
+		{"id":99,"account":{"login":"acme","type":"Organization"}}
+	]}`)
+	defer srv.Close()
+
+	a, err := New(1, testKeyPEM(t), "client-id", "client-secret")
 	if err != nil {
-		t.Fatalf("get installation: %v", err)
+		t.Fatalf("new: %v", err)
+	}
+	a.baseURL = srv.URL
+	a.oauthBaseURL = srv.URL
+
+	inst, err := a.VerifyUserInstallation(context.Background(), "good-code", 99)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
 	}
 	if inst.Login != "acme" || inst.AccountType != "Organization" {
 		t.Errorf("installation = %+v, want acme/Organization", inst)
+	}
+}
+
+// TestVerifyUserInstallationRejectsForeign is the C1 regression at this layer:
+// a valid code whose user can see installations — just not the claimed one —
+// must fail with ErrInstallationNotAccessible, never fall back to an
+// existence-only check.
+func TestVerifyUserInstallationRejectsForeign(t *testing.T) {
+	srv := newVerifyServer(t, `{"installations":[{"id":7,"account":{"login":"attacker","type":"User"}}]}`)
+	defer srv.Close()
+
+	a, err := New(1, testKeyPEM(t), "client-id", "client-secret")
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	a.baseURL = srv.URL
+	a.oauthBaseURL = srv.URL
+
+	if _, err := a.VerifyUserInstallation(context.Background(), "good-code", 99); !errors.Is(err, ErrInstallationNotAccessible) {
+		t.Fatalf("verify foreign installation error = %v, want ErrInstallationNotAccessible", err)
+	}
+}
+
+// TestVerifyUserInstallationBadCode confirms a failed exchange (GitHub reports
+// it as a 200 + error field) surfaces as an error, not a zero-value pass.
+func TestVerifyUserInstallationBadCode(t *testing.T) {
+	srv := newVerifyServer(t, `{"installations":[]}`)
+	defer srv.Close()
+
+	a, err := New(1, testKeyPEM(t), "client-id", "client-secret")
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	a.baseURL = srv.URL
+	a.oauthBaseURL = srv.URL
+
+	if _, err := a.VerifyUserInstallation(context.Background(), "stolen-or-expired", 99); err == nil {
+		t.Fatal("expected an error for a failed code exchange")
+	} else if errors.Is(err, ErrInstallationNotAccessible) {
+		t.Fatalf("exchange failure must be distinct from not-accessible, got %v", err)
 	}
 }
 
@@ -129,7 +222,7 @@ func TestListRepositoriesPaginates(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	a, err := New(1, testKeyPEM(t))
+	a, err := New(1, testKeyPEM(t), "client-id", "client-secret")
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
@@ -153,7 +246,7 @@ func TestInstallationTokenPropagatesErrorStatus(t *testing.T) {
 		http.Error(w, "no access", http.StatusNotFound)
 	}))
 	defer srv.Close()
-	a, _ := New(1, testKeyPEM(t))
+	a, _ := New(1, testKeyPEM(t), "client-id", "client-secret")
 	a.baseURL = srv.URL
 	if _, _, err := a.InstallationToken(context.Background(), 7); err == nil {
 		t.Fatal("expected an error from a non-2xx response")

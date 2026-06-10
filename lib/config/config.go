@@ -120,29 +120,40 @@ type Config struct {
 	// GitHub App config, for pulling charts from private Git repositories. The
 	// operator registers one GitHub App and supplies its numeric App ID, its URL
 	// slug (the App's page is github.com/apps/<slug>, used to build the install
-	// link), and its RSA private key (PEM). An organization installs the App on
-	// its repos; at rollout time the backend mints a short-lived installation
-	// access token from these to authenticate the clone — no git secret is stored
-	// per organization. Optional: when any is unset the feature is simply off
-	// (GitHubAppEnabled reports false), unlike the fail-closed OIDC/EXTERNAL_URL.
+	// link), its RSA private key (PEM), and its OAuth client ID + secret (used on
+	// the connect callback to verify the installing user actually has access to
+	// the installation being linked — see lib/githubapp.VerifyUserInstallation).
+	// An organization installs the App on its repos; at rollout time the backend
+	// mints a short-lived installation access token from these to authenticate
+	// the clone — no git secret is stored per organization. Optional: when any is
+	// unset the feature is simply off (GitHubAppEnabled reports false), unlike
+	// the fail-closed OIDC/EXTERNAL_URL.
 	//
-	// GitHubAppPrivateKey is a secret and is never surfaced to the browser; the
-	// App ID and slug are non-secret. The key is accepted either as a raw PEM
-	// (multi-line, "-----BEGIN …") or base64-encoded (single-line, friendlier for
-	// env vars / Secrets); Load normalizes it to raw PEM. It is parsed to an RSA
-	// key in lib/githubapp, not here, so config keeps no crypto dependency.
-	GitHubAppID         int64
-	GitHubAppSlug       string
-	GitHubAppPrivateKey string
+	// GitHubAppPrivateKey and GitHubAppClientSecret are secrets and are never
+	// surfaced to the browser; the App ID, slug, and client ID are non-secret.
+	// The key is accepted either as a raw PEM (multi-line, "-----BEGIN …") or
+	// base64-encoded (single-line, friendlier for env vars / Secrets); Load
+	// normalizes it to raw PEM. It is parsed to an RSA key in lib/githubapp, not
+	// here, so config keeps no crypto dependency.
+	GitHubAppID           int64
+	GitHubAppSlug         string
+	GitHubAppPrivateKey   string
+	GitHubAppClientID     string
+	GitHubAppClientSecret string
 }
 
 // GitHubAppEnabled reports whether the GitHub App is fully configured (App ID,
-// slug, and private key all set), so the private-Git-charts feature is
-// available. Kept independent of SecretKey: the state-token signing that the
-// connect flow also needs is checked separately where it is used, so a missing
-// SecretKey yields a clear error there rather than silently hiding the feature.
+// slug, private key, and OAuth client ID + secret all set), so the
+// private-Git-charts feature is available. The client credentials are part of
+// the gate because the connect callback cannot safely link an installation
+// without them (the OAuth code exchange is what proves the installing user owns
+// the installation). Kept independent of SecretKey: the state-token signing
+// that the connect flow also needs is checked separately where it is used, so a
+// missing SecretKey yields a clear error there rather than silently hiding the
+// feature.
 func (c *Config) GitHubAppEnabled() bool {
-	return c.GitHubAppID != 0 && c.GitHubAppSlug != "" && c.GitHubAppPrivateKey != ""
+	return c.GitHubAppID != 0 && c.GitHubAppSlug != "" && c.GitHubAppPrivateKey != "" &&
+		c.GitHubAppClientID != "" && c.GitHubAppClientSecret != ""
 }
 
 // EmailEnabled reports whether outbound email is configured. Invitations always
@@ -235,6 +246,8 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("GITHUB_APP_PRIVATE_KEY: %w", err)
 	}
 	cfg.GitHubAppPrivateKey = privateKey
+	cfg.GitHubAppClientID = os.Getenv("GITHUB_APP_CLIENT_ID")
+	cfg.GitHubAppClientSecret = os.Getenv("GITHUB_APP_CLIENT_SECRET")
 
 	return cfg, nil
 }

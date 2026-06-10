@@ -1584,8 +1584,10 @@ paths:
       description: |
         Org-scoped, editor or above. Called by the SPA after GitHub redirects
         back from the install flow. The state token (issued by connect-url) is
-        verified to bind the installation to the initiating organization, and the
-        installation is confirmed against the GitHub App before it is recorded.
+        verified to bind the installation to the initiating organization, and
+        the OAuth authorization code is exchanged to confirm the user who
+        completed the install has access to the installation, before it is
+        recorded.
       operationId: createGitHubInstallation
       requestBody:
         required: true
@@ -2872,7 +2874,7 @@ components:
 
     GitHubInstallationCreateRequest:
       type: object
-      required: [installation_id, state]
+      required: [installation_id, state, code]
       properties:
         installation_id:
           type: integer
@@ -2883,6 +2885,13 @@ components:
           description: |
             The signed state token issued by connect-url and round-tripped
             through GitHub's redirect; binds the installation to this org.
+        code:
+          type: string
+          description: |
+            The OAuth authorization code GitHub appended to the callback
+            redirect. Exchanged server-side for a user token to verify the
+            user completing the install can actually access the claimed
+            installation — without it an installation cannot be linked.
 
     GitHubConnectUrl:
       type: object

@@ -31,11 +31,19 @@ import (
 // service / pre-stream error paths in the plain `go test` pass.
 
 // fakeGitHubAuth is a stub githubinstallations.Authenticator that never reaches
-// GitHub: GetInstallation returns a canned account, so Link succeeds in the
-// happy-path test without a live App. (Mirrors the service-test stub.)
-type fakeGitHubAuth struct{ login string }
+// GitHub: VerifyUserInstallation returns a canned account — denying ids listed
+// in inaccessible, mimicking an installation the authorizing user can't access
+// — so Link succeeds (or is refused) in handler tests without a live App.
+// (Mirrors the service-test stub.)
+type fakeGitHubAuth struct {
+	login        string
+	inaccessible map[int64]bool
+}
 
-func (f fakeGitHubAuth) GetInstallation(_ context.Context, _ int64) (githubapp.Installation, error) {
+func (f fakeGitHubAuth) VerifyUserInstallation(_ context.Context, _ string, installationID int64) (githubapp.Installation, error) {
+	if f.inaccessible[installationID] {
+		return githubapp.Installation{}, githubapp.ErrInstallationNotAccessible
+	}
 	return githubapp.Installation{Login: f.login, AccountType: "Organization"}, nil
 }
 

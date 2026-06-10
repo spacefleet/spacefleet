@@ -114,10 +114,14 @@ func (s *Server) GetGitHubConnectUrl(ctx context.Context, _ GetGitHubConnectUrlR
 	return GetGitHubConnectUrl200JSONResponse{Url: installURL}, nil
 }
 
-// CreateGitHubInstallation records an installation from the connect callback. It
-// verifies the state token (signature, expiry, and that it was issued for the
-// current org) before recording, so a caller can't attach an installation id it
-// doesn't own.
+// CreateGitHubInstallation records an installation from the connect callback.
+// Two checks gate the attach, and both are required: the state token
+// (signature, expiry, and that it was issued for the current org) proves the
+// caller's org initiated the connect, and the OAuth code exchange inside Link
+// proves the GitHub user completing it can access the claimed installation —
+// the state alone can't bind the installation id (it is minted before the
+// installation exists), and an existence check via the App JWT would accept
+// any installation of the App.
 func (s *Server) CreateGitHubInstallation(ctx context.Context, req CreateGitHubInstallationRequestObject) (CreateGitHubInstallationResponseObject, error) {
 	orgID, aerr, err := s.resolveGitHubInstallationsWrite(ctx)
 	if err != nil {
@@ -139,13 +143,23 @@ func (s *Server) CreateGitHubInstallation(ctx context.Context, req CreateGitHubI
 	if stateOrg != orgID {
 		return errResp[CreateGitHubInstallationdefaultJSONResponse](http.StatusForbidden, "forbidden", "connect state was issued for a different organization"), nil
 	}
-	inst, err := s.githubInstallations.Link(ctx, orgID, req.Body.InstallationId)
+	if req.Body.Code == "" {
+		// No code means GitHub didn't run the user-authorization flow — the App is
+		// missing "Request user authorization (OAuth) during installation".
+		return errResp[CreateGitHubInstallationdefaultJSONResponse](http.StatusBadRequest, "bad_request", "missing authorization code from GitHub; the GitHub App must request user authorization (OAuth) during installation"), nil
+	}
+	inst, err := s.githubInstallations.Link(ctx, orgID, req.Body.InstallationId, req.Body.Code)
 	if err != nil {
 		if errors.Is(err, githubinstallations.ErrAppNotConfigured) {
 			return errResp[CreateGitHubInstallationdefaultJSONResponse](http.StatusServiceUnavailable, "unavailable", "github app is not configured on this deployment"), nil
 		}
-		// A failure to confirm the installation against GitHub (bad id, App lacks
-		// access, GitHub unreachable) is a bad-gateway-ish client-correctable
+		// The installation isn't among the ones the authorizing user can access:
+		// the ownership check failed, so refuse the attach.
+		if errors.Is(err, githubapp.ErrInstallationNotAccessible) {
+			return errResp[CreateGitHubInstallationdefaultJSONResponse](http.StatusForbidden, "forbidden", "the GitHub user who completed the install does not have access to this installation"), nil
+		}
+		// A failure to confirm the installation against GitHub (expired code, App
+		// lacks access, GitHub unreachable) is a bad-gateway-ish client-correctable
 		// error rather than an internal fault.
 		return errResp[CreateGitHubInstallationdefaultJSONResponse](http.StatusBadGateway, "github_error", "could not verify the installation with GitHub: "+err.Error()), nil
 	}

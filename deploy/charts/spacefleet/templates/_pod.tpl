@@ -72,9 +72,10 @@ the ConfigMap, the DATABASE_URL secret ref, and any extraEnv.
       key: SMTP_PASSWORD
 {{- end }}
 {{- end }}
-{{- /* GitHub App for pulling charts from private Git repositories. App ID and
-       slug are non-secret (inline); the private key (when supplied inline) comes
-       from the chart's env Secret. Leave unset to disable the feature. */}}
+{{- /* GitHub App for pulling charts from private Git repositories. App ID,
+       slug, and OAuth client ID are non-secret (inline); the private key and
+       client secret (when supplied inline) come from the chart's env Secret.
+       Leave unset to disable the feature. */}}
 {{- with (.Values.config.github | default dict) }}
 {{- with .appId }}
 - name: GITHUB_APP_ID
@@ -90,6 +91,17 @@ the ConfigMap, the DATABASE_URL secret ref, and any extraEnv.
     secretKeyRef:
       name: {{ include "spacefleet.envSecretName" $ }}
       key: GITHUB_APP_PRIVATE_KEY
+{{- end }}
+{{- with .clientId }}
+- name: GITHUB_APP_CLIENT_ID
+  value: {{ . | quote }}
+{{- end }}
+{{- with .clientSecret }}
+- name: GITHUB_APP_CLIENT_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "spacefleet.envSecretName" $ }}
+      key: GITHUB_APP_CLIENT_SECRET
 {{- end }}
 {{- end }}
 {{- with .Values.config.extraEnv }}

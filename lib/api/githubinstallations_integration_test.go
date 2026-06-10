@@ -11,9 +11,10 @@ import (
 	"github.com/spacefleet/spacefleet/ent/membership"
 )
 
-// createBody builds the connect-callback JSON body.
+// createBody builds the connect-callback JSON body, with the OAuth
+// authorization code the fake authenticator accepts.
 func createBody(installationID int64, state string) string {
-	b, _ := json.Marshal(GitHubInstallationCreateRequest{InstallationId: installationID, State: state})
+	b, _ := json.Marshal(GitHubInstallationCreateRequest{InstallationId: installationID, State: state, Code: "oauth-code"})
 	return string(b)
 }
 
@@ -70,6 +71,61 @@ func TestCreateGitHubInstallationCrossOrgGuard(t *testing.T) {
 		t.Fatalf("list installations: %v", err)
 	} else if len(list) != 0 {
 		t.Fatalf("cross-org attach leaked %d installation(s)", len(list))
+	}
+}
+
+// TestCreateGitHubInstallationHijackBlocked is the C1 regression: an editor
+// with a state validly signed for their OWN org claims an installation id the
+// authorizing GitHub user cannot access (e.g. a victim org's installation —
+// ids are small sequential integers). The user-ownership check inside Link
+// must refuse with 403 and record nothing; before the fix, an App-JWT
+// existence check accepted any installation of the App.
+func TestCreateGitHubInstallationHijackBlocked(t *testing.T) {
+	h := newHarness(t, fakeGitHubAuth{login: "acme", inaccessible: map[int64]bool{31337: true}})
+	token, orgID := h.member("editor", membership.RoleEditor)
+
+	rec := testReq{
+		method: http.MethodPost,
+		path:   "/api/github/installations",
+		body:   createBody(31337, h.signState(orgID)), // state is for the caller's own org
+		token:  token,
+		orgID:  orgID.String(),
+	}.do(t, h.handler)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("hijack attempt: got %d, want 403\n%s", rec.Code, rec.Body.String())
+	}
+	if e := decodeErr(t, rec); e.Code != "forbidden" {
+		t.Fatalf("hijack attempt: error code = %q, want forbidden", e.Code)
+	}
+	if list, err := h.client.GitHubInstallation.Query().All(context.Background()); err != nil {
+		t.Fatalf("list installations: %v", err)
+	} else if len(list) != 0 {
+		t.Fatalf("hijack attach leaked %d installation(s)", len(list))
+	}
+}
+
+// TestCreateGitHubInstallationMissingCode confirms a callback without the OAuth
+// authorization code is refused (400) before any GitHub call — without the code
+// the ownership of the installation cannot be verified.
+func TestCreateGitHubInstallationMissingCode(t *testing.T) {
+	h := newHarness(t, fakeGitHubAuth{login: "acme"})
+	token, orgID := h.member("editor", membership.RoleEditor)
+
+	b, _ := json.Marshal(GitHubInstallationCreateRequest{InstallationId: 12345, State: h.signState(orgID)})
+	rec := testReq{
+		method: http.MethodPost,
+		path:   "/api/github/installations",
+		body:   string(b),
+		token:  token,
+		orgID:  orgID.String(),
+	}.do(t, h.handler)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("missing code: got %d, want 400\n%s", rec.Code, rec.Body.String())
+	}
+	if e := decodeErr(t, rec); e.Code != "bad_request" {
+		t.Fatalf("missing code: error code = %q, want bad_request", e.Code)
 	}
 }
 

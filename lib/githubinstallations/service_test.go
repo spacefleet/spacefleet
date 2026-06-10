@@ -15,17 +15,22 @@ import (
 
 // fakeAuth is a stub Authenticator: it records the installation it is asked
 // about and returns canned values, so the service tests don't reach GitHub.
-// repos/failRepos are keyed by GitHub installation id and only exercised by the
-// repository-listing tests; the zero value (nil maps) is fine for every other
-// test, which never lists repositories.
+// inaccessible marks GitHub installation ids the (faked) user-ownership check
+// rejects; repos/failRepos are keyed by GitHub installation id and only
+// exercised by the repository-listing tests. The zero value (nil maps) is fine
+// for tests that neither deny ownership nor list repositories.
 type fakeAuth struct {
-	login     string
-	token     string
-	repos     map[int64][]githubapp.Repository
-	failRepos map[int64]bool
+	login        string
+	token        string
+	inaccessible map[int64]bool
+	repos        map[int64][]githubapp.Repository
+	failRepos    map[int64]bool
 }
 
-func (f fakeAuth) GetInstallation(_ context.Context, _ int64) (githubapp.Installation, error) {
+func (f fakeAuth) VerifyUserInstallation(_ context.Context, _ string, installationID int64) (githubapp.Installation, error) {
+	if f.inaccessible[installationID] {
+		return githubapp.Installation{}, githubapp.ErrInstallationNotAccessible
+	}
 	return githubapp.Installation{Login: f.login, AccountType: "Organization"}, nil
 }
 
@@ -57,7 +62,7 @@ func TestLinkVerifiesAndUpserts(t *testing.T) {
 	ctx := context.Background()
 	org := newOrg(t, client, "Acme")
 
-	inst, err := svc.Link(ctx, org.ID, 12345)
+	inst, err := svc.Link(ctx, org.ID, 12345, "code")
 	if err != nil {
 		t.Fatalf("Link: %v", err)
 	}
@@ -66,7 +71,7 @@ func TestLinkVerifiesAndUpserts(t *testing.T) {
 	}
 
 	// A repeated callback for the same installation upserts, not duplicates.
-	again, err := svc.Link(ctx, org.ID, 12345)
+	again, err := svc.Link(ctx, org.ID, 12345, "code")
 	if err != nil {
 		t.Fatalf("Link (repeat): %v", err)
 	}
@@ -88,6 +93,23 @@ func TestLinkVerifiesAndUpserts(t *testing.T) {
 	}
 }
 
+// TestLinkRejectsInaccessibleInstallation confirms Link refuses an installation
+// the authorizing user can't access (the ownership check fails) and records
+// nothing — a caller can't attach someone else's installation id.
+func TestLinkRejectsInaccessibleInstallation(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client, fakeAuth{login: "acme", inaccessible: map[int64]bool{666: true}})
+	ctx := context.Background()
+	org := newOrg(t, client, "Acme")
+
+	if _, err := svc.Link(ctx, org.ID, 666, "code"); !errors.Is(err, githubapp.ErrInstallationNotAccessible) {
+		t.Fatalf("Link error = %v, want ErrInstallationNotAccessible", err)
+	}
+	if list, err := svc.List(ctx, org.ID); err != nil || len(list) != 0 {
+		t.Fatalf("List = %v, %v; want no rows recorded", list, err)
+	}
+}
+
 // TestInstallationTokenMints confirms the token-mint seam resolves the org's
 // record and returns the authenticator's token.
 func TestInstallationTokenMints(t *testing.T) {
@@ -96,7 +118,7 @@ func TestInstallationTokenMints(t *testing.T) {
 	ctx := context.Background()
 	org := newOrg(t, client, "Acme")
 
-	inst, err := svc.Link(ctx, org.ID, 7)
+	inst, err := svc.Link(ctx, org.ID, 7, "code")
 	if err != nil {
 		t.Fatalf("Link: %v", err)
 	}
@@ -126,11 +148,11 @@ func TestListRepositoriesAggregatesAndSkips(t *testing.T) {
 	ctx := context.Background()
 	org := newOrg(t, client, "Acme")
 
-	good, err := svc.Link(ctx, org.ID, 11)
+	good, err := svc.Link(ctx, org.ID, 11, "code")
 	if err != nil {
 		t.Fatalf("Link good: %v", err)
 	}
-	if _, err := svc.Link(ctx, org.ID, 22); err != nil {
+	if _, err := svc.Link(ctx, org.ID, 22, "code"); err != nil {
 		t.Fatalf("Link failing: %v", err)
 	}
 
@@ -171,7 +193,7 @@ func TestNoAppConfigured(t *testing.T) {
 	ctx := context.Background()
 	org := newOrg(t, client, "Acme")
 
-	if _, err := svc.Link(ctx, org.ID, 1); !errors.Is(err, ErrAppNotConfigured) {
+	if _, err := svc.Link(ctx, org.ID, 1, "code"); !errors.Is(err, ErrAppNotConfigured) {
 		t.Errorf("Link error = %v, want ErrAppNotConfigured", err)
 	}
 	// List still works (returns empty).
@@ -188,7 +210,7 @@ func TestDeleteInUseRejected(t *testing.T) {
 	ctx := context.Background()
 	org := newOrg(t, client, "Acme")
 
-	inst, err := svc.Link(ctx, org.ID, 99)
+	inst, err := svc.Link(ctx, org.ID, 99, "code")
 	if err != nil {
 		t.Fatalf("Link: %v", err)
 	}

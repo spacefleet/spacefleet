@@ -36,11 +36,12 @@ var ErrInUse = errors.New("github installation is attached to a workflow compone
 var ErrAppNotConfigured = errors.New("github app is not configured on this deployment")
 
 // Authenticator is the slice of *githubapp.Authenticator this service needs:
-// verifying an installation on connect and minting tokens for a rollout. It is
-// an interface (and may be nil) so the service is usable without a configured
-// GitHub App — operations that need it then return ErrAppNotConfigured.
+// verifying the installing user can access an installation on connect and
+// minting tokens for a rollout. It is an interface (and may be nil) so the
+// service is usable without a configured GitHub App — operations that need it
+// then return ErrAppNotConfigured.
 type Authenticator interface {
-	GetInstallation(ctx context.Context, installationID int64) (githubapp.Installation, error)
+	VerifyUserInstallation(ctx context.Context, code string, installationID int64) (githubapp.Installation, error)
 	InstallationToken(ctx context.Context, installationID int64) (token string, expiresAt time.Time, err error)
 	ListRepositories(ctx context.Context, installationID int64) ([]githubapp.Repository, error)
 }
@@ -123,15 +124,20 @@ func (s *Service) Get(ctx context.Context, orgID, id uuid.UUID) (*ent.GitHubInst
 		Only(ctx)
 }
 
-// Link records an installation for the organization, verifying it exists for
-// this App first (and capturing the account it is installed on). It upserts on
-// the (organization_id, installation_id) unique index, so a repeated connect
-// callback — GitHub fires both setup_action=install and =update — is idempotent.
-func (s *Service) Link(ctx context.Context, orgID uuid.UUID, installationID int64) (*ent.GitHubInstallation, error) {
+// Link records an installation for the organization, first proving the user
+// completing the callback can actually access it: code (the OAuth authorization
+// code from GitHub's redirect) is exchanged for a user token and the
+// installation must appear in that user's installation list (see
+// githubapp.VerifyUserInstallation — an existence check via the App JWT would
+// let anyone link someone else's installation). The verified lookup also
+// captures the account the App is installed on. It upserts on the
+// (organization_id, installation_id) unique index, so a repeated connect
+// callback is idempotent.
+func (s *Service) Link(ctx context.Context, orgID uuid.UUID, installationID int64, code string) (*ent.GitHubInstallation, error) {
 	if s.auth == nil {
 		return nil, ErrAppNotConfigured
 	}
-	inst, err := s.auth.GetInstallation(ctx, installationID)
+	inst, err := s.auth.VerifyUserInstallation(ctx, code, installationID)
 	if err != nil {
 		return nil, err
 	}

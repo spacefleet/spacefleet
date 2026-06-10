@@ -26,14 +26,18 @@ beforeEach(() => {
 });
 
 describe("GitHubCallback", () => {
-  it("posts the installation id + state and routes to the admin page", async () => {
+  it("posts the installation id + state + code and routes to the admin page", async () => {
     mockApi.POST.mockResolvedValue({ data: {}, error: undefined });
-    renderAt("?installation_id=12345&setup_action=install&state=abc");
+    renderAt("?code=oauth-code&installation_id=12345&setup_action=install&state=abc");
 
     await waitFor(() => expect(mockApi.POST).toHaveBeenCalled());
     const [path, opts] = mockApi.POST.mock.calls[0];
     expect(path).toBe("/api/github/installations");
-    expect(opts.body).toEqual({ installation_id: 12345, state: "abc" });
+    expect(opts.body).toEqual({
+      installation_id: 12345,
+      state: "abc",
+      code: "oauth-code",
+    });
     expect(await screen.findByText("GitHub admin page")).toBeInTheDocument();
   });
 
@@ -45,11 +49,21 @@ describe("GitHubCallback", () => {
     expect(mockApi.POST).not.toHaveBeenCalled();
   });
 
+  it("shows an error when the authorization code is missing", async () => {
+    // No code means the App isn't requesting user authorization during
+    // installation — the backend would refuse, so the UI fails fast.
+    renderAt("?installation_id=12345&state=abc");
+    expect(
+      await screen.findByText(/missing installation details/i),
+    ).toBeInTheDocument();
+    expect(mockApi.POST).not.toHaveBeenCalled();
+  });
+
   it("surfaces a server error without navigating", async () => {
     mockApi.POST.mockResolvedValue({
       error: { message: "invalid or expired connect state" },
     });
-    renderAt("?installation_id=7&state=stale");
+    renderAt("?code=oauth-code&installation_id=7&state=stale");
     expect(
       await screen.findByText(/invalid or expired connect state/i),
     ).toBeInTheDocument();

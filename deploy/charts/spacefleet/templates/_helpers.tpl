@@ -205,7 +205,8 @@ Secret of its own.
 {{- $secretKey := (.Values.config.secrets | default dict).secretKey -}}
 {{- $smtpPassword := (.Values.config.smtp | default dict).password -}}
 {{- $githubKey := (.Values.config.github | default dict).privateKey -}}
-{{- if or $manageDB $secretKey $smtpPassword $githubKey -}}true{{- else -}}false{{- end -}}
+{{- $githubClientSecret := (.Values.config.github | default dict).clientSecret -}}
+{{- if or $manageDB $secretKey $smtpPassword $githubKey $githubClientSecret -}}true{{- else -}}false{{- end -}}
 {{- end -}}
 
 {{/*

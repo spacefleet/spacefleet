@@ -189,6 +189,135 @@ func TestWorkerProcessesAJob(t *testing.T) {
 	}
 }
 
+// TestStopDrainsInFlightJobs pins the graceful-shutdown contract the worker
+// process relies on (audit H1): a job already running when Stop begins keeps
+// a live work context and finishes normally. The historical bug was the
+// worker cancelling the Start context (the parent of every work context)
+// before Stop, which aborted all in-flight jobs and made the drain window
+// dead code — this test fails under that ordering.
+func TestStopDrainsInFlightJobs(t *testing.T) {
+	dsn := integrationDSN(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	pool, err := Open(ctx, dsn, 4)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	cleanRiverSchema(t, pool)
+	if _, err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	workers := NewWorkers()
+	blocker := newBlockingWorker()
+	river.AddWorker(workers.Inner(), blocker)
+
+	client, err := NewClient(pool, Config{WorkerMode: true, Concurrency: 2, Workers: workers})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if err := client.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	if _, err := client.Insert(ctx, blockingArgs{}); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+	select {
+	case <-blocker.started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("job did not start within 10s")
+	}
+
+	// Begin the graceful drain while the job is mid-flight, then release the
+	// job — the point is that the drain overlaps a running job.
+	stopDone := make(chan error, 1)
+	go func() {
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer stopCancel()
+		stopDone <- client.Stop(stopCtx)
+	}()
+	time.Sleep(200 * time.Millisecond)
+	close(blocker.release)
+
+	select {
+	case ctxLive := <-blocker.finished:
+		if !ctxLive {
+			t.Error("in-flight job's work context was cancelled during graceful Stop")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("job did not finish within 10s of release")
+	}
+	select {
+	case err := <-stopDone:
+		if err != nil {
+			t.Fatalf("Stop: %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("Stop did not return after the job settled")
+	}
+}
+
+// TestStopAndCancelAbortsInFlightJobs pins the escalation path: when the
+// graceful window is exhausted, StopAndCancel cancels the work context of a
+// running job (unblocking it) and still returns — the worker's bounded hard
+// stop instead of leaving jobs running into process exit.
+func TestStopAndCancelAbortsInFlightJobs(t *testing.T) {
+	dsn := integrationDSN(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	pool, err := Open(ctx, dsn, 4)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	cleanRiverSchema(t, pool)
+	if _, err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	workers := NewWorkers()
+	blocker := newBlockingWorker() // release is never closed — only ctx can free it
+	river.AddWorker(workers.Inner(), blocker)
+
+	client, err := NewClient(pool, Config{WorkerMode: true, Concurrency: 2, Workers: workers})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if err := client.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	if _, err := client.Insert(ctx, blockingArgs{}); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+	select {
+	case <-blocker.started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("job did not start within 10s")
+	}
+
+	hardCtx, hardCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer hardCancel()
+	if err := client.StopAndCancel(hardCtx); err != nil {
+		t.Fatalf("StopAndCancel: %v", err)
+	}
+
+	select {
+	case ctxLive := <-blocker.finished:
+		if ctxLive {
+			t.Error("expected the job's work context to be cancelled by StopAndCancel")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("job did not observe cancellation")
+	}
+}
+
 // TestInsertOnlyClientCannotStart asserts the contract that the API
 // process can't accidentally turn itself into a worker by calling Start
 // on a client built without WorkerMode.
@@ -254,4 +383,44 @@ func (w *probeWorker) Work(_ context.Context, _ *river.Job[probeArgs]) error {
 	default:
 	}
 	return nil
+}
+
+// ---- Blocking worker for the shutdown tests ----------------------------------
+
+type blockingArgs struct{}
+
+func (blockingArgs) Kind() string { return "spacefleet_test_blocking" }
+
+// blockingWorker signals started, then holds the job until release is closed
+// or its work context is cancelled. finished reports whether the context was
+// still live at the end — the observable difference between a graceful drain
+// and a hard abort.
+type blockingWorker struct {
+	river.WorkerDefaults[blockingArgs]
+	started  chan struct{}
+	release  chan struct{}
+	finished chan bool
+}
+
+func newBlockingWorker() *blockingWorker {
+	return &blockingWorker{
+		started:  make(chan struct{}, 1),
+		release:  make(chan struct{}),
+		finished: make(chan bool, 1),
+	}
+}
+
+func (w *blockingWorker) Work(ctx context.Context, _ *river.Job[blockingArgs]) error {
+	select {
+	case w.started <- struct{}{}:
+	default:
+	}
+	select {
+	case <-w.release:
+		w.finished <- ctx.Err() == nil
+		return nil
+	case <-ctx.Done():
+		w.finished <- false
+		return ctx.Err()
+	}
 }

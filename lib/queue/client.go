@@ -100,3 +100,15 @@ func (c *Client) Stop(ctx context.Context) error {
 	}
 	return c.inner.Stop(ctx)
 }
+
+// StopAndCancel hard-stops the client: it cancels every in-flight job's work
+// context, then waits (bounded by ctx) for workers to unwind — so each job's
+// recovery defers still get to run and persist state before the process
+// exits. This is the escalation path when Stop's graceful window expires, not
+// a first resort. Safe to call on insert-only clients (no-op).
+func (c *Client) StopAndCancel(ctx context.Context) error {
+	if !c.mode {
+		return nil
+	}
+	return c.inner.StopAndCancel(ctx)
+}

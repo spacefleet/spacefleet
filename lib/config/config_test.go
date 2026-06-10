@@ -207,3 +207,33 @@ func clearEnv(t *testing.T) {
 		t.Setenv(k, "")
 	}
 }
+
+// TestGitHubAppEnabled confirms the feature gate requires the full credential
+// set — App ID, slug, private key, and OAuth client ID + secret. The client
+// credentials are part of the gate because without them the connect callback
+// cannot verify the installing user owns the installation being linked.
+func TestGitHubAppEnabled(t *testing.T) {
+	full := Config{
+		GitHubAppID:           1,
+		GitHubAppSlug:         "acme",
+		GitHubAppPrivateKey:   "pem",
+		GitHubAppClientID:     "Iv1.abc",
+		GitHubAppClientSecret: "shh",
+	}
+	if !full.GitHubAppEnabled() {
+		t.Error("fully configured app should report enabled")
+	}
+	for name, clear := range map[string]func(*Config){
+		"no app id":        func(c *Config) { c.GitHubAppID = 0 },
+		"no slug":          func(c *Config) { c.GitHubAppSlug = "" },
+		"no private key":   func(c *Config) { c.GitHubAppPrivateKey = "" },
+		"no client id":     func(c *Config) { c.GitHubAppClientID = "" },
+		"no client secret": func(c *Config) { c.GitHubAppClientSecret = "" },
+	} {
+		c := full
+		clear(&c)
+		if c.GitHubAppEnabled() {
+			t.Errorf("%s: should report disabled", name)
+		}
+	}
+}

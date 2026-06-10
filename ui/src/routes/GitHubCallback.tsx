@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { api } from "../api/client";
 
-// Landing route for GitHub's post-install redirect (the App's Setup URL points
-// at /github/callback). GitHub appends ?installation_id=…&setup_action=…&state=…
-// The state token, issued by connect-url, binds the install back to the
-// initiating organization; we POST both to record the installation, then hand
-// control back to the app *through React Router* (a raw history.replaceState
-// would desync the router — see AuthCallback).
+// Landing route for GitHub's post-install redirect (the App's Callback URL
+// points at /github/callback, with "Request user authorization (OAuth) during
+// installation" enabled). GitHub appends
+// ?code=…&installation_id=…&setup_action=…&state=… The state token, issued by
+// connect-url, binds the install back to the initiating organization, and the
+// code lets the backend verify the installing user actually has access to the
+// installation; we POST all three to record it, then hand control back to the
+// app *through React Router* (a raw history.replaceState would desync the
+// router — see AuthCallback).
 export function GitHubCallback() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -23,7 +26,8 @@ export function GitHubCallback() {
 
     const installationIdRaw = params.get("installation_id");
     const state = params.get("state");
-    if (!installationIdRaw || !state) {
+    const code = params.get("code");
+    if (!installationIdRaw || !state || !code) {
       setError("Missing installation details from GitHub.");
       return;
     }
@@ -35,7 +39,7 @@ export function GitHubCallback() {
 
     void (async () => {
       const { error } = await api.POST("/api/github/installations", {
-        body: { installation_id: installationId, state },
+        body: { installation_id: installationId, state, code },
       });
       if (error) {
         setError(error.message ?? "Could not record the GitHub installation.");

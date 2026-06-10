@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log"
 	"log/slog"
 	"os"
@@ -47,6 +46,11 @@ func runWorker(_ []string) {
 	// rollout), so the worker enforces the same SSRF endpoint policy as serve.
 	k8s.SetEndpointPolicy(k8s.EndpointPolicy{AllowPrivate: cfg.AllowPrivateClusterEndpoints})
 
+	// Root context. River derives every job's work context from the ctx handed
+	// to client.Start, so cancelling it hard-aborts all in-flight jobs. It must
+	// therefore outlive the graceful client.Stop in shutdownWorker — the
+	// deferred cancel here is the last thing to fire on the way out, not part
+	// of the shutdown sequence.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -92,7 +96,7 @@ func runWorker(_ []string) {
 	// no App is configured; a configured-but-unparseable key fails fast.
 	var ghAuth githubinstallations.Authenticator
 	if cfg.GitHubAppEnabled() {
-		auth, err := githubapp.New(cfg.GitHubAppID, cfg.GitHubAppPrivateKey)
+		auth, err := githubapp.New(cfg.GitHubAppID, cfg.GitHubAppPrivateKey, cfg.GitHubAppClientID, cfg.GitHubAppClientSecret)
 		if err != nil {
 			log.Fatalf("worker: build github app: %v", err)
 		}
@@ -136,6 +140,12 @@ func runWorker(_ []string) {
 	}
 	log.Printf("worker: started (concurrency=%d)", cfg.WorkerConcurrency)
 
+	// Auxiliary loops (reaper, heartbeat) get their own child context so
+	// shutdown can stop them without cancelling ctx itself — which would abort
+	// every in-flight job (see the root-context comment above).
+	loopCtx, loopCancel := context.WithCancel(ctx)
+	defer loopCancel()
+
 	// Reaper: settle workflow runs left stuck "running" by a hard kill (SIGKILL,
 	// node loss, OOM) that unwound the worker before its panic-recovery defer could
 	// mark them failed — the one case the in-process recovery can't cover. It runs a
@@ -146,7 +156,7 @@ func runWorker(_ []string) {
 	// that owns the River client. liveJob bridges the string job id stored on the run
 	// to the int64 River expects; a non-numeric id can't match a River job, so it's
 	// treated as gone.
-	go workflowsSvc.RunReaper(ctx, func(ctx context.Context, jobID string) (bool, error) {
+	go workflowsSvc.RunReaper(loopCtx, func(ctx context.Context, jobID string) (bool, error) {
 		id, perr := strconv.ParseInt(jobID, 10, 64)
 		if perr != nil {
 			return false, nil
@@ -157,19 +167,43 @@ func runWorker(_ []string) {
 	// Heartbeat loop: emit an info-level log every 30s so deployments
 	// without health checks still have a clear "this worker is alive"
 	// signal in the log stream.
-	go heartbeat(ctx, 30*time.Second)
+	go heartbeat(loopCtx, 30*time.Second)
 
 	waitForSignal()
 	log.Println("worker: shutting down")
 
-	cancel() // stop heartbeat
-
-	stopCtx, stopCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer stopCancel()
-	if err := client.Stop(stopCtx); err != nil && !errors.Is(err, context.Canceled) {
-		log.Printf("worker: stop: %v", err)
-	}
+	shutdownWorker(client, loopCancel, 30*time.Second, 10*time.Second)
 	log.Println("worker: stopped")
+}
+
+// jobStopper is the slice of *queue.Client that shutdownWorker needs, split
+// out so the shutdown sequence is unit-testable without a River client.
+type jobStopper interface {
+	Stop(ctx context.Context) error
+	StopAndCancel(ctx context.Context) error
+}
+
+// shutdownWorker winds the worker down without robbing in-flight jobs of
+// their graceful window: the auxiliary loops stop first (jobs keep running),
+// then the River client drains for up to drainWindow, and only if that
+// expires are job work-contexts cancelled — via StopAndCancel bounded by
+// hardWindow, so each job's recovery defers still run before the process
+// exits. The root job context must not be cancelled before the drain; doing
+// so turns every redeploy into a hard abort of all running jobs and makes
+// the graceful Stop dead code.
+func shutdownWorker(client jobStopper, stopLoops context.CancelFunc, drainWindow, hardWindow time.Duration) {
+	stopLoops() // heartbeat + reaper only — in-flight jobs keep their context
+
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), drainWindow)
+	defer stopCancel()
+	if err := client.Stop(stopCtx); err != nil {
+		log.Printf("worker: graceful stop: %v; cancelling in-flight jobs", err)
+		hardCtx, hardCancel := context.WithTimeout(context.Background(), hardWindow)
+		defer hardCancel()
+		if err := client.StopAndCancel(hardCtx); err != nil {
+			log.Printf("worker: hard stop: %v", err)
+		}
+	}
 }
 
 // emailSender builds the outbound-email transport for job workers: SMTP when

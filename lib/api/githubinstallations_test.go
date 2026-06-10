@@ -18,7 +18,7 @@ func TestCreateGitHubInstallationNilService(t *testing.T) {
 	rec := testReq{
 		method: http.MethodPost,
 		path:   "/api/github/installations",
-		body:   `{"installation_id": 12345, "state": "anything"}`,
+		body:   `{"installation_id": 12345, "state": "anything", "code": "anything"}`,
 		token:  "alice",
 		orgID:  "00000000-0000-0000-0000-000000000000",
 	}.do(t, handler)

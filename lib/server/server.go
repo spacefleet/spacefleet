@@ -157,7 +157,7 @@ func buildGitHubAuthenticator(cfg *config.Config) (githubinstallations.Authentic
 	if !cfg.GitHubAppEnabled() {
 		return nil, nil
 	}
-	auth, err := githubapp.New(cfg.GitHubAppID, cfg.GitHubAppPrivateKey)
+	auth, err := githubapp.New(cfg.GitHubAppID, cfg.GitHubAppPrivateKey, cfg.GitHubAppClientID, cfg.GitHubAppClientSecret)
 	if err != nil {
 		return nil, err
 	}

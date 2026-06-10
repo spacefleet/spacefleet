@@ -5,12 +5,14 @@
 // installation access token per rollout attempt to authenticate the clone — no
 // git secret is stored per organization.
 //
-// The Authenticator holds the parsed private key and talks to the GitHub REST
-// API: it signs an App JWT (RS256, app-wide), exchanges it for an installation
-// token, and looks an installation up to confirm it exists and read the account
-// it is installed on. It also signs/verifies the short-lived state token that
-// binds the connect → install → callback flow to the initiating organization
-// (see SignState).
+// The Authenticator holds the parsed private key and the App's OAuth client
+// credentials and talks to the GitHub REST API: it signs an App JWT (RS256,
+// app-wide), exchanges it for an installation token, and — on the connect
+// callback — exchanges the OAuth authorization code for a user token to verify
+// the installing user can actually access the claimed installation (see
+// VerifyUserInstallation). It also signs/verifies the short-lived state token
+// that binds the connect → install → callback flow to the initiating
+// organization (see SignState).
 package githubapp
 
 import (
@@ -26,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -38,31 +41,49 @@ import (
 // so tests can point it at an httptest server.
 const defaultBaseURL = "https://api.github.com"
 
-// Authenticator mints GitHub App credentials from the operator's App ID and RSA
-// private key. The zero value is unusable; construct it with New.
+// defaultOAuthBaseURL is the GitHub web origin hosting the OAuth code-exchange
+// endpoint (/login/oauth/access_token) — a different host than the REST API.
+// Overridable on the Authenticator so tests can point it at an httptest server.
+const defaultOAuthBaseURL = "https://github.com"
+
+// Authenticator mints GitHub App credentials from the operator's App ID, RSA
+// private key, and OAuth client credentials. The zero value is unusable;
+// construct it with New.
 type Authenticator struct {
-	appID   int64
-	key     *rsa.PrivateKey
-	baseURL string
-	http    *http.Client
+	appID        int64
+	key          *rsa.PrivateKey
+	clientID     string
+	clientSecret string
+	baseURL      string
+	oauthBaseURL string
+	http         *http.Client
 }
 
 // New parses the PEM private key and returns an Authenticator for the given
-// numeric App ID. It errors if the key can't be parsed, so a misconfigured
-// GitHub App fails fast at startup rather than at first rollout.
-func New(appID int64, privateKeyPEM string) (*Authenticator, error) {
+// numeric App ID and OAuth client credentials. It errors if anything is missing
+// or the key can't be parsed, so a misconfigured GitHub App fails fast at
+// startup rather than at first rollout. The client id/secret are required
+// because the connect callback can only be completed through the OAuth
+// code exchange (see VerifyUserInstallation) — there is no App-JWT-only mode.
+func New(appID int64, privateKeyPEM, clientID, clientSecret string) (*Authenticator, error) {
 	if appID == 0 {
 		return nil, errors.New("githubapp: app id is required")
+	}
+	if clientID == "" || clientSecret == "" {
+		return nil, errors.New("githubapp: client id and client secret are required (the connect flow verifies the installing user via the App's OAuth client)")
 	}
 	key, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(privateKeyPEM))
 	if err != nil {
 		return nil, fmt.Errorf("githubapp: parse private key: %w", err)
 	}
 	return &Authenticator{
-		appID:   appID,
-		key:     key,
-		baseURL: defaultBaseURL,
-		http:    &http.Client{Timeout: 15 * time.Second},
+		appID:        appID,
+		key:          key,
+		clientID:     clientID,
+		clientSecret: clientSecret,
+		baseURL:      defaultBaseURL,
+		oauthBaseURL: defaultOAuthBaseURL,
+		http:         &http.Client{Timeout: 15 * time.Second},
 	}, nil
 }
 
@@ -102,21 +123,97 @@ type Installation struct {
 	AccountType string
 }
 
-// GetInstallation looks an installation up by id, confirming it exists for this
-// App and returning the account it is installed on. Used on the connect
-// callback to verify before storing.
-func (a *Authenticator) GetInstallation(ctx context.Context, installationID int64) (Installation, error) {
-	var body struct {
-		Account struct {
-			Login string `json:"login"`
-			Type  string `json:"type"`
-		} `json:"account"`
-	}
-	url := fmt.Sprintf("%s/app/installations/%d", a.baseURL, installationID)
-	if err := a.do(ctx, http.MethodGet, url, &body); err != nil {
+// ErrInstallationNotAccessible is returned by VerifyUserInstallation when the
+// code exchange succeeds but the claimed installation is not among the
+// installations the authorizing GitHub user can access — i.e. the caller is
+// claiming an installation id that isn't theirs.
+var ErrInstallationNotAccessible = errors.New("githubapp: installation is not accessible to the authorizing github user")
+
+// VerifyUserInstallation proves the user completing the connect callback can
+// actually access the claimed installation, and returns the account it is
+// installed on. It exchanges the OAuth authorization code GitHub appended to
+// the callback redirect for a user-to-server token, then looks the installation
+// up via GET /user/installations — which lists only installations of this App
+// the *authenticated user* has explicit access to.
+//
+// This is the ownership check the App JWT cannot provide: the App JWT can read
+// every installation of the App, so verifying mere existence with it would let
+// any caller link someone else's installation (ids are small sequential
+// integers). The signed connect state binds the flow to the initiating
+// organization but cannot bind the installation id, which doesn't exist when
+// the state is minted — the code exchange closes that gap by binding the
+// callback to the GitHub user who performed the install.
+func (a *Authenticator) VerifyUserInstallation(ctx context.Context, code string, installationID int64) (Installation, error) {
+	userToken, err := a.exchangeCode(ctx, code)
+	if err != nil {
 		return Installation{}, err
 	}
-	return Installation{Login: body.Account.Login, AccountType: body.Account.Type}, nil
+	const perPage = 100
+	for page := 1; ; page++ {
+		var body struct {
+			Installations []struct {
+				ID      int64 `json:"id"`
+				Account struct {
+					Login string `json:"login"`
+					Type  string `json:"type"`
+				} `json:"account"`
+			} `json:"installations"`
+		}
+		url := fmt.Sprintf("%s/user/installations?per_page=%d&page=%d", a.baseURL, perPage, page)
+		if err := a.doToken(ctx, url, userToken, &body); err != nil {
+			return Installation{}, err
+		}
+		for _, inst := range body.Installations {
+			if inst.ID == installationID {
+				return Installation{Login: inst.Account.Login, AccountType: inst.Account.Type}, nil
+			}
+		}
+		if len(body.Installations) < perPage {
+			return Installation{}, ErrInstallationNotAccessible
+		}
+	}
+}
+
+// exchangeCode swaps the OAuth authorization code for a user-to-server access
+// token. GitHub reports exchange failures (expired/reused code, wrong client
+// secret) as a 200 with an error field, so both the status and the body are
+// checked. The token is short-lived and used only for the one
+// /user/installations lookup — it is never stored.
+func (a *Authenticator) exchangeCode(ctx context.Context, code string) (string, error) {
+	form := url.Values{
+		"client_id":     {a.clientID},
+		"client_secret": {a.clientSecret},
+		"code":          {code},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		a.oauthBaseURL+"/login/oauth/access_token", strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := a.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return "", fmt.Errorf("githubapp: exchange code: status %d: %s", resp.StatusCode, bytes.TrimSpace(snippet))
+	}
+	var body struct {
+		AccessToken      string `json:"access_token"`
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return "", fmt.Errorf("githubapp: exchange code: %w", err)
+	}
+	if body.Error != "" || body.AccessToken == "" {
+		return "", fmt.Errorf("githubapp: exchange code: %s: %s", body.Error, body.ErrorDescription)
+	}
+	return body.AccessToken, nil
 }
 
 // Repository is the subset of a repository accessible to an installation that
@@ -243,10 +340,14 @@ type stateClaims struct {
 // SignState mints a tamper-evident state token binding a connect flow to the
 // initiating organization, HMAC-SHA256-keyed by the deployment's secret key
 // (the same base64 key as lib/secrets). It is round-tripped through GitHub's
-// install redirect and verified on the callback: because the App JWT can read
-// every installation of the App, verifying the installation alone would let a
-// caller attach an installation id they don't own — the state proves the same
-// org that initiated the connect is the one completing it.
+// install redirect and verified on the callback, proving the same org that
+// initiated the connect is the one completing it.
+//
+// The state alone does NOT prove the caller owns the claimed installation — it
+// is minted before the installation exists, so it can't bind the installation
+// id. That half of the check is VerifyUserInstallation: the OAuth code exchange
+// proves the GitHub user completing the callback can access the installation.
+// Both checks must pass before an installation is linked.
 //
 // secretKey is the base64-encoded key; an empty key is rejected so the caller
 // surfaces a clear "set SPACEFLEET_SECRET_KEY" error rather than signing with

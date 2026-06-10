@@ -87,13 +87,17 @@ config:
     startTLS: true
 
   # GitHub App for pulling Helm charts from private Git repositories. Register
-  # one GitHub App (with "Contents: read" repository permission) and set its
-  # Setup URL to "<your external URL>/github/callback" so the post-install
-  # redirect lands back in the app. The App ID and slug are non-secret (inline);
-  # the private key is a secret — set it inline here (it lands in the chart's
-  # managed env Secret as GITHUB_APP_PRIVATE_KEY) or, for GitOps, leave it empty
-  # and supply GITHUB_APP_PRIVATE_KEY via config.secrets.envFrom. Leave unset to
-  # disable the feature (the git chart source then supports public repos only).
+  # one GitHub App with "Contents: read" repository permission, set its
+  # Callback URL (the "Identifying and authorizing users" section) to
+  # "<your external URL>/github/callback", and enable "Request user
+  # authorization (OAuth) during installation" — the post-install redirect then
+  # lands back in the app with an authorization code it exchanges to verify the
+  # installing user owns the installation. The App ID, slug, and client ID are
+  # non-secret (inline); the private key and client secret are secrets — set
+  # them inline here (they land in the chart's managed env Secret) or, for
+  # GitOps, leave them empty and supply GITHUB_APP_PRIVATE_KEY /
+  # GITHUB_APP_CLIENT_SECRET via config.secrets.envFrom. Leave unset to disable
+  # the feature (the git chart source then supports public repos only).
   github:
     # -- Numeric GitHub App ID. Empty disables the feature.
     appId: ""
@@ -103,6 +107,12 @@ config:
     # -- Inline GitHub App private key (PEM, or base64-encoded PEM). Prefer
     # config.secrets.envFrom for GitOps. Empty disables the feature.
     privateKey: ""
+    # -- GitHub App OAuth client ID, used on the connect callback to verify the
+    # installing user can access the installation. Empty disables the feature.
+    clientId: ""
+    # -- Inline GitHub App OAuth client secret. Prefer config.secrets.envFrom
+    # for GitOps. Empty disables the feature.
+    clientSecret: ""
 
   # -- Extra environment variables for both web and worker pods. Standard
   # core/v1 EnvVar entries, e.g. [{name: FOO, value: bar}]. Plaintext — for
