@@ -1,0 +1,143 @@
+{{- if .Values.dex.configRollout.enabled }}
+{{/*
+Restarts Dex when its rendered config changed.
+
+Dex reads its config only at startup, and the dexidp/dex subchart only adds a
+restart-triggering checksum annotation when *it* renders the config Secret —
+this chart renders it instead (dex.configSecret.create=false), so without help
+a `helm upgrade` that changes dex.* values (connectors, staticPasswords, …)
+would leave Dex running the old config while the app's login screen already
+advertises the new one.
+
+This hook Job patches the sha256 of the effective config (the shared
+"spacefleet.dex.config" template, the exact content of the mounted Secret) onto
+the Dex Deployment's pod template:
+
+  - config unchanged → the patch is a no-op, no restart;
+  - config changed   → the pod template changes, a normal rolling update picks
+                       up the new Secret.
+
+It runs post-install too, so the annotation baseline exists from day one and
+the first upgrade doesn't restart Dex spuriously — at the cost of one redundant
+rollout at install time, before anything depends on Dex. post-rollback matters
+because a rollback restores the old Secret content and needs the same restart.
+
+The patched annotation survives upgrades only because the default
+dex.podAnnotations ships a static marker keeping the rendered pod-template
+`annotations` field non-null — see the comment in values.yaml.
+*/}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "spacefleet.fullname" . }}-dex-rollout
+  labels:
+    {{- include "spacefleet.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dex-rollout
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade,post-rollback
+    "helm.sh/hook-weight": "-2"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "spacefleet.fullname" . }}-dex-rollout
+  labels:
+    {{- include "spacefleet.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dex-rollout
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade,post-rollback
+    "helm.sh/hook-weight": "-2"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: [{{ include "spacefleet.dex.fullname" . | quote }}]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "spacefleet.fullname" . }}-dex-rollout
+  labels:
+    {{- include "spacefleet.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dex-rollout
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade,post-rollback
+    "helm.sh/hook-weight": "-1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "spacefleet.fullname" . }}-dex-rollout
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "spacefleet.fullname" . }}-dex-rollout
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "spacefleet.fullname" . }}-dex-rollout
+  labels:
+    {{- include "spacefleet.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dex-rollout
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade,post-rollback
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "spacefleet.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: dex-rollout
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "spacefleet.fullname" . }}-dex-rollout
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: dex-rollout
+          image: "{{ .Values.dex.configRollout.image.repository }}:{{ .Values.dex.configRollout.image.tag }}"
+          imagePullPolicy: {{ .Values.dex.configRollout.image.pullPolicy }}
+          args:
+            - patch
+            - deployment
+            - {{ include "spacefleet.dex.fullname" . }}
+            - --namespace={{ .Release.Namespace }}
+            - --type=strategic
+            - '--patch={"spec":{"template":{"metadata":{"annotations":{"checksum/dex-config":"{{ include "spacefleet.dex.config" . | sha256sum }}"}}}}}'
+          env:
+            {{- /* kubectl writes its discovery cache under $HOME/.kube; give it
+                   a writable spot compatible with readOnlyRootFilesystem. */}}
+            - name: HOME
+              value: /tmp
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.dex.configRollout.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.dex.configRollout.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.dex.configRollout.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.dex.configRollout.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

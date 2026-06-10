@@ -130,8 +130,11 @@ dex:
   staticPasswords: []   # no built-in accounts
 ```
 
-Apply with `helm upgrade`. Built-in accounts and connectors can coexist — keep a
-break-glass admin password if you like.
+Apply with `helm upgrade`. The chart restarts the bundled Dex automatically
+whenever its configuration changes, so connector and account changes take
+effect as soon as the upgrade finishes — no manual restart needed. Built-in
+accounts and connectors can coexist — keep a break-glass admin password if you
+like.
 
 ### Add "Log in with GitHub"
 

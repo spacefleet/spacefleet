@@ -68,6 +68,7 @@ helm install spacefleet oci://ghcr.io/spacefleet/charts/spacefleet \
 | `StatefulSet/<rel>-postgresql` (+ Service, Secret) | `postgresql.enabled` | bundled Postgres, official `postgres` image |
 | `Deployment/<rel>-dex` (+ Service, RBAC, SA) | always | bundled Dex via the `dexidp/dex` subchart; internal ClusterIP, reached via the app's `/dex` proxy |
 | `Secret/<rel-configured>-dex-config` | always | Dex config this chart renders for the subchart |
+| `Job/<rel>-dex-rollout` (+ SA, Role, RoleBinding) | `dex.configRollout.enabled` | `post-install,post-upgrade,post-rollback` hook that restarts Dex when its rendered config changed |
 
 The migrate Job runs `post-install` (not `pre-install`) so it can reach the
 bundled Postgres, which is a normal release resource and therefore created
@@ -167,6 +168,14 @@ app.
   Kubernetes CRDs — durable across restarts and HA-safe, no database).
   `postgres`, `sqlite3`, and `memory` are also available; `memory` is
   single-replica/trial only.
+- **Config changes restart Dex automatically.** Dex reads its config only at
+  startup, and the subchart's own restart-on-change checksum doesn't apply when
+  the config Secret is rendered by this chart — so a `dex.configRollout` hook
+  Job stamps the rendered config's checksum onto the Dex Deployment after every
+  install/upgrade/rollback: a no-op when the config is unchanged, a rolling Dex
+  restart when it changed. No manual `kubectl rollout restart` is needed after
+  changing `dex.*` values. (Relatedly, don't remove the static marker shipped in
+  `dex.podAnnotations` — see the comment in `values.yaml`.)
 - **A seeded admin** (`admin@example.com` / `password`) makes a fresh install
   loginnable. **This is a publicly known credential** — before exposing the
   deployment, replace `dex.staticPasswords` (regenerate a hash with

@@ -388,6 +388,27 @@ dex:
   # -- Token/key lifetimes (Dex `expiry:` passthrough), e.g. {idTokens: 24h}.
   expiry: {}
 
+  # ---- config-change rollout (chart-owned hook, not subchart) ----------------
+  # Dex reads its config only at startup, and the subchart only adds a
+  # restart-triggering checksum when *it* renders the config Secret — which this
+  # chart does instead. So after install/upgrade/rollback a hook Job stamps the
+  # rendered config's checksum onto the Dex Deployment's pod template: a no-op
+  # when the config is unchanged, a rolling Dex restart when it changed (new
+  # connectors, removed staticPasswords, …). Without it, `helm upgrade` would
+  # leave Dex serving the old config while the login screen advertises the new.
+  configRollout:
+    enabled: true
+    # -- Image used to run the single `kubectl patch`. Official kubectl image
+    # published by the Kubernetes project; override for air-gapped mirrors.
+    image:
+      repository: registry.k8s.io/kubectl
+      tag: v1.34.8
+      pullPolicy: IfNotPresent
+    resources: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+
   # ---- dexidp/dex subchart passthrough ---------------------------------------
   # This chart renders the config Secret, so the subchart must not create one;
   # both sides reference dex.configSecret.name. For multiple spacefleet releases
@@ -413,7 +434,14 @@ dex:
   # e.g. [{secretRef: {name: spacefleet-dex-connectors}}].
   envFrom: []
   resources: {}
-  podAnnotations: {}
+  # -- Dex pod annotations (subchart passthrough). The static marker below must
+  # stay: it keeps the pod template's `annotations` field non-empty in the
+  # rendered manifest, so Helm's three-way apply merges the field instead of
+  # nulling it — which would wipe the `checksum/dex-config` annotation the
+  # configRollout hook maintains and bounce Dex on every upgrade. Your own
+  # annotations merge alongside it.
+  podAnnotations:
+    spacefleet.dev/config-rollout: managed
   nodeSelector: {}
   tolerations: []
   affinity: {}
