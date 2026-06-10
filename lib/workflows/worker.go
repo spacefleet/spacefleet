@@ -75,10 +75,12 @@ func (w *WorkflowRunWorker) Timeout(*river.Job[WorkflowRunArgs]) time.Duration {
 
 // Work runs one workflow run end to end. It loads the run, its component runs, and
 // the app; marks the run running; drives the DAG through schedule(); then marks
-// the run with the scheduler's terminal status. It returns nil for
-// succeeded/partial and an error for failed so River retries the job — retries are
-// safe because already-terminal components short-circuit and in-flight TaskRuns
-// re-attach (never double-submit) via the per-component label.
+// the run with the scheduler's terminal status. A failure with a retryable cause
+// returns an error WITHOUT settling the run, so River retries the job against a
+// still-in-flight run (H3) — retries are safe because already-terminal components
+// short-circuit and in-flight TaskRuns re-attach (never double-submit) via the
+// per-component label. Everything else settles the run terminal and returns nil
+// (succeeded/partial, and failures that won't change on retry).
 func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRunArgs]) (err error) {
 	a := job.Args
 
@@ -165,6 +167,13 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 		concurrency = maxComponentConcurrency
 	}
 
+	// attemptsRemain reports whether River will actually run this job again if Work
+	// returns an error — Attempt is the 1-based number of the executing attempt, so
+	// the final attempt has Attempt == MaxAttempts. It decides whether a retryable
+	// failure may leave the run and its components in-flight for the retry to
+	// re-attach (H3), or must settle them terminal because no retry will follow.
+	attemptsRemain := job.Attempt < job.MaxAttempts
+
 	// ran records the node ids runFn actually executed (and thus already persisted a
 	// terminal component_run for). The scheduler also settles nodes it never runs —
 	// "skipped" dependents, and "failed" for a node referencing an unknown dependency
@@ -189,7 +198,7 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 		if !ok {
 			return nodeResult{Status: statusFailed, Err: fmt.Errorf("workflows: component run for node %s missing", sn.ID)}
 		}
-		res := w.runComponent(ctx, a, app, node, cr, nodeByID)
+		res := w.runComponent(ctx, a, app, node, cr, nodeByID, attemptsRemain)
 		if res.Status == statusFailed && res.Retryable {
 			ranMu.Lock()
 			retryable = true
@@ -220,6 +229,19 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 			// reaches runFn while parked, so this is the only writer of the status.
 			_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "awaiting_approval", "awaiting manual approval", "")
 		case statusSkipped:
+			// H3: while a retryable failure is pending a River retry, don't persist the
+			// skip — it may sit downstream of the retryably-failed node, and a terminal
+			// "skipped" would short-circuit it on the retried attempt even when the node
+			// it waited on then succeeds. Leaving it pending is safe: a skip implies a
+			// hard failure somewhere, so a retryable run always returns the retry error
+			// (re-driving the DAG re-settles it), and a run that instead settles terminal
+			// persists it via the SettleStuckComponentRuns sweep below.
+			ranMu.Lock()
+			deferred := attemptsRemain && retryable
+			ranMu.Unlock()
+			if deferred {
+				return
+			}
 			_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "skipped", "skipped (an upstream component did not pass)", "")
 		case statusFailed:
 			// runFn persists its own "failed" (with the real error). A "failed" the
@@ -246,39 +268,57 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 		return nil
 	}
 
-	msg := "workflow " + final
-	_ = w.svc.MarkRun(ctx, a.OrgID, a.WorkflowRunID, final, msg)
-
-	// Settle any component run the scheduler left non-terminal. The case that bites
-	// is a gated node that parked at awaiting_approval on a branch while a parallel
-	// branch hard-failed: hardFailed outranks suspended, so schedule() returns
-	// runFailed/runPartial and the parked node is never settled. The run is now
-	// terminal, but its parked step would otherwise sit at awaiting_approval forever
-	// with no recovery path (approve/reject and cancel all require an in-flight run).
-	// Sweep those to skipped, mirroring CancelRun's settle-steps. Terminal steps are
-	// untouched, so genuine succeeded/failed/skipped results are preserved.
-	if final == runFailed || final == runPartial {
-		_, _ = w.svc.SettleStuckComponentRuns(ctx, a.OrgID, a.WorkflowRunID, "skipped (run did not complete)")
-	}
-	if final == runFailed {
-		// F4: only return an error (so River retries the whole job) when at least one
-		// component failed for a genuinely retryable reason — a transient/infra
-		// condition where re-running can change the outcome (e.g. the TaskRun couldn't
-		// be submitted or watched), or a context cancellation/timeout. The retry is
-		// idempotent: already-terminal components short-circuit and in-flight ones
-		// re-attach via the per-component label, so only the unsettled work re-runs.
-		//
-		// When the failure is fully attributable to settled component results that
-		// won't change on retry — a component's TaskRun ran to a terminal Failed phase,
-		// or a deterministic plan/config error — return nil. The run is already marked
-		// failed; retrying would only re-run the same failing scripts ~25 times.
+	// F4/H3: a failure that River will retry must NOT settle the run — MarkRun is
+	// guarded to never resurrect a terminal run, so marking it failed here would
+	// freeze it at "failed" forever (the retry's MarkRun(running) becomes a no-op)
+	// even when the retried attempt succeeds on the cluster. So when at least one
+	// component failed for a genuinely retryable reason — a transient/infra
+	// condition where re-running can change the outcome (e.g. the TaskRun couldn't
+	// be submitted or watched), or a context cancellation/timeout — and an attempt
+	// remains, return the error with the run still in-flight: the retry is
+	// idempotent (already-terminal components short-circuit, in-flight ones
+	// re-attach via the per-component label), so only the unsettled work re-runs.
+	if final == runFailed && attemptsRemain {
 		if ctx.Err() != nil {
 			return fmt.Errorf("workflows: run %s aborted: %w", a.WorkflowRunID, ctx.Err())
 		}
 		if retryable {
 			return fmt.Errorf("workflows: run %s failed (retryable): %w", a.WorkflowRunID, retryableErr)
 		}
-		return nil
+	}
+
+	// Terminal: the run settles here. Either it didn't fail at all, the failure is
+	// fully attributable to settled component results that won't change on retry —
+	// a TaskRun that ran to a terminal Failed phase, or a deterministic plan/config
+	// error (retrying would only re-run the same failing scripts ~25 times) — or
+	// this was the final attempt and no retry will follow. The terminal bookkeeping
+	// uses a cancel-immune context so a timed-out final attempt still settles
+	// instead of lingering for the reaper; both writes are status-guarded, so they
+	// can't clobber a run CancelRun already settled.
+	markCtx := context.WithoutCancel(ctx)
+	_ = w.svc.MarkRun(markCtx, a.OrgID, a.WorkflowRunID, final, "workflow "+final)
+
+	// Settle any component run the scheduler left non-terminal. The cases that bite:
+	// a gated node that parked at awaiting_approval on a branch while a parallel
+	// branch hard-failed (hardFailed outranks suspended, so schedule() returns
+	// runFailed/runPartial and the parked node is never settled), and the skips the
+	// retryable path above deferred on earlier attempts. The run is now terminal, so
+	// a non-terminal step would otherwise sit pending/awaiting_approval forever with
+	// no recovery path (approve/reject and cancel all require an in-flight run).
+	// Sweep those to skipped, mirroring CancelRun's settle-steps. Terminal steps are
+	// untouched, so genuine succeeded/failed/skipped results are preserved.
+	if final == runFailed || final == runPartial {
+		_, _ = w.svc.SettleStuckComponentRuns(markCtx, a.OrgID, a.WorkflowRunID, "skipped (run did not complete)")
+	}
+	if final == runFailed {
+		// Retries exhausted on a retryable/aborted failure: the run is settled above;
+		// still return the error so River records why on the job row.
+		if ctx.Err() != nil {
+			return fmt.Errorf("workflows: run %s aborted: %w", a.WorkflowRunID, ctx.Err())
+		}
+		if retryable {
+			return fmt.Errorf("workflows: run %s failed (retryable, retries exhausted): %w", a.WorkflowRunID, retryableErr)
+		}
 	}
 	return nil
 }
@@ -287,8 +327,11 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 // outcome. It short-circuits a component already terminal in the DB (a retry must
 // not re-run a succeeded component), marks it running, builds the RunSpec via the
 // planner, executes the TaskRun crash-safely (re-attaching by the per-component
-// label), captures logs + revisions, and marks the terminal status.
-func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs, app *ent.Application, node GraphNode, cr *ent.ComponentRun, byID map[uuid.UUID]GraphNode) nodeResult {
+// label), captures logs + revisions, and marks the terminal status. attemptsRemain
+// (whether River will retry the job after a returned error) decides whether a
+// retryable executor failure may leave the component run in-flight for the retry
+// to pick up (H3), or must settle it failed because no retry will follow.
+func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs, app *ent.Application, node GraphNode, cr *ent.ComponentRun, byID map[uuid.UUID]GraphNode, attemptsRemain bool) nodeResult {
 	// Retry short-circuit: a component already settled in a prior attempt is not
 	// re-run; its stored status drives the scheduler so dependents see the same
 	// outcome. Skipped is treated as a non-pass terminal too.
@@ -328,9 +371,19 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 	if err != nil {
 		// The executor failed to submit or watch the TaskRun to terminal — an
 		// infra/transient condition (cluster unreachable, API error), not a settled
-		// component result. Mark it retryable so the run's River job retries (F4): the
-		// next attempt re-attaches to any in-flight TaskRun via the per-component label.
-		_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "failed", err.Error(), runName)
+		// component result. Mark it retryable so the run's River job retries (F4).
+		// While a retry remains, the component run must stay in-flight (H3): a
+		// terminal "failed" here would make the retry's short-circuit above return
+		// failed without ever re-attaching, freezing the step (and the run) at failed
+		// even when the TaskRun is still running — or succeeding — on the cluster. So
+		// record the transient error on the still-running row and let the next attempt
+		// re-attach via the per-component recovery label. Only when no retry will
+		// follow is the failure settled terminal.
+		if attemptsRemain {
+			_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "running", "transient failure, retrying: "+err.Error(), runName)
+		} else {
+			_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "failed", err.Error(), runName)
+		}
 		return nodeResult{Status: statusFailed, Err: err, Retryable: true}
 	}
 
