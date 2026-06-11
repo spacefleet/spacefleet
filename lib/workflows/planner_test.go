@@ -1,13 +1,20 @@
 package workflows
 
 import (
+	"context"
+	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 
+	"github.com/spacefleet/spacefleet/ent"
+	"github.com/spacefleet/spacefleet/lib/deploy"
 	"github.com/spacefleet/spacefleet/lib/helm"
+	"github.com/spacefleet/spacefleet/lib/k8s"
 	"github.com/spacefleet/spacefleet/lib/manifest"
+	"github.com/spacefleet/spacefleet/lib/tekton"
 	"github.com/spacefleet/spacefleet/lib/tofu"
 )
 
@@ -231,5 +238,125 @@ func TestWithNativeLocking(t *testing.T) {
 	got = withNativeLocking(base, tofu.BackendS3, old)
 	if _, set := got[s3BackendKeyLockfile]; set {
 		t.Errorf("1.9 line: use_lockfile must not be injected, got %v", got)
+	}
+}
+
+// plannerConns is a ConnResolver stub for unit tests: every cluster resolves to
+// a zero-value connection (planTofu's resolve path never dials it).
+type plannerConns struct{}
+
+func (plannerConns) ConnForTekton(context.Context, uuid.UUID, uuid.UUID) (k8s.Connection, error) {
+	return k8s.Connection{}, nil
+}
+
+// TestPlanTofuProvisionsHandover: a non-preview plan or apply node provisions
+// the pair's planfile-handover objects (Secret + scoped SA/Role/RoleBinding,
+// via the ensureHandover seam) and runs the step as the same-named
+// ServiceAccount; a preview does neither.
+func TestPlanTofuProvisionsHandover(t *testing.T) {
+	t.Parallel()
+	runID, planID, applyID := uuid.New(), uuid.New(), uuid.New()
+	app := &ent.Application{ID: uuid.New(), OrganizationID: uuid.New(), RunnerClusterID: uuid.New()}
+
+	var ensured []string
+	var ensuredLabels map[string]string
+	w := &WorkflowRunWorker{
+		resolver: deploy.NewResolver(plannerConns{}, nil, nil, nil, nil),
+		ensureHandover: func(_ context.Context, _ k8s.Connection, namespace, name string, labels map[string]string) error {
+			ensured = append(ensured, namespace+"/"+name)
+			ensuredLabels = labels
+			return nil
+		},
+	}
+
+	planNode := GraphNode{
+		ID: planID, ComponentID: planID, Name: "net", Type: TypeTerraform,
+		Config: map[string]string{
+			terraformConfigCommand: terraformCommandPlan,
+			terraformConfigBackend: tofu.BackendS3,
+		},
+	}
+	applyNode := GraphNode{
+		ID: applyID, ComponentID: planID, Name: "net", Type: TypeTerraform,
+		DependsOn: []uuid.UUID{planID},
+		Config: map[string]string{
+			terraformConfigCommand: terraformCommandApply,
+			terraformConfigBackend: tofu.BackendS3,
+		},
+	}
+	byID := map[uuid.UUID]GraphNode{planID: planNode, applyID: applyNode}
+	secret := tofuPlanArtifactSecret(runID, planID)
+
+	req, err := w.planTofu(context.Background(), app, planNode, ActionDeploy, "", runID, byID)
+	if err != nil {
+		t.Fatalf("planTofu(plan): %v", err)
+	}
+	if req.Spec.ServiceAccountName != secret {
+		t.Errorf("plan node ServiceAccountName = %q, want %q", req.Spec.ServiceAccountName, secret)
+	}
+	if want := []string{tekton.JobsNamespace + "/" + secret}; !reflect.DeepEqual(ensured, want) {
+		t.Errorf("ensured = %v, want %v", ensured, want)
+	}
+	wantLabels := map[string]string{
+		tekton.RunOrgLabel: app.OrganizationID.String(),
+		tekton.RunJobLabel: runID.String(),
+	}
+	if !reflect.DeepEqual(ensuredLabels, wantLabels) {
+		t.Errorf("handover labels = %v, want %v", ensuredLabels, wantLabels)
+	}
+
+	// The apply node ensures the SAME pair objects (idempotent — heals a partial
+	// provision) and runs as the same ServiceAccount, so it reads exactly the
+	// Secret its plan node stored.
+	ensured = nil
+	req, err = w.planTofu(context.Background(), app, applyNode, ActionDeploy, "", runID, byID)
+	if err != nil {
+		t.Fatalf("planTofu(apply): %v", err)
+	}
+	if req.Spec.ServiceAccountName != secret {
+		t.Errorf("apply node ServiceAccountName = %q, want %q", req.Spec.ServiceAccountName, secret)
+	}
+	if want := []string{tekton.JobsNamespace + "/" + secret}; !reflect.DeepEqual(ensured, want) {
+		t.Errorf("apply ensured = %v, want %v", ensured, want)
+	}
+
+	// A preview is read-only: no planfile, so no handover objects and no
+	// dedicated ServiceAccount (the pod needs no cluster access at all).
+	ensured = nil
+	req, err = w.planTofu(context.Background(), app, planNode, ActionPreview, "", runID, byID)
+	if err != nil {
+		t.Fatalf("planTofu(preview): %v", err)
+	}
+	if req.Spec.ServiceAccountName != "" {
+		t.Errorf("preview ServiceAccountName = %q, want empty", req.Spec.ServiceAccountName)
+	}
+	if len(ensured) != 0 {
+		t.Errorf("preview must not provision handover objects, got %v", ensured)
+	}
+}
+
+// TestPlanTofuHandoverFailure: a handover provision failure fails the planning
+// (the step would only fail later, worse — at the kubectl upsert after a full
+// plan), with the component named in the error.
+func TestPlanTofuHandoverFailure(t *testing.T) {
+	t.Parallel()
+	runID, planID := uuid.New(), uuid.New()
+	app := &ent.Application{ID: uuid.New(), OrganizationID: uuid.New(), RunnerClusterID: uuid.New()}
+	w := &WorkflowRunWorker{
+		resolver: deploy.NewResolver(plannerConns{}, nil, nil, nil, nil),
+		ensureHandover: func(context.Context, k8s.Connection, string, string, map[string]string) error {
+			return errors.New("forbidden")
+		},
+	}
+	node := GraphNode{
+		ID: planID, ComponentID: planID, Name: "net", Type: TypeTerraform,
+		Config: map[string]string{
+			terraformConfigCommand: terraformCommandPlan,
+			terraformConfigBackend: tofu.BackendS3,
+		},
+	}
+	_, err := w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: node})
+	if err == nil || !strings.Contains(err.Error(), "forbidden") {
+		t.Fatalf("expected the ensure failure to propagate, got %v", err)
 	}
 }

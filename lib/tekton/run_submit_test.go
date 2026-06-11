@@ -70,6 +70,21 @@ func TestBuildTaskRunWithFiles(t *testing.T) {
 	}
 }
 
+// TestBuildTaskRunServiceAccountName: a spec naming a ServiceAccount renders it
+// on the TaskRun spec; without one the field is absent so Tekton uses the
+// namespace default.
+func TestBuildTaskRunServiceAccountName(t *testing.T) {
+	tr := buildTaskRun("ns", "", RunSpec{Name: "tofu", Image: "img", Script: "run", ServiceAccountName: "tfplan-run1-plan1"})
+	if sa, _, _ := unstructured.NestedString(tr.Object, "spec", "serviceAccountName"); sa != "tfplan-run1-plan1" {
+		t.Errorf("spec.serviceAccountName = %q, want tfplan-run1-plan1", sa)
+	}
+
+	tr = buildTaskRun("ns", "", RunSpec{Name: "helm", Image: "img", Script: "run"})
+	if _, found, _ := unstructured.NestedString(tr.Object, "spec", "serviceAccountName"); found {
+		t.Error("spec.serviceAccountName should be absent when unset")
+	}
+}
+
 func TestBuildCredsSecret(t *testing.T) {
 	s := buildCredsSecret("ns", "helm-creds-x", RunSpec{Files: map[string]string{"kubeconfig": "data"}})
 	if s.Type != corev1.SecretTypeOpaque || s.Namespace != "ns" || s.Name != "helm-creds-x" {

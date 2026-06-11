@@ -18,16 +18,21 @@
 // apply node's pod via the filesystem (separate TaskRuns, separate ephemeral
 // workspaces), so the planfile is handed over through a Kubernetes Secret: the
 // plan node writes `tofu plan -out=tfplan` and stores tfplan in a Secret
-// (PlanArtifactSecret) in the run namespace using the injected kubeconfig; the
-// apply node fetches that Secret and runs `tofu apply tfplan`, applying the
-// EXACT reviewed plan rather than re-planning. Because a saved plan is bound to
-// the state lineage/serial it was planned against, the plan and apply nodes
-// must share the same backend state identity (the planner keys both off the
-// plan node's id); if state drifted between plan and apply, `tofu apply tfplan`
-// fails loudly (stale plan) instead of silently applying something different.
-// kubectl is not in the base image, so the store/fetch paths `apk add` it
-// first (the script already does network I/O for the clone and provider
-// downloads).
+// (PlanArtifactSecret) in the run namespace; the apply node fetches that Secret
+// and runs `tofu apply tfplan`, applying the EXACT reviewed plan rather than
+// re-planning. The worker pre-creates that Secret (empty) together with a
+// per-pair ServiceAccount/Role/RoleBinding pinned to exactly it (see
+// lib/tekton's EnsureHandoverSecret), and both pods run as that
+// ServiceAccount: the in-pod kubectl below therefore needs only the
+// name-pinnable get/patch/delete verbs — never `create` — so the user-supplied
+// module code running in these pods can touch nothing else in the namespace.
+// Because a saved plan is bound to the state lineage/serial it was planned
+// against, the plan and apply nodes must share the same backend state identity
+// (the planner keys both off the plan node's id); if state drifted between plan
+// and apply, `tofu apply tfplan` fails loudly (stale plan) instead of silently
+// applying something different. kubectl is not in the base image, so the
+// store/fetch paths `apk add` it first (the script already does network I/O
+// for the clone and provider downloads).
 package tofu
 
 import (
@@ -130,12 +135,15 @@ type Apply struct {
 	// values never appear in the script string or manifest.
 	HasCloudAuth bool
 	// PlanArtifactSecret is the name of the Kubernetes Secret (in Namespace, on
-	// the cluster the injected kubeconfig points at) the planfile is handed over
-	// through. The plan node stores `tofu plan -out=tfplan` into it; the apply
-	// node restores it and runs `tofu apply tfplan`. Empty disables the planfile
-	// path: a plan node just plans (the read-only review case, e.g. preview) and
-	// an apply node has no reviewed plan to apply, so it fails closed. The planner
-	// sets it (keyed off the plan node's id) for non-preview plan/apply nodes.
+	// the runner cluster) the planfile is handed over through. The worker
+	// pre-creates it empty, alongside the same-named ServiceAccount the step's
+	// pod runs as, whose Role is pinned to exactly this Secret; the plan node
+	// stores `tofu plan -out=tfplan` into it (a get+patch upsert — the pod may
+	// not create Secrets) and the apply node restores it and runs `tofu apply
+	// tfplan`. Empty disables the planfile path: a plan node just plans (the
+	// read-only review case, e.g. preview) and an apply node has no reviewed
+	// plan to apply, so it fails closed. The planner sets it (keyed off the plan
+	// node's id) for non-preview plan/apply nodes.
 	PlanArtifactSecret string
 	// InitFlags, PlanFlags, and ApplyFlags are optional operator-supplied CLI flag
 	// tokens appended verbatim (each shell-quoted as one whole argv token) to
@@ -215,8 +223,9 @@ func Script(a Apply) string {
 	// No kubeconfig is injected for a terraform component (it has no cluster
 	// target), so no KUBECONFIG is exported. The state backend is always explicit
 	// (validated at write time); the planfile-handover Secret below is read/written
-	// with the runner's in-cluster credentials (the step's own service account),
-	// since the job already runs in the runner cluster.
+	// with the step's own in-cluster credentials — the per-pair ServiceAccount the
+	// worker provisioned, whose Role pins it to exactly that Secret — since the
+	// job already runs in the runner cluster.
 
 	// With cloud auth, source the mounted AWS env file so the credential values
 	// enter the process env before init — they live only in the mounted file +
@@ -294,10 +303,14 @@ const kubectlInstall = "apk add --no-cache kubectl\n"
 
 // storePlanfile emits the lines a non-preview plan node runs to hand its saved
 // planfile to the apply node: install kubectl, then upsert the planfile into the
-// PlanArtifactSecret (create-or-update via a client-side apply, idempotent so an
-// approval-resume re-run is safe). No KUBECONFIG is exported, so kubectl uses the
-// step's in-cluster credentials — the Secret lands in the runner cluster (the
-// namespace the TaskRun runs in), reachable by both the plan and apply nodes.
+// PlanArtifactSecret (a client-side apply, idempotent so an approval-resume
+// re-run is safe). The Secret already exists — the worker pre-created it — so
+// the apply is a get+patch, the only secret verbs (plus delete) the pod's
+// pinned Role grants; the `kubectl create --dry-run=client` stage only renders
+// the manifest locally. No KUBECONFIG is exported, so kubectl uses the step's
+// in-cluster credentials — the per-pair ServiceAccount — and the Secret lives
+// in the runner cluster (the namespace the TaskRun runs in), reachable by both
+// the plan and apply nodes.
 func storePlanfile(a Apply) string {
 	var b strings.Builder
 	b.WriteString(kubectlInstall)
@@ -319,9 +332,11 @@ func restorePlanfile(a Apply) string {
 }
 
 // deletePlanfileSecret emits the best-effort cleanup an apply node runs after a
-// successful apply — the planfile has served its purpose. --ignore-not-found
-// keeps it idempotent; cleanup failure does not fail the step (the apply already
-// succeeded), so a future run's upsert simply overwrites a stray Secret.
+// successful apply — the planfile has served its purpose, and deleting the
+// Secret garbage-collects the pair's ServiceAccount/Role/RoleBinding through
+// their ownerReferences. --ignore-not-found keeps it idempotent; cleanup
+// failure does not fail the step (the apply already succeeded) — the worker
+// sweeps any leftover when the run settles terminal.
 func deletePlanfileSecret(a Apply) string {
 	return fmt.Sprintf("kubectl delete secret %s --namespace %s --ignore-not-found || true\n",
 		shQuote(a.PlanArtifactSecret), shQuote(a.Namespace))

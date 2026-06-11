@@ -198,12 +198,10 @@ func ParseDiff(logs string) Diff {
 	return d
 }
 
-// RunNamespace is the namespace on the runner cluster a rollout/diff TaskRun is
-// submitted to. The default namespace always exists; it matches the namespace
-// lib/api uses for cluster TaskRuns so the live-run/log streams resolve there.
-// Used by the workflow executor (lib/workflows) to submit and watch component
-// runs.
-const RunNamespace = "default"
+// The namespace a rollout/diff TaskRun is submitted to on the runner cluster
+// is tekton.JobsNamespace — the dedicated namespace the managed Tekton install
+// creates; the workflow executor (lib/workflows) and lib/api both submit and
+// watch runs there.
 
 // DefaultImage is the helm CLI image the rollout step runs in. alpine/k8s
 // bundles helm, kubectl, and git, so the git chart source works without an

@@ -15,6 +15,13 @@ If the cluster doesn't already have Tekton, Spacefleet installs it for you. The
 panel shows live progress as the install proceeds — you don't need to refresh.
 When it finishes, the status shows **installed** and the controller as ready.
 
+Jobs run in a dedicated `spacefleet-jobs` namespace on the cluster, keeping
+Spacefleet's runs (and the secrets that support them) in one place, out of the
+`default` namespace. Spacefleet creates that namespace when it installs or
+upgrades Tekton. If you installed Tekton yourself (or enabled job running
+before this namespace was introduced), create it once with
+`kubectl create namespace spacefleet-jobs` — runs fail until it exists.
+
 Enabling job running requires credentials that can install cluster-wide
 components (custom resource definitions, RBAC, and webhooks) — effectively
 cluster-admin. If the install fails with a permissions error, the status shows

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"sync"
 	"time"
 
@@ -57,6 +58,12 @@ type WorkflowRunWorker struct {
 	// the real pod-log read. Overridden in tests to drive Work without a cluster.
 	funcs       tekton.RunFuncs
 	captureLogs runLogsFn
+	// ensureHandover / deleteHandover provision and sweep a terraform pair's
+	// planfile-handover objects on the runner cluster (the real
+	// tekton.EnsureHandoverSecret / DeleteHandoverSecret in production) — seams
+	// for the same reason as funcs.
+	ensureHandover func(ctx context.Context, conn k8s.Connection, namespace, name string, labels map[string]string) error
+	deleteHandover func(ctx context.Context, conn k8s.Connection, namespace, name string) error
 }
 
 // NewWorker builds the workflow run worker over the workflow service and the
@@ -65,6 +72,8 @@ type WorkflowRunWorker struct {
 func NewWorker(svc *Service, resolver *deploy.Resolver) *WorkflowRunWorker {
 	w := &WorkflowRunWorker{svc: svc, resolver: resolver, funcs: tekton.DefaultRunFuncs()}
 	w.captureLogs = defaultCaptureLogs
+	w.ensureHandover = tekton.EnsureHandoverSecret
+	w.deleteHandover = tekton.DeleteHandoverSecret
 	return w
 }
 
@@ -310,6 +319,17 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 	if final == runFailed || final == runPartial {
 		_, _ = w.svc.SettleStuckComponentRuns(markCtx, a.OrgID, a.WorkflowRunID, "skipped (run did not complete)")
 	}
+
+	// The run is terminal, so no apply node will read a planfile-handover Secret
+	// again — sweep the run's handover Secrets (their RBAC rides along via
+	// ownerReferences). A succeeded apply already deleted its own, so this
+	// catches the unhappy paths: a failed plan, a rejected approval (the resume
+	// job settles the run here), a skipped apply, and a tolerated in-step delete
+	// failure. Cancel- and reaper-settled runs never pass through here and leak
+	// until an operator sweeps by the stamped labels — the same posture as their
+	// TaskRuns. Best-effort on markCtx, like the bookkeeping above.
+	w.sweepPlanArtifacts(markCtx, a, app, snapshot)
+
 	if final == runFailed {
 		// Retries exhausted on a retryable/aborted failure: the run is settled above;
 		// still return the error so River records why on the job row.
@@ -429,6 +449,40 @@ func encodeValuesRevision(values map[int]string) string {
 	return string(b)
 }
 
+// sweepPlanArtifacts best-effort deletes every planfile-handover Secret a
+// terminal run may have left on the runner cluster — one per terraform plan
+// node in the snapshot, named exactly as the planner keyed them. Deleting the
+// Secret garbage-collects the pair's ServiceAccount/Role/RoleBinding through
+// their ownerReferences; a Secret the apply step already deleted is a no-op.
+// Failures are logged, never propagated: the run is already settled, and a
+// leftover Secret is inert (its names are per-run, so nothing ever reads it
+// again).
+func (w *WorkflowRunWorker) sweepPlanArtifacts(ctx context.Context, a WorkflowRunArgs, app *ent.Application, snapshot GraphSnapshot) {
+	// A preview neither pre-creates handover Secrets nor stores planfiles.
+	if a.Action == ActionPreview {
+		return
+	}
+	var names []string
+	for _, n := range snapshot.Nodes {
+		if n.Type == TypeTerraform && n.Config[terraformConfigCommand] == terraformCommandPlan {
+			names = append(names, tofuPlanArtifactSecret(a.WorkflowRunID, n.ID))
+		}
+	}
+	if len(names) == 0 {
+		return
+	}
+	conn, err := w.resolver.RunnerConn(ctx, a.OrgID, app.RunnerClusterID)
+	if err != nil {
+		log.Printf("worker: workflow run %s: resolve runner for planfile sweep: %v", a.WorkflowRunID, err)
+		return
+	}
+	for _, name := range names {
+		if err := w.deleteHandover(ctx, conn, tekton.JobsNamespace, name); err != nil {
+			log.Printf("worker: workflow run %s: sweep planfile secret %s: %v", a.WorkflowRunID, name, err)
+		}
+	}
+}
+
 // defaultCaptureLogs reads a terminal run's full pod logs from the runner
 // connection, capped, no follow — best-effort, "" on any failure. Mirrors
 // applications.fetchRunLogs but works straight off the resolved runner connection
@@ -437,11 +491,11 @@ func defaultCaptureLogs(ctx context.Context, runnerConn k8s.Connection, runName 
 	if runName == "" {
 		return ""
 	}
-	run, err := tekton.GetRun(ctx, runnerConn, helm.RunNamespace, runName)
+	run, err := tekton.GetRun(ctx, runnerConn, tekton.JobsNamespace, runName)
 	if err != nil || run.PodName == "" {
 		return ""
 	}
-	rc, err := k8s.StreamPodLogs(ctx, runnerConn, helm.RunNamespace, run.PodName, k8s.LogOptions{Follow: false})
+	rc, err := k8s.StreamPodLogs(ctx, runnerConn, tekton.JobsNamespace, run.PodName, k8s.LogOptions{Follow: false})
 	if err != nil {
 		return ""
 	}

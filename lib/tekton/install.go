@@ -39,13 +39,23 @@ const (
 // managedSelector selects every object Install stamped, for the uninstall sweep.
 const managedSelector = ManagedByLabel + "=" + ManagedByValue
 
+// JobsNamespace is the dedicated namespace on a runner cluster where every
+// Spacefleet-submitted TaskRun lives, together with its per-run plumbing (creds
+// Secrets, planfile-handover Secret + SA/Role/RoleBinding) — one place to look,
+// kept out of the cluster's default namespace. Install creates it alongside the
+// vendored release (and Uninstall removes it); a Tekton installed outside
+// Spacefleet doesn't have it, so the cluster owner must create it themselves
+// before runs can be submitted.
+const JobsNamespace = "spacefleet-jobs"
+
 // installTimeout bounds each apply/delete call. Installing is many small calls,
 // not one long one, so a per-call cap is enough; the worker's context bounds the
 // whole job.
 const installTimeout = 2 * time.Minute
 
-// Install applies the vendored, pinned Tekton release to the cluster via
-// server-side apply and returns PinnedVersion on success. It is idempotent:
+// Install applies the vendored, pinned Tekton release — plus the dedicated
+// JobsNamespace runs are submitted to — to the cluster via server-side apply
+// and returns PinnedVersion on success. It is idempotent:
 // server-side apply converges, so a re-run (a second enable, or a River retry)
 // is safe and doubles as the upgrade path. progress, if non-nil, is called with
 // a short line per applied object so the caller can persist coarse progress.
@@ -54,7 +64,7 @@ const installTimeout = 2 * time.Minute
 // cluster-admin-equivalent credentials. A credentials-too-weak failure surfaces
 // here as a forbidden error for the caller to record.
 func Install(ctx context.Context, conn k8s.Connection, progress func(string)) (string, error) {
-	objs, err := ReleaseObjects()
+	objs, err := installObjects()
 	if err != nil {
 		return "", err
 	}
@@ -80,7 +90,7 @@ func Install(ctx context.Context, conn k8s.Connection, progress func(string)) (s
 // (a NotFound is ignored — it's already gone). It is the hook the uninstalling
 // lifecycle state needs; it does not attempt to drain in-flight runs.
 func Uninstall(ctx context.Context, conn k8s.Connection, progress func(string)) error {
-	objs, err := ReleaseObjects()
+	objs, err := installObjects()
 	if err != nil {
 		return err
 	}
@@ -107,6 +117,30 @@ func Uninstall(ctx context.Context, conn k8s.Connection, progress func(string)) 
 		return err
 	}
 	return nil
+}
+
+// installObjects is the full object set Install applies (and Uninstall
+// removes): the vendored, pinned release plus the dedicated jobs namespace.
+// Appending the namespace here (rather than editing the vendored manifest)
+// keeps the release byte-identical to upstream; sortInstallOrder still applies
+// it first, the reverse-order uninstall deletes it last, and manifestNamespaces
+// picks it up for the namespaced sweep.
+func installObjects() ([]*unstructured.Unstructured, error) {
+	objs, err := ReleaseObjects()
+	if err != nil {
+		return nil, err
+	}
+	return append(objs, jobsNamespaceObject()), nil
+}
+
+// jobsNamespaceObject builds the JobsNamespace Namespace. Ownership labels are
+// stamped by the Install loop (withManagedLabels), like every release object.
+func jobsNamespaceObject() *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1",
+		"kind":       "Namespace",
+		"metadata":   map[string]any{"name": JobsNamespace},
+	}}
 }
 
 // withManagedLabels stamps the ownership labels onto obj, merging into any

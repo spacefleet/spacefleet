@@ -146,15 +146,28 @@ var catalog = []Capability{
 	{
 		Key:  "run_jobs",
 		Name: "Run jobs (Tekton)",
-		// The RUN path only: submit TaskRuns/PipelineRuns and read their pod logs.
-		// Installing Tekton is modeled separately (see "install_tekton" above);
-		// this capability reports whether, once Tekton is present, the credentials
-		// can actually drive it.
+		// The RUN path only: submit TaskRuns/PipelineRuns, read their pod logs,
+		// and manage the per-run plumbing submitted alongside them — the creds
+		// Secret every run mounts (create + the ownerReference patch + the
+		// orphan-cleanup delete) and, for a terraform plan/apply pair, the
+		// planfile-handover Secret plus the ServiceAccount/Role/RoleBinding that
+		// pin the step's pod to exactly that Secret (lib/tekton's
+		// EnsureHandoverSecret). Those Roles grant only secret verbs this
+		// capability itself holds, so the API server's privilege-escalation
+		// check passes without escalate/bind — deliberately not granted here,
+		// since they would let the subject mint arbitrary in-namespace
+		// permissions. Installing Tekton is modeled separately (see
+		// "install_tekton" above); this capability reports whether, once Tekton
+		// is present, the credentials can actually drive it.
 		Rules: []Rule{
 			{APIGroup: "tekton.dev", Resource: "taskruns", Verbs: []string{"create", "get", "list", "watch"}, ClusterScoped: true},
 			{APIGroup: "tekton.dev", Resource: "pipelineruns", Verbs: []string{"create", "get", "list", "watch"}, ClusterScoped: true},
 			{APIGroup: "", Resource: "pods", Verbs: []string{"get", "list"}, ClusterScoped: true},
 			{APIGroup: "", Resource: "pods", Subresource: "log", Verbs: []string{"get"}, ClusterScoped: true},
+			{APIGroup: "", Resource: "secrets", Verbs: []string{"get", "create", "patch", "delete"}, ClusterScoped: true},
+			{APIGroup: "", Resource: "serviceaccounts", Verbs: []string{"create"}, ClusterScoped: true},
+			{APIGroup: "rbac.authorization.k8s.io", Resource: "roles", Verbs: []string{"create"}, ClusterScoped: true},
+			{APIGroup: "rbac.authorization.k8s.io", Resource: "rolebindings", Verbs: []string{"create"}, ClusterScoped: true},
 		},
 	},
 }

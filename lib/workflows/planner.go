@@ -114,7 +114,7 @@ func (w *WorkflowRunWorker) planManifest(ctx context.Context, app *ent.Applicati
 
 	return tekton.RunRequest{
 		Conn:        resolved.RunnerConn,
-		Namespace:   helm.RunNamespace,
+		Namespace:   tekton.JobsNamespace,
 		ExistingRun: existingRun,
 		Spec: tekton.RunSpec{
 			Name:      manifestRunPrefix(node),
@@ -237,6 +237,25 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		return tekton.RunRequest{}, err
 	}
 
+	// Provision the planfile handover for the pair before either node runs: the
+	// worker pre-creates the (empty) Secret plus the ServiceAccount/Role/
+	// RoleBinding that pin the step's pod to exactly that Secret — pre-creating
+	// means the in-pod kubectl needs no un-pinnable `create` verb, so the
+	// user-supplied module code can touch nothing else in the namespace (see
+	// tekton.EnsureHandoverSecret). Idempotent, so both the plan and apply nodes
+	// ensure it: a River retry, an approval-resume, and a run planned before an
+	// upgrade all converge on the same objects, and an existing Secret's data
+	// (the stored planfile) is never touched.
+	if planArtifactSecret != "" {
+		labels := map[string]string{
+			tekton.RunOrgLabel: app.OrganizationID.String(),
+			tekton.RunJobLabel: runID.String(),
+		}
+		if err := w.ensureHandover(ctx, resolved.RunnerConn, tekton.JobsNamespace, planArtifactSecret, labels); err != nil {
+			return tekton.RunRequest{}, fmt.Errorf("workflows: component %q: ensure planfile handover: %w", node.Name, err)
+		}
+	}
+
 	script := tofu.Script(tofu.Apply{
 		Command:            node.Config[terraformConfigCommand],
 		Action:             tofuAction,
@@ -245,7 +264,7 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		Path:               node.Config[manifestConfigPath],
 		Backend:            node.Config[terraformConfigBackend],
 		BackendConfig:      backendConfig,
-		Namespace:          helm.RunNamespace,
+		Namespace:          tekton.JobsNamespace,
 		HasGitToken:        resolved.HasGitToken,
 		HasCloudAuth:       resolved.HasCloudAuth,
 		PlanArtifactSecret: planArtifactSecret,
@@ -256,7 +275,7 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 
 	return tekton.RunRequest{
 		Conn:        resolved.RunnerConn,
-		Namespace:   helm.RunNamespace,
+		Namespace:   tekton.JobsNamespace,
 		ExistingRun: existingRun,
 		Spec: tekton.RunSpec{
 			Name:      tofuRunPrefix(node),
@@ -265,6 +284,11 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 			Files:     resolved.Files,
 			Env:       resolved.Env,
 			SecretEnv: resolved.SecretEnv,
+			// Run the step as the pair's handover ServiceAccount (same name as
+			// the Secret), whose Role pins it to exactly that Secret. Empty (a
+			// preview) leaves the namespace default SA, which needs no
+			// permissions — the script then never touches the cluster.
+			ServiceAccountName: planArtifactSecret,
 		},
 	}, nil
 }
@@ -461,7 +485,7 @@ func (w *WorkflowRunWorker) planHelm(ctx context.Context, app *ent.Application, 
 
 	return tekton.RunRequest{
 		Conn:        resolved.RunnerConn,
-		Namespace:   helm.RunNamespace,
+		Namespace:   tekton.JobsNamespace,
 		ExistingRun: existingRun,
 		Spec: tekton.RunSpec{
 			Name:      componentRunPrefix(node),

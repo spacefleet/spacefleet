@@ -14,9 +14,11 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
-// runNamespace is where minimal TaskRuns are submitted. The default namespace
-// always exists; a richer per-org namespace is a later concern.
-const runNamespace = "default"
+// runNamespace is where minimal TaskRuns are submitted: the dedicated jobs
+// namespace the managed Tekton install creates (a Tekton installed outside
+// Spacefleet needs it created by hand). A richer per-org namespace is a later
+// concern.
+const runNamespace = tekton.JobsNamespace
 
 // GetClusterTekton reports a cluster's job-running (Tekton) status: the stored
 // install lifecycle reconciled with a live presence detection. Open to any

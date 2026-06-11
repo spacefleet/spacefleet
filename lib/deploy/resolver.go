@@ -94,6 +94,14 @@ func NewResolver(conns ConnResolver, creds CredentialResolver, gitTokens GitToke
 	return &Resolver{conns: conns, creds: creds, gitTokens: gitTokens, cloudCreds: cloudCreds, vars: vars, ensureLockTable: cloudauth.EnsureLockTable}
 }
 
+// RunnerConn resolves just the runner cluster's decrypted connection, without
+// the rest of a run resolution (credentials, kubeconfig, variables). It is for
+// callers that need cluster access outside a component run — e.g. the workflow
+// worker's terminal sweep of planfile-handover Secrets.
+func (r *Resolver) RunnerConn(ctx context.Context, orgID, clusterID uuid.UUID) (k8s.Connection, error) {
+	return r.conns.ConnForTekton(ctx, orgID, clusterID)
+}
+
 // RunInputs is the generic description of one helm run the resolver needs,
 // decoupled from any ent row. The caller (applications or workflows) fills it
 // from its own model.

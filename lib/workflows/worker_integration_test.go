@@ -45,6 +45,10 @@ func newTestWorker(client *ent.Client, funcs tekton.RunFuncs) *WorkflowRunWorker
 	w := NewWorker(NewService(client), deploy.NewResolver(workerConns{}, nil, nil, nil, nil))
 	w.funcs = funcs
 	w.captureLogs = func(context.Context, k8s.Connection, string) string { return "" }
+	// The handover seams must never dial the fake connection; stub them like the
+	// executor (only a terraform node would exercise them).
+	w.ensureHandover = func(context.Context, k8s.Connection, string, string, map[string]string) error { return nil }
+	w.deleteHandover = func(context.Context, k8s.Connection, string, string) error { return nil }
 	return w
 }
 

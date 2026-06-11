@@ -84,6 +84,12 @@ type RunSpec struct {
 	// Optional. Callers use them for per-org scoping (RunOrgLabel) and
 	// crash-safe re-attach (RunJobLabel); see ListRuns.
 	Labels map[string]string
+	// ServiceAccountName, when set, runs the TaskRun's pod as this
+	// ServiceAccount instead of the namespace default. The terraform plan/apply
+	// nodes set it to their pair's handover identity (see EnsureHandoverSecret)
+	// so the step's in-pod kubectl can touch exactly its own planfile Secret —
+	// the namespace default SA has (and needs) no permissions at all.
+	ServiceAccountName string
 }
 
 // RunStatus is the storage-agnostic view of a TaskRun's state. Phase is derived
@@ -214,11 +220,15 @@ func buildTaskRun(namespace, secretName string, spec RunSpec) *unstructured.Unst
 	if len(spec.Labels) > 0 {
 		metadata["labels"] = labelsToAny(spec.Labels)
 	}
+	trSpec := map[string]any{"taskSpec": taskSpec}
+	if spec.ServiceAccountName != "" {
+		trSpec["serviceAccountName"] = spec.ServiceAccountName
+	}
 	return &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": TektonGroup + "/v1",
 		"kind":       "TaskRun",
 		"metadata":   metadata,
-		"spec":       map[string]any{"taskSpec": taskSpec},
+		"spec":       trSpec,
 	}}
 }
 
