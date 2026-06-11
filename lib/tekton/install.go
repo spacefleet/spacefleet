@@ -2,8 +2,12 @@ package tekton
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -35,6 +39,14 @@ const (
 	ComponentLabel = "spacefleet.io/component"
 	ComponentValue = "tekton"
 )
+
+// RevisionLabel records which manifest set (ManifestRevision) last applied an
+// object. Detection reads it off the controller Deployment and compares it to
+// this binary's ManifestRevision, so an install whose footprint changed —
+// even at the same pinned Tekton version — reads as out of sync and the UI
+// can offer an update. Installs that predate the label have no value, which
+// deliberately also reads as out of sync.
+const RevisionLabel = "spacefleet.io/revision"
 
 // managedSelector selects every object Install stamped, for the uninstall sweep.
 const managedSelector = ManagedByLabel + "=" + ManagedByValue
@@ -72,10 +84,11 @@ func Install(ctx context.Context, conn k8s.Connection, progress func(string)) (s
 	if err != nil {
 		return "", err
 	}
+	rev := ManifestRevision()
 	// Namespaces first (namespaced objects need them), then CRDs, then the rest.
 	sortInstallOrder(objs)
 	for _, obj := range objs {
-		withManagedLabels(obj)
+		withManagedLabels(obj, rev)
 		if err := apply.apply(ctx, obj); err != nil {
 			return "", err
 		}
@@ -143,18 +156,50 @@ func jobsNamespaceObject() *unstructured.Unstructured {
 	}}
 }
 
-// withManagedLabels stamps the ownership labels onto obj, merging into any
-// labels the upstream release already set (Tekton's own app.kubernetes.io/*
-// labels are preserved).
-func withManagedLabels(obj *unstructured.Unstructured) {
+// withManagedLabels stamps the ownership and revision labels onto obj, merging
+// into any labels the upstream release already set (Tekton's own
+// app.kubernetes.io/* labels are preserved).
+func withManagedLabels(obj *unstructured.Unstructured, revision string) {
 	labels := obj.GetLabels()
 	if labels == nil {
 		labels = map[string]string{}
 	}
 	labels[ManagedByLabel] = ManagedByValue
 	labels[ComponentLabel] = ComponentValue
+	if revision != "" {
+		labels[RevisionLabel] = revision
+	}
 	obj.SetLabels(labels)
 }
+
+// manifestRevision computes the fingerprint once: the install set is embedded,
+// so it cannot change for the life of the process.
+var manifestRevision = sync.OnceValue(func() string {
+	objs, err := installObjects()
+	if err != nil {
+		// Unreachable for a binary whose embedded release parses (guarded by
+		// release_test.go); Install surfaces the parse error itself.
+		return ""
+	}
+	h := sha256.New()
+	for _, obj := range objs {
+		b, err := json.Marshal(obj.Object)
+		if err != nil {
+			return ""
+		}
+		h.Write(b)
+		h.Write([]byte{'\n'})
+	}
+	return hex.EncodeToString(h.Sum(nil))[:12]
+})
+
+// ManifestRevision is a short, deterministic fingerprint of the full object
+// set Install applies — the vendored release plus the objects appended around
+// it (the jobs namespace, …) — hashed before label stamping. Any change to
+// that set, including one that doesn't bump PinnedVersion, yields a new
+// revision; Install stamps it on every object (RevisionLabel) so detection can
+// tell whether a cluster's install matches what this binary would apply.
+func ManifestRevision() string { return manifestRevision() }
 
 // applier resolves each object's GroupVersionKind to a REST resource and applies
 // it with the right (namespaced vs cluster) scope.

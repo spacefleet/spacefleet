@@ -92,6 +92,36 @@ func TestDetectManaged(t *testing.T) {
 	}
 }
 
+// TestDetectRevision reads the manifest-set revision the install stamped on
+// the controller; a controller without the label (an install that predates
+// revision stamping) reports an empty revision.
+func TestDetectRevision(t *testing.T) {
+	dep := controllerDeployment(1, PinnedVersion)
+	dep.Labels[ManagedByLabel] = ManagedByValue
+	dep.Labels[RevisionLabel] = "abc123def456"
+	cs := fake.NewSimpleClientset(dep)
+	cs.Resources = tektonGroupResources()
+	p, err := detect(context.Background(), cs)
+	if err != nil {
+		t.Fatalf("detect: %v", err)
+	}
+	if p.Revision != "abc123def456" {
+		t.Errorf("Revision = %q, want %q", p.Revision, "abc123def456")
+	}
+}
+
+func TestDetectRevisionAbsent(t *testing.T) {
+	cs := fake.NewSimpleClientset(controllerDeployment(1, PinnedVersion))
+	cs.Resources = tektonGroupResources()
+	p, err := detect(context.Background(), cs)
+	if err != nil {
+		t.Fatalf("detect: %v", err)
+	}
+	if p.Revision != "" {
+		t.Errorf("Revision = %q, want empty for an unlabelled controller", p.Revision)
+	}
+}
+
 func TestDetectUnmanaged(t *testing.T) {
 	cs := fake.NewSimpleClientset(controllerDeployment(1, PinnedVersion))
 	cs.Resources = tektonGroupResources()

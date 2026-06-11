@@ -33,7 +33,10 @@ function status(overrides: Record<string, unknown> = {}) {
     status: "not_installed",
     present: false,
     controller_ready: false,
+    managed: false,
     pinned_version: "v0.68.0",
+    expected_revision: "abc123def456",
+    update_available: false,
     ...overrides,
   };
 }
@@ -126,7 +129,7 @@ describe("TektonPanel", () => {
     ).toBeDisabled();
   });
 
-  it("offers Upgrade only when managed and a newer version is pinned", async () => {
+  it("offers Upgrade when the server reports a newer pinned version", async () => {
     mockApi.GET.mockResolvedValue({
       data: status({
         enabled: true,
@@ -136,6 +139,7 @@ describe("TektonPanel", () => {
         managed: true,
         detected_version: "v0.65.0",
         pinned_version: "v0.68.0",
+        update_available: true,
       }),
       error: undefined,
     });
@@ -145,7 +149,7 @@ describe("TektonPanel", () => {
     });
     render(<TektonPanel clusterId="c1" canEdit />);
     await userEvent.click(
-      await screen.findByRole("button", { name: /Upgrade/ }),
+      await screen.findByRole("button", { name: /Upgrade to v0\.68\.0/ }),
     );
     expect(mockApi.POST).toHaveBeenCalledWith(
       "/api/clusters/{id}/tekton/upgrade",
@@ -153,7 +157,38 @@ describe("TektonPanel", () => {
     );
   });
 
-  it("hides Upgrade when the running version matches the pinned version", async () => {
+  it("offers Sync install when the install footprint changed at the same version", async () => {
+    // Same Tekton version, but the server found a manifest-revision mismatch —
+    // e.g. an install that predates a footprint change (or revision stamping).
+    mockApi.GET.mockResolvedValue({
+      data: status({
+        enabled: true,
+        status: "installed",
+        present: true,
+        controller_ready: true,
+        managed: true,
+        detected_version: "v0.68.0",
+        pinned_version: "v0.68.0",
+        update_available: true,
+      }),
+      error: undefined,
+    });
+    mockApi.POST.mockResolvedValue({
+      data: status({ status: "upgrading", managed: true, present: true }),
+      error: undefined,
+    });
+    render(<TektonPanel clusterId="c1" canEdit />);
+    expect(await screen.findByText("Update available")).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: /Sync install/ }),
+    );
+    expect(mockApi.POST).toHaveBeenCalledWith(
+      "/api/clusters/{id}/tekton/upgrade",
+      { params: { path: { id: "c1" } } },
+    );
+  });
+
+  it("hides the update action when the install matches what Spacefleet expects", async () => {
     mockApi.GET.mockResolvedValue({
       data: status({
         enabled: true,
@@ -170,8 +205,9 @@ describe("TektonPanel", () => {
     // Wait for the loaded panel (the engine block renders once Tekton is present).
     await screen.findByText("Tekton v0.68.0");
     expect(
-      screen.queryByRole("button", { name: /Upgrade/ }),
+      screen.queryByRole("button", { name: /Upgrade|Sync install/ }),
     ).not.toBeInTheDocument();
+    expect(screen.queryByText("Update available")).not.toBeInTheDocument();
   });
 
   it("deletes a managed install behind a confirm step", async () => {

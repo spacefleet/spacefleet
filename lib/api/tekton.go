@@ -111,10 +111,12 @@ func (s *Server) DisableClusterTekton(ctx context.Context, req DisableClusterTek
 	return DisableClusterTekton200JSONResponse(toAPITektonStatus(row, nil)), nil
 }
 
-// UpgradeClusterTekton re-applies the pinned Tekton release to a
-// Spacefleet-managed install, bringing it to the pinned version (and repairing
-// a failed/partial install). Editor or above. Refuses (409) a Tekton installed
-// outside Spacefleet or one that isn't installed; needs the background worker.
+// UpgradeClusterTekton re-applies the full install manifest set to a
+// Spacefleet-managed install: it brings the install to the pinned version,
+// syncs a footprint that drifted from this binary's ManifestRevision, and
+// repairs a failed/partial install. Editor or above. Refuses (409) a Tekton
+// installed outside Spacefleet or one that isn't installed; needs the
+// background worker.
 func (s *Server) UpgradeClusterTekton(ctx context.Context, req UpgradeClusterTektonRequestObject) (UpgradeClusterTektonResponseObject, error) {
 	orgID, aerr, err := s.resolveClusterWrite(ctx)
 	if err != nil {
@@ -275,12 +277,23 @@ func toAPITektonStatus(row *ent.TektonInstallation, p *tekton.Presence) TektonSt
 		JobId:            optStr(row.JobID),
 		LastCheckedAt:    row.LastCheckedAt,
 		PinnedVersion:    tekton.PinnedVersion,
+		ExpectedRevision: tekton.ManifestRevision(),
 	}
 	if p != nil {
 		out.Present = p.Installed
 		out.ControllerReady = p.ControllerReady
 		out.Managed = p.Managed
 		out.DetectedVersion = optStr(p.Version)
+		out.DetectedRevision = optStr(p.Revision)
+		// A managed install is out of date when its running version or its
+		// stamped manifest revision differs from what this binary would apply —
+		// the revision catches footprint changes (new namespaces, roles, …)
+		// that don't bump the pinned Tekton version, including installs that
+		// predate revision stamping (empty revision). Never offered for an
+		// unmanaged install: upgrade is gated to Spacefleet-managed Tekton.
+		out.UpdateAvailable = p.Installed && p.Managed &&
+			(p.Revision != tekton.ManifestRevision() ||
+				(p.Version != "" && p.Version != tekton.PinnedVersion))
 	}
 	return out
 }

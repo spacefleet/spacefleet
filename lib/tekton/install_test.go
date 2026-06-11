@@ -6,13 +6,13 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// TestWithManagedLabelsMerges stamps the ownership labels while preserving the
-// upstream Tekton labels already on the object.
+// TestWithManagedLabelsMerges stamps the ownership and revision labels while
+// preserving the upstream Tekton labels already on the object.
 func TestWithManagedLabelsMerges(t *testing.T) {
 	obj := &unstructured.Unstructured{Object: map[string]any{}}
 	obj.SetLabels(map[string]string{"app.kubernetes.io/part-of": "tekton-pipelines"})
 
-	withManagedLabels(obj)
+	withManagedLabels(obj, "abc123def456")
 
 	labels := obj.GetLabels()
 	if labels[ManagedByLabel] != ManagedByValue {
@@ -21,19 +21,44 @@ func TestWithManagedLabelsMerges(t *testing.T) {
 	if labels[ComponentLabel] != ComponentValue {
 		t.Errorf("%s = %q, want %q", ComponentLabel, labels[ComponentLabel], ComponentValue)
 	}
+	if labels[RevisionLabel] != "abc123def456" {
+		t.Errorf("%s = %q, want %q", RevisionLabel, labels[RevisionLabel], "abc123def456")
+	}
 	if labels["app.kubernetes.io/part-of"] != "tekton-pipelines" {
 		t.Error("withManagedLabels dropped an upstream label")
 	}
 }
 
-// TestWithManagedLabelsNoExisting handles an object with no labels at all.
+// TestWithManagedLabelsNoExisting handles an object with no labels at all, and
+// an empty revision (the impossible parse-failure fallback) stamps no
+// revision label rather than an empty value.
 func TestWithManagedLabelsNoExisting(t *testing.T) {
 	obj := &unstructured.Unstructured{Object: map[string]any{}}
 
-	withManagedLabels(obj)
+	withManagedLabels(obj, "")
 
 	if got := obj.GetLabels()[ManagedByLabel]; got != ManagedByValue {
 		t.Errorf("%s = %q, want %q", ManagedByLabel, got, ManagedByValue)
+	}
+	if _, ok := obj.GetLabels()[RevisionLabel]; ok {
+		t.Error("withManagedLabels stamped an empty revision label")
+	}
+}
+
+// TestManifestRevision: the fingerprint of the embedded install set is
+// non-empty, stable across calls, short enough for a label value, and — being
+// derived from the objects themselves — is what makes a footprint change at
+// the same PinnedVersion detectable as out-of-sync.
+func TestManifestRevision(t *testing.T) {
+	rev := ManifestRevision()
+	if rev == "" {
+		t.Fatal("ManifestRevision is empty — the embedded install set failed to parse or marshal")
+	}
+	if len(rev) != 12 {
+		t.Errorf("ManifestRevision length = %d, want 12", len(rev))
+	}
+	if again := ManifestRevision(); again != rev {
+		t.Errorf("ManifestRevision not stable: %q then %q", rev, again)
 	}
 }
 

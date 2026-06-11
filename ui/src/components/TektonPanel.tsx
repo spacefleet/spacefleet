@@ -171,12 +171,14 @@ export function TektonPanel({
     return <p className="p-4 text-sm text-neutral-500">Loading…</p>;
   }
 
-  const installed = status.status === "installed";
-  // Upgrade/delete act only on a Spacefleet-managed install. Upgrade is offered
-  // when the running version differs from the version we'd install.
-  const upgradeAvailable =
-    status.managed &&
-    installed &&
+  // Update/delete act only on a Spacefleet-managed install. The server compares
+  // the live install against what this Spacefleet would apply — the pinned
+  // Tekton version plus the install manifest's revision — so update_available
+  // also covers a changed footprint at the same version (and installs that
+  // predate revision stamping). A version difference reads as an upgrade; a
+  // same-version manifest change reads as a sync.
+  const updateAvailable = status.update_available;
+  const versionChange =
     !!status.detected_version &&
     status.detected_version !== status.pinned_version;
   const canRemove = status.managed && status.present;
@@ -232,6 +234,12 @@ export function TektonPanel({
               Tekton {status.detected_version ?? status.installed_version ?? ""}
             </span>
             <ProvenanceBadge managed={status.managed} />
+            {updateAvailable && (
+              <span className="inline-flex items-center gap-1 border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+                <ArrowUpCircle className="h-3.5 w-3.5" />
+                Update available
+              </span>
+            )}
           </div>
           <p className="mt-1 text-xs text-neutral-500">
             {status.controller_ready
@@ -244,19 +252,32 @@ export function TektonPanel({
           <p className="mt-1 text-xs text-neutral-400">
             {unmanaged ? "Installed outside Spacefleet." : "Installed by Spacefleet."}
           </p>
+          {updateAvailable && (
+            <p className="mt-1 text-xs text-amber-700">
+              {versionChange
+                ? `A newer Tekton (${status.pinned_version}) is available.`
+                : "This install differs from what this version of Spacefleet sets up — sync it to bring it up to date."}
+            </p>
+          )}
 
-          {canEdit && (upgradeAvailable || canRemove) && (
+          {canEdit && (updateAvailable || canRemove) && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              {upgradeAvailable && (
+              {updateAvailable && (
                 <button
                   type="button"
                   onClick={() => void onUpgrade()}
                   disabled={busy || inFlight}
-                  title={`Upgrade to ${status.pinned_version}`}
+                  title={
+                    versionChange
+                      ? `Upgrade to ${status.pinned_version}`
+                      : "Re-apply the managed install so it matches what Spacefleet expects"
+                  }
                   className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
                 >
                   <ArrowUpCircle className="h-3.5 w-3.5" />
-                  Upgrade to {status.pinned_version}
+                  {versionChange
+                    ? `Upgrade to ${status.pinned_version}`
+                    : "Sync install"}
                 </button>
               )}
               {canRemove &&

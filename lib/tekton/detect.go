@@ -47,6 +47,11 @@ type Presence struct {
 	Managed bool
 	// Version is the controller's app.kubernetes.io/version label, if present.
 	Version string
+	// Revision is the controller's RevisionLabel — the manifest-set fingerprint
+	// stamped by the install that last applied it. Empty for installs that
+	// predate revision stamping; comparing it to ManifestRevision tells whether
+	// the install matches what this binary would apply.
+	Revision string
 	// Message explains a partial state (e.g. CRDs present but controller absent).
 	Message string
 }
@@ -106,6 +111,7 @@ func detect(ctx context.Context, cs kubernetes.Interface) (*Presence, error) {
 	p.ControllerReady = dep.Status.ReadyReplicas > 0
 	p.Managed = dep.GetLabels()[ManagedByLabel] == ManagedByValue
 	p.Version = deploymentVersion(dep.GetLabels(), dep.Spec.Template.GetLabels())
+	p.Revision = dep.GetLabels()[RevisionLabel]
 	if !p.ControllerReady {
 		p.Message = "Tekton controller is installed but not ready"
 	}

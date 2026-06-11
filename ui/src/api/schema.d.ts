@@ -511,13 +511,15 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Upgrade a Spacefleet-managed Tekton install
-         * @description Org-scoped, editor or above. Re-applies the pinned Tekton release to a
-         *     cluster whose Tekton was installed by Spacefleet, bringing it to the
-         *     pinned version (and repairing a failed/partial install). Only available
-         *     when the install is Spacefleet-managed; returns 409 otherwise, and 409
-         *     if Tekton is not installed. Returns immediately (202); follow progress
-         *     via the Tekton status stream.
+         * Update a Spacefleet-managed Tekton install
+         * @description Org-scoped, editor or above. Re-applies the full install manifest set
+         *     to a cluster whose Tekton was installed by Spacefleet — upgrading it to
+         *     the pinned version, syncing a footprint that drifted from what this
+         *     Spacefleet expects (see TektonStatus.update_available), and repairing a
+         *     failed/partial install. Only available when the install is
+         *     Spacefleet-managed; returns 409 otherwise, and 409 if Tekton is not
+         *     installed. Returns immediately (202); follow progress via the Tekton
+         *     status stream.
          */
         post: operations["upgradeClusterTekton"];
         delete?: never;
@@ -1701,6 +1703,28 @@ export interface components {
             detected_version?: string;
             /** @description The Tekton version Spacefleet installs (the upgrade target). */
             pinned_version: string;
+            /**
+             * @description The install-manifest revision stamped on the running controller by
+             *     the install that applied it, if detected. Absent for installs that
+             *     predate revision stamping — those read as update_available.
+             */
+            detected_revision?: string;
+            /**
+             * @description The revision of the install manifest set this Spacefleet would
+             *     apply. When a managed install's detected_revision differs, the
+             *     install is out of sync (even at the same Tekton version) and an
+             *     upgrade re-applies the manifest to converge it.
+             */
+            expected_revision: string;
+            /**
+             * @description Whether the managed install differs from what this Spacefleet
+             *     expects — a newer pinned Tekton version, or a changed install
+             *     manifest set at the same version. Only ever true for a
+             *     Spacefleet-managed install. Like present/controller_ready it
+             *     reflects the most recent live detection; responses carrying stored
+             *     state only report false.
+             */
+            update_available: boolean;
             /** Format: date-time */
             last_checked_at?: string | null;
         };

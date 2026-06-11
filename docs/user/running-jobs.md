@@ -17,9 +17,10 @@ When it finishes, the status shows **installed** and the controller as ready.
 
 Jobs run in a dedicated `spacefleet-jobs` namespace on the cluster, keeping
 Spacefleet's runs (and the secrets that support them) in one place, out of the
-`default` namespace. Spacefleet creates that namespace when it installs or
-upgrades Tekton. If you installed Tekton yourself (or enabled job running
-before this namespace was introduced), create it once with
+`default` namespace. Spacefleet creates that namespace when it installs,
+upgrades, or syncs Tekton — an install set up before this namespace was
+introduced shows **Update available** in the Jobs panel (see below). If you
+installed Tekton yourself, create it once with
 `kubectl create namespace spacefleet-jobs` — runs fail until it exists.
 
 Enabling job running requires credentials that can install cluster-wide
@@ -27,6 +28,26 @@ components (custom resource definitions, RBAC, and webhooks) — effectively
 cluster-admin. If the install fails with a permissions error, the status shows
 **failed** with the reason; grant the cluster's credentials the needed access
 and enable again.
+
+## Keep the managed install up to date
+
+The Jobs panel's **Engine** section shows the Tekton install Spacefleet manages
+on the cluster: its version, that it's managed by Spacefleet, and whether it
+matches what your version of Spacefleet sets up. When it doesn't — a newer
+Tekton version is available, or Spacefleet's install has changed (for example,
+it now includes the jobs namespace or additional roles) — the panel shows
+**Update available** with one of two actions:
+
+- **Upgrade to (version)** — a newer Tekton version is available.
+- **Sync install** — the Tekton version is current, but the installed setup
+  differs from what Spacefleet expects.
+
+Both re-apply the full managed install and show live progress, like the
+initial install. Updating requires the same cluster-admin-level credentials as
+installing.
+
+These actions only appear for a Tekton that Spacefleet installed. A Tekton you
+installed yourself is never modified — keeping it current is up to you.
 
 ## Check readiness
 
