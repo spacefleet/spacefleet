@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ArrowLeft, History, Pencil, Trash2, Workflow } from "lucide-react";
+import {
+  ArrowLeft,
+  History,
+  Pencil,
+  Play,
+  Trash2,
+  Workflow,
+} from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import { useObjectStream } from "../lib/useObjectStream";
 import type { components } from "../api/schema";
 import { DeleteApplicationDialog } from "../components/DeleteApplicationDialog";
 import { RunStatusBadge } from "../components/workflow/status";
+import { WorkflowOverview } from "../components/workflow/WorkflowOverview";
 import { VariablesEditor } from "../components/VariablesEditor";
 import { formatDuration } from "../lib/duration";
 
@@ -14,15 +22,17 @@ type Application = components["schemas"]["Application"];
 type WorkflowRun = components["schemas"]["WorkflowRun"];
 type WorkflowRunDetail = components["schemas"]["WorkflowRunDetail"];
 type RunStatus = components["schemas"]["RunStatus"];
+type RunAction = components["schemas"]["RunAction"];
 
 // A run is terminal once it settles; only then is the badge final and the stream
 // closed. Mirrors WorkflowRunView's inFlight gating.
 const TERMINAL: RunStatus[] = ["succeeded", "failed", "partial"];
 
 // ApplicationDetail is the per-app overview (route /applications/:appId). An
-// application owns a deploy workflow (a DAG of components); this page shows the
-// app's targeting and a link into the workflow builder and run history, plus the
-// most recent run's status. The deploy steps themselves live on the canvas.
+// application owns a deploy workflow (a DAG of components); this page shows an
+// at-a-glance view of that workflow with the run controls (deploy / preview /
+// uninstall), the app's targeting, and the most recent run's status. The
+// workflow editor page is only for building/changing the DAG itself.
 export function ApplicationDetail() {
   const { appId = "" } = useParams();
   const { currentOrg, currentRole } = useOrg();
@@ -35,6 +45,9 @@ export function ApplicationDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [forceRoll, setForceRoll] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,6 +108,32 @@ export function ApplicationDetail() {
       ? { ...latestRun, ...streamed }
       : latestRun;
 
+  // Start a run against the saved workflow and jump to its live view. Runs are
+  // started from here (not the workflow editor) — the editor only builds the DAG.
+  const startRun = useCallback(
+    async (action: RunAction) => {
+      setRunning(true);
+      setRunError(null);
+      const body =
+        action === "deploy" ? { action, force: forceRoll } : { action };
+      const { data, error, response } = await api.POST(
+        "/api/applications/{id}/runs",
+        { params: { path: { id: appId } }, body },
+      );
+      setRunning(false);
+      if (error || !data) {
+        if (response?.status === 409) {
+          setRunError("A run is already in progress for this application.");
+        } else {
+          setRunError(error?.message ?? "Could not start the run");
+        }
+        return;
+      }
+      navigate(`/applications/${appId}/runs/${data.id}`);
+    },
+    [appId, forceRoll, navigate],
+  );
+
   return (
     <div>
       <button
@@ -127,24 +166,6 @@ export function ApplicationDetail() {
               )}
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => navigate(`/applications/${appId}/workflow`)}
-                title="Open the deploy workflow canvas"
-                className="inline-flex items-center gap-1.5 bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800"
-              >
-                <Workflow className="h-3.5 w-3.5" />
-                Workflow
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate(`/runs?application=${appId}`)}
-                title="View this application's run history"
-                className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
-              >
-                <History className="h-3.5 w-3.5" />
-                Runs
-              </button>
               {canEdit && (
                 <>
                   <button
@@ -170,33 +191,87 @@ export function ApplicationDetail() {
             </div>
           </div>
 
-          {/* Runner (deploy targets live on the individual components) */}
-          <div className="mt-6 border border-neutral-200 bg-white p-4">
-            <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-              Runner
-            </h2>
-            <dl className="mt-3 grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
-              <Row
-                label="Runner cluster"
-                value={clusters[app.runner_cluster_id] ?? app.runner_cluster_id}
-              />
-            </dl>
+          {/* Workflow: an at-a-glance view of the deploy DAG plus the run
+              controls. Building/changing the DAG happens on the dedicated
+              workflow editor page; runs are started from here. */}
+          <div className="mt-6 border border-neutral-200 bg-white">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 px-4 py-2">
+              <div className="flex items-center gap-2">
+                <Workflow className="h-3.5 w-3.5 text-neutral-400" />
+                <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+                  Workflow
+                </h2>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/runs?application=${appId}`)}
+                  title="View this application's run history"
+                  className="inline-flex items-center gap-1.5 border border-neutral-300 px-2.5 py-1 text-sm text-neutral-700 hover:bg-neutral-50"
+                >
+                  <History className="h-3.5 w-3.5" />
+                  Run history
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/applications/${appId}/workflow`)}
+                  title="Open the workflow editor"
+                  className="inline-flex items-center gap-1.5 border border-neutral-300 px-2.5 py-1 text-sm text-neutral-700 hover:bg-neutral-50"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Edit workflow
+                </button>
+              </div>
+            </div>
+            <WorkflowOverview appId={appId} />
+            {canEdit && (
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 px-4 py-3">
+                {runError && (
+                  <p className="mr-auto text-sm text-red-600">{runError}</p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void startRun("preview")}
+                  disabled={running}
+                  className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void startRun("uninstall")}
+                  disabled={running}
+                  className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Uninstall
+                </button>
+                <label
+                  title="Run the deploy's Helm step as a forced upgrade so pods roll even when the rendered manifests are unchanged"
+                  className="inline-flex items-center gap-1.5 text-sm text-neutral-600"
+                >
+                  <input
+                    type="checkbox"
+                    checked={forceRoll}
+                    onChange={(e) => setForceRoll(e.target.checked)}
+                    className="h-3.5 w-3.5 accent-black"
+                  />
+                  Force workload roll
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void startRun("deploy")}
+                  disabled={running}
+                  className="inline-flex items-center gap-1.5 bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+                >
+                  <Play className="h-3.5 w-3.5" />
+                  Deploy
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Variables (app-level: passed to every component job as env vars) */}
-          <div className="mt-6 border border-neutral-200 bg-white p-4">
-            <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-              Variables
-            </h2>
-            <p className="mb-3 mt-1 text-xs text-neutral-500">
-              Passed to every component job in this application as environment
-              variables. A component can override one of these for its own job.
-              A sensitive value is sealed and never shown again.
-            </p>
-            <VariablesEditor scope={{ kind: "app", appId }} canEdit={canEdit} />
-          </div>
-
-          {/* Latest run (links to the run view; full history under Runs) */}
+          {/* Latest run (links to the run view; full history under Run history) */}
           <div className="mt-6 border border-neutral-200 bg-white">
             <div className="flex items-center gap-2 border-b border-neutral-200 px-4 py-2">
               <History className="h-3.5 w-3.5 text-neutral-400" />
@@ -231,6 +306,32 @@ export function ApplicationDetail() {
                 </span>
               </button>
             )}
+          </div>
+
+          {/* Runner (deploy targets live on the individual components) */}
+          <div className="mt-6 border border-neutral-200 bg-white p-4">
+            <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+              Runner
+            </h2>
+            <dl className="mt-3 grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+              <Row
+                label="Runner cluster"
+                value={clusters[app.runner_cluster_id] ?? app.runner_cluster_id}
+              />
+            </dl>
+          </div>
+
+          {/* Variables (app-level: passed to every component job as env vars) */}
+          <div className="mt-6 border border-neutral-200 bg-white p-4">
+            <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+              Variables
+            </h2>
+            <p className="mb-3 mt-1 text-xs text-neutral-500">
+              Passed to every component job in this application as environment
+              variables. A component can override one of these for its own job.
+              A sensitive value is sealed and never shown again.
+            </p>
+            <VariablesEditor scope={{ kind: "app", appId }} canEdit={canEdit} />
           </div>
 
           {deleting && (

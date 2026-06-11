@@ -46,6 +46,33 @@ const run = {
   finished_at: "2026-06-03T10:01:00Z",
 };
 
+// A two-component workflow for the at-a-glance overview card.
+const workflow = {
+  components: [
+    {
+      id: "11111111-1111-1111-1111-111111111111",
+      name: "release",
+      type: "helm",
+      config: {},
+      depends_on: [],
+      continue_on_failure: false,
+      target_namespace: "",
+      position: { x: 100, y: 100 },
+    },
+    {
+      id: "22222222-2222-2222-2222-222222222222",
+      name: "apply",
+      type: "manifest",
+      config: {},
+      depends_on: ["11111111-1111-1111-1111-111111111111"],
+      continue_on_failure: false,
+      target_namespace: "",
+      position: { x: 100, y: 300 },
+    },
+  ],
+  groups: [],
+};
+
 function renderDetail() {
   return render(
     <MemoryRouter initialEntries={["/applications/app-1"]}>
@@ -75,6 +102,8 @@ beforeEach(() => {
       return Promise.resolve({ data: app, error: undefined });
     if (path === "/api/applications/{id}/runs")
       return Promise.resolve({ data: { runs: [run] }, error: undefined });
+    if (path === "/api/applications/{id}/workflow")
+      return Promise.resolve({ data: workflow, error: undefined });
     if (path === "/api/clusters")
       return Promise.resolve({
         data: [{ id: "c1", name: "prod" }],
@@ -98,9 +127,65 @@ describe("ApplicationDetail overview", () => {
   it("links to the workflow builder", async () => {
     renderDetail();
     await userEvent.click(
-      await screen.findByRole("button", { name: /workflow/i }),
+      await screen.findByRole("button", { name: /edit workflow/i }),
     );
     expect(await screen.findByText("workflow canvas")).toBeInTheDocument();
+  });
+
+  it("shows the workflow overview's component nodes", async () => {
+    renderDetail();
+    // Both components from the saved workflow render in the overview DAG.
+    expect(await screen.findByText("release")).toBeInTheDocument();
+    expect(screen.getByText("apply")).toBeInTheDocument();
+  });
+
+  it("starts a deploy run and navigates to the run view", async () => {
+    mockApi.POST.mockResolvedValue({
+      data: { id: "run-9" },
+      error: undefined,
+      response: { status: 202 },
+    });
+    renderDetail();
+    await screen.findByText("web");
+    await userEvent.click(screen.getByRole("button", { name: /^deploy$/i }));
+    expect(await screen.findByText("run view")).toBeInTheDocument();
+    expect(mockApi.POST).toHaveBeenCalledWith(
+      "/api/applications/{id}/runs",
+      expect.objectContaining({ body: { action: "deploy", force: false } }),
+    );
+  });
+
+  it("sends force=true on deploy when the Force workload roll toggle is on", async () => {
+    mockApi.POST.mockResolvedValue({
+      data: { id: "run-9" },
+      error: undefined,
+      response: { status: 202 },
+    });
+    renderDetail();
+    await screen.findByText("web");
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /force workload roll/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^deploy$/i }));
+    expect(await screen.findByText("run view")).toBeInTheDocument();
+    expect(mockApi.POST).toHaveBeenCalledWith(
+      "/api/applications/{id}/runs",
+      expect.objectContaining({ body: { action: "deploy", force: true } }),
+    );
+  });
+
+  it("shows an in-progress message on a 409", async () => {
+    mockApi.POST.mockResolvedValue({
+      data: undefined,
+      error: { message: "conflict" },
+      response: { status: 409 },
+    });
+    renderDetail();
+    await screen.findByText("web");
+    await userEvent.click(screen.getByRole("button", { name: /^deploy$/i }));
+    expect(
+      await screen.findByText(/a run is already in progress/i),
+    ).toBeInTheDocument();
   });
 
   it("opens the run view from the latest run", async () => {

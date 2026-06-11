@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { useLocation, useNavigate, useParams } from "react-router";
 import {
   ReactFlow,
   Background,
@@ -8,14 +14,25 @@ import {
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { ArrowLeft, Ban, Check, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Ban,
+  Check,
+  Maximize2,
+  Minimize2,
+  X,
+} from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import { useObjectStream } from "../lib/useObjectStream";
 import type { components } from "../api/schema";
 import { formatDuration } from "../lib/duration";
 import { DiffView } from "../components/DiffView";
-import { RunNode, type RunNodeData } from "../components/workflow/nodes";
+import {
+  RunNode,
+  TypeBadge,
+  type RunNodeData,
+} from "../components/workflow/nodes";
 import { RunStatusBadge } from "../components/workflow/status";
 
 type WorkflowRunDetail = components["schemas"]["WorkflowRunDetail"];
@@ -45,18 +62,33 @@ const TERMINAL: RunStatus[] = ["succeeded", "failed", "partial"];
 // WorkflowRunView is the live DAG run view (route
 // /applications/:appId/runs/:runId). It renders the run's snapshot graph as a
 // read-only React Flow DAG, colors each node by its component-run status, and
-// live-updates from the run SSE stream while in flight. Clicking a node fetches
-// its detail (logs, and for preview runs a diff).
+// live-updates from the run SSE stream while in flight. Clicking a node opens a
+// full-width bottom panel with its logs (and for preview runs a diff), which
+// can be expanded to fill the whole view.
 export function WorkflowRunView() {
   const { appId = "", runId = "" } = useParams();
   const { currentOrg, currentRole } = useOrg();
   const navigate = useNavigate();
+  const location = useLocation();
   const canApprove = currentRole !== "viewer";
+
+  // Where Back returns to. Pages that link here (the runs index) pass their own
+  // location in router state; without it — arriving from the application page or
+  // a deep link — Back goes to the application, matching where the journey
+  // started rather than always dumping the user on the global run history.
+  const from = (location.state as { from?: string } | null)?.from;
+  const backTo = from ?? `/applications/${appId}`;
+  const backLabel = from?.startsWith("/runs")
+    ? "Back to runs"
+    : "Back to application";
 
   const [run, setRun] = useState<WorkflowRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  // Whether the component-run panel fills the view (hiding the DAG) so logs get
+  // the full window while following a deploy.
+  const [expanded, setExpanded] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
@@ -179,11 +211,11 @@ export function WorkflowRunView() {
     <div className="flex h-[calc(100vh-7rem)] flex-col">
       <button
         type="button"
-        onClick={() => navigate(`/applications/${appId}/runs`)}
+        onClick={() => navigate(backTo)}
         className="inline-flex w-fit items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-900"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to runs
+        {backLabel}
       </button>
 
       {loading ? (
@@ -229,27 +261,34 @@ export function WorkflowRunView() {
             <p className="pb-2 text-sm text-red-600">{cancelError}</p>
           )}
 
-          <div className="flex min-h-0 flex-1 border border-neutral-200">
-            <div className="min-w-0 flex-1">
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                nodeTypes={nodeTypes}
-                nodesDraggable={false}
-                nodesConnectable={false}
-                proOptions={{ hideAttribution: true }}
-                onNodeClick={(_, n) => {
-                  const crId = (n.data as { componentRunId?: string }).componentRunId;
-                  if (crId) setSelectedRunId(crId);
-                }}
-                fitView
-              >
-                <Background />
-                <Controls showInteractive={false} />
-              </ReactFlow>
-            </div>
+          {/* The DAG on top, and — once a node is selected — a full-width bottom
+              panel for that component run, so the logs span the whole window
+              instead of a narrow sidebar. Expanding the panel hides the DAG and
+              gives the logs the entire view. */}
+          <div className="flex min-h-0 flex-1 flex-col border border-neutral-200">
+            {!(expanded && selectedRunId) && (
+              <div className="min-h-0 min-w-0 flex-1">
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  nodeTypes={nodeTypes}
+                  nodesDraggable={false}
+                  nodesConnectable={false}
+                  proOptions={{ hideAttribution: true }}
+                  onNodeClick={(_, n) => {
+                    const crId = (n.data as { componentRunId?: string }).componentRunId;
+                    if (crId) setSelectedRunId(crId);
+                  }}
+                  fitView
+                >
+                  <Background />
+                  <Controls showInteractive={false} />
+                </ReactFlow>
+              </div>
+            )}
             {selectedRunId && (
               <ComponentRunPanel
+                key={selectedRunId}
                 appId={appId}
                 runId={runId}
                 componentRunId={selectedRunId}
@@ -264,7 +303,12 @@ export function WorkflowRunView() {
                 isPreview={run.action === "preview"}
                 canApprove={canApprove}
                 onDecided={load}
-                onClose={() => setSelectedRunId(null)}
+                expanded={expanded}
+                onToggleExpanded={() => setExpanded((e) => !e)}
+                onClose={() => {
+                  setSelectedRunId(null);
+                  setExpanded(false);
+                }}
               />
             )}
           </div>
@@ -274,8 +318,10 @@ export function WorkflowRunView() {
   );
 }
 
-// ComponentRunPanel fetches and shows one component run's detail: its logs (and
-// for preview runs, its diff via DiffView with a changes indicator).
+// ComponentRunPanel is the full-width bottom panel for one component run: its
+// logs (and for preview runs, its diff) under a compact header, with the
+// content area filling whatever height the panel has — 45% of the view by
+// default, or all of it when expanded.
 function ComponentRunPanel({
   appId,
   runId,
@@ -284,6 +330,8 @@ function ComponentRunPanel({
   isPreview,
   canApprove,
   onDecided,
+  expanded,
+  onToggleExpanded,
   onClose,
 }: {
   appId: string;
@@ -298,6 +346,8 @@ function ComponentRunPanel({
   // Called after an approve/reject so the parent reloads the run detail; the SSE
   // stream also folds the resumed state in, which makes the buttons disappear.
   onDecided: () => void;
+  expanded: boolean;
+  onToggleExpanded: () => void;
   onClose: () => void;
 }) {
   const [detail, setDetail] = useState<ComponentRunDetail | null>(null);
@@ -305,6 +355,9 @@ function ComponentRunPanel({
   const [error, setError] = useState<string | null>(null);
   const [deciding, setDeciding] = useState(false);
   const [decideError, setDecideError] = useState<string | null>(null);
+  // For preview runs the diff is what the user came to inspect, so it leads;
+  // everything else opens on logs. (The panel remounts per selection via key.)
+  const [tab, setTab] = useState<"logs" | "diff">(isPreview ? "diff" : "logs");
 
   // The gate is live (open) only while the step is parked. Once the stream folds
   // a resumed status in, liveStatus changes and the buttons drop away.
@@ -359,57 +412,92 @@ function ComponentRunPanel({
   }, [appId, runId, componentRunId, liveStatus]);
 
   return (
-    <aside className="flex h-full w-[28rem] shrink-0 flex-col overflow-y-auto border-l border-neutral-200 bg-white">
-      <div className="flex items-start justify-between gap-2 border-b border-neutral-200 px-4 py-3">
-        <div className="min-w-0">
+    <section
+      className={`flex w-full min-h-0 flex-col border-t border-neutral-200 bg-white ${
+        expanded ? "flex-1" : "h-[45%] shrink-0"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2 border-b border-neutral-200 px-4 py-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
             Component run
           </p>
-          <h2 className="mt-0.5 truncate text-sm font-semibold text-neutral-900">
+          <h2 className="truncate text-sm font-semibold text-neutral-900">
             {detail?.name ?? "…"}
           </h2>
+          {/* The API types the component-run's type loosely (a string); it
+              holds a ComponentType when present. */}
+          {detail?.type && <TypeBadge type={detail.type as ComponentType} />}
+          {detail && (
+            <span className="text-xs capitalize text-neutral-500">
+              {detail.status.replace(/_/g, " ")}
+            </span>
+          )}
+          {detail?.approved_by && (
+            <span className="text-xs text-neutral-500">
+              decided by {detail.approved_by}
+            </span>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close panel"
-          className="p-1 text-neutral-400 hover:text-neutral-900"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            aria-label={expanded ? "Collapse panel" : "Expand panel"}
+            title={
+              expanded
+                ? "Shrink the panel and show the DAG again"
+                : "Expand the panel to fill the view"
+            }
+            className="p-1 text-neutral-400 hover:text-neutral-900"
+          >
+            {expanded ? (
+              <Minimize2 className="h-4 w-4" />
+            ) : (
+              <Maximize2 className="h-4 w-4" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close panel"
+            className="p-1 text-neutral-400 hover:text-neutral-900"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
-      <div className="flex-1 space-y-4 px-4 py-4">
-        {loading ? (
-          <p className="text-sm text-neutral-500">Loading…</p>
-        ) : error || !detail ? (
-          <p className="text-sm text-red-600">{error ?? "Not found"}</p>
-        ) : (
-          <>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              <Row label="Status" value={detail.status.replace(/_/g, " ")} />
-              <Row label="Type" value={detail.type ?? "—"} />
-              {detail.approved_by && (
-                <Row label="Decided by" value={detail.approved_by} />
-              )}
-              {detail.message && <Row label="Message" value={detail.message} wide />}
-            </dl>
+      {loading ? (
+        <p className="px-4 py-4 text-sm text-neutral-500">Loading…</p>
+      ) : error || !detail ? (
+        <p className="px-4 py-4 text-sm text-red-600">{error ?? "Not found"}</p>
+      ) : (
+        <>
+          {detail.message && (
+            <p className="border-b border-neutral-100 px-4 py-2 text-sm text-neutral-600">
+              {detail.message}
+            </p>
+          )}
 
-            {/* Manual-approval gate. While the step is parked, an editor+ reviews
-                the plan logs below and approves or rejects; the SSE stream folds
-                the resumed state in, which clears awaitingApproval and hides
-                these buttons. */}
-            {awaitingApproval && (
-              <div className="border border-violet-300 bg-violet-50 p-3">
-                <p className="text-sm font-medium text-violet-900">
-                  Awaiting approval
-                </p>
-                <p className="mt-0.5 text-xs text-violet-800">
-                  Review the plan output below, then approve to apply or reject to
-                  fail the run.
-                </p>
+          {/* Manual-approval gate. While the step is parked, an editor+ reviews
+              the plan logs below and approves or rejects; the SSE stream folds
+              the resumed state in, which clears awaitingApproval and hides
+              these buttons. */}
+          {awaitingApproval && (
+            <div className="border-b border-violet-200 bg-violet-50 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-violet-900">
+                    Awaiting approval
+                  </p>
+                  <p className="mt-0.5 text-xs text-violet-800">
+                    Review the plan output below, then approve to apply or
+                    reject to fail the run.
+                  </p>
+                </div>
                 {canApprove ? (
-                  <div className="mt-2 flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => void decide("approve")}
@@ -430,48 +518,75 @@ function ComponentRunPanel({
                     </button>
                   </div>
                 ) : (
-                  <p className="mt-2 text-xs italic text-violet-700">
+                  <p className="text-xs italic text-violet-700">
                     Only an editor or admin can approve this step.
                   </p>
                 )}
-                {decideError && (
-                  <p className="mt-2 text-xs text-red-600">{decideError}</p>
-                )}
               </div>
-            )}
+              {decideError && (
+                <p className="mt-2 text-xs text-red-600">{decideError}</p>
+              )}
+            </div>
+          )}
 
-            {isPreview && (
-              <div>
-                <div className="mb-1 flex items-center gap-2">
-                  <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-                    Preview diff
-                  </h3>
-                  <ChangesBadge hasChanges={detail.has_changes} />
-                </div>
-                {detail.diff ? (
-                  <DiffView diff={detail.diff} />
-                ) : (
-                  <p className="text-sm text-neutral-500">
-                    {detail.has_changes === false
-                      ? "No changes."
-                      : "No diff captured."}
-                  </p>
-                )}
-              </div>
-            )}
-
-            <div>
-              <h3 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+          {/* Preview runs get a Diff/Logs tab pair so each view spans the whole
+              panel; other runs are logs-only with no tab chrome. */}
+          {isPreview && (
+            <div className="flex items-center gap-4 border-b border-neutral-200 px-4">
+              <TabButton active={tab === "diff"} onClick={() => setTab("diff")}>
+                Preview diff
+                <ChangesBadge hasChanges={detail.has_changes} />
+              </TabButton>
+              <TabButton active={tab === "logs"} onClick={() => setTab("logs")}>
                 Logs
-              </h3>
-              <pre className="max-h-[28rem] overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-100">
+              </TabButton>
+            </div>
+          )}
+
+          <div className="min-h-0 flex-1 p-3">
+            {isPreview && tab === "diff" ? (
+              detail.diff ? (
+                <DiffView diff={detail.diff} className="h-full" />
+              ) : (
+                <p className="text-sm text-neutral-500">
+                  {detail.has_changes === false
+                    ? "No changes."
+                    : "No diff captured."}
+                </p>
+              )
+            ) : (
+              <pre className="h-full w-full overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-100">
                 {detail.logs || "No logs were captured for this step."}
               </pre>
-            </div>
-          </>
-        )}
-      </div>
-    </aside>
+            )}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-2 border-b-2 py-2 text-sm ${
+        active
+          ? "border-black font-medium text-neutral-900"
+          : "border-transparent text-neutral-500 hover:text-neutral-900"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -485,15 +600,6 @@ function ChangesBadge({ hasChanges }: { hasChanges?: boolean }) {
     <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-neutral-100 text-neutral-600">
       no changes
     </span>
-  );
-}
-
-function Row({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
-  return (
-    <div className={`flex flex-col ${wide ? "col-span-2" : ""}`}>
-      <dt className="text-xs text-neutral-400">{label}</dt>
-      <dd className="break-words capitalize text-neutral-800">{value || "—"}</dd>
-    </div>
   );
 }
 

@@ -55,10 +55,6 @@ function renderWorkflow() {
           <Route index element={<WorkflowCanvas />} />
           <Route path="nodes/:nodeId" element={<NodeEditor />} />
         </Route>
-        <Route
-          path="/applications/:appId/runs/:runId"
-          element={<div>run view</div>}
-        />
       </Routes>
     </MemoryRouter>,
   );
@@ -143,56 +139,19 @@ describe("WorkflowCanvas", () => {
     expect(await screen.findByText("workflow has a cycle")).toBeInTheDocument();
   });
 
-  it("starts a deploy run and navigates to the run view", async () => {
+  it("offers no run controls — runs are started from the application page", async () => {
     defaultGets([release]);
-    mockApi.POST.mockResolvedValue({
-      data: { id: "run-9" },
-      error: undefined,
-      response: { status: 202 },
-    });
     renderWorkflow();
     await screen.findByText("release");
-    await userEvent.click(screen.getByRole("button", { name: /deploy/i }));
-    expect(await screen.findByText("run view")).toBeInTheDocument();
-    expect(mockApi.POST).toHaveBeenCalledWith(
-      "/api/applications/{id}/runs",
-      expect.objectContaining({ body: { action: "deploy", force: false } }),
-    );
-  });
-
-  it("sends force=true on deploy when the Force workload roll toggle is on", async () => {
-    defaultGets([release]);
-    mockApi.POST.mockResolvedValue({
-      data: { id: "run-9" },
-      error: undefined,
-      response: { status: 202 },
-    });
-    renderWorkflow();
-    await screen.findByText("release");
-    await userEvent.click(
-      screen.getByRole("checkbox", { name: /force workload roll/i }),
-    );
-    await userEvent.click(screen.getByRole("button", { name: /deploy/i }));
-    expect(await screen.findByText("run view")).toBeInTheDocument();
-    expect(mockApi.POST).toHaveBeenCalledWith(
-      "/api/applications/{id}/runs",
-      expect.objectContaining({ body: { action: "deploy", force: true } }),
-    );
-  });
-
-  it("shows an in-progress message on a 409", async () => {
-    defaultGets([release]);
-    mockApi.POST.mockResolvedValue({
-      data: undefined,
-      error: { message: "conflict" },
-      response: { status: 409 },
-    });
-    renderWorkflow();
-    await screen.findByText("release");
-    await userEvent.click(screen.getByRole("button", { name: /deploy/i }));
     expect(
-      await screen.findByText(/a run is already in progress/i),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: /deploy/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /preview/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /run history/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("the + Add dropdown lists Helm, Manifest, OpenTofu, and Group and can add a node", async () => {

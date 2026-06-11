@@ -32,7 +32,6 @@ type ComponentInput = components["schemas"]["ComponentInput"];
 type ComponentGroup = components["schemas"]["ComponentGroup"];
 type ComponentGroupInput = components["schemas"]["ComponentGroupInput"];
 type ComponentType = components["schemas"]["ComponentType"];
-type RunAction = components["schemas"]["RunAction"];
 type Cluster = components["schemas"]["Cluster"];
 type ChartCredential = components["schemas"]["ChartCredential"];
 type CloudCredential = components["schemas"]["CloudCredential"];
@@ -157,10 +156,6 @@ interface WorkflowDraftValue {
   saveError: string | null;
   saving: boolean;
   saved: boolean;
-  runError: string | null;
-  running: boolean;
-  forceRoll: boolean;
-  setForceRoll: (v: boolean) => void;
 
   // A request to frame specific node ids in the viewport, bumped (via nonce) each
   // time so the canvas re-fits even when the same ids are focused twice. The
@@ -195,7 +190,6 @@ interface WorkflowDraftValue {
   discardNewNode: (id: string) => void;
 
   save: () => Promise<void>;
-  startRun: (action: RunAction) => Promise<void>;
 }
 
 const WorkflowDraftContext = createContext<WorkflowDraftValue | null>(null);
@@ -241,9 +235,6 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [runError, setRunError] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
-  const [forceRoll, setForceRoll] = useState(false);
 
   // Viewport-focus request: when something adds/groups nodes we ask the canvas to
   // frame them. The nonce (a ref-backed counter, since Date.now/Math.random are
@@ -819,30 +810,6 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(t);
   }, [canEdit, loading, saving, saved, error, saveError, save]);
 
-  const startRun = useCallback(
-    async (action: RunAction) => {
-      setRunning(true);
-      setRunError(null);
-      const body =
-        action === "deploy" ? { action, force: forceRoll } : { action };
-      const { data, error, response } = await api.POST(
-        "/api/applications/{id}/runs",
-        { params: { path: { id: appId } }, body },
-      );
-      setRunning(false);
-      if (error || !data) {
-        if (response?.status === 409) {
-          setRunError("A run is already in progress for this application.");
-        } else {
-          setRunError(error?.message ?? "Could not start the run");
-        }
-        return;
-      }
-      navigate(`/applications/${appId}/runs/${data.id}`);
-    },
-    [appId, forceRoll, navigate],
-  );
-
   const value = useMemo<WorkflowDraftValue>(
     () => ({
       appId,
@@ -859,10 +826,6 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       saveError,
       saving,
       saved,
-      runError,
-      running,
-      forceRoll,
-      setForceRoll,
       focus,
       onNodesChange,
       onEdgesChange,
@@ -880,7 +843,6 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       commitComponent,
       discardNewNode,
       save,
-      startRun,
     }),
     [
       appId,
@@ -897,9 +859,6 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       saveError,
       saving,
       saved,
-      runError,
-      running,
-      forceRoll,
       focus,
       onNodesChange,
       onEdgesChange,
@@ -917,7 +876,6 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       commitComponent,
       discardNewNode,
       save,
-      startRun,
     ],
   );
 

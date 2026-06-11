@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
@@ -28,6 +28,7 @@ const ALL = "__all__";
 export function RunsIndex() {
   const { currentOrg } = useOrg();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
@@ -191,8 +192,14 @@ export function RunsIndex() {
               {visibleRuns.map((r) => (
                 <tr
                   key={r.id}
+                  // Carry this page (with its filters) as the run view's Back
+                  // target, so Back returns here rather than to the application.
                   onClick={() =>
-                    navigate(`/applications/${r.application_id}/runs/${r.id}`)
+                    navigate(`/applications/${r.application_id}/runs/${r.id}`, {
+                      state: {
+                        from: `${location.pathname}${location.search}`,
+                      },
+                    })
                   }
                   className="cursor-pointer border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
                 >

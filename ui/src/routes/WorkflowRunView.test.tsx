@@ -47,17 +47,27 @@ const runDetail = {
   ],
 };
 
-function renderRunView() {
-  return render(
-    <MemoryRouter initialEntries={["/applications/app-1/runs/run-1"]}>
+// state carries the optional `from` the runs index passes when linking here, so
+// the back-target tests can exercise both arrival paths.
+function runViewTree(state?: { from: string }) {
+  return (
+    <MemoryRouter
+      initialEntries={[{ pathname: "/applications/app-1/runs/run-1", state }]}
+    >
       <Routes>
         <Route
           path="/applications/:appId/runs/:runId"
           element={<WorkflowRunView />}
         />
+        <Route path="/applications/:appId" element={<div>application page</div>} />
+        <Route path="/runs" element={<div>runs index</div>} />
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+}
+
+function renderRunView(state?: { from: string }) {
+  return render(runViewTree(state));
 }
 
 // A still-running preview: A succeeded, B is running. Non-terminal, so the
@@ -124,7 +134,7 @@ describe("WorkflowRunView", () => {
     );
   });
 
-  it("shows a component run's logs and preview diff on node click", async () => {
+  it("shows a component run's preview diff first, with logs on their own tab", async () => {
     mockApi.GET.mockImplementation((path: string) => {
       if (path === "/api/applications/{id}/runs/{runId}")
         return Promise.resolve({ data: runDetail, error: undefined });
@@ -149,10 +159,74 @@ describe("WorkflowRunView", () => {
     // fireEvent.click dispatches only the click (no mousedown), avoiding
     // React Flow's d3-zoom drag handler which crashes in jsdom.
     fireEvent.click(await screen.findByText("release"));
-    // The detail panel fetched the component run and shows its logs + diff.
-    expect(await screen.findByText("helm upgrade output here")).toBeInTheDocument();
-    expect(screen.getByText("+ added line")).toBeInTheDocument();
+    // A preview run opens on the diff tab.
+    expect(await screen.findByText("+ added line")).toBeInTheDocument();
     expect(screen.getByText("changes")).toBeInTheDocument();
+    expect(
+      screen.queryByText("helm upgrade output here"),
+    ).not.toBeInTheDocument();
+    // The Logs tab swaps to the full-width log view.
+    fireEvent.click(screen.getByRole("button", { name: /^logs$/i }));
+    expect(
+      await screen.findByText("helm upgrade output here"),
+    ).toBeInTheDocument();
+  });
+
+  it("expands the panel to fill the view, hiding the DAG", async () => {
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: runDetail, error: undefined });
+      if (
+        path === "/api/applications/{id}/runs/{runId}/components/{componentRunId}"
+      )
+        return Promise.resolve({
+          data: {
+            id: "cr-a",
+            name: "release",
+            type: "helm",
+            status: "succeeded",
+            logs: "helm upgrade output here",
+            has_changes: false,
+          },
+          error: undefined,
+        });
+      return Promise.resolve({ data: undefined, error: undefined });
+    });
+    renderRunView();
+    fireEvent.click(await screen.findByText("release"));
+    await screen.findByRole("button", { name: /expand panel/i });
+    // Expanding unmounts the DAG (node "apply" disappears), leaving the panel
+    // the whole content area; collapsing brings it back.
+    fireEvent.click(screen.getByRole("button", { name: /expand panel/i }));
+    expect(screen.queryByText("apply")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /collapse panel/i }));
+    expect(await screen.findByText("apply")).toBeInTheDocument();
+  });
+
+  it("goes back to the application by default", async () => {
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: runDetail, error: undefined });
+      return Promise.resolve({ data: undefined, error: undefined });
+    });
+    renderRunView();
+    fireEvent.click(
+      await screen.findByRole("button", { name: /back to application/i }),
+    );
+    expect(await screen.findByText("application page")).toBeInTheDocument();
+  });
+
+  it("goes back to the runs index when the user came from there", async () => {
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: runDetail, error: undefined });
+      return Promise.resolve({ data: undefined, error: undefined });
+    });
+    renderRunView({ from: "/runs?application=app-1" });
+    fireEvent.click(
+      await screen.findByRole("button", { name: /back to runs/i }),
+    );
+    expect(await screen.findByText("runs index")).toBeInTheDocument();
   });
 
   it("shows a Cancel run button only while in flight and POSTs cancel", async () => {
@@ -268,6 +342,8 @@ describe("WorkflowRunView", () => {
     });
     const { rerender } = renderRunView();
     fireEvent.click(await screen.findByText("apply"));
+    // A preview run opens on the diff tab; switch to the logs tab.
+    fireEvent.click(await screen.findByRole("button", { name: /^logs$/i }));
     // First fetch: running, no logs.
     await screen.findByText("No logs were captured for this step.");
     expect(componentCalls).toBe(1);
@@ -283,16 +359,7 @@ describe("WorkflowRunView", () => {
       ],
     };
     mockStream.mockReturnValue({ value: settled, status: "live", error: null });
-    rerender(
-      <MemoryRouter initialEntries={["/applications/app-1/runs/run-1"]}>
-        <Routes>
-          <Route
-            path="/applications/:appId/runs/:runId"
-            element={<WorkflowRunView />}
-          />
-        </Routes>
-      </MemoryRouter>,
-    );
+    rerender(runViewTree());
     expect(await screen.findByText("final logs captured")).toBeInTheDocument();
     expect(componentCalls).toBe(2);
   });

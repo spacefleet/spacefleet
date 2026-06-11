@@ -1,11 +1,20 @@
 // DiffView renders the `helm diff` output captured by a refresh, coloring added
 // (+), removed (-), and changed (~/header) lines so a deploy's effect on the
 // live cluster reads at a glance. Plain monospace block; hue is reserved for the
-// +/- lines (neutral elsewhere), per the brand.
-export function DiffView({ diff }: { diff: string }) {
+// +/- lines (neutral elsewhere), per the brand. className sizes the block —
+// the default caps it for inline embedding; pass e.g. "h-full" to fill a panel.
+export function DiffView({
+  diff,
+  className = "max-h-96",
+}: {
+  diff: string;
+  className?: string;
+}) {
   const lines = diff.replace(/\n$/, "").split("\n");
   return (
-    <pre className="max-h-96 overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-300">
+    <pre
+      className={`overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-300 ${className}`}
+    >
       {lines.map((line, i) => (
         <div key={i} className={lineClass(line)}>
           {line || " "}

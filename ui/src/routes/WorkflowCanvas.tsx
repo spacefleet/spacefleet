@@ -13,11 +13,9 @@ import {
   ArrowLeft,
   Boxes,
   FileCode,
-  History,
   Layers,
   Package,
   Pencil,
-  Play,
   Plus,
   Save,
   Trash2,
@@ -40,7 +38,8 @@ const nodeTypes = { component: BuilderNode, group: GroupNode };
 // Flow, lets the user add nodes/groups and draw dependency edges, and persists
 // the whole workflow with one PUT. Selecting a node shows a slim floating
 // summary with an Edit button that opens the full-page node editor; there is no
-// inline side panel. Run controls start a deploy/preview/uninstall.
+// inline side panel. This page is purely for building the workflow — runs are
+// started (and their history viewed) from the application detail page.
 export function WorkflowCanvas() {
   const { appId = "" } = useParams();
   const navigate = useNavigate();
@@ -53,10 +52,6 @@ export function WorkflowCanvas() {
     saveError,
     saving,
     saved,
-    runError,
-    running,
-    forceRoll,
-    setForceRoll,
     focus,
     onNodesChange,
     onEdgesChange,
@@ -68,7 +63,6 @@ export function WorkflowCanvas() {
     groupSelection,
     deleteNode,
     save,
-    startRun,
   } = useWorkflowDraft();
 
   const { fitView } = useReactFlow();
@@ -126,14 +120,6 @@ export function WorkflowCanvas() {
           <h1 className="mt-1 text-xl font-bold tracking-tight">Workflow</h1>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => navigate(`/applications/${appId}/runs`)}
-            className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
-          >
-            <History className="h-3.5 w-3.5" />
-            Run history
-          </button>
           {canEdit && (
             <>
               <Dropdown
@@ -183,52 +169,12 @@ export function WorkflowCanvas() {
                 <Save className="h-3.5 w-3.5" />
                 {saving ? "Saving…" : "Save"}
               </button>
-              <span className="mx-1 h-5 w-px bg-neutral-200" />
-              <button
-                type="button"
-                onClick={() => void startRun("preview")}
-                disabled={running}
-                className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
-              >
-                Preview
-              </button>
-              <button
-                type="button"
-                onClick={() => void startRun("uninstall")}
-                disabled={running}
-                className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Uninstall
-              </button>
-              <label
-                title="Run the deploy's Helm step as a forced upgrade so pods roll even when the rendered manifests are unchanged"
-                className="inline-flex items-center gap-1.5 text-sm text-neutral-600"
-              >
-                <input
-                  type="checkbox"
-                  checked={forceRoll}
-                  onChange={(e) => setForceRoll(e.target.checked)}
-                  className="h-3.5 w-3.5 accent-black"
-                />
-                Force workload roll
-              </label>
-              <button
-                type="button"
-                onClick={() => void startRun("deploy")}
-                disabled={running}
-                className="inline-flex items-center gap-1.5 bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
-              >
-                <Play className="h-3.5 w-3.5" />
-                Deploy
-              </button>
             </>
           )}
         </div>
       </div>
 
       {saveError && <p className="pb-2 text-sm text-red-600">{saveError}</p>}
-      {runError && <p className="pb-2 text-sm text-red-600">{runError}</p>}
 
       {loading ? (
         <p className="text-sm text-neutral-500">Loading…</p>
