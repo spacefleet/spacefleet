@@ -147,9 +147,18 @@ func listReleases(ctx context.Context, cs kubernetes.Interface, namespace string
 	return out, nil
 }
 
+// maxDecodedReleaseSize caps how far a single release payload may decompress.
+// Release Secrets live on tenant-controlled clusters, so a crafted Secret could
+// otherwise gzip-bomb the serve process: gzip expands up to ~1000x, and the
+// ~768KiB of gzip that fits a 1MiB Secret after base64 would balloon to
+// ~750MiB. Legitimate releases sit far below this — at typical ~5-15x ratios
+// on JSON, the Secret size limit keeps real payloads under ~10MiB decoded.
+const maxDecodedReleaseSize = 32 << 20 // 32 MiB
+
 // decodeRelease reverses Helm 3's release encoding: the Secret data value is a
 // base64 string of the gzip of the release JSON. (client-go has already decoded
 // the Secret's own transport base64, so raw is the base64-of-gzip bytes.)
+// Payloads that decompress past maxDecodedReleaseSize are rejected.
 func decodeRelease(raw []byte) (*helmRelease, error) {
 	gz, err := base64.StdEncoding.DecodeString(string(raw))
 	if err != nil {
@@ -160,9 +169,14 @@ func decodeRelease(raw []byte) (*helmRelease, error) {
 		return nil, fmt.Errorf("gzip: %w", err)
 	}
 	defer func() { _ = zr.Close() }()
-	jsonBytes, err := io.ReadAll(zr)
+	// Read one byte past the cap so an exactly-at-the-limit payload is
+	// distinguishable from an oversized one.
+	jsonBytes, err := io.ReadAll(io.LimitReader(zr, maxDecodedReleaseSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("gunzip: %w", err)
+	}
+	if len(jsonBytes) > maxDecodedReleaseSize {
+		return nil, fmt.Errorf("gunzip: decoded release exceeds %d bytes", maxDecodedReleaseSize)
 	}
 	var hr helmRelease
 	if err := json.Unmarshal(jsonBytes, &hr); err != nil {

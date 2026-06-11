@@ -114,6 +114,60 @@ func TestListReleasesDecodesLatestRevision(t *testing.T) {
 	}
 }
 
+// bombReleaseData builds a Secret data value whose gzip payload is tiny but
+// decompresses past maxDecodedReleaseSize. The inner JSON is *valid*, so
+// without the size cap decodeRelease would accept it (and buffer all of it).
+func bombReleaseData(t *testing.T) []byte {
+	t.Helper()
+	pad := bytes.Repeat([]byte("a"), maxDecodedReleaseSize)
+	j := append([]byte(`{"name":"bomb","namespace":"prod","version":1,"config":{"pad":"`), pad...)
+	j = append(j, []byte(`"}}`)...)
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write(j); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+	return []byte(base64.StdEncoding.EncodeToString(buf.Bytes()))
+}
+
+func TestDecodeReleaseRejectsDecompressionBomb(t *testing.T) {
+	_, err := decodeRelease(bombReleaseData(t))
+	if err == nil {
+		t.Fatal("decodeRelease accepted a payload that decompresses past maxDecodedReleaseSize")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("exceeds")) {
+		t.Fatalf("error = %q, want the size-cap rejection", err)
+	}
+}
+
+func TestListReleasesSkipsDecompressionBomb(t *testing.T) {
+	// A bomb Secret must not fail (or balloon) the listing — it is skipped like
+	// any other undecodable Secret and the remaining releases still come back.
+	bomb := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "prod",
+			Name:      "sh.helm.release.v1.bomb.v1",
+			Labels:    map[string]string{"owner": "helm", "name": "bomb"},
+		},
+		Type: "helm.sh/release.v1",
+		Data: map[string][]byte{"release": bombReleaseData(t)},
+	}
+	cs := fake.NewSimpleClientset(
+		&bomb,
+		secretPtr(releaseSecret(t, "prod", "cache", 1, "deployed", nil)),
+	)
+	releases, err := listReleases(context.Background(), cs, "")
+	if err != nil {
+		t.Fatalf("listReleases: %v", err)
+	}
+	if len(releases) != 1 || releases[0].Name != "cache" {
+		t.Fatalf("got %+v, want only cache (bomb skipped)", releases)
+	}
+}
+
 func TestListReleasesScopesToNamespace(t *testing.T) {
 	cs := fake.NewSimpleClientset(
 		secretPtr(releaseSecret(t, "prod", "cache", 1, "deployed", nil)),
