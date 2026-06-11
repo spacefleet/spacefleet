@@ -82,16 +82,37 @@ const runningDetail = {
   ],
 };
 
-// A deploy run parked at a manual-approval gate: A (plan) succeeded, B (apply,
-// depends on A) is awaiting_approval. Non-terminal, so the stream stays open.
+// A deploy run parked at a manual-approval gate on a tofu pair: A (the plan
+// unit) succeeded, B (the apply unit, depends on A) is awaiting_approval. The
+// snapshot carries the per-unit command the backend expansion stamps, which is
+// what pairs the apply step with its plan step. Non-terminal, so the stream
+// stays open.
 const awaitingDetail = {
   ...runDetail,
   action: "deploy",
   status: "awaiting_approval",
   finished_at: undefined,
+  graph: JSON.stringify({
+    nodes: [
+      {
+        id: compA,
+        name: "infra · plan",
+        type: "terraform",
+        config: { command: "plan" },
+        depends_on: [],
+      },
+      {
+        id: compB,
+        name: "infra · apply",
+        type: "terraform",
+        config: { command: "apply" },
+        depends_on: [compA],
+      },
+    ],
+  }),
   component_runs: [
-    { id: "cr-a", component_id: compA, name: "plan", type: "terraform", status: "succeeded" },
-    { id: "cr-b", component_id: compB, name: "apply", type: "terraform", status: "awaiting_approval" },
+    { id: "cr-a", component_id: compA, name: "infra · plan", type: "terraform", status: "succeeded" },
+    { id: "cr-b", component_id: compB, name: "infra · apply", type: "terraform", status: "awaiting_approval" },
   ],
 };
 
@@ -265,29 +286,54 @@ describe("WorkflowRunView", () => {
     ).not.toBeInTheDocument();
   });
 
+  // The component-detail mock for the parked tofu pair: the apply step (cr-b)
+  // is parked with no logs of its own; the plan step (cr-a) settled with the
+  // plan output the gate is reviewing.
+  function mockAwaitingComponentDetails() {
+    mockApi.GET.mockImplementation(
+      (
+        path: string,
+        opts?: { params?: { path?: { componentRunId?: string } } },
+      ) => {
+        if (path === "/api/applications/{id}/runs/{runId}")
+          return Promise.resolve({ data: awaitingDetail, error: undefined });
+        if (
+          path ===
+          "/api/applications/{id}/runs/{runId}/components/{componentRunId}"
+        ) {
+          const id = opts?.params?.path?.componentRunId;
+          return Promise.resolve({
+            data:
+              id === "cr-a"
+                ? {
+                    id: "cr-a",
+                    name: "infra · plan",
+                    type: "terraform",
+                    status: "succeeded",
+                    logs: "tofu plan output",
+                  }
+                : {
+                    id: "cr-b",
+                    name: "infra · apply",
+                    type: "terraform",
+                    status: "awaiting_approval",
+                    logs: "",
+                  },
+            error: undefined,
+          });
+        }
+        return Promise.resolve({ data: undefined, error: undefined });
+      },
+    );
+  }
+
   it("shows Approve/Reject on a parked step and POSTs the approve endpoint", async () => {
     mockStream.mockReturnValue({ value: null, status: "live", error: null });
-    mockApi.GET.mockImplementation((path: string) => {
-      if (path === "/api/applications/{id}/runs/{runId}")
-        return Promise.resolve({ data: awaitingDetail, error: undefined });
-      if (path === "/api/applications/{id}/runs/{runId}/components/{componentRunId}")
-        return Promise.resolve({
-          data: {
-            id: "cr-b",
-            name: "apply",
-            type: "terraform",
-            status: "awaiting_approval",
-            logs: "tofu plan output",
-            has_changes: true,
-          },
-          error: undefined,
-        });
-      return Promise.resolve({ data: undefined, error: undefined });
-    });
+    mockAwaitingComponentDetails();
     mockApi.POST.mockResolvedValue({ data: awaitingDetail, error: undefined });
     renderRunView();
     // Open the parked apply step's panel.
-    fireEvent.click(await screen.findByText("apply"));
+    fireEvent.click(await screen.findByText("infra · apply"));
     const approve = await screen.findByRole("button", { name: /approve/i });
     expect(screen.getByRole("button", { name: /reject/i })).toBeInTheDocument();
     fireEvent.click(approve);
@@ -297,6 +343,23 @@ describe("WorkflowRunView", () => {
         { params: { path: { id: "app-1", runId: "run-1", componentRunId: "cr-b" } } },
       ),
     );
+  });
+
+  it("leads with the upstream plan output on a parked tofu apply step", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    mockAwaitingComponentDetails();
+    renderRunView();
+    fireEvent.click(await screen.findByText("infra · apply"));
+    // The parked apply step opens on the Plan output tab, showing the plan
+    // step's logs — the review material for the gate.
+    expect(await screen.findByText("tofu plan output")).toBeInTheDocument();
+    // The apply step's own (empty) logs sit behind the Logs tab.
+    fireEvent.click(screen.getByRole("button", { name: /^logs$/i }));
+    expect(
+      await screen.findByText("No logs were captured for this step."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /plan output/i }));
+    expect(await screen.findByText("tofu plan output")).toBeInTheDocument();
   });
 
   it("renders a distinct awaiting-approval run status badge", async () => {

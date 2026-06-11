@@ -12,6 +12,7 @@ import {
   Controls,
   type Edge,
   type Node,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -46,15 +47,21 @@ const nodeTypes = { run: RunNode };
 
 // GraphSnapshot mirrors the backend's lib/workflows GraphSnapshot JSON written
 // to WorkflowRun.graph: nodes with their as-run config + depends_on (edges).
+// config carries the per-unit command ("plan"/"apply") an OpenTofu component's
+// execution units were expanded with, which lets the view pair an apply step
+// with its upstream plan step.
 interface SnapshotNode {
   id: string;
   name: string;
   type: string;
+  config?: Record<string, string>;
   depends_on?: string[];
 }
 interface GraphSnapshot {
   nodes?: SnapshotNode[];
 }
+
+type FlowNode = Node<RunNodeData & { componentRunId?: string }>;
 
 // A run is terminal once it reaches a settled status; the stream closes then.
 const TERMINAL: RunStatus[] = ["succeeded", "failed", "partial"];
@@ -62,9 +69,11 @@ const TERMINAL: RunStatus[] = ["succeeded", "failed", "partial"];
 // WorkflowRunView is the live DAG run view (route
 // /applications/:appId/runs/:runId). It renders the run's snapshot graph as a
 // read-only React Flow DAG, colors each node by its component-run status, and
-// live-updates from the run SSE stream while in flight. Clicking a node opens a
-// full-width bottom panel with its logs (and for preview runs a diff), which
-// can be expanded to fill the whole view.
+// live-updates from the run SSE stream while in flight. Clicking a node shrinks
+// the DAG to a zoomed-out strip and opens a full-width bottom panel with the
+// step's logs (plus a diff for preview runs, and the upstream plan output for a
+// tofu apply step), which can be expanded to fill the whole view — the DAG here
+// is the picker; the logs are the content.
 export function WorkflowRunView() {
   const { appId = "", runId = "" } = useParams();
   const { currentOrg, currentRole } = useOrg();
@@ -91,6 +100,20 @@ export function WorkflowRunView() {
   const [expanded, setExpanded] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [flow, setFlow] = useState<ReactFlowInstance<FlowNode, Edge> | null>(
+    null,
+  );
+
+  // Selecting a node shrinks the DAG to a strip above the logs panel; refit the
+  // viewport after the container resizes (next frame) so the whole workflow
+  // stays visible at the new size. The DAG is a picker here, not the focus.
+  useEffect(() => {
+    if (!flow) return;
+    const frame = requestAnimationFrame(() => {
+      void flow.fitView({ padding: 0.15 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [flow, selectedRunId, expanded]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -179,24 +202,23 @@ export function WorkflowRunView() {
 
     const depthOf = computeDepths(layoutNodes);
     const perDepth: Record<number, number> = {};
-    const flowNodes: Node<RunNodeData & { componentRunId?: string }>[] =
-      layoutNodes.map((n) => {
-        const cr = runsByComponent.get(n.id);
-        const depth = depthOf[n.id] ?? 0;
-        const col = perDepth[depth] ?? 0;
-        perDepth[depth] = col + 1;
-        return {
-          id: n.id,
-          type: "run",
-          position: { x: 80 + col * 240, y: 60 + depth * 150 },
-          data: {
-            name: n.name,
-            type: (n.type as ComponentType) ?? "helm",
-            status: cr?.status ?? "pending",
-            componentRunId: cr?.id,
-          },
-        };
-      });
+    const flowNodes: FlowNode[] = layoutNodes.map((n) => {
+      const cr = runsByComponent.get(n.id);
+      const depth = depthOf[n.id] ?? 0;
+      const col = perDepth[depth] ?? 0;
+      perDepth[depth] = col + 1;
+      return {
+        id: n.id,
+        type: "run",
+        position: { x: 80 + col * 240, y: 60 + depth * 150 },
+        data: {
+          name: n.name,
+          type: (n.type as ComponentType) ?? "helm",
+          status: cr?.status ?? "pending",
+          componentRunId: cr?.id,
+        },
+      };
+    });
 
     const flowEdges: Edge[] = [];
     for (const n of layoutNodes) {
@@ -206,6 +228,29 @@ export function WorkflowRunView() {
     }
     return { nodes: flowNodes, edges: flowEdges };
   }, [run, runsByComponent]);
+
+  // When the selected step is an OpenTofu apply unit, resolve its upstream plan
+  // unit's component run so the panel can surface the plan output right where
+  // the approve/reject decision is made (the parked apply step has no logs of
+  // its own yet). Previews don't pair plan/apply (every unit dry-runs
+  // independently), so they're excluded.
+  const planSource = useMemo(() => {
+    if (!selectedRunId || !run || run.action === "preview") return null;
+    const cr = run.component_runs?.find((c) => c.id === selectedRunId);
+    if (!cr?.component_id) return null;
+    const snapNodes = parseSnapshot(run.graph)?.nodes ?? [];
+    const node = snapNodes.find((n) => n.id === cr.component_id);
+    if (node?.type !== "terraform" || node.config?.command !== "apply")
+      return null;
+    for (const depID of node.depends_on ?? []) {
+      const dep = snapNodes.find((n) => n.id === depID);
+      if (dep?.type === "terraform" && dep.config?.command === "plan") {
+        const depRun = runsByComponent.get(depID);
+        if (depRun) return { runId: depRun.id, name: dep.name };
+      }
+    }
+    return null;
+  }, [selectedRunId, run, runsByComponent]);
 
   return (
     <div className="flex h-[calc(100vh-7rem)] flex-col">
@@ -262,12 +307,18 @@ export function WorkflowRunView() {
           )}
 
           {/* The DAG on top, and — once a node is selected — a full-width bottom
-              panel for that component run, so the logs span the whole window
-              instead of a narrow sidebar. Expanding the panel hides the DAG and
-              gives the logs the entire view. */}
+              panel for that component run. The logs are what the user came for;
+              the DAG is the picker. So selecting a node shrinks the DAG to a
+              zoomed-out strip (the fitView effect above keeps the whole
+              workflow in frame) and hands most of the view to the panel;
+              expanding the panel hides the DAG entirely. */}
           <div className="flex min-h-0 flex-1 flex-col border border-neutral-200">
             {!(expanded && selectedRunId) && (
-              <div className="min-h-0 min-w-0 flex-1">
+              <div
+                className={`min-h-0 min-w-0 ${
+                  selectedRunId ? "h-[30%] min-h-36 shrink-0" : "flex-1"
+                }`}
+              >
                 <ReactFlow
                   nodes={nodes}
                   edges={edges}
@@ -275,6 +326,10 @@ export function WorkflowRunView() {
                   nodesDraggable={false}
                   nodesConnectable={false}
                   proOptions={{ hideAttribution: true }}
+                  onInit={setFlow}
+                  // fitView won't zoom out past minZoom; a wide DAG in the
+                  // shrunken strip needs more headroom than the 0.5 default.
+                  minZoom={0.1}
                   onNodeClick={(_, n) => {
                     const crId = (n.data as { componentRunId?: string }).componentRunId;
                     if (crId) setSelectedRunId(crId);
@@ -301,6 +356,7 @@ export function WorkflowRunView() {
                     ?.status
                 }
                 isPreview={run.action === "preview"}
+                planRun={planSource}
                 canApprove={canApprove}
                 onDecided={load}
                 expanded={expanded}
@@ -319,15 +375,17 @@ export function WorkflowRunView() {
 }
 
 // ComponentRunPanel is the full-width bottom panel for one component run: its
-// logs (and for preview runs, its diff) under a compact header, with the
-// content area filling whatever height the panel has — 45% of the view by
-// default, or all of it when expanded.
+// logs (and for preview runs, its diff; for a tofu apply step, its upstream
+// plan output) under a compact header, with the content area filling whatever
+// height the panel has — the view minus the DAG strip by default, or all of it
+// when expanded.
 function ComponentRunPanel({
   appId,
   runId,
   componentRunId,
   liveStatus,
   isPreview,
+  planRun,
   canApprove,
   onDecided,
   expanded,
@@ -341,6 +399,10 @@ function ComponentRunPanel({
   // settles) the fetch effect re-runs so the detail (logs/diff) stays current.
   liveStatus?: ComponentRunStatus;
   isPreview: boolean;
+  // The upstream tofu plan step backing this apply step, when there is one. Its
+  // logs are the review material for the approval gate, so the panel surfaces
+  // them on a "Plan output" tab — leading while the step is parked.
+  planRun: { runId: string; name: string } | null;
   // Editor+ may approve/reject a step parked at awaiting_approval.
   canApprove: boolean;
   // Called after an approve/reject so the parent reloads the run detail; the SSE
@@ -353,11 +415,19 @@ function ComponentRunPanel({
   const [detail, setDetail] = useState<ComponentRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [planLogs, setPlanLogs] = useState<string | null>(null);
   const [deciding, setDeciding] = useState(false);
   const [decideError, setDecideError] = useState<string | null>(null);
-  // For preview runs the diff is what the user came to inspect, so it leads;
+  // For preview runs the diff is what the user came to inspect, so it leads; a
+  // parked apply step opens on its plan output (the thing being approved);
   // everything else opens on logs. (The panel remounts per selection via key.)
-  const [tab, setTab] = useState<"logs" | "diff">(isPreview ? "diff" : "logs");
+  const [tab, setTab] = useState<"logs" | "diff" | "plan">(
+    isPreview
+      ? "diff"
+      : planRun && liveStatus === "awaiting_approval"
+        ? "plan"
+        : "logs",
+  );
 
   // The gate is live (open) only while the step is parked. Once the stream folds
   // a resumed status in, liveStatus changes and the buttons drop away.
@@ -411,12 +481,28 @@ function ComponentRunPanel({
     };
   }, [appId, runId, componentRunId, liveStatus]);
 
+  // Fetch the upstream plan step's logs for the Plan output tab. The plan step
+  // already settled by the time its apply step is viewable, so its logs are
+  // stable — keyed on the id, not the stream. Best-effort: a failure leaves the
+  // tab on its "no output" placeholder.
+  const planRunId = planRun?.runId;
+  useEffect(() => {
+    if (!planRunId) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await api.GET(
+        "/api/applications/{id}/runs/{runId}/components/{componentRunId}",
+        { params: { path: { id: appId, runId, componentRunId: planRunId } } },
+      );
+      if (!cancelled && data) setPlanLogs(data.logs ?? "");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [appId, runId, planRunId]);
+
   return (
-    <section
-      className={`flex w-full min-h-0 flex-col border-t border-neutral-200 bg-white ${
-        expanded ? "flex-1" : "h-[45%] shrink-0"
-      }`}
-    >
+    <section className="flex w-full min-h-0 flex-1 flex-col border-t border-neutral-200 bg-white">
       <div className="flex items-center justify-between gap-2 border-b border-neutral-200 px-4 py-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
@@ -492,8 +578,9 @@ function ComponentRunPanel({
                     Awaiting approval
                   </p>
                   <p className="mt-0.5 text-xs text-violet-800">
-                    Review the plan output below, then approve to apply or
-                    reject to fail the run.
+                    {planRun
+                      ? "Review the plan output below, then approve to apply or reject to fail the run."
+                      : "Approve to run this step, or reject to fail the run."}
                   </p>
                 </div>
                 {canApprove ? (
@@ -529,13 +616,24 @@ function ComponentRunPanel({
             </div>
           )}
 
-          {/* Preview runs get a Diff/Logs tab pair so each view spans the whole
-              panel; other runs are logs-only with no tab chrome. */}
+          {/* Preview runs get a Diff/Logs tab pair, a tofu apply step a
+              Plan output/Logs pair, so each view spans the whole panel; other
+              runs are logs-only with no tab chrome. */}
           {isPreview && (
             <div className="flex items-center gap-4 border-b border-neutral-200 px-4">
               <TabButton active={tab === "diff"} onClick={() => setTab("diff")}>
                 Preview diff
                 <ChangesBadge hasChanges={detail.has_changes} />
+              </TabButton>
+              <TabButton active={tab === "logs"} onClick={() => setTab("logs")}>
+                Logs
+              </TabButton>
+            </div>
+          )}
+          {planRun && (
+            <div className="flex items-center gap-4 border-b border-neutral-200 px-4">
+              <TabButton active={tab === "plan"} onClick={() => setTab("plan")}>
+                Plan output
               </TabButton>
               <TabButton active={tab === "logs"} onClick={() => setTab("logs")}>
                 Logs
@@ -554,6 +652,12 @@ function ComponentRunPanel({
                     : "No diff captured."}
                 </p>
               )
+            ) : planRun && tab === "plan" ? (
+              <pre className="h-full w-full overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-100">
+                {planLogs === null
+                  ? `Loading plan output from ${planRun.name}…`
+                  : planLogs || "No plan output was captured."}
+              </pre>
             ) : (
               <pre className="h-full w-full overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-100">
                 {detail.logs || "No logs were captured for this step."}
