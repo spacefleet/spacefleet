@@ -143,6 +143,7 @@ export function ComponentFields({
           setConfig={setConfig}
           repoUrlPicker={repoUrlPicker}
           cloudCredentials={cloudCredentials}
+          clusters={clusters}
           disabled={disabled}
         />
       ) : (
@@ -437,12 +438,14 @@ function TerraformConfig({
   setConfig,
   repoUrlPicker,
   cloudCredentials,
+  clusters,
   disabled,
 }: {
   config: Record<string, string>;
   setConfig: (key: string, value: string) => void;
   repoUrlPicker: ReactNode;
   cloudCredentials: CloudCredential[];
+  clusters: Cluster[];
   disabled: boolean;
 }) {
   const s3 = parseBackendConfig(config.backend_config);
@@ -674,6 +677,29 @@ function TerraformConfig({
           />
         </Field>
       )}
+
+      {/* Not a deploy target (terraform hides the target-cluster field): this
+          attaches ready-to-use auth for a registered cluster so the module's
+          kubernetes/helm/kubectl providers work with no provider config in
+          code. Stored as config.auth_cluster_id. */}
+      <Field
+        label="Cluster authentication"
+        help="Optional — gives this run ready-to-use authentication for a registered cluster, for modules that create Kubernetes resources. Leave the provider block in your code unconfigured; the run supplies the connection."
+      >
+        <select
+          className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+          value={config.auth_cluster_id ?? ""}
+          onChange={(e) => setConfig("auth_cluster_id", e.target.value)}
+          disabled={disabled}
+        >
+          <option value="">(none)</option>
+          {clusters.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </Field>
 
       <FlagsEditor
         label="Extra init flags"

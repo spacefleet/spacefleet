@@ -7,7 +7,8 @@
 // against the target. Like lib/helm and lib/manifest, Go never runs tofu itself
 // — it only emits the /bin/sh script and lets lib/tekton inject the credential
 // files (the git-credentials line for a private repo, the AWS env file for
-// cloud auth). This package is a pure renderer: no I/O, no
+// cloud auth, the kubeconfig for attached cluster auth). This package is a pure
+// renderer: no I/O, no
 // ent dependency, unit tested with plain string assertions, mirroring
 // lib/manifest/apply.go's Script.
 //
@@ -69,6 +70,19 @@ const (
 	// in the mounted file + the step's process env — never in the script string
 	// or the TaskRun manifest, exactly as the git-credentials file does.
 	AWSEnvFile = "aws.env"
+	// KubeconfigFile carries the portable kubeconfig for the component's
+	// attached cluster authentication (auth_cluster_id) — a registered cluster
+	// the module's Kubernetes-backed providers (kubernetes/helm/kubectl)
+	// authenticate to. Same name as helm.KubeconfigFile because the shared
+	// resolver (lib/deploy) injects it under that key; kept local like the
+	// constants above. When Apply.HasClusterAuth is set the script exports
+	// KUBE_CONFIG_PATH — the env var those providers read; they deliberately
+	// ignore KUBECONFIG — pointing at the mounted file. KUBECONFIG itself is
+	// deliberately NOT exported: the planfile-handover kubectl calls below must
+	// keep using the pod's own in-cluster credentials (the pinned per-pair
+	// ServiceAccount), and a global KUBECONFIG would redirect them at the auth
+	// cluster instead.
+	KubeconfigFile = "kubeconfig"
 )
 
 // Commands a terraform component runs. plan produces the review material
@@ -134,6 +148,12 @@ type Apply struct {
 	// backend and the module's providers authenticate from the process env. The
 	// values never appear in the script string or manifest.
 	HasCloudAuth bool
+	// HasClusterAuth, when set, exports KUBE_CONFIG_PATH pointing at the
+	// mounted KubeconfigFile (the attached cluster authentication) before
+	// `tofu init`, so the module's kubernetes/helm/kubectl providers
+	// authenticate to that cluster from an unconfigured provider block. See
+	// the KubeconfigFile doc for why KUBECONFIG itself is not exported.
+	HasClusterAuth bool
 	// PlanArtifactSecret is the name of the Kubernetes Secret (in Namespace, on
 	// the runner cluster) the planfile is handed over through. The worker
 	// pre-creates it empty, alongside the same-named ServiceAccount the step's
@@ -220,12 +240,11 @@ func Script(a Apply) string {
 
 	fmt.Fprintf(&b, "cd %s\n", shQuote("/src/"+a.Path))
 
-	// No kubeconfig is injected for a terraform component (it has no cluster
-	// target), so no KUBECONFIG is exported. The state backend is always explicit
-	// (validated at write time); the planfile-handover Secret below is read/written
-	// with the step's own in-cluster credentials — the per-pair ServiceAccount the
-	// worker provisioned, whose Role pins it to exactly that Secret — since the
-	// job already runs in the runner cluster.
+	// The state backend is always explicit (validated at write time); the
+	// planfile-handover Secret below is read/written with the step's own
+	// in-cluster credentials — the per-pair ServiceAccount the worker
+	// provisioned, whose Role pins it to exactly that Secret — since the job
+	// already runs in the runner cluster.
 
 	// With cloud auth, source the mounted AWS env file so the credential values
 	// enter the process env before init — they live only in the mounted file +
@@ -233,6 +252,17 @@ func Script(a Apply) string {
 	// `source` builtin for /bin/sh.
 	if a.HasCloudAuth {
 		fmt.Fprintf(&b, ". %s\n", tekton.CredsMountPath+"/"+AWSEnvFile)
+	}
+
+	// With cluster auth, point the module's Kubernetes-backed providers at the
+	// mounted kubeconfig. KUBE_CONFIG_PATH is the env var the kubernetes/helm/
+	// kubectl providers read (they deliberately ignore KUBECONFIG, and an
+	// explicit path also keeps a bare provider block from falling back to the
+	// pod's own near-powerless ServiceAccount). KUBECONFIG is deliberately NOT
+	// exported — the planfile-handover kubectl calls must stay on the pod's
+	// in-cluster credentials (see the KubeconfigFile doc).
+	if a.HasClusterAuth {
+		fmt.Fprintf(&b, "export KUBE_CONFIG_PATH=%s\n", shQuote(tekton.CredsMountPath+"/"+KubeconfigFile))
 	}
 
 	// Generate the backend override so the root module's state lands where we

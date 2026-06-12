@@ -133,12 +133,14 @@ func (w *WorkflowRunWorker) planManifest(ctx context.Context, app *ent.Applicati
 // optional git token + cloud credential, and renders the plan/apply script via
 // tofu.Script in the image pinned for the component's tofu_version.
 //
-// A terraform component has no cluster target, so no kubeconfig is injected and
-// the implicit kubernetes state backend is unavailable — the component must name
-// an explicit backend (enforced by validateTerraformConfig). PullsChart is true
-// for every action (a terraform uninstall is a `tofu destroy` that still needs
-// state + the root module) so a private-repo git token and a cloud credential
-// are resolved regardless of action.
+// A terraform component has no cluster target — but it may attach **cluster
+// authentication** (auth_cluster_id): a registered cluster whose kubeconfig is
+// injected for the module's Kubernetes-backed providers, threaded through the
+// resolver's TargetClusterID path. With or without it, the component must name
+// an explicit state backend (enforced by validateTerraformConfig). PullsChart
+// is true for every action (a terraform uninstall is a `tofu destroy` that
+// still needs state + the root module) so a private-repo git token and a cloud
+// credential are resolved regardless of action.
 //
 // The plan node's stdout is the review material captured as the component_run
 // logs; the apply node applies the EXACT planfile the plan node produced,
@@ -209,18 +211,27 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 	// validated config).
 	cloudCredentialID, _ := uuid.Parse(node.Config[terraformConfigCloudCredentialID])
 
-	// A terraform component has no cluster target (TargetClusterID is uuid.Nil), so
-	// the resolver injects no kubeconfig — the state backend must be explicit
-	// (validated at write time). PullsChart stays true so the git-credentials file
-	// (private github.com repo) and the cloud credential are still resolved for
-	// every action — even an uninstall (tofu destroy) needs state + the root module.
+	// Optional cluster authentication: a registered cluster whose kubeconfig is
+	// injected for the module's Kubernetes-backed providers. It rides the
+	// resolver's TargetClusterID path — the same portable-kubeconfig build a helm
+	// target gets (cloud token minted per attempt, in-cluster host rewrite when
+	// the auth cluster IS the runner) — but a terraform component still has no
+	// deploy target: this only attaches auth. Like cloud_credential_id above, a
+	// blank value parses to uuid.Nil (no kubeconfig, the pre-existing behavior).
+	authClusterID, _ := uuid.Parse(node.Config[terraformConfigAuthClusterID])
+
+	// PullsChart stays true so the git-credentials file (private github.com
+	// repo) and the cloud credential are still resolved for every action — even
+	// an uninstall (tofu destroy) needs state + the root module. The state
+	// backend is always explicit (validated at write time) regardless of any
+	// attached cluster auth.
 	pullsChart := true
 	resolved, err := w.resolver.Resolve(ctx, deploy.RunInputs{
 		OrgID:                app.OrganizationID,
 		ApplicationID:        app.ID,
 		ComponentID:          node.ComponentID,
 		RunnerClusterID:      app.RunnerClusterID,
-		TargetClusterID:      uuid.Nil,
+		TargetClusterID:      authClusterID,
 		Values:               "",
 		ChartCredentialID:    uuid.Nil,
 		GitHubInstallationID: deref(node.GitHubInstallationID),
@@ -267,6 +278,7 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		Namespace:          tekton.JobsNamespace,
 		HasGitToken:        resolved.HasGitToken,
 		HasCloudAuth:       resolved.HasCloudAuth,
+		HasClusterAuth:     authClusterID != uuid.Nil,
 		PlanArtifactSecret: planArtifactSecret,
 		InitFlags:          initFlags,
 		PlanFlags:          planFlags,

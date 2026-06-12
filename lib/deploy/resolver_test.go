@@ -27,6 +27,18 @@ func (fakeConns) ConnForTekton(_ context.Context, _, _ uuid.UUID) (k8s.Connectio
 	}, nil
 }
 
+// inClusterTargetConns returns an in_cluster-method Connection for one cluster
+// id and a portable token-method Connection for every other, so a test can pit
+// an in_cluster target against a different runner.
+type inClusterTargetConns struct{ targetID uuid.UUID }
+
+func (c inClusterTargetConns) ConnForTekton(_ context.Context, _, id uuid.UUID) (k8s.Connection, error) {
+	if id == c.targetID {
+		return k8s.Connection{Method: k8s.MethodInCluster}, nil
+	}
+	return fakeConns{}.ConnForTekton(context.Background(), uuid.Nil, uuid.Nil)
+}
+
 // fakeCloudCreds returns a known resolved AWS credential.
 type fakeCloudCreds struct {
 	resolved cloudcredentials.Resolved
@@ -104,6 +116,27 @@ func TestResolve_VariablesNilResolver(t *testing.T) {
 	}
 	if len(out.Env) != 0 || len(out.SecretEnv) != 0 {
 		t.Errorf("nil variable resolver injected env: %v / %v", out.Env, out.SecretEnv)
+	}
+}
+
+// TestResolve_InClusterTargetOnForeignRunner confirms the early, actionable
+// failure: a target (or terraform cluster-auth) cluster registered with the
+// in_cluster method yields a kubeconfig only usable from inside that same
+// cluster, so resolving it against a different runner fails up front instead
+// of as a confusing TLS/auth error mid-step in the pod.
+func TestResolve_InClusterTargetOnForeignRunner(t *testing.T) {
+	t.Parallel()
+
+	targetID := uuid.New()
+	r := NewResolver(inClusterTargetConns{targetID: targetID}, nil, nil, nil, nil)
+	_, err := r.Resolve(context.Background(), RunInputs{
+		OrgID:           uuid.New(),
+		RunnerClusterID: uuid.New(),
+		TargetClusterID: targetID,
+		PullsChart:      true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "in_cluster") {
+		t.Fatalf("expected the in_cluster runner-mismatch error, got %v", err)
 	}
 }
 

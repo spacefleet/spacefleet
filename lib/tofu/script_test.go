@@ -357,6 +357,53 @@ func TestScriptNoCloudAuthNoEnvFile(t *testing.T) {
 	}
 }
 
+func TestScriptClusterAuthExportsKubeConfigPath(t *testing.T) {
+	backend, cfg := s3Backend()
+	// A plan node with a planfile secret: the case where the provider export
+	// and the handover kubectl coexist in one script.
+	s := Script(Apply{
+		Command:            CommandPlan,
+		Action:             ActionDeploy,
+		RepoURL:            "r",
+		Path:               "p",
+		Backend:            backend,
+		BackendConfig:      cfg,
+		HasClusterAuth:     true,
+		PlanArtifactSecret: "tfplan-run1-plan1",
+	})
+	const exportLine = "export KUBE_CONFIG_PATH='/workspace/creds/kubeconfig'"
+	if !strings.Contains(s, exportLine) {
+		t.Errorf("cluster auth must export KUBE_CONFIG_PATH\n---\n%s", s)
+	}
+	// The export must come before tofu init so the providers see it throughout.
+	if i, j := strings.Index(s, exportLine), strings.Index(s, "tofu init"); i < 0 || j < 0 || i >= j {
+		t.Errorf("export must precede tofu init (i=%d j=%d)\n---\n%s", i, j, s)
+	}
+	// KUBECONFIG itself must never be exported: the planfile-handover kubectl
+	// calls rely on the pod's own in-cluster credentials (the pinned per-pair
+	// ServiceAccount), and a global KUBECONFIG would redirect them at the auth
+	// cluster instead.
+	if strings.Contains(s, "KUBECONFIG") {
+		t.Errorf("KUBECONFIG must not appear (it would hijack the handover kubectl)\n---\n%s", s)
+	}
+}
+
+func TestScriptNoClusterAuthNoKubeconfigEnv(t *testing.T) {
+	backend, cfg := s3Backend()
+	s := Script(Apply{
+		Command:            CommandPlan,
+		Action:             ActionDeploy,
+		RepoURL:            "r",
+		Path:               "p",
+		Backend:            backend,
+		BackendConfig:      cfg,
+		PlanArtifactSecret: "tfplan-run1-plan1",
+	})
+	if strings.Contains(s, "KUBE_CONFIG_PATH") {
+		t.Errorf("no cluster auth must not export KUBE_CONFIG_PATH\n---\n%s", s)
+	}
+}
+
 func TestScriptGolden(t *testing.T) {
 	// Byte-for-byte guard: a representative Apply renders exactly this output —
 	// the s3 backend override written before init and no injected KUBECONFIG.

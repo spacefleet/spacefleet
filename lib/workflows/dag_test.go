@@ -364,6 +364,27 @@ func TestValidateTerraformConfig_CloudCredential(t *testing.T) {
 	}
 }
 
+func TestValidateTerraformConfig_AuthCluster(t *testing.T) {
+	t.Parallel()
+
+	// No cluster authentication is valid (the module may not touch Kubernetes).
+	if err := validateDAG([]ComponentInput{tfNode(nil)}); err != nil {
+		t.Errorf("no auth cluster: unexpected error %v", err)
+	}
+
+	// Valid auth_cluster_id UUID.
+	good := tfNode(map[string]string{terraformConfigAuthClusterID: uuid.New().String()})
+	if err := validateDAG([]ComponentInput{good}); err != nil {
+		t.Errorf("valid auth_cluster_id: unexpected error %v", err)
+	}
+
+	// Non-UUID auth_cluster_id → ErrInvalidConfig.
+	bad := tfNode(map[string]string{terraformConfigAuthClusterID: "not-a-uuid"})
+	if err := validateDAG([]ComponentInput{bad}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("bad auth_cluster_id: expected ErrInvalidConfig, got %v", err)
+	}
+}
+
 func TestValidateTerraformConfig_Flags(t *testing.T) {
 	t.Parallel()
 

@@ -25,8 +25,9 @@ them in the right order, in parallel where the order allows it.
    - For a **Manifest** component, the Git repository, branch or tag, and the
      path to the manifests to apply.
    - For an **OpenTofu** component, the Git repository, branch or tag, and the
-     working path holding your OpenTofu files, plus the state backend — see
-     [OpenTofu components](#opentofu-components).
+     working path holding your OpenTofu files, plus the state backend — and,
+     for code that creates Kubernetes resources, optional **cluster
+     authentication** — see [OpenTofu components](#opentofu-components).
    - **Target cluster** and **target namespace** — optional per-step overrides.
      Leave them blank to use the application's defaults; set them to send a
      particular step to a different cluster or namespace.
@@ -92,6 +93,44 @@ Moving an existing state from DynamoDB locking to the automatic kind: pick
 OpenTofu 1.10 or newer and keep the lock table named for as long as anything
 else (CI, laptops) still locks that state via DynamoDB — both locks are held
 together. Once nothing else uses the table, clear the field.
+
+### Cluster authentication
+
+If your OpenTofu code creates Kubernetes resources — through the `kubernetes`,
+`helm`, or `kubectl` provider — set **Cluster authentication** on the
+component: pick one of your registered clusters, and the run makes ready-to-use
+access to it available to your code. No kubeconfig in your repository, no
+cluster credentials in variables — Spacefleet prepares the connection from the
+cluster's registration, fresh for the plan step and again for the apply (for a
+cluster registered through a cloud provider, that means a short-lived token
+minted just before each step runs).
+
+For the providers to pick it up, leave the provider block in your code
+unconfigured:
+
+```hcl
+provider "kubernetes" {}
+```
+
+The run points the standard `KUBE_CONFIG_PATH` environment variable at the
+prepared connection, which the `kubernetes`, `helm`, and `kubectl` providers
+all read automatically. A provider block that hardcodes a `config_path`,
+`host`, or context overrides it — and with nothing set and no cluster
+authentication attached, a provider that needs a cluster simply fails, so a
+module never silently talks to the wrong one.
+
+Two things to know:
+
+- **It is not a deploy target.** Unlike a Helm or Manifest step, an OpenTofu
+  step doesn't deploy *into* a cluster — what your code creates, and where, is
+  entirely up to the code. Cluster authentication only supplies credentials;
+  pick the cluster your providers are meant to talk to.
+- **In-cluster registrations only work from their own cluster.** A cluster
+  registered with the **In-cluster** method can be used for cluster
+  authentication only when the application's runner cluster is that same
+  cluster — otherwise the run fails up front with an error saying so. To use
+  the cluster from any runner, register it with another method (a token, a
+  kubeconfig, or your cloud provider).
 
 ## Run the workflow
 

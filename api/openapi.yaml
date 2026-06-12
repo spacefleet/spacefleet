@@ -3017,6 +3017,14 @@ components:
             `cloud_credential_id` is the UUID of an AWS cloud credential the run
             signs in with (state backend + the module's AWS providers); empty
             uses the runner's own role.
+            `auth_cluster_id` optionally attaches **cluster authentication**:
+            the UUID of a registered cluster the run prepares ready-to-use
+            Kubernetes authentication for. The run mounts a connection file for
+            that cluster and points the standard `KUBE_CONFIG_PATH` environment
+            variable at it, so Kubernetes-backed providers (kubernetes, helm,
+            kubectl) in the module authenticate without any provider
+            configuration in code. This is not a deploy target —
+            `target_cluster_id` stays null for terraform.
             `init_flags`/`plan_flags`/`apply_flags` are optional JSON arrays of
             extra CLI flag tokens appended to `tofu init`/`plan`/`apply` (one whole
             argument per element, e.g. `["-var=env=prod","-target=aws_instance.web"]`);

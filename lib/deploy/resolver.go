@@ -181,9 +181,9 @@ func (r *Resolver) Resolve(ctx context.Context, in RunInputs) (Resolved, error) 
 	}
 
 	// Build + inject the target cluster's kubeconfig only when a target is set.
-	// A terraform component has no cluster target (TargetClusterID is uuid.Nil):
-	// it gets no kubeconfig and must use an explicit state backend. Helm/manifest
-	// always pass a real target.
+	// Helm/manifest always pass a real target; a terraform component passes one
+	// only when cluster authentication (auth_cluster_id) is attached — otherwise
+	// it gets no kubeconfig.
 	if in.TargetClusterID != uuid.Nil {
 		targetConn, err := r.conns.ConnForTekton(ctx, in.OrgID, in.TargetClusterID)
 		if err != nil {
@@ -193,6 +193,15 @@ func (r *Resolver) Resolve(ctx context.Context, in RunInputs) (Resolved, error) 
 		// deploys to, so the injected kubeconfig must use the in-cluster API server
 		// address rather than the registered (possibly host-only) endpoint.
 		sameCluster := in.RunnerClusterID == in.TargetClusterID
+		// An in_cluster registration serializes the app's own ServiceAccount
+		// token with the host rewritten to kubernetes.default.svc — a kubeconfig
+		// that only works from inside that same cluster. On any other runner it
+		// would dial the runner's own API server with a foreign token, so fail
+		// here with an actionable error instead of a confusing mid-step TLS/auth
+		// failure in the pod.
+		if targetConn.Method == k8s.MethodInCluster && !sameCluster {
+			return Resolved{}, fmt.Errorf("deploy: the target cluster's %q connection only works from a runner on that same cluster — use that cluster registration as the runner too, or register the cluster with a portable method (token, kubeconfig, eks, gke, aks)", k8s.MethodInCluster)
+		}
 		kubeconfig, err := k8s.Kubeconfig(ctx, targetConn, sameCluster)
 		if err != nil {
 			return Resolved{}, err

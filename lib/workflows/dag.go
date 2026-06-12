@@ -222,6 +222,17 @@ const (
 	// env. Optional (the runner may authenticate via an instance/IRSA role
 	// instead). Not a secret — not redacted in lib/api/workflow.go.
 	terraformConfigCloudCredentialID = "cloud_credential_id"
+	// terraformConfigAuthClusterID optionally names a registered org cluster (a
+	// UUID) whose authentication is made available to the run — "cluster
+	// authentication" in the UI, for a module that drives Kubernetes-backed
+	// providers (kubernetes/helm/kubectl). The resolver builds that cluster's
+	// portable kubeconfig (minting any cloud token per attempt, exactly as a
+	// helm target) and the script points KUBE_CONFIG_PATH at it. Internally it
+	// rides the resolver's TargetClusterID path (see planTofu), but it is
+	// deliberately NOT the node-level target_cluster_id — a terraform component
+	// still has no deploy target; this only attaches auth. Not a secret — not
+	// redacted in lib/api/workflow.go.
+	terraformConfigAuthClusterID = "auth_cluster_id"
 	// terraformConfigVersion selects the OpenTofu release line the component
 	// runs (e.g. "1.12"); see lib/tofu's Version registry for the supported
 	// list. Optional — empty runs the default line (tofu.DefaultVersion), so
@@ -324,6 +335,14 @@ func validateTerraformConfig(n ComponentInput) error {
 	if id := n.Config[terraformConfigCloudCredentialID]; id != "" {
 		if _, err := uuid.Parse(id); err != nil {
 			return fmt.Errorf("%w: node %q (terraform) %s must be a UUID: %v", ErrInvalidConfig, n.Name, terraformConfigCloudCredentialID, err)
+		}
+	}
+	// Cluster authentication is optional — when present it must be a valid UUID
+	// (whether it names a real org cluster is resolved at run time, like the
+	// cloud credential above).
+	if id := n.Config[terraformConfigAuthClusterID]; id != "" {
+		if _, err := uuid.Parse(id); err != nil {
+			return fmt.Errorf("%w: node %q (terraform) %s must be a UUID: %v", ErrInvalidConfig, n.Name, terraformConfigAuthClusterID, err)
 		}
 	}
 	// Optional per-command flag lists, each a JSON array of strings — reject a

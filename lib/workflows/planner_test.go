@@ -335,6 +335,72 @@ func TestPlanTofuProvisionsHandover(t *testing.T) {
 	}
 }
 
+// tokenConns resolves every cluster to a portable token-method connection so
+// the resolver can build (never dial) a kubeconfig for it. The endpoint is a
+// public host (the default endpoint policy rejects private/loopback).
+type tokenConns struct{}
+
+func (tokenConns) ConnForTekton(context.Context, uuid.UUID, uuid.UUID) (k8s.Connection, error) {
+	return k8s.Connection{
+		Method:      k8s.MethodToken,
+		Endpoint:    "https://api.example.com",
+		Credentials: []byte("a-bearer-token"),
+	}, nil
+}
+
+// TestPlanTofuClusterAuth: an auth_cluster_id on the component rides the
+// resolver's target path — the injected Files carry that cluster's kubeconfig
+// and the script exports KUBE_CONFIG_PATH for the module's Kubernetes-backed
+// providers. Without it, nothing kubeconfig-shaped reaches the step (the
+// pre-existing behavior).
+func TestPlanTofuClusterAuth(t *testing.T) {
+	t.Parallel()
+	runID, planID := uuid.New(), uuid.New()
+	app := &ent.Application{ID: uuid.New(), OrganizationID: uuid.New(), RunnerClusterID: uuid.New()}
+	w := &WorkflowRunWorker{
+		resolver:       deploy.NewResolver(tokenConns{}, nil, nil, nil, nil),
+		ensureHandover: func(context.Context, k8s.Connection, string, string, map[string]string) error { return nil },
+	}
+
+	withAuth := GraphNode{
+		ID: planID, ComponentID: planID, Name: "net", Type: TypeTerraform,
+		Config: map[string]string{
+			terraformConfigCommand:       terraformCommandPlan,
+			terraformConfigBackend:       tofu.BackendS3,
+			terraformConfigAuthClusterID: uuid.New().String(),
+		},
+	}
+	req, err := w.planTofu(context.Background(), app, withAuth, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: withAuth})
+	if err != nil {
+		t.Fatalf("planTofu(with auth): %v", err)
+	}
+	if _, ok := req.Spec.Files[helm.KubeconfigFile]; !ok {
+		t.Errorf("cluster auth must inject the kubeconfig file, got Files keys %v", req.Spec.Files)
+	}
+	const exportLine = "export KUBE_CONFIG_PATH='/workspace/creds/kubeconfig'"
+	if !strings.Contains(req.Spec.Script, exportLine) {
+		t.Errorf("script must export KUBE_CONFIG_PATH\n---\n%s", req.Spec.Script)
+	}
+
+	withoutAuth := GraphNode{
+		ID: planID, ComponentID: planID, Name: "net", Type: TypeTerraform,
+		Config: map[string]string{
+			terraformConfigCommand: terraformCommandPlan,
+			terraformConfigBackend: tofu.BackendS3,
+		},
+	}
+	req, err = w.planTofu(context.Background(), app, withoutAuth, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: withoutAuth})
+	if err != nil {
+		t.Fatalf("planTofu(without auth): %v", err)
+	}
+	if _, ok := req.Spec.Files[helm.KubeconfigFile]; ok {
+		t.Errorf("no cluster auth must inject no kubeconfig, got Files keys %v", req.Spec.Files)
+	}
+	if strings.Contains(req.Spec.Script, "KUBE_CONFIG_PATH") {
+		t.Errorf("no cluster auth must not export KUBE_CONFIG_PATH\n---\n%s", req.Spec.Script)
+	}
+}
+
 // TestPlanTofuHandoverFailure: a handover provision failure fails the planning
 // (the step would only fail later, worse — at the kubectl upsert after a full
 // plan), with the component named in the error.

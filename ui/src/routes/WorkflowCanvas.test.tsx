@@ -353,6 +353,33 @@ describe("WorkflowCanvas", () => {
     });
   });
 
+  it("the Cluster authentication select writes auth_cluster_id (not a deploy target)", async () => {
+    defaultGets([tfPlan], [], []);
+    await openTerraformEditor();
+
+    // Terraform hides the target-cluster field, so the only select offering a
+    // registered cluster is the Cluster authentication picker.
+    const auth = selectWithOption(/^prod$/);
+    expect(auth.value).toBe("");
+    await userEvent.selectOptions(auth, "c1");
+    await userEvent.click(screen.getByRole("button", { name: /save node/i }));
+    await waitFor(() => expect(mockApi.PUT).toHaveBeenCalled(), {
+      timeout: 2000,
+    });
+    const body = mockApi.PUT.mock.calls[0][1].body as {
+      components: {
+        id: string;
+        config: Record<string, string>;
+        target_cluster_id?: string | null;
+      }[];
+    };
+    const tf = body.components.find((c) => c.id === tfPlan.id);
+    expect(tf?.config.auth_cluster_id).toBe("c1");
+    // Cluster auth is config, not the node-level deploy target (the server
+    // rejects a terraform node with one).
+    expect(tf?.target_cluster_id ?? null).toBeNull();
+  });
+
   it("the OpenTofu version select adapts the locking UI and writes tofu_version", async () => {
     defaultGets([tfPlan], [], []);
     await openTerraformEditor();
