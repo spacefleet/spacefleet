@@ -34,6 +34,8 @@ const (
 	FieldRunName = "run_name"
 	// FieldLogs holds the string denoting the logs field in the database.
 	FieldLogs = "logs"
+	// FieldOutputs holds the string denoting the outputs field in the database.
+	FieldOutputs = "outputs"
 	// FieldApprovedBy holds the string denoting the approved_by field in the database.
 	FieldApprovedBy = "approved_by"
 	// FieldApprovedAt holds the string denoting the approved_at field in the database.
@@ -84,6 +86,7 @@ var Columns = []string{
 	FieldMessage,
 	FieldRunName,
 	FieldLogs,
+	FieldOutputs,
 	FieldApprovedBy,
 	FieldApprovedAt,
 	FieldChartRevision,
@@ -198,6 +201,11 @@ func ByRunName(opts ...sql.OrderTermOption) OrderOption {
 // ByLogs orders the results by the logs field.
 func ByLogs(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLogs, opts...).ToFunc()
+}
+
+// ByOutputs orders the results by the outputs field.
+func ByOutputs(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOutputs, opts...).ToFunc()
 }
 
 // ByApprovedBy orders the results by the approved_by field.

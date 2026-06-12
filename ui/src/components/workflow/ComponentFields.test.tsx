@@ -28,9 +28,13 @@ function makeComponent(
 function Harness({
   initial,
   onComponent,
+  upstreamOutputs,
+  disabled,
 }: {
   initial: EditableComponent;
   onComponent: (c: EditableComponent) => void;
+  upstreamOutputs?: string[];
+  disabled?: boolean;
 }) {
   const [component, setComponent] = useState(initial);
   return (
@@ -45,6 +49,8 @@ function Harness({
       cloudCredentials={[]}
       installations={[]}
       githubEnabled={false}
+      upstreamOutputs={upstreamOutputs}
+      disabled={disabled}
     />
   );
 }
@@ -88,6 +94,55 @@ describe("terraform extra-flags editors", () => {
 
     await userEvent.type(box, "-parallelism=20");
     expect(last?.config.plan_flags).toBe(JSON.stringify(["-parallelism=20"]));
+  });
+});
+
+describe("outputs reference helper", () => {
+  it("inserts a components reference stub into the values and the namespace", async () => {
+    let last: EditableComponent | undefined;
+    render(
+      <Harness
+        initial={makeComponent({
+          type: "helm",
+          config: { values: "replicaCount: 2\n" },
+          target_namespace: "apps-",
+        })}
+        onComponent={(c) => (last = c)}
+        upstreamOutputs={["infra"]}
+      />,
+    );
+
+    // One insert button under the values textarea, one under the namespace.
+    const buttons = screen.getAllByRole("button", { name: "infra" });
+    expect(buttons).toHaveLength(2);
+
+    await userEvent.click(buttons[0]);
+    expect(last?.config.values).toBe(
+      "replicaCount: 2\n${{ components.infra.outputs. }}",
+    );
+
+    await userEvent.click(screen.getAllByRole("button", { name: "infra" })[1]);
+    expect(last?.target_namespace).toBe("apps-${{ components.infra.outputs. }}");
+  });
+
+  it("renders nothing without upstream OpenTofu components or for a viewer", () => {
+    const { rerender } = render(
+      <Harness
+        initial={makeComponent({ type: "helm" })}
+        onComponent={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/Insert an output reference/)).toBeNull();
+
+    rerender(
+      <Harness
+        initial={makeComponent({ type: "helm" })}
+        onComponent={() => {}}
+        upstreamOutputs={["infra"]}
+        disabled
+      />,
+    );
+    expect(screen.queryByText(/Insert an output reference/)).toBeNull();
   });
 });
 

@@ -280,6 +280,15 @@ func deriveApplyID(componentID uuid.UUID) uuid.UUID {
 	return uuid.NewSHA1(tofuExecNamespace, append([]byte("tofu-apply:"), componentID[:]...))
 }
 
+// Display-name suffixes expandExecutionNodes appends to an OpenTofu component's
+// plan/apply units. tofuApplyUnitID trims the apply suffix back off to recover
+// the authored component name a ${{ components.<name>.* }} reference uses, so
+// the two must stay one definition.
+const (
+	tofuPlanNameSuffix  = " · plan"
+	tofuApplyNameSuffix = " · apply"
+)
+
 // expandExecutionNodes turns the authored snapshot nodes into the per-run
 // execution units the scheduler/planner consume. Every node passes through
 // unchanged except an OpenTofu (terraform) component, which splits into two:
@@ -331,7 +340,7 @@ func expandExecutionNodes(nodes []GraphNode) []GraphNode {
 
 		plan := n
 		plan.ID = n.ID
-		plan.Name = n.Name + " · plan"
+		plan.Name = n.Name + tofuPlanNameSuffix
 		plan.DependsOn = remap(n.DependsOn)
 		plan.RequiresApproval = false
 		plan.ContinueOnFailure = false
@@ -339,7 +348,7 @@ func expandExecutionNodes(nodes []GraphNode) []GraphNode {
 
 		apply := n
 		apply.ID = applyID
-		apply.Name = n.Name + " · apply"
+		apply.Name = n.Name + tofuApplyNameSuffix
 		apply.DependsOn = []uuid.UUID{n.ID}
 		apply.RequiresApproval = n.RequiresApproval
 		apply.ContinueOnFailure = n.ContinueOnFailure
@@ -663,6 +672,70 @@ func (s *Service) SettleStuckComponentRuns(ctx context.Context, orgID, runID uui
 		SetMessage(message).
 		SetFinishedAt(time.Now()).
 		Save(ctx)
+}
+
+// ResolveComponentOutputs returns the persisted `tofu output -json` JSON for
+// one execution unit (a terraform apply unit's component_id), for the
+// ${{ components.* }} render context: the unit's succeeded-with-outputs row in
+// the given run when there is one, else the latest succeeded row with outputs
+// across runs — "latest" is a query, not a column (the per-run storage
+// decision); the fallback is what previews and partial runs resolve against.
+// Returns "" when neither exists (the planner turns that into an actionable
+// node failure). Org-scoped like every service query — the org id, not the
+// component id alone, is the tenancy boundary.
+func (s *Service) ResolveComponentOutputs(ctx context.Context, orgID, runID, componentID uuid.UUID) (string, error) {
+	// This run first: the dependency settled before the referencing node planned,
+	// so its outputs (if any) are already persisted on its row in the same run.
+	cr, err := s.ent.ComponentRun.Query().
+		Where(
+			componentrun.OrganizationID(orgID),
+			componentrun.WorkflowRunID(runID),
+			componentrun.ComponentID(componentID),
+			componentrun.StatusEQ(componentrun.StatusSucceeded),
+			componentrun.OutputsNEQ(""),
+		).
+		First(ctx)
+	if err == nil {
+		return cr.Outputs, nil
+	}
+	if !ent.IsNotFound(err) {
+		return "", err
+	}
+	// Fallback: the most recent successful outputs for this unit across runs
+	// (served by the component_runs_latest_outputs partial index).
+	cr, err = s.ent.ComponentRun.Query().
+		Where(
+			componentrun.OrganizationID(orgID),
+			componentrun.ComponentID(componentID),
+			componentrun.StatusEQ(componentrun.StatusSucceeded),
+			componentrun.OutputsNEQ(""),
+		).
+		Order(ent.Desc(componentrun.FieldFinishedAt)).
+		First(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return cr.Outputs, nil
+}
+
+// SetComponentRunOutputs persists the structured outputs a terraform apply
+// step handed back through its handover Secret (tofu's `output -json` JSON),
+// written when the step settles succeeded on a deploy run. Org-scoped.
+func (s *Service) SetComponentRunOutputs(ctx context.Context, orgID, componentRunID uuid.UUID, outputs string) error {
+	affected, err := s.ent.ComponentRun.Update().
+		Where(componentrun.OrganizationID(orgID), componentrun.ID(componentRunID)).
+		SetOutputs(outputs).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return &ent.NotFoundError{}
+	}
+	return nil
 }
 
 // SetComponentRunLogs persists a component run's captured output and resolved

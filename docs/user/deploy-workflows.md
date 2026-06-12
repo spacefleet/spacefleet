@@ -45,6 +45,11 @@ They are stored with the application and are only shown back to members who can
 edit the application; members with view-only access see the rest of a step's
 configuration but not its values.
 
+The values, release name, and target namespace can also embed `${{ ... }}`
+references — your variables (`${{ vars.CUSTOMER_ID }}`) and the run's context,
+like the commit being deployed (`${{ run.git_sha_short }}`) — filled in when a
+run starts. See [Variables in component configuration](variable-interpolation.md).
+
 ## OpenTofu components
 
 An OpenTofu component runs your infrastructure code with
@@ -131,6 +136,23 @@ Two things to know:
   cluster — otherwise the run fails up front with an error saying so. To use
   the cluster from any runner, register it with another method (a token, a
   kubeconfig, or your cloud provider).
+
+### Captured outputs
+
+After a successful apply on a **Deploy** run, the module's
+[output values](https://opentofu.org/docs/language/values/outputs/) are
+captured and kept with that run. Select the apply step in the run view and open
+its **Outputs** tab to see them.
+
+Outputs your module marks `sensitive = true` are masked by default: members who
+can edit the application can reveal a value with the eye toggle; everyone else
+sees only that the output exists. Output values — sensitive ones included —
+never appear in the step's logs.
+
+Captured outputs can also be **referenced by downstream Helm components** —
+for example, deploying into a namespace the OpenTofu step provisioned — with
+`${{ components.<name>.outputs.<key> }}`. See
+[Variables in component configuration](variable-interpolation.md).
 
 ## Run the workflow
 

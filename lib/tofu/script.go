@@ -109,6 +109,21 @@ const (
 // the PlanArtifactSecret.
 const PlanfileName = "tfplan"
 
+// OutputsFile is the local filename a deploy apply node saves
+// `tofu output -json` to after a successful apply. The JSON is never echoed to
+// stdout: `-json` does not redact sensitive output values, and the step logs
+// are persisted and live-streamed — the outputs travel back to the worker only
+// through the handover Secret (see OutputsKey).
+const OutputsFile = "sf-outputs.json"
+
+// OutputsKey is the key the captured outputs JSON is upserted under inside the
+// PlanArtifactSecret after a successful deploy apply — the planfile in there is
+// spent by then, so the Secret's last job is carrying the outputs back. The
+// worker reads this key when the apply node settles succeeded, persists it on
+// the component_run row, then deletes the Secret; that is why the deploy path
+// has no in-script delete (destroy keeps it — a destroy captures nothing).
+const OutputsKey = "outputs"
+
 // BackendS3 names the Amazon S3 state backend — the only supported backend
 // type today (the workflow validation enforces it; more types will join this
 // list). The backend is always managed by Spacefleet: the script writes a
@@ -294,7 +309,15 @@ func Script(a Apply) string {
 		b.WriteString("tofu apply -no-color")
 		appendFlags(&b, a.ApplyFlags)
 		fmt.Fprintf(&b, " %s\n", PlanfileName)
-		b.WriteString(deletePlanfileSecret(a))
+		if destroy {
+			// A destroy captures no outputs, so the planfile Secret has served its
+			// purpose — the in-script cleanup stays on this path.
+			b.WriteString(deletePlanfileSecret(a))
+		} else {
+			// A deploy hands the module's outputs back through the same Secret; the
+			// worker deletes it after reading them, so no in-script delete here.
+			b.WriteString(storeOutputs(a))
+		}
 	default:
 		// plan node, or any preview: a read-only plan. The stdout is the review
 		// material captured as the component_run logs. A non-preview plan node also
@@ -361,12 +384,34 @@ func restorePlanfile(a Apply) string {
 	return b.String()
 }
 
-// deletePlanfileSecret emits the best-effort cleanup an apply node runs after a
-// successful apply — the planfile has served its purpose, and deleting the
-// Secret garbage-collects the pair's ServiceAccount/Role/RoleBinding through
-// their ownerReferences. --ignore-not-found keeps it idempotent; cleanup
-// failure does not fail the step (the apply already succeeded) — the worker
-// sweeps any leftover when the run settles terminal.
+// storeOutputs emits the lines a deploy apply node runs after a successful
+// apply to hand the module's outputs back to the worker: save
+// `tofu output -json` to a local file — never to stdout, since `-json` does not
+// redact sensitive output values and the step logs are persisted and
+// live-streamed — then upsert it into the handover Secret under OutputsKey (the
+// same idempotent get+patch upsert storePlanfile uses, covered by the pod's
+// pinned Role; kubectl is already installed by the restore above). Both lines
+// tolerate failure (`||`): the apply already succeeded, so a capture hiccup
+// must not fail the step — the worker just finds no outputs. The Secret is not
+// deleted here: the worker deletes it after reading the outputs, and the
+// terminal sweep remains the backstop.
+func storeOutputs(a Apply) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "tofu output -json > %s || echo '{}' > %s\n", OutputsFile, OutputsFile)
+	fmt.Fprintf(&b, "kubectl create secret generic %s --namespace %s --from-file=%s=%s --dry-run=client -o yaml | kubectl apply --namespace %s -f - || echo 'warning: failed to store outputs' >&2\n",
+		shQuote(a.PlanArtifactSecret), shQuote(a.Namespace), OutputsKey, OutputsFile, shQuote(a.Namespace))
+	return b.String()
+}
+
+// deletePlanfileSecret emits the best-effort cleanup an uninstall (destroy)
+// apply node runs after a successful apply — the planfile has served its
+// purpose and a destroy hands back no outputs, so deleting the Secret
+// garbage-collects the pair's ServiceAccount/Role/RoleBinding through their
+// ownerReferences. --ignore-not-found keeps it idempotent; cleanup failure
+// does not fail the step (the apply already succeeded) — the worker sweeps any
+// leftover when the run settles terminal. A deploy apply skips this: its
+// Secret carries the captured outputs, which the worker reads and then
+// deletes.
 func deletePlanfileSecret(a Apply) string {
 	return fmt.Sprintf("kubectl delete secret %s --namespace %s --ignore-not-found || true\n",
 		shQuote(a.PlanArtifactSecret), shQuote(a.Namespace))

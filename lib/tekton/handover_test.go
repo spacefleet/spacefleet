@@ -129,6 +129,30 @@ func TestDeleteHandoverSecret(t *testing.T) {
 	}
 }
 
+// TestReadHandoverSecretKey: a present key returns its bytes; a missing key or
+// a missing Secret returns nil without an error (both are normal — the in-pod
+// capture is best-effort), distinct from a real API failure.
+func TestReadHandoverSecretKey(t *testing.T) {
+	cs := fake.NewSimpleClientset(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "tfplan-run1-plan1", Namespace: "default"},
+		Data:       map[string][]byte{"outputs": []byte(`{"namespace":{"value":"a"}}`)},
+	})
+	got, err := readHandoverSecretKey(context.Background(), cs, "default", "tfplan-run1-plan1", "outputs")
+	if err != nil {
+		t.Fatalf("readHandoverSecretKey: %v", err)
+	}
+	if string(got) != `{"namespace":{"value":"a"}}` {
+		t.Errorf("outputs = %q, want the stored bytes", got)
+	}
+
+	if got, err := readHandoverSecretKey(context.Background(), cs, "default", "tfplan-run1-plan1", "absent"); err != nil || got != nil {
+		t.Errorf("missing key = (%q, %v), want (nil, nil)", got, err)
+	}
+	if got, err := readHandoverSecretKey(context.Background(), cs, "default", "no-such-secret", "outputs"); err != nil || got != nil {
+		t.Errorf("missing secret = (%q, %v), want (nil, nil)", got, err)
+	}
+}
+
 // assertOwnedBySecret asserts the object carries exactly one ownerReference,
 // pointing at the handover Secret, so deleting the Secret GCs it.
 func assertOwnedBySecret(t *testing.T, kind string, refs []metav1.OwnerReference, uid types.UID) {

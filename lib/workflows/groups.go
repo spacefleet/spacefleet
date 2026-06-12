@@ -191,8 +191,11 @@ func validateWorkflow(components []ComponentInput, groups []GroupInput) error {
 		return err
 	}
 
-	// The plan→apply structure an OpenTofu deployment needs is no longer authored
-	// (it's synthesized per run by expandExecutionNodes), so there's nothing
-	// terraform-specific to validate on the authored graph here.
-	return nil
+	// components.<name>.outputs.* references are a cross-node property (name
+	// resolution + depends_on ancestry over the expanded graph), so they're
+	// validated here rather than in the per-node config checks. The plan→apply
+	// structure an OpenTofu deployment needs is no longer authored (it's
+	// synthesized per run by expandExecutionNodes), so this is the only
+	// graph-level check beyond the cycle detection.
+	return validateOutputRefs(components, expanded)
 }

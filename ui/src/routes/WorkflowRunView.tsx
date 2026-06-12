@@ -19,6 +19,8 @@ import {
   ArrowLeft,
   Ban,
   Check,
+  Eye,
+  EyeOff,
   Maximize2,
   Minimize2,
   X,
@@ -39,6 +41,7 @@ import { RunStatusBadge } from "../components/workflow/status";
 type WorkflowRunDetail = components["schemas"]["WorkflowRunDetail"];
 type ComponentRun = components["schemas"]["ComponentRun"];
 type ComponentRunDetail = components["schemas"]["ComponentRunDetail"];
+type ComponentRunOutput = components["schemas"]["ComponentRunOutput"];
 type ComponentType = components["schemas"]["ComponentType"];
 type ComponentRunStatus = components["schemas"]["ComponentRunStatus"];
 type RunStatus = components["schemas"]["RunStatus"];
@@ -421,7 +424,7 @@ function ComponentRunPanel({
   // For preview runs the diff is what the user came to inspect, so it leads; a
   // parked apply step opens on its plan output (the thing being approved);
   // everything else opens on logs. (The panel remounts per selection via key.)
-  const [tab, setTab] = useState<"logs" | "diff" | "plan">(
+  const [tab, setTab] = useState<"logs" | "diff" | "plan" | "outputs">(
     isPreview
       ? "diff"
       : planRun && liveStatus === "awaiting_approval"
@@ -432,6 +435,12 @@ function ComponentRunPanel({
   // The gate is live (open) only while the step is parked. Once the stream folds
   // a resumed status in, liveStatus changes and the buttons drop away.
   const awaitingApproval = liveStatus === "awaiting_approval";
+
+  // Captured OpenTofu outputs (a terraform apply step settled on a deploy run),
+  // sorted by name for a stable display. Empty for every other step.
+  const outputEntries = Object.entries(detail?.outputs ?? {}).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
 
   const decide = useCallback(
     async (decision: "approve" | "reject") => {
@@ -617,8 +626,8 @@ function ComponentRunPanel({
           )}
 
           {/* Preview runs get a Diff/Logs tab pair, a tofu apply step a
-              Plan output/Logs pair, so each view spans the whole panel; other
-              runs are logs-only with no tab chrome. */}
+              Plan output(/Outputs)/Logs set, so each view spans the whole
+              panel; other runs are logs-only with no tab chrome. */}
           {isPreview && (
             <div className="flex items-center gap-4 border-b border-neutral-200 px-4">
               <TabButton active={tab === "diff"} onClick={() => setTab("diff")}>
@@ -630,11 +639,21 @@ function ComponentRunPanel({
               </TabButton>
             </div>
           )}
-          {planRun && (
+          {!isPreview && (planRun || outputEntries.length > 0) && (
             <div className="flex items-center gap-4 border-b border-neutral-200 px-4">
-              <TabButton active={tab === "plan"} onClick={() => setTab("plan")}>
-                Plan output
-              </TabButton>
+              {planRun && (
+                <TabButton active={tab === "plan"} onClick={() => setTab("plan")}>
+                  Plan output
+                </TabButton>
+              )}
+              {outputEntries.length > 0 && (
+                <TabButton
+                  active={tab === "outputs"}
+                  onClick={() => setTab("outputs")}
+                >
+                  Outputs
+                </TabButton>
+              )}
               <TabButton active={tab === "logs"} onClick={() => setTab("logs")}>
                 Logs
               </TabButton>
@@ -658,6 +677,8 @@ function ComponentRunPanel({
                   ? `Loading plan output from ${planRun.name}…`
                   : planLogs || "No plan output was captured."}
               </pre>
+            ) : outputEntries.length > 0 && tab === "outputs" ? (
+              <OutputsTable entries={outputEntries} />
             ) : (
               <pre className="h-full w-full overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-100">
                 {detail.logs || "No logs were captured for this step."}
@@ -692,6 +713,97 @@ function TabButton({
       {children}
     </button>
   );
+}
+
+// OutputsTable lists the OpenTofu outputs captured from a settled apply step.
+// A sensitive output is masked by default; when the API sent its value (it
+// omits sensitive values for callers below editor), an eye toggle reveals and
+// re-masks it — a viewer sees only the masked entry, with nothing to reveal.
+function OutputsTable({
+  entries,
+}: {
+  entries: [string, ComponentRunOutput][];
+}) {
+  const [revealed, setRevealed] = useState<Set<string>>(new Set());
+  const toggle = (name: string) =>
+    setRevealed((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  return (
+    <div className="h-full overflow-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
+            <th className="px-2 py-1.5 font-medium">Output</th>
+            <th className="w-full px-2 py-1.5 font-medium">Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map(([name, output]) => {
+            const masked = output.sensitive && !revealed.has(name);
+            // The API omits a sensitive value below editor — then there is
+            // nothing to reveal.
+            const revealable =
+              output.sensitive &&
+              output.value !== undefined &&
+              output.value !== null;
+            return (
+              <tr key={name} className="border-b border-neutral-100 align-top">
+                <td className="whitespace-nowrap px-2 py-1.5 font-mono text-xs text-neutral-900">
+                  {name}
+                </td>
+                <td className="px-2 py-1.5">
+                  <span className="inline-flex items-center gap-2">
+                    {masked ? (
+                      <span className="font-mono text-xs text-neutral-400">
+                        ••••••••
+                      </span>
+                    ) : (
+                      <span className="break-all font-mono text-xs text-neutral-900">
+                        {formatOutputValue(output.value)}
+                      </span>
+                    )}
+                    {revealable && (
+                      <button
+                        type="button"
+                        onClick={() => toggle(name)}
+                        aria-label={
+                          masked ? `Reveal ${name}` : `Mask ${name}`
+                        }
+                        title={
+                          masked
+                            ? "Reveal this sensitive value"
+                            : "Mask this value again"
+                        }
+                        className="p-0.5 text-neutral-400 hover:text-neutral-900"
+                      >
+                        {masked ? (
+                          <Eye className="h-3.5 w-3.5" />
+                        ) : (
+                          <EyeOff className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    )}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// formatOutputValue renders one output value: strings bare, everything else
+// (numbers, booleans, lists, objects) as compact JSON.
+function formatOutputValue(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value;
+  return JSON.stringify(value);
 }
 
 function ChangesBadge({ hasChanges }: { hasChanges?: boolean }) {

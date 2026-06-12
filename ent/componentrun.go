@@ -38,6 +38,8 @@ type ComponentRun struct {
 	RunName string `json:"run_name,omitempty"`
 	// Logs holds the value of the "logs" field.
 	Logs string `json:"logs,omitempty"`
+	// Outputs holds the value of the "outputs" field.
+	Outputs string `json:"outputs,omitempty"`
 	// ApprovedBy holds the value of the "approved_by" field.
 	ApprovedBy string `json:"approved_by,omitempty"`
 	// ApprovedAt holds the value of the "approved_at" field.
@@ -98,7 +100,7 @@ func (*ComponentRun) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case componentrun.FieldName, componentrun.FieldType, componentrun.FieldStatus, componentrun.FieldMessage, componentrun.FieldRunName, componentrun.FieldLogs, componentrun.FieldApprovedBy, componentrun.FieldChartRevision, componentrun.FieldValuesRevision:
+		case componentrun.FieldName, componentrun.FieldType, componentrun.FieldStatus, componentrun.FieldMessage, componentrun.FieldRunName, componentrun.FieldLogs, componentrun.FieldOutputs, componentrun.FieldApprovedBy, componentrun.FieldChartRevision, componentrun.FieldValuesRevision:
 			values[i] = new(sql.NullString)
 		case componentrun.FieldApprovedAt, componentrun.FieldCreatedAt, componentrun.FieldStartedAt, componentrun.FieldFinishedAt, componentrun.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -178,6 +180,12 @@ func (_m *ComponentRun) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field logs", values[i])
 			} else if value.Valid {
 				_m.Logs = value.String
+			}
+		case componentrun.FieldOutputs:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field outputs", values[i])
+			} else if value.Valid {
+				_m.Outputs = value.String
 			}
 		case componentrun.FieldApprovedBy:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -302,6 +310,9 @@ func (_m *ComponentRun) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("logs=")
 	builder.WriteString(_m.Logs)
+	builder.WriteString(", ")
+	builder.WriteString("outputs=")
+	builder.WriteString(_m.Outputs)
 	builder.WriteString(", ")
 	builder.WriteString("approved_by=")
 	builder.WriteString(_m.ApprovedBy)

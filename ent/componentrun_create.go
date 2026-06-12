@@ -136,6 +136,20 @@ func (_c *ComponentRunCreate) SetNillableLogs(v *string) *ComponentRunCreate {
 	return _c
 }
 
+// SetOutputs sets the "outputs" field.
+func (_c *ComponentRunCreate) SetOutputs(v string) *ComponentRunCreate {
+	_c.mutation.SetOutputs(v)
+	return _c
+}
+
+// SetNillableOutputs sets the "outputs" field if the given value is not nil.
+func (_c *ComponentRunCreate) SetNillableOutputs(v *string) *ComponentRunCreate {
+	if v != nil {
+		_c.SetOutputs(*v)
+	}
+	return _c
+}
+
 // SetApprovedBy sets the "approved_by" field.
 func (_c *ComponentRunCreate) SetApprovedBy(v string) *ComponentRunCreate {
 	_c.mutation.SetApprovedBy(v)
@@ -424,6 +438,10 @@ func (_c *ComponentRunCreate) createSpec() (*ComponentRun, *sqlgraph.CreateSpec)
 		_spec.SetField(componentrun.FieldLogs, field.TypeString, value)
 		_node.Logs = value
 	}
+	if value, ok := _c.mutation.Outputs(); ok {
+		_spec.SetField(componentrun.FieldOutputs, field.TypeString, value)
+		_node.Outputs = value
+	}
 	if value, ok := _c.mutation.ApprovedBy(); ok {
 		_spec.SetField(componentrun.FieldApprovedBy, field.TypeString, value)
 		_node.ApprovedBy = value
@@ -659,6 +677,24 @@ func (u *ComponentRunUpsert) UpdateLogs() *ComponentRunUpsert {
 // ClearLogs clears the value of the "logs" field.
 func (u *ComponentRunUpsert) ClearLogs() *ComponentRunUpsert {
 	u.SetNull(componentrun.FieldLogs)
+	return u
+}
+
+// SetOutputs sets the "outputs" field.
+func (u *ComponentRunUpsert) SetOutputs(v string) *ComponentRunUpsert {
+	u.Set(componentrun.FieldOutputs, v)
+	return u
+}
+
+// UpdateOutputs sets the "outputs" field to the value that was provided on create.
+func (u *ComponentRunUpsert) UpdateOutputs() *ComponentRunUpsert {
+	u.SetExcluded(componentrun.FieldOutputs)
+	return u
+}
+
+// ClearOutputs clears the value of the "outputs" field.
+func (u *ComponentRunUpsert) ClearOutputs() *ComponentRunUpsert {
+	u.SetNull(componentrun.FieldOutputs)
 	return u
 }
 
@@ -970,6 +1006,27 @@ func (u *ComponentRunUpsertOne) UpdateLogs() *ComponentRunUpsertOne {
 func (u *ComponentRunUpsertOne) ClearLogs() *ComponentRunUpsertOne {
 	return u.Update(func(s *ComponentRunUpsert) {
 		s.ClearLogs()
+	})
+}
+
+// SetOutputs sets the "outputs" field.
+func (u *ComponentRunUpsertOne) SetOutputs(v string) *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.SetOutputs(v)
+	})
+}
+
+// UpdateOutputs sets the "outputs" field to the value that was provided on create.
+func (u *ComponentRunUpsertOne) UpdateOutputs() *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.UpdateOutputs()
+	})
+}
+
+// ClearOutputs clears the value of the "outputs" field.
+func (u *ComponentRunUpsertOne) ClearOutputs() *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.ClearOutputs()
 	})
 }
 
@@ -1467,6 +1524,27 @@ func (u *ComponentRunUpsertBulk) UpdateLogs() *ComponentRunUpsertBulk {
 func (u *ComponentRunUpsertBulk) ClearLogs() *ComponentRunUpsertBulk {
 	return u.Update(func(s *ComponentRunUpsert) {
 		s.ClearLogs()
+	})
+}
+
+// SetOutputs sets the "outputs" field.
+func (u *ComponentRunUpsertBulk) SetOutputs(v string) *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.SetOutputs(v)
+	})
+}
+
+// UpdateOutputs sets the "outputs" field to the value that was provided on create.
+func (u *ComponentRunUpsertBulk) UpdateOutputs() *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.UpdateOutputs()
+	})
+}
+
+// ClearOutputs clears the value of the "outputs" field.
+func (u *ComponentRunUpsertBulk) ClearOutputs() *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.ClearOutputs()
 	})
 }
 

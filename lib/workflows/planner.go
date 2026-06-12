@@ -44,7 +44,9 @@ const (
 func (w *WorkflowRunWorker) planComponent(ctx context.Context, app *ent.Application, node GraphNode, action string, force bool, existingRun string, runID uuid.UUID, byID map[uuid.UUID]GraphNode) (tekton.RunRequest, error) {
 	switch node.Type {
 	case TypeHelm:
-		return w.planHelm(ctx, app, node, action, force, existingRun)
+		// runID feeds the ${{ run.id }} interpolation context; byID resolves
+		// ${{ components.* }} references to their apply units in this snapshot.
+		return w.planHelm(ctx, app, node, action, force, existingRun, runID, byID)
 	case TypeManifest:
 		// force is a helm-only "roll the workload" opt-in; a manifest apply has no
 		// equivalent, so it's intentionally not threaded into planManifest.
@@ -441,9 +443,12 @@ func manifestRunPrefix(node GraphNode) string {
 // planHelm builds the helm RunSpec + runner connection for a helm component. It
 // resolves the runner/target clusters (honoring the per-component target
 // override), decodes the component's helm config, calls the shared resolver for
-// the injected Files + auth flags, and renders the script via helm.Script. force
-// is honored only for a deploy (it's meaningless for uninstall/preview).
-func (w *WorkflowRunWorker) planHelm(ctx context.Context, app *ent.Application, node GraphNode, action string, force bool, existingRun string) (tekton.RunRequest, error) {
+// the injected Files + auth flags, renders the ${{ }} interpolation references
+// in the inline values / target namespace / release name, and renders the
+// script via helm.Script. force is honored only for a deploy (it's meaningless
+// for uninstall/preview). byID (the snapshot's execution units) resolves
+// ${{ components.* }} references to the apply units whose outputs they read.
+func (w *WorkflowRunWorker) planHelm(ctx context.Context, app *ent.Application, node GraphNode, action string, force bool, existingRun string, runID uuid.UUID, byID map[uuid.UUID]GraphNode) (tekton.RunRequest, error) {
 	helmAction, err := helmActionFor(action)
 	if err != nil {
 		return tekton.RunRequest{}, err
@@ -477,16 +482,59 @@ func (w *WorkflowRunWorker) planHelm(ctx context.Context, app *ent.Application, 
 		return tekton.RunRequest{}, err
 	}
 
+	// Interpolation render pass: substitute ${{ vars.* }} / ${{ run.* }} /
+	// ${{ components.* }} references in the inline values, target namespace,
+	// and release name — the same fields for every action, preview included (a
+	// preview must diff what a deploy would deploy; its components references
+	// resolve against the latest recorded outputs, since a preview applies
+	// nothing). The vars context is the step's merged variable env; the
+	// rendered values overwrite the mounted-files entry only (the run snapshot
+	// keeps the authored placeholders — rendered strings may embed sealed
+	// variable values or sensitive outputs and are never persisted). A lookup
+	// failure (e.g. a missing variable, an upstream with no recorded outputs)
+	// fails the node here, before any TaskRun is submitted — runComponent maps
+	// the error to a failed component run.
+	renderer := &helmRenderer{
+		node: node, action: action, runID: runID,
+		vars:    mergeVars(resolved.Env, resolved.SecretEnv),
+		outputs: w.outputsLookup(ctx, app.OrganizationID, runID, byID),
+	}
+	renderedValues, _, err := renderer.render(helmFieldValues, node.Config[helmConfigValues], true)
+	if err != nil {
+		return tekton.RunRequest{}, err
+	}
+	resolved.Files[helm.ValuesFile] = renderedValues
+	targetNamespace, nsRendered, err := renderer.render(helmFieldNamespace, targetNamespace, false)
+	if err != nil {
+		return tekton.RunRequest{}, err
+	}
+	// A namespace assembled from references can render to something Kubernetes
+	// would reject — fail with the rendered value named rather than a cryptic
+	// helm error mid-step. Only a rendered namespace is checked: a literal one
+	// is the author's own, pre-existing behavior.
+	if nsRendered && !validDNSLabel(targetNamespace) {
+		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q: rendered target namespace %q is not a valid Kubernetes namespace name (lowercase alphanumerics and '-', at most 63 characters)", node.Name, targetNamespace)
+	}
+	releaseName, _, err := renderer.render(helmFieldReleaseName, componentReleaseName(node), false)
+	if err != nil {
+		return tekton.RunRequest{}, err
+	}
+
 	script := helm.Script(helm.Rollout{
 		Action:          helmAction,
 		ChartSource:     chartSource,
 		Config:          helmChartConfig(node.Config),
 		ValuesSources:   valuesSources,
-		ReleaseName:     componentReleaseName(node),
+		ReleaseName:     releaseName,
 		TargetNamespace: targetNamespace,
 		WaitTimeout:     helm.WaitTimeout(resolved.TargetMethod),
 		HasCredential:   resolved.HasCredential,
 		HasGitToken:     resolved.HasGitToken,
+		// Set when a run.git_sha* reference rendered into the values (as a
+		// sentinel): the script substitutes the clone's real SHAs after the
+		// clone. Moot for uninstall — the uninstall script never clones and
+		// reads no values.
+		RenderGitContext: renderer.gitContext,
 		// Force a workload roll only when the run opted in (the per-run Force toggle,
 		// carried on the River job args so it survives retries) and only for a deploy:
 		// an uninstall has no upgrade and a preview is a dry-run, so force is moot for

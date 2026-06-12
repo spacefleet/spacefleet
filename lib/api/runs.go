@@ -327,7 +327,7 @@ func toAPIWorkflowRunDetail(r *ent.WorkflowRun, steps []*ent.ComponentRun, canSe
 		ComponentRuns: make([]ComponentRun, len(steps)),
 	}
 	for i, cr := range steps {
-		out.ComponentRuns[i] = toAPIComponentRun(cr)
+		out.ComponentRuns[i] = toAPIComponentRun(cr, canSee)
 	}
 	if graph := redactGraph(r.Graph, canSee); graph != "" {
 		out.Graph = &graph
@@ -336,7 +336,10 @@ func toAPIWorkflowRunDetail(r *ent.WorkflowRun, steps []*ent.ComponentRun, canSe
 }
 
 // toAPIComponentRun maps a component-run row to the API list type (no logs).
-func toAPIComponentRun(cr *ent.ComponentRun) ComponentRun {
+// canSee (editor-or-above) gates the sensitive captured-output values, exactly
+// like the snapshot-config redaction — a viewer still sees that a sensitive
+// output exists, never its value.
+func toAPIComponentRun(cr *ent.ComponentRun, canSee bool) ComponentRun {
 	out := ComponentRun{
 		Id:             cr.ID,
 		Status:         ComponentRunStatus(cr.Status),
@@ -346,6 +349,7 @@ func toAPIComponentRun(cr *ent.ComponentRun) ComponentRun {
 		RunName:        optStr(cr.RunName),
 		ChartRevision:  optStr(cr.ChartRevision),
 		ValuesRevision: optStr(cr.ValuesRevision),
+		Outputs:        toAPIComponentRunOutputs(cr.Outputs, canSee),
 		CreatedAt:      cr.CreatedAt,
 		StartedAt:      cr.StartedAt,
 		FinishedAt:     cr.FinishedAt,
@@ -359,6 +363,37 @@ func toAPIComponentRun(cr *ent.ComponentRun) ComponentRun {
 		out.ApprovedBy = &cr.ApprovedBy
 	}
 	return out
+}
+
+// toAPIComponentRunOutputs maps the stored `tofu output -json` JSON (the
+// component_runs.outputs column) to the API outputs map. Sensitive values are
+// dropped for callers below editor — the sensitive flag itself survives so the
+// UI can render a masked entry. An empty column yields nil (the field is then
+// omitted); an unparseable one is withheld entirely rather than risking a leak,
+// mirroring redactGraph.
+func toAPIComponentRunOutputs(raw string, canSee bool) *map[string]ComponentRunOutput {
+	if raw == "" {
+		return nil
+	}
+	var stored map[string]struct {
+		Value     json.RawMessage `json:"value"`
+		Sensitive bool            `json:"sensitive"`
+	}
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil || len(stored) == 0 {
+		return nil
+	}
+	out := make(map[string]ComponentRunOutput, len(stored))
+	for name, o := range stored {
+		mapped := ComponentRunOutput{Sensitive: o.Sensitive}
+		if !o.Sensitive || canSee {
+			var v interface{}
+			if err := json.Unmarshal(o.Value, &v); err == nil {
+				mapped.Value = v
+			}
+		}
+		out[name] = mapped
+	}
+	return &out
 }
 
 // toAPIComponentRunDetail is toAPIComponentRun plus the captured logs and the
@@ -376,7 +411,7 @@ func toAPIComponentRun(cr *ent.ComponentRun) ComponentRun {
 // the diff field is then simply omitted. has_changes is a non-secret boolean, so
 // it is surfaced regardless of canSee.
 func toAPIComponentRunDetail(cr *ent.ComponentRun, canSee bool) ComponentRunDetail {
-	b := toAPIComponentRun(cr)
+	b := toAPIComponentRun(cr, canSee)
 	out := ComponentRunDetail{
 		Id:             b.Id,
 		ComponentId:    b.ComponentId,
@@ -387,6 +422,7 @@ func toAPIComponentRunDetail(cr *ent.ComponentRun, canSee bool) ComponentRunDeta
 		RunName:        b.RunName,
 		ChartRevision:  b.ChartRevision,
 		ValuesRevision: b.ValuesRevision,
+		Outputs:        b.Outputs,
 		CreatedAt:      b.CreatedAt,
 		StartedAt:      b.StartedAt,
 		FinishedAt:     b.FinishedAt,

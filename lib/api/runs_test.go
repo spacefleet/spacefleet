@@ -94,3 +94,77 @@ func TestComponentRunDetailRedactsBelowEditor(t *testing.T) {
 		t.Errorf("has_changes is non-secret and should still be surfaced")
 	}
 }
+
+// storedOutputs is a component_runs.outputs column value with one plain and one
+// sensitive output, in tofu's `output -json` shape.
+const storedOutputs = `{
+	"namespace": {"sensitive": false, "type": "string", "value": "customer-a"},
+	"db_password": {"sensitive": true, "type": "string", "value": "hunter2"},
+	"subnet_ids": {"sensitive": false, "type": ["list", "string"], "value": ["a", "b"]}
+}`
+
+// TestComponentRunOutputsForEditor: an editor (canSee=true) sees every captured
+// output value, sensitive included, with non-string values surviving as their
+// JSON shapes.
+func TestComponentRunOutputsForEditor(t *testing.T) {
+	t.Parallel()
+
+	cr := &ent.ComponentRun{ID: uuid.New(), Status: "succeeded", Outputs: storedOutputs}
+	out := toAPIComponentRun(cr, true)
+	if out.Outputs == nil {
+		t.Fatal("expected outputs to be populated")
+	}
+	got := *out.Outputs
+	if v, ok := got["namespace"].Value.(string); !ok || v != "customer-a" {
+		t.Errorf("namespace = %#v, want \"customer-a\"", got["namespace"].Value)
+	}
+	if v, ok := got["db_password"].Value.(string); !ok || v != "hunter2" || !got["db_password"].Sensitive {
+		t.Errorf("db_password = %#v (sensitive=%v), want the value visible to an editor", got["db_password"].Value, got["db_password"].Sensitive)
+	}
+	if v, ok := got["subnet_ids"].Value.([]interface{}); !ok || len(v) != 2 {
+		t.Errorf("subnet_ids = %#v, want a two-element list", got["subnet_ids"].Value)
+	}
+
+	// The detail mapper carries the same outputs through.
+	detail := toAPIComponentRunDetail(cr, true)
+	if detail.Outputs == nil || len(*detail.Outputs) != 3 {
+		t.Errorf("detail outputs = %v, want the same 3 entries", detail.Outputs)
+	}
+}
+
+// TestComponentRunOutputsRedactedBelowEditor: a viewer (canSee=false) still
+// sees that each output exists — name and sensitive flag — but a sensitive
+// output's value is dropped, mirroring the inline-values redaction rule.
+func TestComponentRunOutputsRedactedBelowEditor(t *testing.T) {
+	t.Parallel()
+
+	cr := &ent.ComponentRun{ID: uuid.New(), Status: "succeeded", Outputs: storedOutputs}
+	out := toAPIComponentRun(cr, false)
+	if out.Outputs == nil {
+		t.Fatal("expected outputs to be present (only sensitive values are dropped)")
+	}
+	got := *out.Outputs
+	if v, ok := got["namespace"].Value.(string); !ok || v != "customer-a" {
+		t.Errorf("non-sensitive namespace = %#v, want \"customer-a\"", got["namespace"].Value)
+	}
+	if got["db_password"].Value != nil {
+		t.Errorf("sensitive value must be dropped below editor, got %#v", got["db_password"].Value)
+	}
+	if !got["db_password"].Sensitive {
+		t.Error("the sensitive flag itself must survive so the UI can mask the entry")
+	}
+}
+
+// TestComponentRunOutputsEmptyAndUnparseable: an empty column omits the field;
+// a column that doesn't parse is withheld entirely (never passed through raw).
+func TestComponentRunOutputsEmptyAndUnparseable(t *testing.T) {
+	t.Parallel()
+
+	if out := toAPIComponentRun(&ent.ComponentRun{ID: uuid.New(), Status: "succeeded"}, true); out.Outputs != nil {
+		t.Errorf("empty column should omit outputs, got %v", out.Outputs)
+	}
+	cr := &ent.ComponentRun{ID: uuid.New(), Status: "succeeded", Outputs: "not json"}
+	if out := toAPIComponentRun(cr, true); out.Outputs != nil {
+		t.Errorf("unparseable column should be withheld, got %v", out.Outputs)
+	}
+}

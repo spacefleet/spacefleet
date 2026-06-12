@@ -55,6 +55,14 @@ func (ComponentRun) Fields() []ent.Field {
 		// The captured output, persisted when the step reaches a terminal phase (the
 		// runner pod is then garbage-collected, so this is the durable copy).
 		field.Text("logs").Optional(),
+		// Structured outputs captured from a terraform apply step that succeeded on
+		// a deploy run — tofu's `output -json` shape, a JSON object
+		// {"<name>": {"value": <json>, "type": <json>, "sensitive": bool}}. Empty
+		// for every other step. Carried back from the pod via the planfile-handover
+		// Secret, never the step logs (`-json` does not redact sensitive values and
+		// logs are persisted + streamed); sensitive values are redacted in API
+		// responses below editor.
+		field.Text("outputs").Optional(),
 		// Who approved this step's approval gate, and when. Set when a human approves
 		// an awaiting_approval step; empty/nil otherwise.
 		field.String("approved_by").Default(""),

@@ -151,7 +151,13 @@ func validateHelmConfig(n ComponentInput) error {
 	default:
 		return fmt.Errorf("%w: node %q (helm) has unknown %s %q", ErrInvalidConfig, n.Name, helmConfigChartSource, source)
 	}
-	return validateValuesSources(n)
+	if err := validateValuesSources(n); err != nil {
+		return err
+	}
+	// ${{ }} interpolation references in values / release name / namespace are
+	// rejected at save time when they could never render (malformed syntax,
+	// misplaced run.* keys) — see lib/workflows/interpolation.go.
+	return validateHelmInterpolation(n)
 }
 
 // validateValuesSources rejects a malformed values_sources at write time (F9) so a

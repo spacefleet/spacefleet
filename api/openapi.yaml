@@ -3368,6 +3368,16 @@ components:
         values_revision:
           type: string
           description: Git commit SHAs the values sources were resolved to.
+        outputs:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ComponentRunOutput"
+          description: |
+            Structured outputs captured from an OpenTofu (Terraform) apply step
+            that succeeded on a deploy run — the module's output values, keyed
+            by output name. Absent for every other step and until the apply
+            settles. Sensitive output values are omitted for callers below
+            editor.
         created_at:
           type: string
           format: date-time
@@ -3381,6 +3391,23 @@ components:
           format: date-time
           nullable: true
           description: When the step settled; absent until terminal.
+
+    ComponentRunOutput:
+      type: object
+      description: One captured OpenTofu (Terraform) output value.
+      required: [sensitive]
+      properties:
+        value:
+          description: |
+            The output's value — any JSON type, as the module produced it.
+            Omitted when the output is sensitive and the caller is below
+            editor.
+          nullable: true
+        sensitive:
+          type: boolean
+          description: |
+            Whether the module marked this output sensitive. Sensitive values
+            are masked in the UI and omitted entirely below editor.
 
     ComponentRunDetail:
       allOf:

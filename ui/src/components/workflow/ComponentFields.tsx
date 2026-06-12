@@ -8,6 +8,7 @@ import {
   tofuNativeLock,
 } from "../../lib/tofuVersions";
 import { RepositoryPicker } from "./RepositoryPicker";
+import { outputsRefSnippet } from "./outputsRefs";
 import {
   parseValuesSources,
   serializeValuesSources,
@@ -52,6 +53,11 @@ interface ComponentFieldsProps {
   // When true the fields render read-only (a viewer opened the editor). Inputs
   // are disabled rather than hidden so the configuration stays inspectable.
   disabled?: boolean;
+  // Names of the upstream OpenTofu components whose outputs this node may
+  // reference (its transitive dependencies — the editor computes them from the
+  // draft graph). Drives the insert-a-reference helper on the helm values and
+  // namespace fields.
+  upstreamOutputs?: string[];
 }
 
 // ComponentFields renders the editable form for one workflow node, independent
@@ -70,6 +76,7 @@ export function ComponentFields({
   installations,
   githubEnabled,
   disabled = false,
+  upstreamOutputs = [],
 }: ComponentFieldsProps) {
   function set<K extends keyof EditableComponent>(key: K, value: EditableComponent[K]) {
     onChange({ ...component, [key]: value });
@@ -136,6 +143,7 @@ export function ComponentFields({
           canPickRepo={canPickRepo}
           onPickValuesSourceRepo={pickValuesSourceRepo}
           disabled={disabled}
+          upstreamOutputs={upstreamOutputs}
         />
       ) : component.type === "terraform" ? (
         <TerraformConfig
@@ -229,13 +237,20 @@ export function ComponentFields({
       {component.type === "helm" && (
         <Field
           label="Target namespace"
-          help="The namespace this release deploys into."
+          help="The namespace this release deploys into. Supports ${{ }} references, e.g. an upstream output like ${{ components.infra.outputs.namespace }}."
         >
           <input
             className="w-full border border-neutral-300 px-3 py-2 text-sm"
             value={component.target_namespace}
             onChange={(e) => set("target_namespace", e.target.value)}
             disabled={disabled}
+          />
+          <OutputRefButtons
+            names={upstreamOutputs}
+            disabled={disabled}
+            onInsert={(snippet) =>
+              set("target_namespace", component.target_namespace + snippet)
+            }
           />
         </Field>
       )}
@@ -294,6 +309,7 @@ function HelmConfig({
   canPickRepo,
   onPickValuesSourceRepo,
   disabled,
+  upstreamOutputs,
 }: {
   config: Record<string, string>;
   chartSource: ChartSource;
@@ -302,6 +318,7 @@ function HelmConfig({
   canPickRepo: boolean;
   onPickValuesSourceRepo: (serialized: string, repo: GitHubRepository) => void;
   disabled: boolean;
+  upstreamOutputs: string[];
 }) {
   const source = CHART_SOURCES.find((s) => s.value === chartSource) ?? CHART_SOURCES[0];
   return (
@@ -350,13 +367,23 @@ function HelmConfig({
         />
       </Field>
 
-      <Field label="Values (values.yaml)" help="Optional inline overrides.">
+      <Field
+        label="Values (values.yaml)"
+        help={
+          "Optional inline overrides. Supports ${{ vars.NAME }}, run context like ${{ run.git_sha_short }}, and upstream OpenTofu outputs like ${{ components.infra.outputs.namespace }} — substituted when a run starts."
+        }
+      >
         <textarea
           className="h-32 w-full border border-neutral-300 px-3 py-2 font-mono text-xs"
           placeholder={"replicaCount: 2\n"}
           value={config.values ?? ""}
           onChange={(e) => setConfig("values", e.target.value)}
           disabled={disabled}
+        />
+        <OutputRefButtons
+          names={upstreamOutputs}
+          disabled={disabled}
+          onInsert={(snippet) => setConfig("values", (config.values ?? "") + snippet)}
         />
       </Field>
 
@@ -723,6 +750,38 @@ function TerraformConfig({
         disabled={disabled}
       />
     </>
+  );
+}
+
+// OutputRefButtons is the insert-a-reference helper under the helm values and
+// namespace fields: one button per upstream OpenTofu component, appending a
+// ${{ components.<name>.outputs. }} stub (the user completes the key) to the
+// field. Renders nothing when there is no upstream OpenTofu component or the
+// editor is read-only.
+function OutputRefButtons({
+  names,
+  onInsert,
+  disabled,
+}: {
+  names: string[];
+  onInsert: (snippet: string) => void;
+  disabled: boolean;
+}) {
+  if (disabled || names.length === 0) return null;
+  return (
+    <p className="mt-1 text-xs text-neutral-500">
+      Insert an output reference:{" "}
+      {names.map((name) => (
+        <button
+          key={name}
+          type="button"
+          onClick={() => onInsert(outputsRefSnippet(name))}
+          className="mr-1 border border-neutral-300 px-1.5 py-0.5 font-mono text-[11px] text-neutral-700 hover:border-neutral-500 hover:text-black"
+        >
+          {name}
+        </button>
+      ))}
+    </p>
   );
 }
 

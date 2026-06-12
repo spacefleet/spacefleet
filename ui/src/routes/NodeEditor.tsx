@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import { useWorkflowDraft } from "../contexts/WorkflowDraftContext";
@@ -7,6 +7,10 @@ import {
   ComponentFields,
   type EditableComponent,
 } from "../components/workflow/ComponentFields";
+import {
+  componentsReferencing,
+  upstreamTofuNames,
+} from "../components/workflow/outputsRefs";
 import { VariablesEditor } from "../components/VariablesEditor";
 
 type ComponentType = components["schemas"]["ComponentType"];
@@ -54,6 +58,8 @@ export function NodeEditor() {
     canEdit,
     loading,
     error,
+    nodes,
+    edges,
     clusters,
     credentials,
     cloudCredentials,
@@ -147,6 +153,36 @@ export function NodeEditor() {
   // A provisional node always has something to save (it isn't persisted yet).
   const hasUnsaved = canEdit && (dirty || isNew);
 
+  // The upstream OpenTofu components whose outputs this node may reference —
+  // computed over the draft graph (groups desugared), feeding the
+  // insert-a-reference helper on the helm values/namespace fields.
+  const upstreamOutputs = useMemo(
+    () => upstreamTofuNames(nodeId, nodes, edges),
+    [nodeId, nodes, edges],
+  );
+
+  // Rename check: other components reference this one's outputs by its
+  // committed name, so renaming it breaks them until they're updated too. A
+  // warning, never a block — the server accepts the save (the reference then
+  // fails its own validation when that component saves, or the user fixes it).
+  const renamedFrom =
+    draft != null && committed != null && draft.name !== committed.name
+      ? committed.name
+      : "";
+  const renameImpacted = useMemo(
+    () =>
+      renamedFrom
+        ? componentsReferencing(
+            renamedFrom,
+            nodes
+              .filter((n) => n.type === "component" && n.id !== nodeId)
+              .map((n) => (n.data as { component?: EditableComponent }).component)
+              .filter((c): c is EditableComponent => c != null),
+          )
+        : [],
+    [renamedFrom, nodes, nodeId],
+  );
+
   return (
     <div className="mx-auto flex max-w-4xl flex-col">
       <button
@@ -215,8 +251,22 @@ export function NodeEditor() {
               installations={installations}
               githubEnabled={githubEnabled}
               disabled={!canEdit}
+              upstreamOutputs={upstreamOutputs}
             />
           </div>
+
+          {renameImpacted.length > 0 && (
+            <p className="mt-4 border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {renameImpacted.join(", ")}{" "}
+              {renameImpacted.length === 1 ? "references" : "reference"} this
+              component’s outputs as{" "}
+              <code className="font-mono text-xs">
+                {"${{ components." + renamedFrom + ".outputs.… }}"}
+              </code>
+              . Renaming it breaks those references — update them to the new
+              name too.
+            </p>
+          )}
 
           {canEdit && (
             <div className="mt-4 flex items-center justify-end gap-3">

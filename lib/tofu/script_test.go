@@ -110,9 +110,13 @@ func TestScriptPlanStoresPlanfileSecret(t *testing.T) {
 			t.Errorf("plan store script missing %q\n---\n%s", w, s)
 		}
 	}
-	// The plan node stores; it must not fetch, apply, or delete the Secret.
+	// The plan node stores; it must not fetch, apply, or delete the Secret, and
+	// it has no outputs to capture (only a deploy apply does).
 	if strings.Contains(s, "tofu apply") || strings.Contains(s, "kubectl get secret") || strings.Contains(s, "kubectl delete secret") {
 		t.Errorf("plan node must only store the planfile\n---\n%s", s)
+	}
+	if strings.Contains(s, "tofu output") {
+		t.Errorf("plan node must not capture outputs\n---\n%s", s)
 	}
 	// The store must come after the plan produced the file.
 	if i, j := strings.Index(s, "tofu plan -out=tfplan"), strings.Index(s, "kubectl create secret"); i < 0 || j < 0 || i >= j {
@@ -136,7 +140,11 @@ func TestScriptApplyDeployUsesPlanfile(t *testing.T) {
 		"apk add --no-cache kubectl",
 		"kubectl get secret 'tfplan-run1-plan1' --namespace 'default' -o 'jsonpath={.data.tfplan}' | base64 -d > tfplan",
 		"tofu apply -no-color tfplan",
-		"kubectl delete secret 'tfplan-run1-plan1' --namespace 'default' --ignore-not-found || true",
+		// After a successful deploy apply, the outputs are saved to a local file
+		// (never echoed — -json does not redact sensitive values) and handed back
+		// through the same Secret under the outputs key.
+		"tofu output -json > sf-outputs.json",
+		"kubectl create secret generic 'tfplan-run1-plan1' --namespace 'default' --from-file=outputs=sf-outputs.json --dry-run=client -o yaml | kubectl apply --namespace 'default' -f -",
 	}
 	for _, w := range wantContains {
 		if !strings.Contains(s, w) {
@@ -152,10 +160,16 @@ func TestScriptApplyDeployUsesPlanfile(t *testing.T) {
 	if strings.Contains(s, "tofu destroy") {
 		t.Error("deploy apply must not destroy")
 	}
-	// Fetch must precede apply, which must precede the cleanup delete.
-	fetch, apply, del := strings.Index(s, "kubectl get secret"), strings.Index(s, "tofu apply"), strings.Index(s, "kubectl delete secret")
-	if fetch < 0 || fetch >= apply || apply >= del {
-		t.Errorf("expected fetch < apply < delete (fetch=%d apply=%d del=%d)\n---\n%s", fetch, apply, del, s)
+	// The worker deletes the Secret after reading the outputs from it, so the
+	// deploy script itself must not.
+	if strings.Contains(s, "kubectl delete secret") {
+		t.Errorf("deploy apply must leave the Secret for the worker to read outputs from\n---\n%s", s)
+	}
+	// Fetch must precede apply, which must precede the outputs capture + upsert.
+	fetch, apply := strings.Index(s, "kubectl get secret"), strings.Index(s, "tofu apply")
+	output, upsert := strings.Index(s, "tofu output -json"), strings.Index(s, "kubectl create secret")
+	if fetch < 0 || fetch >= apply || apply >= output || output >= upsert {
+		t.Errorf("expected fetch < apply < output < upsert (fetch=%d apply=%d output=%d upsert=%d)\n---\n%s", fetch, apply, output, upsert, s)
 	}
 }
 
@@ -182,6 +196,13 @@ func TestScriptApplyUninstallAppliesDestroyPlanfile(t *testing.T) {
 	}
 	if strings.Contains(s, "-auto-approve") {
 		t.Error("uninstall apply must not auto-approve a fresh plan")
+	}
+	// A destroy hands back no outputs, so it keeps the in-script Secret cleanup.
+	if strings.Contains(s, "tofu output") || strings.Contains(s, "sf-outputs.json") {
+		t.Errorf("destroy apply must not capture outputs\n---\n%s", s)
+	}
+	if !strings.Contains(s, "kubectl delete secret 'tfplan-run1-plan1' --namespace 'default' --ignore-not-found || true") {
+		t.Errorf("destroy apply must delete the spent planfile Secret in-script\n---\n%s", s)
 	}
 }
 
@@ -223,9 +244,41 @@ func TestScriptPreviewIsAlwaysPlan(t *testing.T) {
 		t.Errorf("preview must not mutate\n---\n%s", s)
 	}
 	// Preview produces no planfile and no handover (the planner leaves
-	// PlanArtifactSecret empty for preview).
+	// PlanArtifactSecret empty for preview), and applies nothing — so there are
+	// no outputs to capture either.
 	if strings.Contains(s, "-out=tfplan") || strings.Contains(s, "kubectl") || strings.Contains(s, "apk add") {
 		t.Errorf("preview must not save or hand over a planfile\n---\n%s", s)
+	}
+	if strings.Contains(s, "tofu output") {
+		t.Errorf("preview must not capture outputs\n---\n%s", s)
+	}
+}
+
+func TestScriptDeployApplyOutputsCaptureIsBestEffort(t *testing.T) {
+	// The apply already succeeded by the time outputs are captured, so neither a
+	// failing `tofu output` nor a failed Secret upsert may fail the step under
+	// `set -e` — both lines carry a `||` fallback.
+	backend, cfg := s3Backend()
+	s := Script(Apply{
+		Command:            CommandApply,
+		Action:             ActionDeploy,
+		RepoURL:            "r",
+		Path:               "p",
+		Backend:            backend,
+		BackendConfig:      cfg,
+		Namespace:          "default",
+		PlanArtifactSecret: "tfplan-run1-plan1",
+	})
+	if !strings.Contains(s, "tofu output -json > sf-outputs.json || echo '{}' > sf-outputs.json") {
+		t.Errorf("output capture must tolerate failure\n---\n%s", s)
+	}
+	if !strings.Contains(s, "-f - || echo 'warning: failed to store outputs' >&2") {
+		t.Errorf("outputs upsert must tolerate failure\n---\n%s", s)
+	}
+	// The outputs JSON must never hit stdout — it lands in the file and the
+	// Secret only.
+	if strings.Contains(s, "cat sf-outputs.json") || strings.Contains(s, "tofu output -json\n") {
+		t.Errorf("outputs must not be echoed to the step logs\n---\n%s", s)
 	}
 }
 

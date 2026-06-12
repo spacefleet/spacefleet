@@ -193,6 +193,228 @@ func TestValidateConfig_HelmSources(t *testing.T) {
 	}
 }
 
+func TestValidateConfig_HelmInterpolation(t *testing.T) {
+	// A base git-source node with an explicit git_ref; each case mutates it.
+	base := func() ComponentInput {
+		target := uuid.New()
+		return ComponentInput{
+			ID: uuid.New(), Name: "web", Type: TypeHelm,
+			TargetClusterID: &target, TargetNamespace: "ns",
+			Config: map[string]string{
+				helmConfigChartSource: helm.SourceGit,
+				helm.ConfigRepoURL:    "https://github.com/org/charts.git",
+				helm.ConfigGitRef:     "main",
+			},
+		}
+	}
+	tests := []struct {
+		name    string
+		mutate  func(*ComponentInput)
+		wantErr string // substring of the error; empty = the node must validate
+	}{
+		{
+			name: "vars in values, namespace, and release name",
+			mutate: func(n *ComponentInput) {
+				n.Config[helmConfigValues] = "host: ${{ vars.CUSTOMER_ID }}.example.com"
+				n.Config[helmConfigReleaseName] = "web-${{ vars.CUSTOMER_ID }}"
+				n.TargetNamespace = "customer-${{ vars.CUSTOMER_ID }}"
+			},
+		},
+		{
+			name:   "run.git_sha_short in values on a git source",
+			mutate: func(n *ComponentInput) { n.Config[helmConfigValues] = "tag: ${{ run.git_sha_short }}" },
+		},
+		{
+			name: "run.id and run.action anywhere",
+			mutate: func(n *ComponentInput) {
+				n.Config[helmConfigValues] = "id: ${{ run.id }}"
+				n.TargetNamespace = "ns-${{ run.action }}"
+			},
+		},
+		{
+			name:   "run.git_ref with an explicit git_ref",
+			mutate: func(n *ComponentInput) { n.Config[helmConfigValues] = "ref: ${{ run.git_ref }}" },
+		},
+		{
+			name:   "escaped literal is not a reference",
+			mutate: func(n *ComponentInput) { n.Config[helmConfigValues] = "doc: $${{ anything.goes }}" },
+		},
+		{
+			name:    "malformed reference",
+			mutate:  func(n *ComponentInput) { n.Config[helmConfigValues] = "a: ${{ vars.X" },
+			wantErr: "unterminated",
+		},
+		{
+			name:    "malformed namespace field",
+			mutate:  func(n *ComponentInput) { n.TargetNamespace = "ns-${{ vars.X" },
+			wantErr: "unterminated",
+		},
+		{
+			name:    "unknown namespace",
+			mutate:  func(n *ComponentInput) { n.Config[helmConfigValues] = "a: ${{ env.HOME }}" },
+			wantErr: "unknown namespace",
+		},
+		{
+			name:    "unknown run key",
+			mutate:  func(n *ComponentInput) { n.Config[helmConfigValues] = "a: ${{ run.bogus }}" },
+			wantErr: "unknown run key",
+		},
+		{
+			name:    "run.git_sha outside the values",
+			mutate:  func(n *ComponentInput) { n.TargetNamespace = "${{ run.git_sha }}" },
+			wantErr: "only available in the inline values",
+		},
+		{
+			name: "run.git_sha on a non-git source",
+			mutate: func(n *ComponentInput) {
+				n.Config[helmConfigChartSource] = helm.SourceOCI
+				n.Config[helm.ConfigRepoURL] = "oci://example.com/charts/app"
+				n.Config[helmConfigValues] = "tag: ${{ run.git_sha_short }}"
+			},
+			wantErr: "requires a git chart source",
+		},
+		{
+			name: "run.git_ref without an explicit git_ref",
+			mutate: func(n *ComponentInput) {
+				delete(n.Config, helm.ConfigGitRef)
+				n.Config[helmConfigValues] = "ref: ${{ run.git_ref }}"
+			},
+			wantErr: "explicit git_ref",
+		},
+		{
+			// The cross-node rules live in TestValidateDAG_OutputRefs; this
+			// asserts a lone node's dangling reference is caught through the
+			// same validateDAG entry point.
+			name:    "components ref to a component that does not exist",
+			mutate:  func(n *ComponentInput) { n.Config[helmConfigValues] = "ns: ${{ components.infra.outputs.namespace }}" },
+			wantErr: `no component named "infra"`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n := base()
+			tt.mutate(&n)
+			err := validateDAG([]ComponentInput{n})
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("expected pass, got %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, ErrInvalidConfig) {
+				t.Fatalf("expected ErrInvalidConfig, got %v", err)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error %q does not contain %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestValidateDAG_OutputRefs: the cross-node rules for a
+// ${{ components.<name>.outputs.<key> }} reference — the named component must
+// exist, unambiguously, be an OpenTofu component, and be a transitive
+// depends_on ancestor of the referencing node (including through a group).
+func TestValidateDAG_OutputRefs(t *testing.T) {
+	const ref = "${{ components.infra.outputs.namespace }}"
+	// tf builds a named terraform node; refNode a helm node referencing
+	// components.infra in its inline values.
+	tf := func(id uuid.UUID, name string, deps ...uuid.UUID) ComponentInput {
+		n := tfNode(nil)
+		n.ID = id
+		n.Name = name
+		n.DependsOn = deps
+		return n
+	}
+	refNode := func(id uuid.UUID, deps ...uuid.UUID) ComponentInput {
+		n := helmNode(id, deps...)
+		n.Name = "web"
+		n.Config[helmConfigValues] = "ns: " + ref
+		return n
+	}
+	infra, mid, web := uuid.New(), uuid.New(), uuid.New()
+
+	t.Run("direct ancestor passes", func(t *testing.T) {
+		if err := validateDAG([]ComponentInput{tf(infra, "infra"), refNode(web, infra)}); err != nil {
+			t.Fatalf("expected pass, got %v", err)
+		}
+	})
+
+	t.Run("transitive ancestor passes", func(t *testing.T) {
+		nodes := []ComponentInput{tf(infra, "infra"), helmNode(mid, infra), refNode(web, mid)}
+		if err := validateDAG(nodes); err != nil {
+			t.Fatalf("expected transitive ancestor to pass, got %v", err)
+		}
+	})
+
+	t.Run("ancestor through a group passes", func(t *testing.T) {
+		// infra is a member of a group the referencing node depends on — the
+		// expanded edges (the ones the run executes) make it an ancestor.
+		groupID := uuid.New()
+		member := tf(infra, "infra")
+		member.GroupID = &groupID
+		nodes := []ComponentInput{member, refNode(web, groupID)}
+		groups := []GroupInput{{ID: groupID, Name: "platform"}}
+		if err := validateWorkflow(nodes, groups); err != nil {
+			t.Fatalf("expected group-routed ancestor to pass, got %v", err)
+		}
+	})
+
+	t.Run("unknown component name", func(t *testing.T) {
+		err := validateDAG([]ComponentInput{tf(infra, "database"), refNode(web, infra)})
+		if !errors.Is(err, ErrInvalidConfig) || !strings.Contains(err.Error(), `no component named "infra"`) {
+			t.Fatalf("expected the unknown name rejected, got %v", err)
+		}
+	})
+
+	t.Run("ambiguous component name", func(t *testing.T) {
+		other := uuid.New()
+		err := validateDAG([]ComponentInput{tf(infra, "infra"), tf(other, "infra"), refNode(web, infra, other)})
+		if !errors.Is(err, ErrInvalidConfig) || !strings.Contains(err.Error(), "ambiguous") {
+			t.Fatalf("expected the duplicated referenced name rejected, got %v", err)
+		}
+	})
+
+	t.Run("non-terraform component", func(t *testing.T) {
+		named := helmNode(infra)
+		named.Name = "infra"
+		err := validateDAG([]ComponentInput{named, refNode(web, infra)})
+		if !errors.Is(err, ErrInvalidConfig) || !strings.Contains(err.Error(), "only OpenTofu") {
+			t.Fatalf("expected the helm target rejected, got %v", err)
+		}
+	})
+
+	t.Run("not an ancestor", func(t *testing.T) {
+		err := validateDAG([]ComponentInput{tf(infra, "infra"), refNode(web)})
+		if !errors.Is(err, ErrInvalidConfig) || !strings.Contains(err.Error(), "upstream dependency") {
+			t.Fatalf("expected the non-ancestor rejected, got %v", err)
+		}
+	})
+
+	t.Run("downstream is not an ancestor", func(t *testing.T) {
+		// The edge points the wrong way: infra depends on web.
+		err := validateDAG([]ComponentInput{tf(infra, "infra", web), refNode(web)})
+		if !errors.Is(err, ErrInvalidConfig) || !strings.Contains(err.Error(), "upstream dependency") {
+			t.Fatalf("expected the descendant rejected, got %v", err)
+		}
+	})
+
+	t.Run("namespace and release name are checked too", func(t *testing.T) {
+		for _, mutate := range []func(*ComponentInput){
+			func(n *ComponentInput) { n.TargetNamespace = ref },
+			func(n *ComponentInput) { n.Config[helmConfigReleaseName] = "web-" + ref },
+		} {
+			n := refNode(web)
+			n.Config[helmConfigValues] = ""
+			mutate(&n)
+			err := validateDAG([]ComponentInput{tf(infra, "infra"), n})
+			if !errors.Is(err, ErrInvalidConfig) || !strings.Contains(err.Error(), "upstream dependency") {
+				t.Fatalf("expected the non-ancestor ref rejected, got %v", err)
+			}
+		}
+	})
+}
+
 func TestValidateConfig_Manifest(t *testing.T) {
 	target := uuid.New()
 	ok := ComponentInput{

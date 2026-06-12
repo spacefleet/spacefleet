@@ -18,6 +18,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/k8s"
 	"github.com/spacefleet/spacefleet/lib/tekton"
+	"github.com/spacefleet/spacefleet/lib/tofu"
 )
 
 // workflowWatchTimeout bounds the worker's wait for the whole DAG to settle. It
@@ -41,6 +42,14 @@ const maxLogBytes = 1024 * 1024
 // any failure — log capture never fails the run.
 type runLogsFn func(ctx context.Context, runnerConn k8s.Connection, runName string) string
 
+// captureOutputsFn reads the captured-outputs key of a terraform pair's
+// handover Secret from the runner connection — the worker side of the
+// outputs channel a deploy apply step writes (see tofu.OutputsKey). A seam
+// like runLogsFn, overridden in tests; nil bytes mean "nothing captured" (a
+// missing Secret or key), an error is a read failure worth logging. Either
+// way capture is best-effort and never fails a succeeded step.
+type captureOutputsFn func(ctx context.Context, runnerConn k8s.Connection, namespace, secretName string) ([]byte, error)
+
 // WorkflowRunWorker executes one workflow run: it loads the run's graph snapshot
 // + its ComponentRuns + the application, then drives the DAG through the pure
 // scheduler, running each node as a crash-safe TaskRun on the app's runner
@@ -55,9 +64,16 @@ type WorkflowRunWorker struct {
 	resolver *deploy.Resolver
 
 	// Test seams. runFuncs defaults to the real tekton primitives; captureLogs to
-	// the real pod-log read. Overridden in tests to drive Work without a cluster.
-	funcs       tekton.RunFuncs
-	captureLogs runLogsFn
+	// the real pod-log read; captureOutputs to the real handover-Secret read.
+	// Overridden in tests to drive Work without a cluster.
+	funcs          tekton.RunFuncs
+	captureLogs    runLogsFn
+	captureOutputs captureOutputsFn
+	// resolveOutputs reads a terraform apply unit's persisted outputs for the
+	// ${{ components.* }} render context (this run first, then the latest
+	// successful — svc.ResolveComponentOutputs in production); a seam so planner
+	// unit tests run without a database.
+	resolveOutputs func(ctx context.Context, orgID, runID, componentID uuid.UUID) (string, error)
 	// ensureHandover / deleteHandover provision and sweep a terraform pair's
 	// planfile-handover objects on the runner cluster (the real
 	// tekton.EnsureHandoverSecret / DeleteHandoverSecret in production) — seams
@@ -72,6 +88,8 @@ type WorkflowRunWorker struct {
 func NewWorker(svc *Service, resolver *deploy.Resolver) *WorkflowRunWorker {
 	w := &WorkflowRunWorker{svc: svc, resolver: resolver, funcs: tekton.DefaultRunFuncs()}
 	w.captureLogs = defaultCaptureLogs
+	w.captureOutputs = defaultCaptureOutputs
+	w.resolveOutputs = svc.ResolveComponentOutputs
 	w.ensureHandover = tekton.EnsureHandoverSecret
 	w.deleteHandover = tekton.DeleteHandoverSecret
 	return w
@@ -425,8 +443,94 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 		_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "failed", msg, runName)
 		return nodeResult{Status: statusFailed, Err: fmt.Errorf("workflows: component %q run %s failed: %s", node.Name, runName, msg)}
 	}
+	// A terraform apply unit that succeeded on a deploy run handed the module's
+	// `tofu output -json` back through the pair's handover Secret — read and
+	// persist it before settling the step (so the settled row already carries
+	// its outputs), then delete the spent Secret. Best-effort throughout: a
+	// capture failure never fails a step whose apply succeeded.
+	if a.Action == ActionDeploy && node.Type == TypeTerraform && node.Config[terraformConfigCommand] == terraformCommandApply {
+		w.captureTofuOutputs(ctx, a, node, byID, runnerConn, cr.ID)
+	}
 	_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "succeeded", finalStatus.Message, runName)
 	return nodeResult{Status: statusSucceeded}
+}
+
+// captureTofuOutputs reads the outputs a terraform apply unit stored in its
+// pair's handover Secret, persists them on the unit's component_run row, and
+// deletes the Secret (its planfile is spent and its outputs are now durable).
+// Every failure is logged and swallowed — the apply already succeeded, so
+// missing outputs degrade the record, never the run — and a Secret left behind
+// by a failure here is still deleted by the terminal sweep.
+func (w *WorkflowRunWorker) captureTofuOutputs(ctx context.Context, a WorkflowRunArgs, node GraphNode, byID map[uuid.UUID]GraphNode, runnerConn k8s.Connection, crID uuid.UUID) {
+	// The Secret is keyed off the upstream plan node, exactly as the planner
+	// named it; no plan node (defensive — the apply script fails closed there)
+	// means no Secret to read.
+	planID := upstreamTofuPlanID(node, byID)
+	if planID == uuid.Nil {
+		return
+	}
+	name := tofuPlanArtifactSecret(a.WorkflowRunID, planID)
+	raw, err := w.captureOutputs(ctx, runnerConn, tekton.JobsNamespace, name)
+	if err != nil {
+		log.Printf("worker: workflow run %s: read outputs from secret %s: %v", a.WorkflowRunID, name, err)
+		return
+	}
+	outputs, err := normalizeTofuOutputs(raw)
+	if err != nil {
+		log.Printf("worker: workflow run %s: parse outputs from secret %s: %v", a.WorkflowRunID, name, err)
+		return
+	}
+	if outputs != "" {
+		if err := w.svc.SetComponentRunOutputs(ctx, a.OrgID, crID, outputs); err != nil {
+			// Keep the Secret: the outputs aren't durable yet, and the terminal
+			// sweep will delete it regardless.
+			log.Printf("worker: workflow run %s: persist outputs for component run %s: %v", a.WorkflowRunID, crID, err)
+			return
+		}
+	}
+	if err := w.deleteHandover(ctx, runnerConn, tekton.JobsNamespace, name); err != nil {
+		log.Printf("worker: workflow run %s: delete outputs secret %s: %v", a.WorkflowRunID, name, err)
+	}
+}
+
+// tofuOutput mirrors one entry of `tofu output -json`: the value and its type
+// as raw JSON (so non-string values survive a round-trip untouched) plus the
+// module author's sensitive flag, which drives the below-editor redaction in
+// the API layer.
+type tofuOutput struct {
+	Value     json.RawMessage `json:"value"`
+	Type      json.RawMessage `json:"type"`
+	Sensitive bool            `json:"sensitive"`
+}
+
+// normalizeTofuOutputs validates and canonicalizes the raw `tofu output -json`
+// bytes read from the handover Secret into the JSON object persisted on
+// component_runs.outputs. Empty input or an empty object yields "" (a module
+// with no outputs is the common case — the column stays empty); bytes that
+// don't parse as tofu's shape are an error for the caller to log.
+func normalizeTofuOutputs(raw []byte) (string, error) {
+	if len(raw) == 0 {
+		return "", nil
+	}
+	var outputs map[string]tofuOutput
+	if err := json.Unmarshal(raw, &outputs); err != nil {
+		return "", err
+	}
+	if len(outputs) == 0 {
+		return "", nil
+	}
+	b, err := json.Marshal(outputs)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// defaultCaptureOutputs reads the tofu.OutputsKey entry of a terraform pair's
+// handover Secret from the runner connection — the production seam behind
+// w.captureOutputs.
+func defaultCaptureOutputs(ctx context.Context, runnerConn k8s.Connection, namespace, secretName string) ([]byte, error) {
+	return tekton.ReadHandoverSecretKey(ctx, runnerConn, namespace, secretName, tofu.OutputsKey)
 }
 
 // encodeValuesRevision serializes the resolved values-source revisions (the

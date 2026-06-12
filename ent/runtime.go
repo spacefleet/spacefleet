@@ -185,15 +185,15 @@ func init() {
 	componentrunFields := schema.ComponentRun{}.Fields()
 	_ = componentrunFields
 	// componentrunDescApprovedBy is the schema descriptor for approved_by field.
-	componentrunDescApprovedBy := componentrunFields[10].Descriptor()
+	componentrunDescApprovedBy := componentrunFields[11].Descriptor()
 	// componentrun.DefaultApprovedBy holds the default value on creation for the approved_by field.
 	componentrun.DefaultApprovedBy = componentrunDescApprovedBy.Default.(string)
 	// componentrunDescCreatedAt is the schema descriptor for created_at field.
-	componentrunDescCreatedAt := componentrunFields[14].Descriptor()
+	componentrunDescCreatedAt := componentrunFields[15].Descriptor()
 	// componentrun.DefaultCreatedAt holds the default value on creation for the created_at field.
 	componentrun.DefaultCreatedAt = componentrunDescCreatedAt.Default.(func() time.Time)
 	// componentrunDescUpdatedAt is the schema descriptor for updated_at field.
-	componentrunDescUpdatedAt := componentrunFields[17].Descriptor()
+	componentrunDescUpdatedAt := componentrunFields[18].Descriptor()
 	// componentrun.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	componentrun.DefaultUpdatedAt = componentrunDescUpdatedAt.Default.(func() time.Time)
 	// componentrun.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

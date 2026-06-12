@@ -2,6 +2,7 @@ package workflows
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -70,4 +71,56 @@ type countingConns struct{ n *int }
 func (c countingConns) ConnForTekton(context.Context, uuid.UUID, uuid.UUID) (k8s.Connection, error) {
 	*c.n++
 	return k8s.Connection{}, nil
+}
+
+// TestNormalizeTofuOutputs: valid `tofu output -json` round-trips (non-string
+// values intact), empties yield "" (no column write), and non-tofu shapes are
+// an error — never silently persisted.
+func TestNormalizeTofuOutputs(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{
+		"namespace": {"sensitive": false, "type": "string", "value": "customer-a"},
+		"db_password": {"sensitive": true, "type": "string", "value": "hunter2"},
+		"subnet_ids": {"sensitive": false, "type": ["list", "string"], "value": ["a", "b"]}
+	}`)
+	got, err := normalizeTofuOutputs(raw)
+	if err != nil {
+		t.Fatalf("normalizeTofuOutputs: %v", err)
+	}
+	var outputs map[string]tofuOutput
+	if err := json.Unmarshal([]byte(got), &outputs); err != nil {
+		t.Fatalf("canonical form does not parse back: %v", err)
+	}
+	if len(outputs) != 3 {
+		t.Fatalf("outputs = %d, want 3", len(outputs))
+	}
+	if string(outputs["namespace"].Value) != `"customer-a"` || outputs["namespace"].Sensitive {
+		t.Errorf("namespace = %+v, want non-sensitive \"customer-a\"", outputs["namespace"])
+	}
+	if !outputs["db_password"].Sensitive {
+		t.Error("db_password must keep its sensitive flag")
+	}
+	if string(outputs["subnet_ids"].Value) != `["a","b"]` {
+		t.Errorf("subnet_ids value = %s, want the list to survive as raw JSON", outputs["subnet_ids"].Value)
+	}
+
+	for name, in := range map[string][]byte{
+		"nil":          nil,
+		"empty":        []byte(""),
+		"empty object": []byte("{}"),
+	} {
+		if got, err := normalizeTofuOutputs(in); err != nil || got != "" {
+			t.Errorf("%s: = (%q, %v), want (\"\", nil)", name, got, err)
+		}
+	}
+
+	for name, in := range map[string][]byte{
+		"not json":    []byte("not json"),
+		"wrong shape": []byte(`{"namespace": "customer-a"}`),
+	} {
+		if _, err := normalizeTofuOutputs(in); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
 }

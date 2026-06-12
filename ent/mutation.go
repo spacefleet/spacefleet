@@ -6561,6 +6561,7 @@ type ComponentRunMutation struct {
 	message             *string
 	run_name            *string
 	logs                *string
+	outputs             *string
 	approved_by         *string
 	approved_at         *time.Time
 	chart_revision      *string
@@ -7085,6 +7086,55 @@ func (m *ComponentRunMutation) ResetLogs() {
 	delete(m.clearedFields, componentrun.FieldLogs)
 }
 
+// SetOutputs sets the "outputs" field.
+func (m *ComponentRunMutation) SetOutputs(s string) {
+	m.outputs = &s
+}
+
+// Outputs returns the value of the "outputs" field in the mutation.
+func (m *ComponentRunMutation) Outputs() (r string, exists bool) {
+	v := m.outputs
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOutputs returns the old "outputs" field's value of the ComponentRun entity.
+// If the ComponentRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComponentRunMutation) OldOutputs(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOutputs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOutputs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOutputs: %w", err)
+	}
+	return oldValue.Outputs, nil
+}
+
+// ClearOutputs clears the value of the "outputs" field.
+func (m *ComponentRunMutation) ClearOutputs() {
+	m.outputs = nil
+	m.clearedFields[componentrun.FieldOutputs] = struct{}{}
+}
+
+// OutputsCleared returns if the "outputs" field was cleared in this mutation.
+func (m *ComponentRunMutation) OutputsCleared() bool {
+	_, ok := m.clearedFields[componentrun.FieldOutputs]
+	return ok
+}
+
+// ResetOutputs resets all changes to the "outputs" field.
+func (m *ComponentRunMutation) ResetOutputs() {
+	m.outputs = nil
+	delete(m.clearedFields, componentrun.FieldOutputs)
+}
+
 // SetApprovedBy sets the "approved_by" field.
 func (m *ComponentRunMutation) SetApprovedBy(s string) {
 	m.approved_by = &s
@@ -7526,7 +7576,7 @@ func (m *ComponentRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ComponentRunMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 18)
 	if m.organization != nil {
 		fields = append(fields, componentrun.FieldOrganizationID)
 	}
@@ -7553,6 +7603,9 @@ func (m *ComponentRunMutation) Fields() []string {
 	}
 	if m.logs != nil {
 		fields = append(fields, componentrun.FieldLogs)
+	}
+	if m.outputs != nil {
+		fields = append(fields, componentrun.FieldOutputs)
 	}
 	if m.approved_by != nil {
 		fields = append(fields, componentrun.FieldApprovedBy)
@@ -7604,6 +7657,8 @@ func (m *ComponentRunMutation) Field(name string) (ent.Value, bool) {
 		return m.RunName()
 	case componentrun.FieldLogs:
 		return m.Logs()
+	case componentrun.FieldOutputs:
+		return m.Outputs()
 	case componentrun.FieldApprovedBy:
 		return m.ApprovedBy()
 	case componentrun.FieldApprovedAt:
@@ -7647,6 +7702,8 @@ func (m *ComponentRunMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldRunName(ctx)
 	case componentrun.FieldLogs:
 		return m.OldLogs(ctx)
+	case componentrun.FieldOutputs:
+		return m.OldOutputs(ctx)
 	case componentrun.FieldApprovedBy:
 		return m.OldApprovedBy(ctx)
 	case componentrun.FieldApprovedAt:
@@ -7734,6 +7791,13 @@ func (m *ComponentRunMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetLogs(v)
+		return nil
+	case componentrun.FieldOutputs:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOutputs(v)
 		return nil
 	case componentrun.FieldApprovedBy:
 		v, ok := value.(string)
@@ -7839,6 +7903,9 @@ func (m *ComponentRunMutation) ClearedFields() []string {
 	if m.FieldCleared(componentrun.FieldLogs) {
 		fields = append(fields, componentrun.FieldLogs)
 	}
+	if m.FieldCleared(componentrun.FieldOutputs) {
+		fields = append(fields, componentrun.FieldOutputs)
+	}
 	if m.FieldCleared(componentrun.FieldApprovedAt) {
 		fields = append(fields, componentrun.FieldApprovedAt)
 	}
@@ -7885,6 +7952,9 @@ func (m *ComponentRunMutation) ClearField(name string) error {
 		return nil
 	case componentrun.FieldLogs:
 		m.ClearLogs()
+		return nil
+	case componentrun.FieldOutputs:
+		m.ClearOutputs()
 		return nil
 	case componentrun.FieldApprovedAt:
 		m.ClearApprovedAt()
@@ -7935,6 +8005,9 @@ func (m *ComponentRunMutation) ResetField(name string) error {
 		return nil
 	case componentrun.FieldLogs:
 		m.ResetLogs()
+		return nil
+	case componentrun.FieldOutputs:
+		m.ResetOutputs()
 		return nil
 	case componentrun.FieldApprovedBy:
 		m.ResetApprovedBy()

@@ -401,6 +401,305 @@ func TestPlanTofuClusterAuth(t *testing.T) {
 	}
 }
 
+// plannerVars is a VariableResolver stub returning fixed plain/secret maps for
+// every component.
+type plannerVars struct{ plain, secret map[string]string }
+
+func (v plannerVars) ResolveEnv(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (map[string]string, map[string]string, error) {
+	return v.plain, v.secret, nil
+}
+
+// helmInterpolationWorker builds a worker whose resolver serves a fixed
+// variable set, for the planHelm interpolation tests.
+func helmInterpolationWorker(plain, secret map[string]string) *WorkflowRunWorker {
+	return &WorkflowRunWorker{
+		resolver: deploy.NewResolver(tokenConns{}, nil, nil, nil, plannerVars{plain: plain, secret: secret}),
+	}
+}
+
+// helmInterpolationNode builds a git-source helm node whose values, namespace,
+// and release name carry interpolation references.
+func helmInterpolationNode() GraphNode {
+	target := uuid.New()
+	return GraphNode{
+		ID: uuid.New(), ComponentID: uuid.New(), Name: "web", Type: TypeHelm,
+		TargetClusterID: &target,
+		TargetNamespace: "customer-${{ vars.CUSTOMER_ID }}",
+		Config: map[string]string{
+			helmConfigChartSource: helm.SourceGit,
+			helm.ConfigRepoURL:    "https://github.com/org/charts.git",
+			helm.ConfigGitRef:     "main",
+			helmConfigValues: "host: ${{ vars.CUSTOMER_ID }}.example.com\n" +
+				"password: ${{ vars.DB_PASSWORD }}\n" +
+				"tag: ${{ run.git_sha_short }}\n" +
+				"full: ${{ run.git_sha }}\n" +
+				"run: ${{ run.id }}\n" +
+				"ref: ${{ run.git_ref }}\n",
+			helmConfigReleaseName: "web-${{ vars.CUSTOMER_ID }}",
+		},
+	}
+}
+
+// TestPlanHelmInterpolation: the planner renders vars.* and run.* references in
+// the inline values (into the mounted Files entry), the target namespace, and
+// the release name; run.git_sha* render to the in-script sentinels and flip
+// RenderGitContext (visible as the script's sed render).
+func TestPlanHelmInterpolation(t *testing.T) {
+	t.Parallel()
+	runID := uuid.New()
+	app := &ent.Application{ID: uuid.New(), OrganizationID: uuid.New(), RunnerClusterID: uuid.New()}
+	w := helmInterpolationWorker(
+		map[string]string{"CUSTOMER_ID": "acme"},
+		map[string]string{"DB_PASSWORD": "s3cret"},
+	)
+
+	req, err := w.planHelm(context.Background(), app, helmInterpolationNode(), ActionDeploy, false, "", runID, nil)
+	if err != nil {
+		t.Fatalf("planHelm: %v", err)
+	}
+
+	values := req.Spec.Files[helm.ValuesFile]
+	for _, want := range []string{
+		"host: acme.example.com",           // vars.* (non-secret)
+		"password: s3cret",                 // vars.* (sensitive — renders into the mounted Secret only)
+		"tag: " + helm.GitSHAShortSentinel, // run.git_sha_short → sentinel, resolved in-script
+		"full: " + helm.GitSHASentinel,
+		"run: " + runID.String(),
+		"ref: main", // run.git_ref = the configured git_ref, server-side
+	} {
+		if !strings.Contains(values, want) {
+			t.Errorf("rendered values missing %q\n---\n%s", want, values)
+		}
+	}
+	if strings.Contains(values, "${{") {
+		t.Errorf("rendered values still carry references:\n%s", values)
+	}
+
+	// Namespace + release name render server-side into the script.
+	for _, want := range []string{
+		"helm upgrade --install 'web-acme'",
+		"-n 'customer-acme'",
+		"SF_SHA_SHORT=$(git -C /src rev-parse --short=7 HEAD)", // RenderGitContext sed
+	} {
+		if !strings.Contains(req.Spec.Script, want) {
+			t.Errorf("script missing %q\n---\n%s", want, req.Spec.Script)
+		}
+	}
+
+	// The TaskRun name prefix derives from the AUTHORED release name (rendered
+	// values must never leak into persisted run names).
+	if strings.Contains(req.Spec.Name, "acme") {
+		t.Errorf("run prefix %q must not carry rendered variable values", req.Spec.Name)
+	}
+}
+
+// TestPlanHelmInterpolationPreview: a preview renders the same fields — the
+// diff must show what a deploy would deploy, sentinels included.
+func TestPlanHelmInterpolationPreview(t *testing.T) {
+	t.Parallel()
+	app := &ent.Application{ID: uuid.New(), OrganizationID: uuid.New(), RunnerClusterID: uuid.New()}
+	w := helmInterpolationWorker(map[string]string{"CUSTOMER_ID": "acme"}, map[string]string{"DB_PASSWORD": "x"})
+
+	req, err := w.planHelm(context.Background(), app, helmInterpolationNode(), ActionPreview, false, "", uuid.New(), nil)
+	if err != nil {
+		t.Fatalf("planHelm(preview): %v", err)
+	}
+	if !strings.Contains(req.Spec.Files[helm.ValuesFile], "host: acme.example.com") {
+		t.Errorf("preview values not rendered:\n%s", req.Spec.Files[helm.ValuesFile])
+	}
+	for _, want := range []string{
+		"helm diff upgrade 'web-acme'",
+		"-n 'customer-acme'",
+		"SF_SHA_SHORT=", // the sed render applies to a preview too
+	} {
+		if !strings.Contains(req.Spec.Script, want) {
+			t.Errorf("preview script missing %q\n---\n%s", want, req.Spec.Script)
+		}
+	}
+}
+
+// TestPlanHelmInterpolationFailures: a reference that cannot resolve fails the
+// node at plan time (before any TaskRun is submitted) with the exact reference
+// named — runComponent persists this as the component_run failure message.
+func TestPlanHelmInterpolationFailures(t *testing.T) {
+	t.Parallel()
+	app := &ent.Application{ID: uuid.New(), OrganizationID: uuid.New(), RunnerClusterID: uuid.New()}
+	w := helmInterpolationWorker(map[string]string{"CUSTOMER_ID": "Bad Value!"}, nil)
+
+	// A variable that isn't defined names itself in the error.
+	missing := helmInterpolationNode()
+	missing.Config[helmConfigValues] = "a: ${{ vars.TYPO }}"
+	_, err := w.planHelm(context.Background(), app, missing, ActionDeploy, false, "", uuid.New(), nil)
+	if err == nil || !strings.Contains(err.Error(), `variable "TYPO" is not defined`) {
+		t.Errorf("missing variable: got %v, want the variable named", err)
+	}
+
+	// A namespace that renders to an invalid Kubernetes name fails with the
+	// rendered value named ("Bad Value!" is not a DNS-1123 label).
+	badNS := helmInterpolationNode()
+	badNS.Config[helmConfigValues] = ""
+	_, err = w.planHelm(context.Background(), app, badNS, ActionDeploy, false, "", uuid.New(), nil)
+	if err == nil || !strings.Contains(err.Error(), "customer-Bad Value!") {
+		t.Errorf("invalid rendered namespace: got %v, want the rendered value named", err)
+	}
+}
+
+// TestPlanHelmNoInterpolationUntouched: a node with no references plans exactly
+// as before — values pass through byte-for-byte and no sed render is emitted.
+func TestPlanHelmNoInterpolationUntouched(t *testing.T) {
+	t.Parallel()
+	app := &ent.Application{ID: uuid.New(), OrganizationID: uuid.New(), RunnerClusterID: uuid.New()}
+	w := helmInterpolationWorker(nil, nil)
+	target := uuid.New()
+	node := GraphNode{
+		ID: uuid.New(), ComponentID: uuid.New(), Name: "plain", Type: TypeHelm,
+		TargetClusterID: &target,
+		TargetNamespace: "apps",
+		Config: map[string]string{
+			helmConfigChartSource: helm.SourceGit,
+			helm.ConfigRepoURL:    "https://github.com/org/charts.git",
+			// Helm template braces and shell vars are not references and pass through.
+			helmConfigValues: "name: {{ .Release.Name }}\nshell: $HOME\n",
+		},
+	}
+	req, err := w.planHelm(context.Background(), app, node, ActionDeploy, false, "", uuid.New(), nil)
+	if err != nil {
+		t.Fatalf("planHelm: %v", err)
+	}
+	if got := req.Spec.Files[helm.ValuesFile]; got != node.Config[helmConfigValues] {
+		t.Errorf("ref-free values must pass through unchanged, got:\n%s", got)
+	}
+	if strings.Contains(req.Spec.Script, "values.rendered.yaml") {
+		t.Errorf("ref-free node must not emit the sed render:\n%s", req.Spec.Script)
+	}
+}
+
+// helmOutputsWorker builds a worker whose resolveOutputs seam serves fixed
+// outputs JSON per execution-unit id, for the components.* render tests.
+func helmOutputsWorker(outputs map[uuid.UUID]string) *WorkflowRunWorker {
+	return &WorkflowRunWorker{
+		resolver: deploy.NewResolver(tokenConns{}, nil, nil, nil, plannerVars{}),
+		resolveOutputs: func(_ context.Context, _, _, componentID uuid.UUID) (string, error) {
+			return outputs[componentID], nil
+		},
+	}
+}
+
+// tofuSnapshotByID expands authored terraform components the same way a real
+// run snapshot does (so the plan/apply units carry the production naming) and
+// returns the nodes keyed by execution-unit id.
+func tofuSnapshotByID(authored ...GraphNode) map[uuid.UUID]GraphNode {
+	nodes := expandExecutionNodes(authored)
+	byID := make(map[uuid.UUID]GraphNode, len(nodes))
+	for _, n := range nodes {
+		byID[n.ID] = n
+	}
+	return byID
+}
+
+// tofuGraphNode builds a minimal authored terraform snapshot node.
+func tofuGraphNode(id uuid.UUID, name string) GraphNode {
+	return GraphNode{
+		ID: id, ComponentID: id, Name: name, Type: TypeTerraform,
+		Config: map[string]string{terraformConfigBackend: tofu.BackendS3},
+	}
+}
+
+// helmOutputsRefNode builds a helm node whose values and namespace reference
+// components.infra outputs.
+func helmOutputsRefNode() GraphNode {
+	target := uuid.New()
+	return GraphNode{
+		ID: uuid.New(), ComponentID: uuid.New(), Name: "web", Type: TypeHelm,
+		TargetClusterID: &target,
+		TargetNamespace: "${{ components.infra.outputs.namespace }}",
+		Config: map[string]string{
+			helmConfigChartSource: helm.SourceOCI,
+			helm.ConfigRepoURL:    "oci://example.com/charts/app",
+			helmConfigValues: "ns: ${{ components.infra.outputs.namespace }}\n" +
+				"replicas: ${{ components.infra.outputs.replicas }}\n",
+		},
+	}
+}
+
+// TestPlanHelmComponentOutputs: ${{ components.<name>.outputs.<key> }} renders
+// from the upstream apply unit's recorded outputs — string values bare,
+// non-string values as compact JSON — in the inline values and the target
+// namespace alike. The outputs row is keyed by the apply unit's derived id.
+func TestPlanHelmComponentOutputs(t *testing.T) {
+	t.Parallel()
+	app := &ent.Application{ID: uuid.New(), OrganizationID: uuid.New(), RunnerClusterID: uuid.New()}
+	infraID := uuid.New()
+	byID := tofuSnapshotByID(tofuGraphNode(infraID, "infra"))
+	outputs := `{
+		"namespace": {"value": "team-a", "type": "string", "sensitive": false},
+		"replicas":  {"value": [1, 2],   "type": ["list","number"], "sensitive": false}
+	}`
+	w := helmOutputsWorker(map[uuid.UUID]string{deriveApplyID(infraID): outputs})
+
+	req, err := w.planHelm(context.Background(), app, helmOutputsRefNode(), ActionDeploy, false, "", uuid.New(), byID)
+	if err != nil {
+		t.Fatalf("planHelm: %v", err)
+	}
+	values := req.Spec.Files[helm.ValuesFile]
+	for _, want := range []string{
+		"ns: team-a",      // string output renders bare
+		"replicas: [1,2]", // non-string output renders as compact JSON
+	} {
+		if !strings.Contains(values, want) {
+			t.Errorf("rendered values missing %q\n---\n%s", want, values)
+		}
+	}
+	// The namespace rendered server-side into the script.
+	if !strings.Contains(req.Spec.Script, "-n 'team-a'") {
+		t.Errorf("script missing the rendered namespace\n---\n%s", req.Spec.Script)
+	}
+}
+
+// TestPlanHelmComponentOutputsFailures: an unresolvable components reference
+// fails the node at plan time (before any TaskRun is submitted) with an
+// actionable message naming the component — runComponent persists it as the
+// component_run failure message.
+func TestPlanHelmComponentOutputsFailures(t *testing.T) {
+	t.Parallel()
+	app := &ent.Application{ID: uuid.New(), OrganizationID: uuid.New(), RunnerClusterID: uuid.New()}
+	infraID := uuid.New()
+	byID := tofuSnapshotByID(tofuGraphNode(infraID, "infra"))
+
+	// No recorded outputs anywhere (this run or earlier): deploy-first message.
+	w := helmOutputsWorker(nil)
+	_, err := w.planHelm(context.Background(), app, helmOutputsRefNode(), ActionDeploy, false, "", uuid.New(), byID)
+	if err == nil || !strings.Contains(err.Error(), `component "infra" has no recorded outputs — deploy it successfully first`) {
+		t.Errorf("no outputs: got %v, want the deploy-first message", err)
+	}
+
+	// Outputs exist but the key doesn't: the key is named.
+	w = helmOutputsWorker(map[uuid.UUID]string{
+		deriveApplyID(infraID): `{"other": {"value": "x", "type": "string", "sensitive": false}}`,
+	})
+	_, err = w.planHelm(context.Background(), app, helmOutputsRefNode(), ActionDeploy, false, "", uuid.New(), byID)
+	if err == nil || !strings.Contains(err.Error(), `has no recorded output "namespace"`) {
+		t.Errorf("missing key: got %v, want the key named", err)
+	}
+
+	// The named component isn't a terraform unit of this run (e.g. the snapshot
+	// predates a rename).
+	node := helmOutputsRefNode()
+	node.Config[helmConfigValues] = "ns: ${{ components.bogus.outputs.namespace }}"
+	node.TargetNamespace = "apps"
+	_, err = w.planHelm(context.Background(), app, node, ActionDeploy, false, "", uuid.New(), byID)
+	if err == nil || !strings.Contains(err.Error(), `component "bogus" is not an OpenTofu component of this run`) {
+		t.Errorf("unknown component: got %v, want the component named", err)
+	}
+
+	// Two terraform components sharing the referenced name: ambiguous.
+	dupByID := tofuSnapshotByID(tofuGraphNode(infraID, "infra"), tofuGraphNode(uuid.New(), "infra"))
+	_, err = w.planHelm(context.Background(), app, helmOutputsRefNode(), ActionDeploy, false, "", uuid.New(), dupByID)
+	if err == nil || !strings.Contains(err.Error(), `component name "infra" is ambiguous`) {
+		t.Errorf("ambiguous name: got %v, want the ambiguity named", err)
+	}
+}
+
 // TestPlanTofuHandoverFailure: a handover provision failure fails the planning
 // (the step would only fail later, worse — at the kubectl upsert after a full
 // plan), with the component named in the error.

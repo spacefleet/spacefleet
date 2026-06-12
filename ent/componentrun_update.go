@@ -163,6 +163,26 @@ func (_u *ComponentRunUpdate) ClearLogs() *ComponentRunUpdate {
 	return _u
 }
 
+// SetOutputs sets the "outputs" field.
+func (_u *ComponentRunUpdate) SetOutputs(v string) *ComponentRunUpdate {
+	_u.mutation.SetOutputs(v)
+	return _u
+}
+
+// SetNillableOutputs sets the "outputs" field if the given value is not nil.
+func (_u *ComponentRunUpdate) SetNillableOutputs(v *string) *ComponentRunUpdate {
+	if v != nil {
+		_u.SetOutputs(*v)
+	}
+	return _u
+}
+
+// ClearOutputs clears the value of the "outputs" field.
+func (_u *ComponentRunUpdate) ClearOutputs() *ComponentRunUpdate {
+	_u.mutation.ClearOutputs()
+	return _u
+}
+
 // SetApprovedBy sets the "approved_by" field.
 func (_u *ComponentRunUpdate) SetApprovedBy(v string) *ComponentRunUpdate {
 	_u.mutation.SetApprovedBy(v)
@@ -391,6 +411,12 @@ func (_u *ComponentRunUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if _u.mutation.LogsCleared() {
 		_spec.ClearField(componentrun.FieldLogs, field.TypeString)
 	}
+	if value, ok := _u.mutation.Outputs(); ok {
+		_spec.SetField(componentrun.FieldOutputs, field.TypeString, value)
+	}
+	if _u.mutation.OutputsCleared() {
+		_spec.ClearField(componentrun.FieldOutputs, field.TypeString)
+	}
 	if value, ok := _u.mutation.ApprovedBy(); ok {
 		_spec.SetField(componentrun.FieldApprovedBy, field.TypeString, value)
 	}
@@ -578,6 +604,26 @@ func (_u *ComponentRunUpdateOne) SetNillableLogs(v *string) *ComponentRunUpdateO
 // ClearLogs clears the value of the "logs" field.
 func (_u *ComponentRunUpdateOne) ClearLogs() *ComponentRunUpdateOne {
 	_u.mutation.ClearLogs()
+	return _u
+}
+
+// SetOutputs sets the "outputs" field.
+func (_u *ComponentRunUpdateOne) SetOutputs(v string) *ComponentRunUpdateOne {
+	_u.mutation.SetOutputs(v)
+	return _u
+}
+
+// SetNillableOutputs sets the "outputs" field if the given value is not nil.
+func (_u *ComponentRunUpdateOne) SetNillableOutputs(v *string) *ComponentRunUpdateOne {
+	if v != nil {
+		_u.SetOutputs(*v)
+	}
+	return _u
+}
+
+// ClearOutputs clears the value of the "outputs" field.
+func (_u *ComponentRunUpdateOne) ClearOutputs() *ComponentRunUpdateOne {
+	_u.mutation.ClearOutputs()
 	return _u
 }
 
@@ -838,6 +884,12 @@ func (_u *ComponentRunUpdateOne) sqlSave(ctx context.Context) (_node *ComponentR
 	}
 	if _u.mutation.LogsCleared() {
 		_spec.ClearField(componentrun.FieldLogs, field.TypeString)
+	}
+	if value, ok := _u.mutation.Outputs(); ok {
+		_spec.SetField(componentrun.FieldOutputs, field.TypeString, value)
+	}
+	if _u.mutation.OutputsCleared() {
+		_spec.ClearField(componentrun.FieldOutputs, field.TypeString)
 	}
 	if value, ok := _u.mutation.ApprovedBy(); ok {
 		_spec.SetField(componentrun.FieldApprovedBy, field.TypeString, value)

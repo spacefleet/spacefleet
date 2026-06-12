@@ -332,6 +332,7 @@ var (
 		{Name: "message", Type: field.TypeString, Nullable: true},
 		{Name: "run_name", Type: field.TypeString, Nullable: true},
 		{Name: "logs", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "outputs", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "approved_by", Type: field.TypeString, Default: ""},
 		{Name: "approved_at", Type: field.TypeTime, Nullable: true},
 		{Name: "chart_revision", Type: field.TypeString, Nullable: true},
@@ -351,13 +352,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "component_runs_organizations_organization",
-				Columns:    []*schema.Column{ComponentRunsColumns[16]},
+				Columns:    []*schema.Column{ComponentRunsColumns[17]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "component_runs_workflow_runs_workflow_run",
-				Columns:    []*schema.Column{ComponentRunsColumns[17]},
+				Columns:    []*schema.Column{ComponentRunsColumns[18]},
 				RefColumns: []*schema.Column{WorkflowRunsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -366,12 +367,12 @@ var (
 			{
 				Name:    "componentrun_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{ComponentRunsColumns[16]},
+				Columns: []*schema.Column{ComponentRunsColumns[17]},
 			},
 			{
 				Name:    "componentrun_workflow_run_id",
 				Unique:  false,
-				Columns: []*schema.Column{ComponentRunsColumns[17]},
+				Columns: []*schema.Column{ComponentRunsColumns[18]},
 			},
 		},
 	}

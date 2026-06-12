@@ -362,6 +362,106 @@ describe("WorkflowRunView", () => {
     expect(await screen.findByText("tofu plan output")).toBeInTheDocument();
   });
 
+  // A settled deploy run for the tofu pair: both units succeeded, and the
+  // apply unit captured the module's outputs. The detail mock parameterizes the
+  // outputs so the masking tests can model an editor (value present) and a
+  // viewer (sensitive value withheld by the API).
+  function mockSettledTofuRun(outputs: Record<string, unknown>) {
+    const settled = {
+      ...awaitingDetail,
+      status: "succeeded",
+      finished_at: "2026-06-12T09:05:00Z",
+      component_runs: [
+        { id: "cr-a", component_id: compA, name: "infra · plan", type: "terraform", status: "succeeded" },
+        { id: "cr-b", component_id: compB, name: "infra · apply", type: "terraform", status: "succeeded" },
+      ],
+    };
+    mockApi.GET.mockImplementation(
+      (
+        path: string,
+        opts?: { params?: { path?: { componentRunId?: string } } },
+      ) => {
+        if (path === "/api/applications/{id}/runs/{runId}")
+          return Promise.resolve({ data: settled, error: undefined });
+        if (
+          path ===
+          "/api/applications/{id}/runs/{runId}/components/{componentRunId}"
+        ) {
+          const id = opts?.params?.path?.componentRunId;
+          return Promise.resolve({
+            data:
+              id === "cr-b"
+                ? {
+                    id: "cr-b",
+                    name: "infra · apply",
+                    type: "terraform",
+                    status: "succeeded",
+                    logs: "apply logs",
+                    outputs,
+                  }
+                : {
+                    id: "cr-a",
+                    name: "infra · plan",
+                    type: "terraform",
+                    status: "succeeded",
+                    logs: "tofu plan output",
+                  },
+            error: undefined,
+          });
+        }
+        return Promise.resolve({ data: undefined, error: undefined });
+      },
+    );
+  }
+
+  it("shows captured outputs on a settled tofu apply step, masking sensitive values", async () => {
+    mockSettledTofuRun({
+      namespace: { value: "customer-a", sensitive: false },
+      db_password: { value: "hunter2", sensitive: true },
+      subnet_ids: { value: ["a", "b"], sensitive: false },
+    });
+    renderRunView();
+    fireEvent.click(await screen.findByText("infra · apply"));
+    fireEvent.click(await screen.findByRole("button", { name: /^outputs$/i }));
+    // Non-sensitive values render bare (strings) or as JSON (lists).
+    expect(await screen.findByText("customer-a")).toBeInTheDocument();
+    expect(screen.getByText('["a","b"]')).toBeInTheDocument();
+    // The sensitive value is masked until revealed, then maskable again.
+    expect(screen.queryByText("hunter2")).not.toBeInTheDocument();
+    expect(screen.getByText("••••••••")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /reveal db_password/i }),
+    );
+    expect(await screen.findByText("hunter2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /mask db_password/i }));
+    expect(screen.queryByText("hunter2")).not.toBeInTheDocument();
+  });
+
+  it("offers no reveal when a sensitive output's value was withheld by the API", async () => {
+    // Below editor the API drops sensitive values entirely — the entry still
+    // lists, masked, but there is nothing to reveal.
+    mockSettledTofuRun({ db_password: { sensitive: true } });
+    renderRunView();
+    fireEvent.click(await screen.findByText("infra · apply"));
+    fireEvent.click(await screen.findByRole("button", { name: /^outputs$/i }));
+    expect(await screen.findByText("db_password")).toBeInTheDocument();
+    expect(screen.getByText("••••••••")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /reveal db_password/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows no Outputs tab for a step without captured outputs", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    mockAwaitingComponentDetails();
+    renderRunView();
+    fireEvent.click(await screen.findByText("infra · apply"));
+    await screen.findByText("tofu plan output");
+    expect(
+      screen.queryByRole("button", { name: /^outputs$/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("renders a distinct awaiting-approval run status badge", async () => {
     mockStream.mockReturnValue({ value: null, status: "live", error: null });
     mockApi.GET.mockImplementation((path: string) => {

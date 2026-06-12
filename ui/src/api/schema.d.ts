@@ -2401,6 +2401,16 @@ export interface components {
             chart_revision?: string;
             /** @description Git commit SHAs the values sources were resolved to. */
             values_revision?: string;
+            /**
+             * @description Structured outputs captured from an OpenTofu (Terraform) apply step
+             *     that succeeded on a deploy run — the module's output values, keyed
+             *     by output name. Absent for every other step and until the apply
+             *     settles. Sensitive output values are omitted for callers below
+             *     editor.
+             */
+            outputs?: {
+                [key: string]: components["schemas"]["ComponentRunOutput"];
+            };
             /** Format: date-time */
             created_at: string;
             /**
@@ -2413,6 +2423,20 @@ export interface components {
              * @description When the step settled; absent until terminal.
              */
             finished_at?: string | null;
+        };
+        /** @description One captured OpenTofu (Terraform) output value. */
+        ComponentRunOutput: {
+            /**
+             * @description The output's value — any JSON type, as the module produced it.
+             *     Omitted when the output is sensitive and the caller is below
+             *     editor.
+             */
+            value?: unknown;
+            /**
+             * @description Whether the module marked this output sensitive. Sensitive values
+             *     are masked in the UI and omitted entirely below editor.
+             */
+            sensitive: boolean;
         };
         ComponentRunDetail: components["schemas"]["ComponentRun"] & {
             /**

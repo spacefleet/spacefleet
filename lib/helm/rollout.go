@@ -115,6 +115,22 @@ const (
 	revValuesPrefix = "SPACEFLEET_VALUES_REVISION_"
 )
 
+// Git-context sentinels: the workflow planner renders a ${{ run.git_sha }} /
+// ${{ run.git_sha_short }} reference in a component's inline values to these
+// fixed placeholders — the real SHA is only known after the chart clone, in
+// the step itself. When Rollout.RenderGitContext is set, the git-source script
+// substitutes the clone's resolved SHAs over them (a hex-only sed,
+// injection-proof by construction) into a writable copy of the mounted values
+// file and layers that copy instead. Do not extend this in-script substitution
+// to arbitrary strings — hex SHAs are what make the sed safe.
+const (
+	GitSHASentinel      = "__SPACEFLEET_GIT_SHA__"
+	GitSHAShortSentinel = "__SPACEFLEET_GIT_SHA_SHORT__"
+	// renderedValuesPath is the writable copy the sed renders into (the creds
+	// mount is a read-only Secret volume).
+	renderedValuesPath = "/tmp/values.rendered.yaml"
+)
+
 // Preview-protocol log markers. The diff body is bracketed by sentinels so
 // ParseDiff can slice it out exactly rather than heuristically filtering setup
 // chatter (plugin install, clones, repo add) from the captured logs. The changes
@@ -256,6 +272,14 @@ type Rollout struct {
 	// the clone's argv, or the workspace .git/config. Set by the rollout resolver
 	// when the app has a GitHub App installation attached.
 	HasGitToken bool
+	// RenderGitContext substitutes the chart clone's resolved SHAs over the
+	// GitSHASentinel / GitSHAShortSentinel placeholders in the mounted inline
+	// values (git chart source only). Set by the workflow planner when a
+	// ${{ run.git_sha* }} reference rendered into the values. Applies to deploy
+	// AND preview — a preview must diff what a deploy would deploy. Ignored for
+	// uninstall (no clone, and values are unused) and for non-git sources
+	// (validation rejects the references there).
+	RenderGitContext bool
 	// Force rolls the release's workloads even when the chart renders no change.
 	// After the `helm upgrade --install` completes, the release's Deployments,
 	// StatefulSets, and DaemonSets (selected by the standard
@@ -425,6 +449,18 @@ func Script(r Rollout) string {
 		}
 		// Echo the resolved chart SHA so the worker records what this run pulled.
 		fmt.Fprintf(&b, "echo \"%s$(git -C /src rev-parse HEAD)\"\n", revChartPrefix)
+		if r.RenderGitContext {
+			// Substitute the clone's resolved SHAs over the planner-rendered
+			// sentinels into a writable copy of the inline values, and layer that
+			// copy (the `values` path feeds addValueFlags below). SHAs are
+			// lowercase hex, so the sed is injection-proof by construction; the
+			// mounted file is read-only (Secret volume), hence the /tmp copy.
+			b.WriteString("SF_SHA=$(git -C /src rev-parse HEAD)\n")
+			b.WriteString("SF_SHA_SHORT=$(git -C /src rev-parse --short=7 HEAD)\n")
+			fmt.Fprintf(&b, "sed -e \"s/%s/$SF_SHA/g\" -e \"s/%s/$SF_SHA_SHORT/g\" %s > %s\n",
+				GitSHASentinel, GitSHAShortSentinel, shQuote(values), renderedValuesPath)
+			values = renderedValuesPath
+		}
 		chartDir := "/src"
 		if p := r.Config[ConfigGitPath]; p != "" {
 			// Containment guard: reject a `..` segment so the chart dir can't escape

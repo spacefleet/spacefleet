@@ -612,6 +612,85 @@ func TestScriptForceIgnoredByPreview(t *testing.T) {
 	}
 }
 
+func TestScriptRenderGitContext(t *testing.T) {
+	// With RenderGitContext set on a git-source deploy, the script renders the
+	// run.git_sha* sentinels with the clone's resolved SHAs into a writable copy
+	// and layers that copy instead of the mounted values file.
+	s := Script(Rollout{
+		Action:           ActionDeploy,
+		ChartSource:      SourceGit,
+		Config:           map[string]string{ConfigRepoURL: "https://github.com/org/charts.git"},
+		ReleaseName:      "app",
+		TargetNamespace:  "ns",
+		WaitTimeout:      30 * time.Minute,
+		RenderGitContext: true,
+	})
+	for _, w := range []string{
+		"SF_SHA=$(git -C /src rev-parse HEAD)",
+		"SF_SHA_SHORT=$(git -C /src rev-parse --short=7 HEAD)",
+		`sed -e "s/` + GitSHASentinel + `/$SF_SHA/g" -e "s/` + GitSHAShortSentinel + `/$SF_SHA_SHORT/g" '/workspace/creds/values.yaml' > /tmp/values.rendered.yaml`,
+		"-f '/tmp/values.rendered.yaml' --kubeconfig",
+	} {
+		if !strings.Contains(s, w) {
+			t.Errorf("render-git-context script missing %q\n---\n%s", w, s)
+		}
+	}
+	// The rendered copy replaces the mounted file as the inline layer — the
+	// read-only original must not be passed to helm.
+	if strings.Contains(s, "-f '/workspace/creds/values.yaml'") {
+		t.Errorf("script must layer the rendered copy, not the mounted values file:\n%s", s)
+	}
+	// The sed must run after the clone (it reads the clone's SHA) and before the
+	// upgrade (which consumes the rendered file).
+	if strings.Index(s, "git clone") > strings.Index(s, "SF_SHA=") {
+		t.Errorf("sed render must follow the clone:\n%s", s)
+	}
+	if strings.Index(s, "SF_SHA=") > strings.Index(s, "helm upgrade") {
+		t.Errorf("sed render must precede the upgrade:\n%s", s)
+	}
+}
+
+func TestScriptRenderGitContextPreview(t *testing.T) {
+	// A preview renders the same substitution — the diff must show the real tag a
+	// deploy would set.
+	s := Script(Rollout{
+		Action:           ActionPreview,
+		ChartSource:      SourceGit,
+		Config:           map[string]string{ConfigRepoURL: "https://github.com/org/charts.git"},
+		ReleaseName:      "app",
+		TargetNamespace:  "ns",
+		WaitTimeout:      30 * time.Minute,
+		RenderGitContext: true,
+	})
+	for _, w := range []string{
+		"SF_SHA_SHORT=$(git -C /src rev-parse --short=7 HEAD)",
+		"-f '/tmp/values.rendered.yaml' --kubeconfig",
+	} {
+		if !strings.Contains(s, w) {
+			t.Errorf("preview render-git-context script missing %q\n---\n%s", w, s)
+		}
+	}
+}
+
+func TestScriptNoRenderGitContextUsesMountedValues(t *testing.T) {
+	// Without RenderGitContext the script is unchanged: no sed, and the mounted
+	// values file is the inline layer.
+	s := Script(Rollout{
+		Action:          ActionDeploy,
+		ChartSource:     SourceGit,
+		Config:          map[string]string{ConfigRepoURL: "https://github.com/org/charts.git"},
+		ReleaseName:     "app",
+		TargetNamespace: "ns",
+		WaitTimeout:     30 * time.Minute,
+	})
+	if strings.Contains(s, "sed ") || strings.Contains(s, "values.rendered.yaml") {
+		t.Errorf("script must not render sentinels when RenderGitContext is unset:\n%s", s)
+	}
+	if !strings.Contains(s, "-f '/workspace/creds/values.yaml' --kubeconfig") {
+		t.Errorf("script must layer the mounted values file:\n%s", s)
+	}
+}
+
 func TestScriptAlwaysWaits(t *testing.T) {
 	for _, src := range []string{SourceHTTPRepo, SourceOCI, SourceGit} {
 		s := Script(Rollout{Action: ActionDeploy, ChartSource: src, Config: map[string]string{}, ReleaseName: "r", TargetNamespace: "n", WaitTimeout: time.Minute})

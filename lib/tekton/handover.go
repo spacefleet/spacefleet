@@ -121,6 +121,35 @@ func ensureHandoverSecret(ctx context.Context, cs kubernetes.Interface, namespac
 	return nil
 }
 
+// ReadHandoverSecretKey returns the named key's bytes from a handover Secret —
+// the worker-side read of data a step handed back through it (a terraform
+// apply's captured outputs). A missing Secret or key returns nil with no error:
+// both are normal states (the capture is best-effort in the pod), distinct
+// from a connection/API failure, which is returned for the caller to log.
+func ReadHandoverSecretKey(ctx context.Context, conn k8s.Connection, namespace, name, key string) ([]byte, error) {
+	cfg, err := k8s.RESTConfig(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
+	cs, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("tekton: clientset: %w", err)
+	}
+	return readHandoverSecretKey(ctx, cs, namespace, name, key)
+}
+
+// readHandoverSecretKey is the storage-agnostic core of ReadHandoverSecretKey.
+func readHandoverSecretKey(ctx context.Context, cs kubernetes.Interface, namespace, name, key string) ([]byte, error) {
+	secret, err := cs.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("tekton: read handover secret %s/%s: %w", namespace, name, err)
+	}
+	return secret.Data[key], nil
+}
+
 // DeleteHandoverSecret deletes the named handover Secret; the owner-referenced
 // ServiceAccount/Role/RoleBinding are garbage-collected with it. A Secret that
 // is already gone (the apply step's own cleanup got there first) is a no-op.

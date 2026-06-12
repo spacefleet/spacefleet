@@ -4,6 +4,7 @@ package workflows
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -128,6 +129,181 @@ func succeedingFuncs() tekton.RunFuncs {
 		List: func(context.Context, k8s.Connection, string, string) ([]*tekton.RunStatus, error) {
 			return nil, nil
 		},
+	}
+}
+
+// addTerraformComponent creates a terraform workflow node directly (bypassing
+// write-time validation — the fake executor never runs the script). BeginRun
+// expands it into a plan unit (the authored id) and an apply unit
+// (deriveApplyID).
+func addTerraformComponent(t *testing.T, client *ent.Client, orgID, appID uuid.UUID, name string) *ent.Component {
+	t.Helper()
+	c, err := client.Component.Create().
+		SetOrganizationID(orgID).
+		SetApplicationID(appID).
+		SetName(name).
+		SetType("terraform").
+		SetConfig(map[string]string{"repo_url": "https://github.com/acme/infra", "path": "envs/prod", "backend": "s3"}).
+		Save(context.Background())
+	if err != nil {
+		t.Fatalf("create terraform component %q: %v", name, err)
+	}
+	return c
+}
+
+// TestWorkCapturesTofuOutputs: when a terraform apply unit settles succeeded on
+// a deploy run, the worker reads the outputs the pod handed back through the
+// pair's handover Secret, persists the canonical JSON on the apply unit's
+// component run (only there — the plan unit captures nothing), and deletes the
+// Secret.
+func TestWorkCapturesTofuOutputs(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	tf := addTerraformComponent(t, client, org.ID, app.ID, "infra")
+	run, args := beginRun(t, svc, org.ID, app.ID)
+
+	secretName := tofuPlanArtifactSecret(run.ID, tf.ID)
+	outputsJSON := `{"namespace": {"sensitive": false, "type": "string", "value": "customer-a"}, "db_password": {"sensitive": true, "type": "string", "value": "hunter2"}}`
+
+	w := newTestWorker(client, succeedingFuncs())
+	var reads, deletes []string
+	w.captureOutputs = func(_ context.Context, _ k8s.Connection, namespace, name string) ([]byte, error) {
+		reads = append(reads, namespace+"/"+name)
+		return []byte(outputsJSON), nil
+	}
+	w.deleteHandover = func(_ context.Context, _ k8s.Connection, _, name string) error {
+		deletes = append(deletes, name)
+		return nil
+	}
+	if err := w.Work(ctx, workerJob(args, 1, 3)); err != nil {
+		t.Fatalf("Work: %v", err)
+	}
+	if got := runStatus(t, client, run.ID); got != workflowrun.StatusSucceeded {
+		t.Fatalf("run = %q, want %q", got, workflowrun.StatusSucceeded)
+	}
+
+	// The capture read exactly the apply pair's Secret, once.
+	wantRead := tekton.JobsNamespace + "/" + secretName
+	if len(reads) != 1 || reads[0] != wantRead {
+		t.Errorf("outputs reads = %v, want exactly [%s]", reads, wantRead)
+	}
+
+	// Persisted on the apply unit (canonicalized but content-identical) …
+	applyCR := componentRunFor(t, client, run.ID, deriveApplyID(tf.ID))
+	if applyCR.Outputs == "" {
+		t.Fatal("apply unit has no outputs persisted")
+	}
+	var stored map[string]tofuOutput
+	if err := json.Unmarshal([]byte(applyCR.Outputs), &stored); err != nil {
+		t.Fatalf("stored outputs do not parse: %v", err)
+	}
+	if string(stored["namespace"].Value) != `"customer-a"` || !stored["db_password"].Sensitive {
+		t.Errorf("stored outputs = %s, want namespace + sensitive db_password", applyCR.Outputs)
+	}
+	// … and never on the plan unit.
+	if planCR := componentRunFor(t, client, run.ID, tf.ID); planCR.Outputs != "" {
+		t.Errorf("plan unit outputs = %q, want empty", planCR.Outputs)
+	}
+
+	// The worker deleted the spent Secret right after reading it; the terminal
+	// sweep then deletes it once more (an idempotent backstop that runs for
+	// every settled run). Two deletes of the same name, nothing else.
+	if len(deletes) != 2 || deletes[0] != secretName || deletes[1] != secretName {
+		t.Errorf("handover deletes = %v, want [%s %s] (capture + terminal sweep)", deletes, secretName, secretName)
+	}
+}
+
+// TestResolveComponentOutputs: the ${{ components.* }} lookup behind the
+// planner — the referencing run's own succeeded-with-outputs row wins over a
+// newer run's outputs; a run without one (a preview, a skipped upstream) falls
+// back to the latest successful outputs; everything is org-scoped; nothing
+// recorded resolves to "".
+func TestResolveComponentOutputs(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	tf := addTerraformComponent(t, client, org.ID, app.ID, "infra")
+	applyID := deriveApplyID(tf.ID)
+
+	// Nothing recorded yet: resolves empty, not an error.
+	if got, err := svc.ResolveComponentOutputs(ctx, org.ID, uuid.New(), applyID); err != nil || got != "" {
+		t.Fatalf("no outputs anywhere: got (%q, %v), want empty", got, err)
+	}
+
+	// Two successive deploy runs, each capturing different outputs.
+	deployWithOutputs := func(outputs string) *ent.WorkflowRun {
+		t.Helper()
+		run, args := beginRun(t, svc, org.ID, app.ID)
+		w := newTestWorker(client, succeedingFuncs())
+		w.captureOutputs = func(context.Context, k8s.Connection, string, string) ([]byte, error) {
+			return []byte(outputs), nil
+		}
+		if err := w.Work(ctx, workerJob(args, 1, 3)); err != nil {
+			t.Fatalf("Work: %v", err)
+		}
+		return run
+	}
+	v1 := `{"namespace": {"sensitive": false, "type": "string", "value": "team-v1"}}`
+	v2 := `{"namespace": {"sensitive": false, "type": "string", "value": "team-v2"}}`
+	run1 := deployWithOutputs(v1)
+	run2 := deployWithOutputs(v2)
+
+	// A run with its own succeeded-with-outputs row resolves that row — run1
+	// still sees v1 even though run2's outputs are newer.
+	if got, err := svc.ResolveComponentOutputs(ctx, org.ID, run1.ID, applyID); err != nil || !strings.Contains(got, "team-v1") {
+		t.Errorf("run1 (this-run row): got (%q, %v), want v1", got, err)
+	}
+	if got, err := svc.ResolveComponentOutputs(ctx, org.ID, run2.ID, applyID); err != nil || !strings.Contains(got, "team-v2") {
+		t.Errorf("run2 (this-run row): got (%q, %v), want v2", got, err)
+	}
+
+	// A run with no row of its own (a preview's plan applies nothing) falls back
+	// to the LATEST successful outputs: v2.
+	if got, err := svc.ResolveComponentOutputs(ctx, org.ID, uuid.New(), applyID); err != nil || !strings.Contains(got, "team-v2") {
+		t.Errorf("fallback: got (%q, %v), want the latest (v2)", got, err)
+	}
+
+	// Org scoping is the tenancy boundary: another org resolves nothing, even
+	// with the right run and component ids.
+	other := newOrg(t, client, "Other")
+	if got, err := svc.ResolveComponentOutputs(ctx, other.ID, run2.ID, applyID); err != nil || got != "" {
+		t.Errorf("cross-org: got (%q, %v), want empty", got, err)
+	}
+}
+
+// TestWorkOutputsCaptureFailureDoesNotFailRun: outputs capture is best-effort —
+// a read failure leaves the outputs column empty, keeps the Secret for the
+// sweep, and the step (whose apply already succeeded on the cluster) still
+// settles succeeded.
+func TestWorkOutputsCaptureFailureDoesNotFailRun(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	tf := addTerraformComponent(t, client, org.ID, app.ID, "infra")
+	run, args := beginRun(t, svc, org.ID, app.ID)
+
+	w := newTestWorker(client, succeedingFuncs())
+	w.captureOutputs = func(context.Context, k8s.Connection, string, string) ([]byte, error) {
+		return nil, errors.New("secret read: cluster API unreachable")
+	}
+	if err := w.Work(ctx, workerJob(args, 1, 3)); err != nil {
+		t.Fatalf("Work: %v", err)
+	}
+	if got := runStatus(t, client, run.ID); got != workflowrun.StatusSucceeded {
+		t.Fatalf("run = %q, want %q (capture is best-effort)", got, workflowrun.StatusSucceeded)
+	}
+	if cr := componentRunFor(t, client, run.ID, deriveApplyID(tf.ID)); cr.Status != componentrun.StatusSucceeded || cr.Outputs != "" {
+		t.Fatalf("apply unit = (%q, outputs %q), want succeeded with empty outputs", cr.Status, cr.Outputs)
 	}
 }
 
