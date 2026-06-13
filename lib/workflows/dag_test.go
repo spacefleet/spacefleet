@@ -43,6 +43,24 @@ func TestValidateDAG_Acyclic(t *testing.T) {
 	}
 }
 
+func TestValidateDAG_RejectsNonSlugName(t *testing.T) {
+	// A component name must be a slug — it is referenced by name in output
+	// expressions and seeds the default release name.
+	for _, name := range []string{"My App", "web_1", "-web", ""} {
+		n := helmNode(uuid.New())
+		n.Name = name
+		if err := validateDAG([]ComponentInput{n}); !errors.Is(err, ErrInvalidConfig) {
+			t.Errorf("name %q: expected ErrInvalidConfig, got %v", name, err)
+		}
+	}
+	// A slug passes.
+	n := helmNode(uuid.New())
+	n.Name = "web-1"
+	if err := validateDAG([]ComponentInput{n}); err != nil {
+		t.Errorf("slug name: expected pass, got %v", err)
+	}
+}
+
 func TestValidateDAG_Diamond(t *testing.T) {
 	// a → {b, c} → d : a valid diamond (b and c both depend on a, d on both).
 	a, b, c, d := uuid.New(), uuid.New(), uuid.New(), uuid.New()

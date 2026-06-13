@@ -2603,7 +2603,13 @@ components:
         name:
           type: string
           minLength: 1
-          maxLength: 200
+          maxLength: 63
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          description: |
+            A slug: lowercase letters, digits, and hyphens, starting and ending
+            with a letter or digit (e.g. "my-app"). The name seeds the default
+            Helm release name for the app's components, so it must be safe to
+            reuse as a DNS-1123 label.
         runner_cluster_id:
           type: string
           format: uuid
@@ -2625,7 +2631,13 @@ components:
         name:
           type: string
           minLength: 1
-          maxLength: 200
+          maxLength: 63
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          description: |
+            A slug: lowercase letters, digits, and hyphens, starting and ending
+            with a letter or digit (e.g. "my-app"). The name seeds the default
+            Helm release name for the app's components, so it must be safe to
+            reuse as a DNS-1123 label.
         runner_cluster_id:
           type: string
           format: uuid
@@ -2645,7 +2657,13 @@ components:
         name:
           type: string
           minLength: 1
-          maxLength: 200
+          maxLength: 63
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          description: |
+            A slug: lowercase letters, digits, and hyphens, starting and ending
+            with a letter or digit (e.g. "my-app"). The name seeds the default
+            Helm release name for the app's components, so it must be safe to
+            reuse as a DNS-1123 label.
 
     ApplicationGroup:
       type: object
@@ -3100,6 +3118,15 @@ components:
           format: uuid
         name:
           type: string
+          minLength: 1
+          maxLength: 63
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          description: |
+            A slug: lowercase letters, digits, and hyphens, starting and ending
+            with a letter or digit (e.g. "web"). The component is referenced by
+            this name in ${{ components.<name>.outputs.* }} expressions and it
+            seeds the default Helm release name (<app>-<component>), so it must be
+            safe to reuse as a DNS-1123 label.
         type:
           $ref: "#/components/schemas/ComponentType"
         config:

@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+
+	"github.com/spacefleet/spacefleet/lib/slug"
 )
 
 // GroupInput is one explicit group container of a proposed workflow, as supplied
@@ -115,6 +117,11 @@ func validateWorkflow(components []ComponentInput, groups []GroupInput) error {
 	for _, c := range components {
 		if c.ID == uuid.Nil {
 			return fmt.Errorf("%w: node %q", ErrMissingID, c.Name)
+		}
+		// A component is referenced by name in ${{ components.<name>.outputs.* }}
+		// and seeds the default Helm release name, so force it to a slug.
+		if !slug.Valid(c.Name) {
+			return fmt.Errorf("%w: component name %q %s", ErrInvalidConfig, c.Name, slug.Rule)
 		}
 		if _, dup := compIDs[c.ID]; dup {
 			return fmt.Errorf("%w: %s", ErrDuplicateID, c.ID)

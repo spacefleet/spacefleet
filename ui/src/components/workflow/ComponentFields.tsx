@@ -124,12 +124,21 @@ export function ComponentFields({
 
   return (
     <div className="space-y-4">
-      <Field label="Name">
+      <Field
+        label="Name"
+        help={
+          'A slug: lowercase letters, digits, and hyphens (e.g. "web"). Used in ' +
+          "${{ components.<name>.outputs.* }} references and to seed the release name."
+        }
+      >
         <input
           className="w-full border border-neutral-300 px-3 py-2 text-sm"
           value={component.name}
           onChange={(e) => set("name", e.target.value)}
-          placeholder="component name"
+          placeholder="web"
+          pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+          maxLength={63}
+          title={'A slug: lowercase letters, digits, and hyphens (e.g. "web")'}
           disabled={disabled}
         />
       </Field>
@@ -356,11 +365,14 @@ function HelmConfig({
         </Field>
       ))}
 
-      <Field label="Release name" help="Defaults to the component name.">
+      <Field
+        label="Release name"
+        help="Defaults to <application>-<component>. Set to override."
+      >
         <input
           type="text"
           className="w-full border border-neutral-300 px-3 py-2 text-sm"
-          placeholder="(defaults to name)"
+          placeholder="(defaults to <app>-<component>)"
           value={config.release_name ?? ""}
           onChange={(e) => setConfig("release_name", e.target.value)}
           disabled={disabled}

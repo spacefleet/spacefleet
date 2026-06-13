@@ -515,7 +515,7 @@ func (w *WorkflowRunWorker) planHelm(ctx context.Context, app *ent.Application, 
 	if nsRendered && !validDNSLabel(targetNamespace) {
 		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q: rendered target namespace %q is not a valid Kubernetes namespace name (lowercase alphanumerics and '-', at most 63 characters)", node.Name, targetNamespace)
 	}
-	releaseName, _, err := renderer.render(helmFieldReleaseName, componentReleaseName(node), false)
+	releaseName, _, err := renderer.render(helmFieldReleaseName, componentReleaseName(app.Name, node), false)
 	if err != nil {
 		return tekton.RunRequest{}, err
 	}
@@ -605,19 +605,24 @@ func decodeValuesSources(encoded string) ([]map[string]string, error) {
 }
 
 // componentReleaseName is the helm release name for a component: the explicit
-// release_name config when set, else the component's name.
-func componentReleaseName(node GraphNode) string {
+// release_name config when set, else the application name and the component name
+// joined by a hyphen (app-component). Both names are slugs (see lib/slug), so the
+// joined default is itself a valid release name. An explicit release_name is used
+// as authored — the app name is not prefixed onto it.
+func componentReleaseName(appName string, node GraphNode) string {
 	if rn := node.Config[helmConfigReleaseName]; rn != "" {
 		return rn
 	}
-	return node.Name
+	return appName + "-" + node.Name
 }
 
 // componentRunPrefix is the TaskRun generateName prefix for a component (a
-// DNS-1123 label), derived from the release name; lib/tekton appends a unique
-// suffix.
+// DNS-1123 label), derived from the component name — matching the tofu-/manifest-
+// run prefixes; lib/tekton appends a unique suffix. It deliberately tracks the
+// component name, not the (possibly app-prefixed or explicitly overridden) helm
+// release name, so the run name stays short and consistent across types.
 func componentRunPrefix(node GraphNode) string {
-	return "helm-" + sanitizeLabel(componentReleaseName(node))
+	return "helm-" + sanitizeLabel(node.Name)
 }
 
 // deref returns the pointed-to id, or uuid.Nil for a nil pointer.

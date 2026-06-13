@@ -138,21 +138,26 @@ func TestHelmChartConfig(t *testing.T) {
 
 func TestComponentReleaseNameAndPrefix(t *testing.T) {
 	t.Parallel()
-	// Explicit release_name wins.
-	n := GraphNode{Name: "My App", Config: map[string]string{helmConfigReleaseName: "explicit-release"}}
-	if got := componentReleaseName(n); got != "explicit-release" {
+	// Explicit release_name wins — the app name is not prefixed onto it.
+	n := GraphNode{Name: "web", Config: map[string]string{helmConfigReleaseName: "explicit-release"}}
+	if got := componentReleaseName("shop", n); got != "explicit-release" {
 		t.Fatalf("release name with explicit: got %q", got)
 	}
-	if got := componentRunPrefix(n); got != "helm-explicit-release" {
+	// The run prefix tracks the component name, not the release name.
+	if got := componentRunPrefix(n); got != "helm-web" {
 		t.Fatalf("prefix with explicit: got %q", got)
 	}
-	// Falls back to the (sanitized) component name.
-	n2 := GraphNode{Name: "My App", Config: map[string]string{}}
-	if got := componentReleaseName(n2); got != "My App" {
+	// Falls back to <app>-<component>.
+	n2 := GraphNode{Name: "web", Config: map[string]string{}}
+	if got := componentReleaseName("shop", n2); got != "shop-web" {
 		t.Fatalf("release name fallback: got %q", got)
 	}
-	if got := componentRunPrefix(n2); got != "helm-my-app" {
+	if got := componentRunPrefix(n2); got != "helm-web" {
 		t.Fatalf("prefix fallback: got %q", got)
+	}
+	// A legacy snapshot name (pre-slug) is still sanitized for the run name.
+	if got := componentRunPrefix(GraphNode{Name: "My App"}); got != "helm-my-app" {
+		t.Fatalf("prefix sanitizes legacy name: got %q", got)
 	}
 }
 

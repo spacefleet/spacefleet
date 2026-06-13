@@ -164,8 +164,16 @@ export function ApplicationForm() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="my-app"
+              pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+              maxLength={63}
+              title={'A slug: lowercase letters, digits, and hyphens (e.g. "my-app")'}
             />
           </Field>
+          <p className="-mt-3 text-xs text-neutral-500">
+            A slug — lowercase letters, digits, and hyphens. It seeds the Helm
+            release names for this app&apos;s components.
+          </p>
 
           <Field label="Runner cluster">
             {editing ? (

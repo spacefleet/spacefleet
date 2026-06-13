@@ -20,6 +20,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/applicationgroup"
 	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/lib/slug"
 )
 
 // Service is a thin wrapper over the ent client.
@@ -128,6 +129,11 @@ func (s *Service) newCreate(orgID uuid.UUID, p CreateParams) *ent.ApplicationCre
 
 // Update changes mutable fields of an application scoped to the organization.
 func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, p UpdateParams) (*ent.Application, error) {
+	// Validate the name before the lookup — fail fast on a bad name without a DB
+	// round-trip, mirroring validate().
+	if p.Name != nil && !slug.Valid(*p.Name) {
+		return nil, validationErr("application name %q %s", *p.Name, slug.Rule)
+	}
 	app, err := s.Get(ctx, orgID, id)
 	if err != nil {
 		return nil, err
@@ -191,6 +197,11 @@ func (s *Service) ensureGroup(ctx context.Context, orgID uuid.UUID, groupID *uui
 // the individual components, so it is validated at the workflow layer
 // (lib/workflows), not here.
 func (s *Service) validate(ctx context.Context, orgID uuid.UUID, p CreateParams) error {
+	// Name first — it's a cheap, deterministic check, and a slug keeps the name
+	// safe to reuse as a Helm release name / namespace component downstream.
+	if !slug.Valid(p.Name) {
+		return validationErr("application name %q %s", p.Name, slug.Rule)
+	}
 	runner, err := s.ent.Cluster.Query().
 		Where(cluster.OrganizationID(orgID), cluster.ID(p.RunnerClusterID)).
 		WithTekton().

@@ -1856,6 +1856,12 @@ export interface components {
          *     the workflow builder; create only sets the name and the runner cluster.
          */
         ApplicationCreateRequest: {
+            /**
+             * @description A slug: lowercase letters, digits, and hyphens, starting and ending
+             *     with a letter or digit (e.g. "my-app"). The name seeds the default
+             *     Helm release name for the app's components, so it must be safe to
+             *     reuse as a DNS-1123 label.
+             */
             name: string;
             /** Format: uuid */
             runner_cluster_id: string;
@@ -1872,6 +1878,12 @@ export interface components {
          *     deploy workflow from components. Same shape as ApplicationCreateRequest.
          */
         ApplicationImportRequest: {
+            /**
+             * @description A slug: lowercase letters, digits, and hyphens, starting and ending
+             *     with a letter or digit (e.g. "my-app"). The name seeds the default
+             *     Helm release name for the app's components, so it must be safe to
+             *     reuse as a DNS-1123 label.
+             */
             name: string;
             /** Format: uuid */
             runner_cluster_id: string;
@@ -1887,6 +1899,12 @@ export interface components {
          *     targeting live on the components (edit them via the workflow builder).
          */
         ApplicationUpdateRequest: {
+            /**
+             * @description A slug: lowercase letters, digits, and hyphens, starting and ending
+             *     with a letter or digit (e.g. "my-app"). The name seeds the default
+             *     Helm release name for the app's components, so it must be safe to
+             *     reuse as a DNS-1123 label.
+             */
             name?: string;
         };
         /**
@@ -2215,6 +2233,13 @@ export interface components {
         ComponentInput: {
             /** Format: uuid */
             id: string;
+            /**
+             * @description A slug: lowercase letters, digits, and hyphens, starting and ending
+             *     with a letter or digit (e.g. "web"). The component is referenced by
+             *     this name in ${{ components.<name>.outputs.* }} expressions and it
+             *     seeds the default Helm release name (<app>-<component>), so it must be
+             *     safe to reuse as a DNS-1123 label.
+             */
             name: string;
             type: components["schemas"]["ComponentType"];
             config?: {
