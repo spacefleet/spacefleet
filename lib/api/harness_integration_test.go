@@ -21,6 +21,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/secrets"
 	"github.com/spacefleet/spacefleet/lib/testsupport"
 	"github.com/spacefleet/spacefleet/lib/users"
+	"github.com/spacefleet/spacefleet/lib/workflows"
 )
 
 // This file holds the DB-backed half of the handler test harness: it builds the
@@ -92,6 +93,7 @@ func newHarness(t *testing.T, github githubinstallations.Authenticator) *harness
 		Clusters:            clusters.NewService(client, nil),
 		CloudCredentials:    cloudcredentials.NewService(client, sealer),
 		GitHubInstallations: githubinstallations.NewService(client, github),
+		Workflows:           workflows.NewService(client),
 		SecretKey:           testSecretKey,
 		GitHubAppSlug:       "spacefleet-test",
 	}

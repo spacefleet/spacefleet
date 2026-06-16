@@ -1,31 +1,27 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, Trash2, KeyRound } from "lucide-react";
-import { api } from "../api/client";
 import type { components } from "../api/schema";
+import { apiBackend, type VariablesBackend, type VariablesScope } from "./variablesBackend";
 
 type Variable = components["schemas"]["Variable"];
 
-// Scope discriminates the three API surfaces a VariablesEditor drives: group-
-// level variables (an application group's path), app-level variables (one
-// application's path), and a single component's variables (a nested path). All
-// three return the same Variable shape, so only the endpoints differ.
-export type VariablesScope =
-  | { kind: "group"; groupId: string }
-  | { kind: "app"; appId: string }
-  | { kind: "component"; appId: string; componentId: string };
+export type { VariablesScope } from "./variablesBackend";
 
 // VariablesEditor lists and edits the variables in a scope. A variable is a
 // name/value pair passed to component jobs as an environment variable; a
 // sensitive one is sealed server-side and never returned, so its value is shown
 // as "set" and can only be replaced (never read back). Used at the group, app,
 // and component levels (see VariablesScope). Editors can add/replace/delete;
-// viewers see a read-only list.
+// viewers see a read-only list. Pass `backend` to override the default API
+// transport (the workflow editor passes an in-memory one for a new component).
 export function VariablesEditor({
   scope,
   canEdit,
+  backend,
 }: {
   scope: VariablesScope;
   canEdit: boolean;
+  backend?: VariablesBackend;
 }) {
   const [vars, setVars] = useState<Variable[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,33 +34,22 @@ export function VariablesEditor({
         ? `app:${scope.appId}`
         : `component:${scope.appId}:${scope.componentId}`;
 
+  // A provided backend is used as-is; otherwise build the API backend for this
+  // scope. Keyed on scopeKey (not the scope object) so it's stable per scope.
+  const resolved = useMemo(
+    () => backend ?? apiBackend(scope),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [backend, scopeKey],
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const res =
-      scope.kind === "group"
-        ? await api.GET("/api/application-groups/{id}/variables", {
-            params: { path: { id: scope.groupId } },
-          })
-        : scope.kind === "app"
-          ? await api.GET("/api/applications/{id}/variables", {
-              params: { path: { id: scope.appId } },
-            })
-          : await api.GET(
-              "/api/applications/{id}/components/{componentId}/variables",
-              {
-                params: {
-                  path: { id: scope.appId, componentId: scope.componentId },
-                },
-              },
-            );
-    if (res.error) setError(res.error.message ?? "Could not load variables");
-    setVars(res.data ?? []);
+    const res = await resolved.list();
+    if (res.error) setError(res.error);
+    setVars(res.data);
     setLoading(false);
-    // scopeKey captures the identifying fields; depending on it (not the object
-    // identity) reloads only when the scope actually changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeKey]);
+  }, [resolved]);
 
   useEffect(() => {
     void load();
@@ -72,32 +57,9 @@ export function VariablesEditor({
 
   async function onDelete(v: Variable) {
     if (!confirm(`Delete the variable "${v.name}"?`)) return;
-    const res =
-      scope.kind === "group"
-        ? await api.DELETE(
-            "/api/application-groups/{id}/variables/{variableId}",
-            {
-              params: { path: { id: scope.groupId, variableId: v.id } },
-            },
-          )
-        : scope.kind === "app"
-          ? await api.DELETE("/api/applications/{id}/variables/{variableId}", {
-              params: { path: { id: scope.appId, variableId: v.id } },
-            })
-          : await api.DELETE(
-              "/api/applications/{id}/components/{componentId}/variables/{variableId}",
-              {
-                params: {
-                  path: {
-                    id: scope.appId,
-                    componentId: scope.componentId,
-                    variableId: v.id,
-                  },
-                },
-              },
-            );
+    const res = await resolved.remove(v.id);
     if (res.error) {
-      setError(res.error.message ?? "Could not delete variable");
+      setError(res.error);
       return;
     }
     setVars((vs) => vs.filter((x) => x.id !== v.id));
@@ -119,7 +81,7 @@ export function VariablesEditor({
                 <VariableRow
                   key={v.id}
                   variable={v}
-                  scope={scope}
+                  backend={resolved}
                   canEdit={canEdit}
                   onChanged={(next) =>
                     setVars((vs) =>
@@ -135,7 +97,7 @@ export function VariablesEditor({
 
           {canEdit && (
             <AddVariableForm
-              scope={scope}
+              backend={resolved}
               existing={vars}
               onAdded={(v) => setVars((vs) => [...vs, v])}
               onError={setError}
@@ -151,14 +113,14 @@ export function VariablesEditor({
 // value, and (for editors) a control to replace the value and to delete it.
 function VariableRow({
   variable,
-  scope,
+  backend,
   canEdit,
   onChanged,
   onDelete,
   onError,
 }: {
   variable: Variable;
-  scope: VariablesScope;
+  backend: VariablesBackend;
   canEdit: boolean;
   onChanged: (v: Variable) => void;
   onDelete: () => void;
@@ -170,38 +132,10 @@ function VariableRow({
 
   async function save() {
     setSaving(true);
-    const res =
-      scope.kind === "group"
-        ? await api.PATCH(
-            "/api/application-groups/{id}/variables/{variableId}",
-            {
-              params: {
-                path: { id: scope.groupId, variableId: variable.id },
-              },
-              body: { value },
-            },
-          )
-        : scope.kind === "app"
-          ? await api.PATCH("/api/applications/{id}/variables/{variableId}", {
-              params: { path: { id: scope.appId, variableId: variable.id } },
-              body: { value },
-            })
-          : await api.PATCH(
-              "/api/applications/{id}/components/{componentId}/variables/{variableId}",
-              {
-                params: {
-                  path: {
-                    id: scope.appId,
-                    componentId: scope.componentId,
-                    variableId: variable.id,
-                  },
-                },
-                body: { value },
-              },
-            );
+    const res = await backend.update(variable.id, value);
     setSaving(false);
     if (res.error || !res.data) {
-      onError(res.error?.message ?? "Could not update variable");
+      onError(res.error ?? "Could not update variable");
       return;
     }
     onChanged(res.data);
@@ -282,12 +216,12 @@ function VariableRow({
 // AddVariableForm is the inline add row: a name, a value, and a sensitive
 // toggle. A sensitive value is sealed server-side on save and never returned.
 function AddVariableForm({
-  scope,
+  backend,
   existing,
   onAdded,
   onError,
 }: {
-  scope: VariablesScope;
+  backend: VariablesBackend;
   existing: Variable[];
   onAdded: (v: Variable) => void;
   onError: (msg: string) => void;
@@ -304,30 +238,10 @@ function AddVariableForm({
 
   async function submit() {
     setSubmitting(true);
-    const body = { name: trimmed, sensitive, value };
-    const res =
-      scope.kind === "group"
-        ? await api.POST("/api/application-groups/{id}/variables", {
-            params: { path: { id: scope.groupId } },
-            body,
-          })
-        : scope.kind === "app"
-          ? await api.POST("/api/applications/{id}/variables", {
-              params: { path: { id: scope.appId } },
-              body,
-            })
-          : await api.POST(
-              "/api/applications/{id}/components/{componentId}/variables",
-              {
-                params: {
-                  path: { id: scope.appId, componentId: scope.componentId },
-                },
-                body,
-              },
-            );
+    const res = await backend.create({ name: trimmed, sensitive, value });
     setSubmitting(false);
     if (res.error || !res.data) {
-      onError(res.error?.message ?? "Could not add variable");
+      onError(res.error ?? "Could not add variable");
       return;
     }
     onAdded(res.data);

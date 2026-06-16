@@ -81,6 +81,33 @@ func addComponent(t *testing.T, client *ent.Client, orgID, appID uuid.UUID, name
 	return c
 }
 
+// addOutputRun records a succeeded component run that captured the given
+// `tofu output -json` blob for a component, finishing at finishedAt — the
+// durable row LatestOutputKeys reads. Each gets its own workflow run (outputs
+// come from a past run of the app).
+func addOutputRun(t *testing.T, client *ent.Client, orgID, appID, componentID uuid.UUID, outputs string, finishedAt time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	wr, err := client.WorkflowRun.Create().
+		SetOrganizationID(orgID).
+		SetApplicationID(appID).
+		SetAction("deploy").
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("create workflow run: %v", err)
+	}
+	if _, err := client.ComponentRun.Create().
+		SetOrganizationID(orgID).
+		SetWorkflowRunID(wr.ID).
+		SetComponentID(componentID).
+		SetStatus(componentrun.StatusSucceeded).
+		SetOutputs(outputs).
+		SetFinishedAt(finishedAt).
+		Save(ctx); err != nil {
+		t.Fatalf("create component run: %v", err)
+	}
+}
+
 // helmInput builds a valid helm ComponentInput targeting the given cluster, for
 // the ReplaceWorkflow target-validation tests.
 func helmInput(target uuid.UUID) ComponentInput {
@@ -94,6 +121,82 @@ func helmInput(target uuid.UUID) ComponentInput {
 			"chart_source": "oci",
 			"repo_url":     "oci://example.com/charts/app",
 		},
+	}
+}
+
+// TestLatestOutputKeys proves the editor-autocomplete source: per component, the
+// keys (and sensitivity) of its LATEST succeeded run's outputs — keys only, never
+// a value — with stale runs, failed runs, output-less components, and other
+// tenants all excluded.
+func TestLatestOutputKeys(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	infra := addComponent(t, client, org.ID, app.ID, "infra", nil)
+	ui := addComponent(t, client, org.ID, app.ID, "ui", nil)
+
+	now := time.Now()
+	// An older run with a different key set, then the latest — the latest wins.
+	addOutputRun(t, client, org.ID, app.ID, infra.ID,
+		`{"old_key":{"value":"x","type":"string","sensitive":false}}`, now.Add(-time.Hour))
+	addOutputRun(t, client, org.ID, app.ID, infra.ID,
+		`{"vpc_id":{"value":"vpc-1","type":"string","sensitive":false},"db_password":{"value":"s","type":"string","sensitive":true}}`, now)
+
+	// A failed run that captured outputs must be ignored (only succeeded counts);
+	// it's also the only run touching `ui`, so ui ends up with no known keys.
+	failed, err := client.WorkflowRun.Create().
+		SetOrganizationID(org.ID).SetApplicationID(app.ID).SetAction("deploy").Save(ctx)
+	if err != nil {
+		t.Fatalf("create failed run: %v", err)
+	}
+	if _, err := client.ComponentRun.Create().
+		SetOrganizationID(org.ID).SetWorkflowRunID(failed.ID).SetComponentID(ui.ID).
+		SetStatus(componentrun.StatusFailed).
+		SetOutputs(`{"never":{"value":"y","sensitive":false}}`).
+		SetFinishedAt(now).Save(ctx); err != nil {
+		t.Fatalf("create failed component run: %v", err)
+	}
+
+	// Another org's run for a same-named component must not leak in.
+	other := newOrg(t, client, "Other")
+	otherApp := newApp(t, client, other.ID, "web")
+	otherInfra := addComponent(t, client, other.ID, otherApp.ID, "infra", nil)
+	addOutputRun(t, client, other.ID, otherApp.ID, otherInfra.ID,
+		`{"leak":{"value":"z","type":"string","sensitive":false}}`, now)
+
+	keys, err := svc.LatestOutputKeys(ctx, org.ID, app.ID)
+	if err != nil {
+		t.Fatalf("LatestOutputKeys: %v", err)
+	}
+	// Only infra has known keys; ui (no succeeded outputs) is absent entirely.
+	if len(keys) != 1 {
+		t.Fatalf("components with outputs = %d, want 1 (%v)", len(keys), keys)
+	}
+	infraKeys := keys[infra.ID]
+	if len(infraKeys) != 2 {
+		t.Fatalf("infra keys = %v, want 2 (latest run only)", infraKeys)
+	}
+	// Sorted by name: db_password (sensitive), then vpc_id; stale old_key is gone.
+	if infraKeys[0].Key != "db_password" || !infraKeys[0].Sensitive {
+		t.Errorf("infraKeys[0] = %+v, want sensitive db_password", infraKeys[0])
+	}
+	if infraKeys[1].Key != "vpc_id" || infraKeys[1].Sensitive {
+		t.Errorf("infraKeys[1] = %+v, want non-sensitive vpc_id", infraKeys[1])
+	}
+	for _, ks := range keys {
+		for _, k := range ks {
+			if k.Key == "leak" || k.Key == "old_key" || k.Key == "never" {
+				t.Errorf("unexpected key %q leaked (cross-org / stale / failed)", k.Key)
+			}
+		}
+	}
+
+	// A foreign org reading this app surfaces NotFound, not another tenant's data.
+	if _, err := svc.LatestOutputKeys(ctx, other.ID, app.ID); !ent.IsNotFound(err) {
+		t.Errorf("cross-org LatestOutputKeys error = %v, want NotFound", err)
 	}
 }
 

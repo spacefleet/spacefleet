@@ -9,6 +9,8 @@ import {
 } from "../../lib/tofuVersions";
 import { RepositoryPicker } from "./RepositoryPicker";
 import { outputsRefSnippet } from "./outputsRefs";
+import { RefAutocompleteField } from "./RefAutocompleteField";
+import type { RefContext } from "./refAutocomplete";
 import {
   parseValuesSources,
   serializeValuesSources,
@@ -58,7 +60,18 @@ interface ComponentFieldsProps {
   // draft graph). Drives the insert-a-reference helper on the helm values and
   // namespace fields.
   upstreamOutputs?: string[];
+  // The references the ${{ }} autocomplete may complete on the helm interpolable
+  // fields (variable names, upstream component names, known output keys).
+  refContext?: RefContext;
 }
+
+// EMPTY_REF_CONTEXT is the default when a caller doesn't supply one (e.g. a
+// read-only embed) — the autocomplete then simply offers the namespaces.
+const EMPTY_REF_CONTEXT: RefContext = {
+  varsNames: [],
+  componentNames: [],
+  outputKeysByName: {},
+};
 
 // ComponentFields renders the editable form for one workflow node, independent
 // of any container (it was extracted from the old side panel so the full-page
@@ -77,6 +90,7 @@ export function ComponentFields({
   githubEnabled,
   disabled = false,
   upstreamOutputs = [],
+  refContext = EMPTY_REF_CONTEXT,
 }: ComponentFieldsProps) {
   function set<K extends keyof EditableComponent>(key: K, value: EditableComponent[K]) {
     onChange({ ...component, [key]: value });
@@ -153,6 +167,7 @@ export function ComponentFields({
           onPickValuesSourceRepo={pickValuesSourceRepo}
           disabled={disabled}
           upstreamOutputs={upstreamOutputs}
+          refContext={refContext}
         />
       ) : component.type === "terraform" ? (
         <TerraformConfig
@@ -248,10 +263,12 @@ export function ComponentFields({
           label="Target namespace"
           help="The namespace this release deploys into. Supports ${{ }} references, e.g. an upstream output like ${{ components.infra.outputs.namespace }}."
         >
-          <input
+          <RefAutocompleteField
+            as="input"
             className="w-full border border-neutral-300 px-3 py-2 text-sm"
             value={component.target_namespace}
-            onChange={(e) => set("target_namespace", e.target.value)}
+            onChange={(v) => set("target_namespace", v)}
+            context={refContext}
             disabled={disabled}
           />
           <OutputRefButtons
@@ -319,6 +336,7 @@ function HelmConfig({
   onPickValuesSourceRepo,
   disabled,
   upstreamOutputs,
+  refContext,
 }: {
   config: Record<string, string>;
   chartSource: ChartSource;
@@ -328,6 +346,7 @@ function HelmConfig({
   onPickValuesSourceRepo: (serialized: string, repo: GitHubRepository) => void;
   disabled: boolean;
   upstreamOutputs: string[];
+  refContext: RefContext;
 }) {
   const source = CHART_SOURCES.find((s) => s.value === chartSource) ?? CHART_SOURCES[0];
   return (
@@ -369,12 +388,13 @@ function HelmConfig({
         label="Release name"
         help="Defaults to <application>-<component>. Set to override."
       >
-        <input
-          type="text"
+        <RefAutocompleteField
+          as="input"
           className="w-full border border-neutral-300 px-3 py-2 text-sm"
           placeholder="(defaults to <app>-<component>)"
           value={config.release_name ?? ""}
-          onChange={(e) => setConfig("release_name", e.target.value)}
+          onChange={(v) => setConfig("release_name", v)}
+          context={refContext}
           disabled={disabled}
         />
       </Field>
@@ -385,11 +405,13 @@ function HelmConfig({
           "Optional inline overrides. Supports ${{ vars.NAME }}, run context like ${{ run.git_sha_short }}, and upstream OpenTofu outputs like ${{ components.infra.outputs.namespace }} — substituted when a run starts."
         }
       >
-        <textarea
+        <RefAutocompleteField
+          as="textarea"
           className="h-32 w-full border border-neutral-300 px-3 py-2 font-mono text-xs"
           placeholder={"replicaCount: 2\n"}
           value={config.values ?? ""}
-          onChange={(e) => setConfig("values", e.target.value)}
+          onChange={(v) => setConfig("values", v)}
+          context={refContext}
           disabled={disabled}
         />
         <OutputRefButtons

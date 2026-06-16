@@ -2,7 +2,11 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VariablesEditor } from "./VariablesEditor";
+import { stagedBackend } from "./variablesBackend";
+import type { components } from "../api/schema";
 import { api } from "../api/client";
+
+type Variable = components["schemas"]["Variable"];
 
 vi.mock("../api/client", () => ({
   api: { GET: vi.fn(), POST: vi.fn(), PATCH: vi.fn(), DELETE: vi.fn() },
@@ -148,6 +152,46 @@ describe("VariablesEditor", () => {
     await waitFor(() =>
       expect(screen.queryByText("LOG_LEVEL")).not.toBeInTheDocument(),
     );
+  });
+
+  it("stages variables in memory (no API call) with a custom backend", async () => {
+    // The workflow editor passes a staged backend for a not-yet-saved component:
+    // adds go to an in-memory list, never the API, and a sensitive value is held
+    // for the later flush while still being masked in the row.
+    let list: Variable[] = [];
+    const backend = stagedBackend(
+      () => list,
+      (next) => {
+        list = next;
+      },
+    );
+
+    render(
+      <VariablesEditor
+        scope={{ kind: "component", appId: "app-1", componentId: "new" }}
+        canEdit
+        backend={backend}
+      />,
+    );
+    await screen.findByText("No variables.");
+
+    await userEvent.type(screen.getByLabelText("Variable name"), "API_KEY");
+    await userEvent.type(screen.getByLabelText("Variable value"), "s3cr3t");
+    await userEvent.click(screen.getByLabelText("Sensitive"));
+    await userEvent.click(screen.getByRole("button", { name: /^add$/i }));
+
+    // The row appears, masked, and nothing hit the network.
+    expect(await screen.findByText("API_KEY")).toBeInTheDocument();
+    expect(screen.getByText(/\(set\)/)).toBeInTheDocument();
+    expect(mockApi.POST).not.toHaveBeenCalled();
+
+    // The plaintext is retained on the staged row so the flush can POST it.
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      name: "API_KEY",
+      sensitive: true,
+      value: "s3cr3t",
+    });
   });
 
   it("hides editing controls for viewers", async () => {

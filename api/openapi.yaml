@@ -1049,6 +1049,29 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/applications/{id}/component-outputs:
+    get:
+      summary: Known output keys per component (for reference autocomplete)
+      description: |
+        Org-scoped, editor or above. Returns, per component, the names of the
+        OpenTofu (Terraform) outputs captured by that component's latest
+        successful run — keys only, never the values — so the workflow editor
+        can autocomplete `${{ components.<name>.outputs.<key> }}` references.
+        Components that have not yet produced outputs are omitted (the editor
+        still offers the component name and lets the author type a key).
+      operationId: getApplicationComponentOutputs
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+      responses:
+        "200":
+          description: Per-component known output keys, keyed by component id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComponentOutputKeys"
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/applications/{id}/variables:
     get:
       summary: List an application's app-level variables
@@ -3435,6 +3458,37 @@ components:
           description: |
             Whether the module marked this output sensitive. Sensitive values
             are masked in the UI and omitted entirely below editor.
+
+    ComponentOutputKey:
+      type: object
+      description: |
+        The name (and metadata) of one captured OpenTofu (Terraform) output
+        from a component's latest successful run — keys only, never the value.
+        Powers editor autocomplete of `${{ components.<name>.outputs.<key> }}`.
+      required: [key, sensitive]
+      properties:
+        key:
+          type: string
+          description: The output name (the `<key>` in an outputs reference).
+        type:
+          type: string
+          description: |
+            The output's OpenTofu type descriptor (tofu's `type` JSON, as a
+            string), a display hint. Omitted when unknown.
+        sensitive:
+          type: boolean
+          description: Whether the module marked this output sensitive.
+
+    ComponentOutputKeys:
+      type: object
+      description: |
+        Per-component known output keys, keyed by component id. Only components
+        whose latest successful run captured outputs appear. Keys only — never
+        the values (and so nothing here is redacted).
+      additionalProperties:
+        type: array
+        items:
+          $ref: "#/components/schemas/ComponentOutputKey"
 
     ComponentRunDetail:
       allOf:

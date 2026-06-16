@@ -50,6 +50,7 @@ export function WorkflowCanvas() {
     loading,
     error,
     saveError,
+    varFlushError,
     saving,
     saved,
     focus,
@@ -175,6 +176,9 @@ export function WorkflowCanvas() {
       </div>
 
       {saveError && <p className="pb-2 text-sm text-red-600">{saveError}</p>}
+      {varFlushError && (
+        <p className="pb-2 text-sm text-amber-700">{varFlushError}</p>
+      )}
 
       {loading ? (
         <p className="text-sm text-neutral-500">Loading…</p>

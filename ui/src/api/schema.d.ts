@@ -854,6 +854,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{id}/component-outputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Known output keys per component (for reference autocomplete)
+         * @description Org-scoped, editor or above. Returns, per component, the names of the
+         *     OpenTofu (Terraform) outputs captured by that component's latest
+         *     successful run — keys only, never the values — so the workflow editor
+         *     can autocomplete `${{ components.<name>.outputs.<key> }}` references.
+         *     Components that have not yet produced outputs are omitted (the editor
+         *     still offers the component name and lets the author type a key).
+         */
+        get: operations["getApplicationComponentOutputs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{id}/variables": {
         parameters: {
             query?: never;
@@ -2463,6 +2488,30 @@ export interface components {
              */
             sensitive: boolean;
         };
+        /**
+         * @description The name (and metadata) of one captured OpenTofu (Terraform) output
+         *     from a component's latest successful run — keys only, never the value.
+         *     Powers editor autocomplete of `${{ components.<name>.outputs.<key> }}`.
+         */
+        ComponentOutputKey: {
+            /** @description The output name (the `<key>` in an outputs reference). */
+            key: string;
+            /**
+             * @description The output's OpenTofu type descriptor (tofu's `type` JSON, as a
+             *     string), a display hint. Omitted when unknown.
+             */
+            type?: string;
+            /** @description Whether the module marked this output sensitive. */
+            sensitive: boolean;
+        };
+        /**
+         * @description Per-component known output keys, keyed by component id. Only components
+         *     whose latest successful run captured outputs appear. Keys only — never
+         *     the values (and so nothing here is redacted).
+         */
+        ComponentOutputKeys: {
+            [key: string]: components["schemas"]["ComponentOutputKey"][];
+        };
         ComponentRunDetail: components["schemas"]["ComponentRun"] & {
             /**
              * @description The captured output, persisted when the step settled. Empty while
@@ -3757,6 +3806,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Workflow"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getApplicationComponentOutputs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Per-component known output keys, keyed by component id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentOutputKeys"];
                 };
             };
             default: components["responses"]["Error"];

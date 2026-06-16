@@ -11,7 +11,12 @@ import {
   componentsReferencing,
   upstreamTofuNames,
 } from "../components/workflow/outputsRefs";
+import type {
+  OutputKeyInfo,
+  RefContext,
+} from "../components/workflow/refAutocomplete";
 import { VariablesEditor } from "../components/VariablesEditor";
+import { stagedBackend } from "../components/variablesBackend";
 
 type ComponentType = components["schemas"]["ComponentType"];
 
@@ -65,12 +70,16 @@ export function NodeEditor() {
     cloudCredentials,
     installations,
     githubEnabled,
+    appVariableNames,
+    componentOutputs,
     getComponent,
     isProvisional,
     ensureProvisional,
     commitComponent,
     discardNewNode,
     deleteNode,
+    getStagedVars,
+    setStagedVars,
   } = useWorkflowDraft();
 
   // The committed node as it currently lives in the shared draft.
@@ -160,6 +169,36 @@ export function NodeEditor() {
     () => upstreamTofuNames(nodeId, nodes, edges),
     [nodeId, nodes, edges],
   );
+
+  // For a not-yet-saved node, variables are staged in the draft's in-memory
+  // buffer (the component row doesn't exist server-side yet) and flushed by the
+  // next workflow save; a saved node uses the default API backend. Memoized so
+  // the VariablesEditor's transport identity is stable across renders.
+  const stagedVarBackend = useMemo(
+    () => stagedBackend(() => getStagedVars(nodeId), (vars) => setStagedVars(nodeId, vars)),
+    [getStagedVars, setStagedVars, nodeId],
+  );
+
+  // The reference set the helm fields' ${{ }} autocomplete may complete:
+  // app-level variable names, the upstream OpenTofu component names (above), and
+  // — keyed by component name — the output keys known from each one's latest
+  // successful run. An upstream component with no known keys still appears (the
+  // suggester offers its name and a "keys appear after a run" hint).
+  const refContext = useMemo<RefContext>(() => {
+    const outputKeysByName: Record<string, OutputKeyInfo[]> = {};
+    for (const n of nodes) {
+      if (n.type !== "component") continue;
+      const name = (n.data as { component?: EditableComponent }).component?.name;
+      if (!name || !upstreamOutputs.includes(name)) continue;
+      const keys = componentOutputs[n.id];
+      if (keys) outputKeysByName[name] = keys;
+    }
+    return {
+      varsNames: appVariableNames,
+      componentNames: upstreamOutputs,
+      outputKeysByName,
+    };
+  }, [nodes, upstreamOutputs, componentOutputs, appVariableNames]);
 
   // Rename check: other components reference this one's outputs by its
   // committed name, so renaming it breaks them until they're updated too. A
@@ -252,6 +291,7 @@ export function NodeEditor() {
               githubEnabled={githubEnabled}
               disabled={!canEdit}
               upstreamOutputs={upstreamOutputs}
+              refContext={refContext}
             />
           </div>
 
@@ -295,28 +335,27 @@ export function NodeEditor() {
           )}
 
           {/* Component variables. These override the app-level variables of the
-              same name for this component's job, and save through their own
-              endpoints (separately from the node config above) — so they're only
-              available once the node has been saved into the workflow. */}
+              same name for this component's job. For a saved node they write
+              through their own endpoints; for a new node they're staged and
+              flushed when the node is saved into the workflow — so they can be
+              authored in the same pass as the rest of the component. */}
           <div className="mt-6 border border-neutral-200 bg-white p-4">
             <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
               Variables
             </h2>
             <p className="mb-3 mt-1 text-xs text-neutral-500">
               Passed to this component’s job as environment variables, overriding
-              any app-level variable of the same name. Saved separately from the
-              node above; a sensitive value is sealed and never shown again.
+              any app-level variable of the same name.{" "}
+              {isNew
+                ? "Saved when you save this node."
+                : "Saved separately from the node above."}{" "}
+              A sensitive value is sealed and never shown again.
             </p>
-            {isNew ? (
-              <p className="text-sm text-neutral-500">
-                Save the node first to add component variables.
-              </p>
-            ) : (
-              <VariablesEditor
-                scope={{ kind: "component", appId, componentId: nodeId }}
-                canEdit={canEdit}
-              />
-            )}
+            <VariablesEditor
+              scope={{ kind: "component", appId, componentId: nodeId }}
+              canEdit={canEdit}
+              backend={isNew ? stagedVarBackend : undefined}
+            />
           </div>
         </>
       )}

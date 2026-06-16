@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -719,6 +720,97 @@ func (s *Service) ResolveComponentOutputs(ctx context.Context, orgID, runID, com
 		return "", err
 	}
 	return cr.Outputs, nil
+}
+
+// OutputKey is the name (and metadata) of one captured terraform output, sans
+// value — exactly what the editor's ${{ components.*.outputs.* }} autocomplete
+// needs. The value is deliberately absent so this surface can never leak one.
+type OutputKey struct {
+	Key       string
+	Type      string
+	Sensitive bool
+}
+
+// LatestOutputKeys returns, per component of the application, the output keys
+// captured by that component's latest successful run — keys (and sensitivity)
+// only, never the values. It mirrors ResolveComponentOutputs's "latest
+// succeeded with outputs" freshness, but for every component of the app at once,
+// powering the workflow editor's reference autocomplete. Components that have
+// never produced parseable outputs are absent from the map. Org-scoped (the
+// tenancy boundary); the application must belong to the organization.
+func (s *Service) LatestOutputKeys(ctx context.Context, orgID, appID uuid.UUID) (map[uuid.UUID][]OutputKey, error) {
+	if _, err := s.getApp(ctx, orgID, appID); err != nil {
+		return nil, err
+	}
+	// Outputs are keyed by the authored component id; scope the candidate set to
+	// the app's own components (org-scoped) so another app's runs can't leak in.
+	ids, err := s.ent.Component.Query().
+		Where(component.OrganizationID(orgID), component.ApplicationID(appID)).
+		IDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID][]OutputKey)
+	if len(ids) == 0 {
+		return out, nil
+	}
+	// Every succeeded run that captured outputs for these components, newest
+	// first — so the first parseable row seen per component is its latest.
+	rows, err := s.ent.ComponentRun.Query().
+		Where(
+			componentrun.OrganizationID(orgID),
+			componentrun.ComponentIDIn(ids...),
+			componentrun.StatusEQ(componentrun.StatusSucceeded),
+			componentrun.OutputsNEQ(""),
+		).
+		Order(ent.Desc(componentrun.FieldFinishedAt)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, cr := range rows {
+		if cr.ComponentID == uuid.Nil {
+			continue
+		}
+		if _, seen := out[cr.ComponentID]; seen {
+			continue // a newer row for this component already won (ordered desc)
+		}
+		keys := parseOutputKeys(cr.Outputs)
+		if len(keys) == 0 {
+			continue // unparseable/empty: leave it open for an older run to fill
+		}
+		out[cr.ComponentID] = keys
+	}
+	return out, nil
+}
+
+// parseOutputKeys extracts the output names (and sensitivity/type) from a stored
+// `tofu output -json` blob, dropping every value — the autocomplete surface must
+// never carry a value, sensitive or not. Returns nil on empty/garbled input;
+// the result is sorted by key for a stable response.
+func parseOutputKeys(raw string) []OutputKey {
+	if raw == "" {
+		return nil
+	}
+	var stored map[string]struct {
+		Type      json.RawMessage `json:"type"`
+		Sensitive bool            `json:"sensitive"`
+	}
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil || len(stored) == 0 {
+		return nil
+	}
+	keys := make([]OutputKey, 0, len(stored))
+	for name, o := range stored {
+		k := OutputKey{Key: name, Sensitive: o.Sensitive}
+		// tofu's type descriptor is itself JSON (e.g. "string" or ["object",…]);
+		// surface its compact form as a display hint, dropping a bare null.
+		if len(o.Type) > 0 && string(o.Type) != "null" {
+			k.Type = string(o.Type)
+		}
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i].Key < keys[j].Key })
+	return keys
 }
 
 // SetComponentRunOutputs persists the structured outputs a terraform apply

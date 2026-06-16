@@ -67,3 +67,51 @@ func TestSnapshotComponents(t *testing.T) {
 		t.Fatalf("node1 should have no optional ids: %+v", n1)
 	}
 }
+
+// TestParseOutputKeys proves the keys-only projection of a stored tofu
+// `output -json` blob: names sorted, sensitivity preserved, the type descriptor
+// surfaced as a hint (a bare null dropped), and never a value. Empty or garbled
+// input yields nil so a component simply has no known keys.
+func TestParseOutputKeys(t *testing.T) {
+	for _, raw := range []string{"", "{not json", "{}", "[]"} {
+		if got := parseOutputKeys(raw); got != nil {
+			t.Errorf("parseOutputKeys(%q) = %v, want nil", raw, got)
+		}
+	}
+
+	raw := `{` +
+		`"vpc_id":{"value":"vpc-123","type":"string","sensitive":false},` +
+		`"db_password":{"value":"hunter2","type":"string","sensitive":true},` +
+		`"ports":{"value":[80,443],"type":["list","number"],"sensitive":false},` +
+		`"untyped":{"value":"x","type":null,"sensitive":false}` +
+		`}`
+	got := parseOutputKeys(raw)
+	wantOrder := []string{"db_password", "ports", "untyped", "vpc_id"}
+	if len(got) != len(wantOrder) {
+		t.Fatalf("keys = %v, want %v (sorted)", got, wantOrder)
+	}
+	byKey := map[string]OutputKey{}
+	for i, k := range got {
+		if k.Key != wantOrder[i] {
+			t.Errorf("keys[%d].Key = %q, want %q (sorted by name)", i, k.Key, wantOrder[i])
+		}
+		byKey[k.Key] = k
+	}
+	if !byKey["db_password"].Sensitive {
+		t.Error("db_password should be sensitive")
+	}
+	if byKey["vpc_id"].Sensitive {
+		t.Error("vpc_id should not be sensitive")
+	}
+	// The type descriptor is itself JSON, surfaced verbatim as a display hint.
+	if byKey["vpc_id"].Type != `"string"` {
+		t.Errorf("vpc_id type = %q, want %q", byKey["vpc_id"].Type, `"string"`)
+	}
+	if byKey["ports"].Type != `["list","number"]` {
+		t.Errorf("ports type = %q, want the compact JSON array", byKey["ports"].Type)
+	}
+	// A null type descriptor is dropped (no hint), not surfaced as "null".
+	if byKey["untyped"].Type != "" {
+		t.Errorf("untyped type = %q, want empty (null dropped)", byKey["untyped"].Type)
+	}
+}

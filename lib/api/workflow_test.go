@@ -30,6 +30,7 @@ func TestWorkflowRoutesNilServiceReturn503(t *testing.T) {
 	}{
 		{"get workflow", http.MethodGet, "/api/applications/" + id + "/workflow", ""},
 		{"replace workflow", http.MethodPut, "/api/applications/" + id + "/workflow", `{"components":[]}`},
+		{"component outputs", http.MethodGet, "/api/applications/" + id + "/component-outputs", ""},
 		{"list runs", http.MethodGet, "/api/applications/" + id + "/runs", ""},
 		{"start run", http.MethodPost, "/api/applications/" + id + "/runs", `{"action":"deploy"}`},
 		{"get run", http.MethodGet, "/api/applications/" + id + "/runs/" + id, ""},
