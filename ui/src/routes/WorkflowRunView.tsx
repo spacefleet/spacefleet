@@ -37,8 +37,14 @@ import {
   type RunNodeData,
 } from "../components/workflow/nodes";
 import { RunStatusBadge } from "../components/workflow/status";
+import {
+  PlanCounts,
+  PlanResourceList,
+  PlanSummaryBar,
+} from "../components/workflow/PlanView";
 
 type WorkflowRunDetail = components["schemas"]["WorkflowRunDetail"];
+type PlanSummary = components["schemas"]["PlanSummary"];
 type ComponentRun = components["schemas"]["ComponentRun"];
 type ComponentRunDetail = components["schemas"]["ComponentRunDetail"];
 type ComponentRunOutput = components["schemas"]["ComponentRunOutput"];
@@ -219,6 +225,7 @@ export function WorkflowRunView() {
           type: (n.type as ComponentType) ?? "helm",
           status: cr?.status ?? "pending",
           componentRunId: cr?.id,
+          plan: cr?.plan,
         },
       };
     });
@@ -418,7 +425,8 @@ function ComponentRunPanel({
   const [detail, setDetail] = useState<ComponentRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [planLogs, setPlanLogs] = useState<string | null>(null);
+  // The upstream plan step's detail (its parsed plan + body), for an apply step.
+  const [planDetail, setPlanDetail] = useState<ComponentRunDetail | null>(null);
   const [deciding, setDeciding] = useState(false);
   const [decideError, setDecideError] = useState<string | null>(null);
   // For preview runs the diff is what the user came to inspect, so it leads; a
@@ -503,12 +511,19 @@ function ComponentRunPanel({
         "/api/applications/{id}/runs/{runId}/components/{componentRunId}",
         { params: { path: { id: appId, runId, componentRunId: planRunId } } },
       );
-      if (!cancelled && data) setPlanLogs(data.logs ?? "");
+      if (!cancelled && data) setPlanDetail(data);
     })();
     return () => {
       cancelled = true;
     };
   }, [appId, runId, planRunId]);
+
+  // A settled OpenTofu plan step carries its own parsed plan (on any action):
+  // that is the step's content, so it gets a Plan tab that leads once loaded.
+  const ownPlan = !isPreview && !planRun ? (detail?.plan ?? null) : null;
+  useEffect(() => {
+    if (ownPlan) setTab((t) => (t === "logs" ? "plan" : t));
+  }, [ownPlan]);
 
   return (
     <section className="flex w-full min-h-0 flex-1 flex-col border-t border-neutral-200 bg-white">
@@ -639,11 +654,18 @@ function ComponentRunPanel({
               </TabButton>
             </div>
           )}
-          {!isPreview && (planRun || outputEntries.length > 0) && (
+          {!isPreview && (planRun || ownPlan || outputEntries.length > 0) && (
             <div className="flex items-center gap-4 border-b border-neutral-200 px-4">
               {planRun && (
                 <TabButton active={tab === "plan"} onClick={() => setTab("plan")}>
                   Plan output
+                  {planDetail?.plan && <PlanCounts plan={planDetail.plan} />}
+                </TabButton>
+              )}
+              {ownPlan && (
+                <TabButton active={tab === "plan"} onClick={() => setTab("plan")}>
+                  Plan
+                  <PlanCounts plan={ownPlan} />
                 </TabButton>
               )}
               {outputEntries.length > 0 && (
@@ -662,7 +684,9 @@ function ComponentRunPanel({
 
           <div className="min-h-0 flex-1 p-3">
             {isPreview && tab === "diff" ? (
-              detail.diff ? (
+              detail.plan ? (
+                <PlanBody plan={detail.plan} body={detail.diff} />
+              ) : detail.diff ? (
                 <DiffView diff={detail.diff} className="h-full" />
               ) : (
                 <p className="text-sm text-neutral-500">
@@ -672,11 +696,19 @@ function ComponentRunPanel({
                 </p>
               )
             ) : planRun && tab === "plan" ? (
-              <pre className="h-full w-full overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-100">
-                {planLogs === null
-                  ? `Loading plan output from ${planRun.name}…`
-                  : planLogs || "No plan output was captured."}
-              </pre>
+              planDetail === null ? (
+                <p className="text-sm text-neutral-500">
+                  Loading plan output from {planRun.name}…
+                </p>
+              ) : planDetail.plan ? (
+                <PlanBody plan={planDetail.plan} body={planDetail.diff} />
+              ) : (
+                <pre className="h-full w-full overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-100">
+                  {planDetail.logs || "No plan output was captured."}
+                </pre>
+              )
+            ) : ownPlan && tab === "plan" ? (
+              <PlanBody plan={ownPlan} body={detail.diff} />
             ) : outputEntries.length > 0 && tab === "outputs" ? (
               <OutputsTable entries={outputEntries} />
             ) : (
@@ -804,6 +836,35 @@ function formatOutputValue(value: unknown): string {
   if (value === undefined || value === null) return "";
   if (typeof value === "string") return value;
   return JSON.stringify(value);
+}
+
+// PlanBody is the structured reading of an OpenTofu plan: the headline totals,
+// the per-resource action list (each expandable to its own diff block), and
+// the full plan text underneath for anyone who wants tofu's own words. body is
+// the plan text the API supplies to editors; below editor it is absent and the
+// resource rows are not expandable.
+function PlanBody({ plan, body }: { plan: PlanSummary; body?: string }) {
+  const [showText, setShowText] = useState(false);
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-auto">
+      <PlanSummaryBar plan={plan} />
+      <PlanResourceList plan={plan} />
+      {body && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowText((s) => !s)}
+            className="text-xs text-neutral-500 underline-offset-2 hover:text-neutral-900 hover:underline"
+          >
+            {showText ? "Hide full plan text" : "Show full plan text"}
+          </button>
+          {showText && (
+            <DiffView diff={body} className="mt-2 max-h-[40rem]" />
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ChangesBadge({ hasChanges }: { hasChanges?: boolean }) {

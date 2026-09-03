@@ -60,6 +60,25 @@ apply always executes exactly the plan that was reviewed — if someone changed
 the infrastructure in between, the run fails loudly instead of applying
 something different.
 
+### Reading a plan
+
+Once a plan step settles, Spacefleet reads the plan for you. The step's node
+in the run view shows the totals at a glance (`+2 ~1 -1`, with a `±` count
+when anything is destroyed and recreated), so a destroy is visible from the
+diagram without opening the step. Open the step, or the apply step that is
+waiting for approval, and the **Plan** tab leads with:
+
+- a headline of what the plan does, called out in red when it destroys or
+  replaces anything;
+- every resource the plan touches, most destructive first, each expandable to
+  that resource's own lines of the plan; and
+- the full plan text, one click away, for anyone who wants OpenTofu's own words.
+
+The same view backs a **Preview** run, where an OpenTofu step is a single
+read-only plan. Members with view-only access see the totals and the resource
+list, but not the attribute-level lines or the plan text, since those can echo
+configuration values.
+
 ### OpenTofu version
 
 Each component picks the OpenTofu release it runs. New components default to

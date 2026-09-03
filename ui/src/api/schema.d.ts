@@ -2461,6 +2461,7 @@ export interface components {
             outputs?: {
                 [key: string]: components["schemas"]["ComponentRunOutput"];
             };
+            plan?: components["schemas"]["PlanSummary"];
             /** Format: date-time */
             created_at: string;
             /**
@@ -2473,6 +2474,51 @@ export interface components {
              * @description When the step settled; absent until terminal.
              */
             finished_at?: string | null;
+        };
+        /**
+         * @description The structured summary of an OpenTofu (Terraform) plan step's result,
+         *     parsed from its captured plan output once the step settles: the
+         *     add/change/destroy totals and whether applying would change anything.
+         *     Present only on a settled OpenTofu plan step (deploy, uninstall, or
+         *     preview) whose output contained a plan. Contains no values, so it is
+         *     not redacted.
+         */
+        PlanSummary: {
+            /** @description Whether applying the plan would change infrastructure or outputs. */
+            has_changes: boolean;
+            /** @description Resources to add (tofu's own total; a replacement counts here and in destroy). */
+            add: number;
+            /** @description Resources to change in place. */
+            change: number;
+            /** @description Resources to destroy. */
+            destroy: number;
+            /** @description Resources to destroy and recreate (a subset of add/destroy). */
+            replace: number;
+            /** @description Whether the plan changes any output values. */
+            outputs_changed?: boolean;
+            /** @description Every planned resource action, in plan order. */
+            resources: components["schemas"]["PlanResourceChange"][];
+        };
+        /** @description One resource's planned action. */
+        PlanResourceChange: {
+            /** @description The resource address (e.g. module.vpc.aws_subnet.private[0]). */
+            address: string;
+            /**
+             * @description The coarse action; `detail` carries tofu's own phrasing.
+             * @enum {string}
+             */
+            action: "create" | "update" | "replace" | "delete" | "read" | "move" | "import" | "forget" | "other";
+            /**
+             * @description Tofu's phrasing of the action from the plan ("must be replaced",
+             *     "is tainted, so must be replaced", "has moved to …").
+             */
+            detail?: string;
+            /**
+             * @description This resource's block of the plan text — its attribute-level
+             *     +/~/- lines. Only on the component run detail, and only for
+             *     callers at editor or above (it can echo configuration values).
+             */
+            diff?: string;
         };
         /** @description One captured OpenTofu (Terraform) output value. */
         ComponentRunOutput: {
@@ -2519,14 +2565,17 @@ export interface components {
              */
             logs?: string;
             /**
-             * @description For a preview (dry-run) run, the parsed diff body — what deploying
-             *     this component would change on the live cluster. Empty for
-             *     non-preview runs (and while a preview is still in flight).
+             * @description The parsed change body. For a Helm or Manifest step on a preview
+             *     (dry-run) run, the diff of what deploying would change on the
+             *     live cluster; for an OpenTofu plan step on any run, the plan
+             *     text (the review material). Empty otherwise, and while the step
+             *     is still in flight.
              */
             diff?: string;
             /**
-             * @description For a preview (dry-run) run, whether deploying this component would
-             *     change the live cluster. False for non-preview runs.
+             * @description Whether the step's diff/plan would change anything: the live
+             *     cluster for a Helm/Manifest preview, infrastructure or outputs
+             *     for an OpenTofu plan. False for other steps.
              */
             has_changes?: boolean;
         };

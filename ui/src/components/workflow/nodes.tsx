@@ -3,9 +3,11 @@ import { Package, FileCode, Layers, RefreshCw, Boxes } from "lucide-react";
 import type { components } from "../../api/schema";
 import { ComponentStatusIcon } from "./status";
 import { componentStatusClasses } from "./statusClasses";
+import { PlanCounts } from "./PlanView";
 
 type ComponentType = components["schemas"]["ComponentType"];
 type ComponentRunStatus = components["schemas"]["ComponentRunStatus"];
+type PlanSummary = components["schemas"]["PlanSummary"];
 
 // TypeBadge labels a node with its component type (helm/manifest) — sharp
 // corners, neutral palette, a small leading glyph.
@@ -119,6 +121,10 @@ export interface RunNodeData extends Record<string, unknown> {
   name: string;
   type: ComponentType;
   status: ComponentRunStatus;
+  // The parsed plan of a settled OpenTofu plan step, when there is one — the
+  // node shows its add/change/destroy counts so a destroy is visible from the
+  // DAG without opening the step.
+  plan?: PlanSummary;
 }
 
 // RunNode is the read-only run node, colored by status. Handles are present but
@@ -150,9 +156,13 @@ export function RunNode({ data, selected }: NodeProps) {
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-2">
         <TypeBadge type={d.type} />
-        <span className="text-[10px] uppercase tracking-wide text-neutral-500">
-          {d.status.replace(/_/g, " ")}
-        </span>
+        {d.plan ? (
+          <PlanCounts plan={d.plan} />
+        ) : (
+          <span className="text-[10px] uppercase tracking-wide text-neutral-500">
+            {d.status.replace(/_/g, " ")}
+          </span>
+        )}
       </div>
       <Handle
         type="source"

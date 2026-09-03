@@ -11,6 +11,7 @@ import (
 
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/lib/helm"
+	"github.com/spacefleet/spacefleet/lib/tofu"
 	"github.com/spacefleet/spacefleet/lib/workflows"
 )
 
@@ -362,7 +363,53 @@ func toAPIComponentRun(cr *ent.ComponentRun, canSee bool) ComponentRun {
 	if cr.ApprovedBy != "" {
 		out.ApprovedBy = &cr.ApprovedBy
 	}
+	if p := parseTofuPlan(cr); p != nil {
+		out.Plan = toAPIPlanSummary(*p, false)
+	}
 	return out
+}
+
+// parseTofuPlan parses the structured plan out of an OpenTofu step's captured
+// logs, or nil when the step is not an OpenTofu step or its logs hold no plan
+// (an apply step, a step that failed before planning, a step still in flight).
+func parseTofuPlan(cr *ent.ComponentRun) *tofu.Plan {
+	if cr.Type != string(Terraform) || cr.Logs == "" {
+		return nil
+	}
+	p := tofu.ParsePlan(cr.Logs)
+	if !p.Found {
+		return nil
+	}
+	return &p
+}
+
+// toAPIPlanSummary maps a parsed plan to the API summary. The per-resource diff
+// blocks — the plan text, which can echo configuration values — are included
+// only when withDiffs (the detail endpoint, for editor-or-above); the list
+// shape carries addresses and actions alone.
+func toAPIPlanSummary(p tofu.Plan, withDiffs bool) *PlanSummary {
+	resources := make([]PlanResourceChange, 0, len(p.Resources))
+	for _, r := range p.Resources {
+		rc := PlanResourceChange{
+			Address: r.Address,
+			Action:  PlanResourceChangeAction(r.Action),
+			Detail:  optStr(r.Detail),
+		}
+		if withDiffs {
+			rc.Diff = optStr(r.Diff)
+		}
+		resources = append(resources, rc)
+	}
+	outputsChanged := p.OutputsChanged
+	return &PlanSummary{
+		HasChanges:     p.HasChanges,
+		Add:            p.Add,
+		Change:         p.Change,
+		Destroy:        p.Destroy,
+		Replace:        p.Replace,
+		OutputsChanged: &outputsChanged,
+		Resources:      resources,
+	}
 }
 
 // toAPIComponentRunOutputs maps the stored `tofu output -json` JSON (the
@@ -427,13 +474,29 @@ func toAPIComponentRunDetail(cr *ent.ComponentRun, canSee bool) ComponentRunDeta
 		StartedAt:      b.StartedAt,
 		FinishedAt:     b.FinishedAt,
 	}
-	diff := helm.ParseDiff(cr.Logs)
 	if canSee {
 		out.Logs = optStr(cr.Logs)
-		if diff.Body != "" {
-			body := diff.Body
+	}
+	// An OpenTofu plan step's review material is its parsed plan: the body is
+	// the diff (any action — a deploy's plan is what an approver reads, not just
+	// a preview's), the resource list carries per-resource blocks for editors,
+	// and has_changes is the plan verdict.
+	if p := parseTofuPlan(cr); p != nil {
+		out.Plan = toAPIPlanSummary(*p, canSee)
+		if canSee && p.Body != "" {
+			body := p.Body
 			out.Diff = &body
 		}
+		if p.HasChanges {
+			hc := true
+			out.HasChanges = &hc
+		}
+		return out
+	}
+	diff := helm.ParseDiff(cr.Logs)
+	if canSee && diff.Body != "" {
+		body := diff.Body
+		out.Diff = &body
 	}
 	if diff.HasChanges {
 		hc := true

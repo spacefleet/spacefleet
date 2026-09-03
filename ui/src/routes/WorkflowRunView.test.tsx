@@ -362,6 +362,92 @@ describe("WorkflowRunView", () => {
     expect(await screen.findByText("tofu plan output")).toBeInTheDocument();
   });
 
+  // A parsed plan as the API returns it for a settled OpenTofu plan step (the
+  // list shape's plan summary plus, on the detail, per-resource diffs and the
+  // plan body for an editor).
+  const parsedPlan = {
+    has_changes: true,
+    add: 1,
+    change: 0,
+    destroy: 1,
+    replace: 1,
+    outputs_changed: false,
+    resources: [
+      {
+        address: "aws_db_instance.main",
+        action: "replace",
+        detail: "must be replaced",
+        diff: "  # aws_db_instance.main must be replaced\n      ~ engine_version = \"14\" -> \"15\" # forces replacement",
+      },
+    ],
+  };
+
+  it("shows the structured plan on a parked tofu apply step when the plan step parsed", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    mockAwaitingComponentDetails();
+    // Layer the parsed plan onto the plan step's detail.
+    const base = mockApi.GET.getMockImplementation()!;
+    mockApi.GET.mockImplementation(async (path: string, opts?: unknown) => {
+      const res = await base(path, opts);
+      const o = opts as { params?: { path?: { componentRunId?: string } } } | undefined;
+      if (
+        path === "/api/applications/{id}/runs/{runId}/components/{componentRunId}" &&
+        o?.params?.path?.componentRunId === "cr-a"
+      ) {
+        return { data: { ...res.data, plan: parsedPlan, diff: "tofu plan body text", has_changes: true }, error: undefined };
+      }
+      return res;
+    });
+    renderRunView();
+    fireEvent.click(await screen.findByText("infra · apply"));
+    // The approver sees the totals, the destructive callout, and the resource
+    // row — not a wall of logs.
+    expect(
+      await screen.findByText("Plan: 1 to add, 0 to change, 1 to destroy."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("1 resource will be destroyed and recreated."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("aws_db_instance.main")).toBeInTheDocument();
+    // The full plan text is a click away.
+    expect(screen.queryByText("tofu plan body text")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /show full plan text/i }));
+    expect(screen.getByText("tofu plan body text")).toBeInTheDocument();
+  });
+
+  it("leads with a settled tofu plan step's own parsed plan and shows counts on its node", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    mockAwaitingComponentDetails();
+    // The run list carries the plan summary on the plan step's row (the node
+    // badge reads it); the detail carries the structure.
+    const withPlan = {
+      ...awaitingDetail,
+      component_runs: awaitingDetail.component_runs.map((cr) =>
+        cr.id === "cr-a" ? { ...cr, plan: parsedPlan } : cr,
+      ),
+    };
+    const base = mockApi.GET.getMockImplementation()!;
+    mockApi.GET.mockImplementation(async (path: string, opts?: unknown) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return { data: withPlan, error: undefined };
+      const res = await base(path, opts);
+      const o = opts as { params?: { path?: { componentRunId?: string } } } | undefined;
+      if (o?.params?.path?.componentRunId === "cr-a")
+        return { data: { ...res.data, plan: parsedPlan }, error: undefined };
+      return res;
+    });
+    renderRunView();
+    // The node shows +1 ~0 -1 (and ±1 replaced) instead of its status word.
+    expect(await screen.findByText("+1")).toBeInTheDocument();
+    expect(screen.getByText("±1")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("infra · plan"));
+    // The Plan tab leads, with the summary.
+    expect(
+      await screen.findByText("Plan: 1 to add, 0 to change, 1 to destroy."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^plan/i })).toBeInTheDocument();
+  });
+
   // A settled deploy run for the tofu pair: both units succeeded, and the
   // apply unit captured the module's outputs. The detail mock parameterizes the
   // outputs so the masking tests can model an editor (value present) and a
