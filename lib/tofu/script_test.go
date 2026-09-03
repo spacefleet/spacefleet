@@ -33,8 +33,8 @@ func TestScriptPlanDeployManagedBackend(t *testing.T) {
 		"cd '/src/envs/prod'",
 		"cat > backend_override.tf <<'EOF'",
 		"backend \"s3\" {",
-		"tofu init -no-color",
-		"tofu plan -out=tfplan -no-color",
+		"tofu init -input=false -no-color",
+		"tofu plan -input=false -out=tfplan -no-color",
 	}
 	for _, w := range wantContains {
 		if !strings.Contains(s, w) {
@@ -78,7 +78,7 @@ func TestScriptPlanUninstallDestroy(t *testing.T) {
 		Backend:       backend,
 		BackendConfig: cfg,
 	})
-	if !strings.Contains(s, "tofu plan -destroy -out=tfplan -no-color") {
+	if !strings.Contains(s, "tofu plan -input=false -destroy -out=tfplan -no-color") {
 		t.Errorf("uninstall plan must be a destroy plan saved to a planfile\n---\n%s", s)
 	}
 	if strings.Contains(s, "tofu apply") || strings.Contains(s, "tofu destroy") {
@@ -101,7 +101,7 @@ func TestScriptPlanStoresPlanfileSecret(t *testing.T) {
 		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
 	wantContains := []string{
-		"tofu plan -out=tfplan -no-color",
+		"tofu plan -input=false -out=tfplan -no-color",
 		"apk add --no-cache kubectl",
 		"kubectl create secret generic 'tfplan-run1-plan1' --namespace 'default' --from-file=tfplan=tfplan --dry-run=client -o yaml | kubectl apply --namespace 'default' -f -",
 	}
@@ -119,7 +119,7 @@ func TestScriptPlanStoresPlanfileSecret(t *testing.T) {
 		t.Errorf("plan node must not capture outputs\n---\n%s", s)
 	}
 	// The store must come after the plan produced the file.
-	if i, j := strings.Index(s, "tofu plan -out=tfplan"), strings.Index(s, "kubectl create secret"); i < 0 || j < 0 || i >= j {
+	if i, j := strings.Index(s, "tofu plan -input=false -out=tfplan"), strings.Index(s, "kubectl create secret"); i < 0 || j < 0 || i >= j {
 		t.Errorf("store must follow the plan (i=%d j=%d)\n---\n%s", i, j, s)
 	}
 }
@@ -139,7 +139,7 @@ func TestScriptApplyDeployUsesPlanfile(t *testing.T) {
 	wantContains := []string{
 		"apk add --no-cache kubectl",
 		"kubectl get secret 'tfplan-run1-plan1' --namespace 'default' -o 'jsonpath={.data.tfplan}' | base64 -d > tfplan",
-		"tofu apply -no-color tfplan",
+		"tofu apply -input=false -no-color tfplan",
 		// After a successful deploy apply, the outputs are saved to a local file
 		// (never echoed — -json does not redact sensitive values) and handed back
 		// through the same Secret under the outputs key.
@@ -188,7 +188,7 @@ func TestScriptApplyUninstallAppliesDestroyPlanfile(t *testing.T) {
 		Namespace:          "default",
 		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
-	if !strings.Contains(s, "tofu apply -no-color tfplan") {
+	if !strings.Contains(s, "tofu apply -input=false -no-color tfplan") {
 		t.Errorf("uninstall apply must apply the saved destroy planfile\n---\n%s", s)
 	}
 	if strings.Contains(s, "tofu destroy") {
@@ -237,7 +237,7 @@ func TestScriptPreviewIsAlwaysPlan(t *testing.T) {
 		Backend:       backend,
 		BackendConfig: cfg,
 	})
-	if !strings.Contains(s, "tofu plan -no-color") {
+	if !strings.Contains(s, "tofu plan -input=false -no-color") {
 		t.Errorf("preview must be a read-only plan\n---\n%s", s)
 	}
 	if strings.Contains(s, "tofu apply") || strings.Contains(s, "tofu destroy") {
@@ -302,7 +302,7 @@ func TestScriptCustomBackend(t *testing.T) {
 		"bucket = \"my-state\"",
 		"key = \"prod/terraform.tfstate\"",
 		"region = \"us-east-1\"",
-		"tofu apply -no-color tfplan",
+		"tofu apply -input=false -no-color tfplan",
 	}
 	for _, w := range wantContains {
 		if !strings.Contains(s, w) {
@@ -482,8 +482,8 @@ func TestScriptGolden(t *testing.T) {
 		"  }\n" +
 		"}\n" +
 		"EOF\n" +
-		"tofu init -no-color\n" +
-		"tofu plan -out=tfplan -no-color\n"
+		"tofu init -input=false -no-color\n" +
+		"tofu plan -input=false -out=tfplan -no-color\n"
 	if s != want {
 		t.Errorf("rendered script changed\n got: %q\nwant: %q", s, want)
 	}
@@ -503,10 +503,10 @@ func TestScriptInitAndPlanFlags(t *testing.T) {
 		InitFlags:     []string{"-upgrade"},
 		PlanFlags:     []string{"-var=env=prod", "-target=aws_instance.web"},
 	})
-	if !strings.Contains(s, "tofu init -no-color '-upgrade'\n") {
+	if !strings.Contains(s, "tofu init -input=false -no-color '-upgrade'\n") {
 		t.Errorf("init flags not appended\n---\n%s", s)
 	}
-	if !strings.Contains(s, "tofu plan -out=tfplan -no-color '-var=env=prod' '-target=aws_instance.web'\n") {
+	if !strings.Contains(s, "tofu plan -input=false -out=tfplan -no-color '-var=env=prod' '-target=aws_instance.web'\n") {
 		t.Errorf("plan flags not appended in order\n---\n%s", s)
 	}
 }
@@ -526,7 +526,7 @@ func TestScriptApplyFlagsBeforePlanfile(t *testing.T) {
 		PlanArtifactSecret: "tfplan-run1-plan1",
 		ApplyFlags:         []string{"-parallelism=20"},
 	})
-	if !strings.Contains(s, "tofu apply -no-color '-parallelism=20' tfplan\n") {
+	if !strings.Contains(s, "tofu apply -input=false -no-color '-parallelism=20' tfplan\n") {
 		t.Errorf("apply flags must precede the planfile arg\n---\n%s", s)
 	}
 }
@@ -543,7 +543,7 @@ func TestScriptPlanFlagsAppliedToPreviewAndDestroy(t *testing.T) {
 		PlanFlags:  []string{"-refresh=false"},
 		ApplyFlags: []string{"-parallelism=20"},
 	})
-	if !strings.Contains(preview, "tofu plan -no-color '-refresh=false'\n") {
+	if !strings.Contains(preview, "tofu plan -input=false -no-color '-refresh=false'\n") {
 		t.Errorf("plan flags must reach a preview plan\n---\n%s", preview)
 	}
 	if strings.Contains(preview, "-parallelism=20") {
@@ -557,7 +557,7 @@ func TestScriptPlanFlagsAppliedToPreviewAndDestroy(t *testing.T) {
 		Backend:   "s3",
 		PlanFlags: []string{"-refresh=false"},
 	})
-	if !strings.Contains(destroy, "tofu plan -destroy -out=tfplan -no-color '-refresh=false'\n") {
+	if !strings.Contains(destroy, "tofu plan -input=false -destroy -out=tfplan -no-color '-refresh=false'\n") {
 		t.Errorf("plan flags must reach a destroy plan\n---\n%s", destroy)
 	}
 }
@@ -592,10 +592,10 @@ func TestScriptNoFlagsUnchanged(t *testing.T) {
 		Namespace:          "default",
 		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
-	if !strings.Contains(s, "tofu init -no-color\n") {
+	if !strings.Contains(s, "tofu init -input=false -no-color\n") {
 		t.Errorf("no init flags must yield a plain init\n---\n%s", s)
 	}
-	if !strings.Contains(s, "tofu apply -no-color tfplan\n") {
+	if !strings.Contains(s, "tofu apply -input=false -no-color tfplan\n") {
 		t.Errorf("no apply flags must yield a plain apply\n---\n%s", s)
 	}
 }

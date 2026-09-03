@@ -18,7 +18,7 @@
 // requires_approval. The plan node's `-out` planfile cannot survive into the
 // apply node's pod via the filesystem (separate TaskRuns, separate ephemeral
 // workspaces), so the planfile is handed over through a Kubernetes Secret: the
-// plan node writes `tofu plan -out=tfplan` and stores tfplan in a Secret
+// plan node writes `tofu plan -input=false -out=tfplan` and stores tfplan in a Secret
 // (PlanArtifactSecret) in the run namespace; the apply node fetches that Secret
 // and runs `tofu apply tfplan`, applying the EXACT reviewed plan rather than
 // re-planning. The worker pre-creates that Secret (empty) together with a
@@ -104,7 +104,7 @@ const (
 )
 
 // PlanfileName is the local filename the plan node saves its planfile to
-// (`tofu plan -out=tfplan`) and the apply node restores it to before
+// (`tofu plan -input=false -out=tfplan`) and the apply node restores it to before
 // `tofu apply tfplan`. It is also the key the planfile is stored under inside
 // the PlanArtifactSecret.
 const PlanfileName = "tfplan"
@@ -173,7 +173,7 @@ type Apply struct {
 	// the runner cluster) the planfile is handed over through. The worker
 	// pre-creates it empty, alongside the same-named ServiceAccount the step's
 	// pod runs as, whose Role is pinned to exactly this Secret; the plan node
-	// stores `tofu plan -out=tfplan` into it (a get+patch upsert — the pod may
+	// stores `tofu plan -input=false -out=tfplan` into it (a get+patch upsert — the pod may
 	// not create Secrets) and the apply node restores it and runs `tofu apply
 	// tfplan`. Empty disables the planfile path: a plan node just plans (the
 	// read-only review case, e.g. preview) and an apply node has no reviewed
@@ -204,11 +204,11 @@ type Apply struct {
 // (the named backend from Backend + BackendConfig), runs `tofu init`, then
 // plans or applies per Command/Action:
 //
-//   - Command=plan, deploy:    tofu plan -out=tfplan -no-color, then store tfplan
-//   - Command=plan, uninstall: tofu plan -destroy -out=tfplan -no-color, then store
+//   - Command=plan, deploy:    tofu plan -input=false -out=tfplan -no-color, then store tfplan
+//   - Command=plan, uninstall: tofu plan -input=false -destroy -out=tfplan -no-color, then store
 //   - Command=apply, deploy/uninstall: restore tfplan, tofu apply tfplan (the
 //     saved plan already encodes deploy-vs-destroy), then delete the Secret
-//   - Action=preview (any Command): tofu plan -no-color (read-only; preview
+//   - Action=preview (any Command): tofu plan -input=false -no-color (read-only; preview
 //     never mutates and produces no planfile, so it is always a plain plan even
 //     on an apply node)
 //
@@ -285,7 +285,7 @@ func Script(a Apply) string {
 	// is read by tofu init alongside the module's own .tf files; an *_override.tf
 	// file merges over a matching block, so this wins.
 	b.WriteString(backendOverride(a))
-	b.WriteString("tofu init -no-color")
+	b.WriteString("tofu init -input=false -no-color")
 	appendFlags(&b, a.InitFlags)
 	b.WriteString("\n")
 
@@ -306,7 +306,7 @@ func Script(a Apply) string {
 		}
 		b.WriteString(restorePlanfile(a))
 		// Apply flags go before the positional planfile arg (tofu apply [options] PLAN).
-		b.WriteString("tofu apply -no-color")
+		b.WriteString("tofu apply -input=false -no-color")
 		appendFlags(&b, a.ApplyFlags)
 		fmt.Fprintf(&b, " %s\n", PlanfileName)
 		if destroy {
@@ -324,18 +324,18 @@ func Script(a Apply) string {
 		// saves the planfile and hands it to its apply node through the Secret.
 		if preview {
 			if destroy {
-				b.WriteString("tofu plan -destroy -no-color")
+				b.WriteString("tofu plan -input=false -destroy -no-color")
 			} else {
-				b.WriteString("tofu plan -no-color")
+				b.WriteString("tofu plan -input=false -no-color")
 			}
 			appendFlags(&b, a.PlanFlags)
 			b.WriteString("\n")
 			break
 		}
 		if destroy {
-			fmt.Fprintf(&b, "tofu plan -destroy -out=%s -no-color", PlanfileName)
+			fmt.Fprintf(&b, "tofu plan -input=false -destroy -out=%s -no-color", PlanfileName)
 		} else {
-			fmt.Fprintf(&b, "tofu plan -out=%s -no-color", PlanfileName)
+			fmt.Fprintf(&b, "tofu plan -input=false -out=%s -no-color", PlanfileName)
 		}
 		appendFlags(&b, a.PlanFlags)
 		b.WriteString("\n")
