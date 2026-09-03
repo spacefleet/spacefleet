@@ -108,6 +108,27 @@ export function ApplicationDetail() {
       ? { ...latestRun, ...streamed }
       : latestRun;
 
+  // The scheduled drift-check interval lives on the application; saving it is
+  // a plain PATCH and the returned row replaces the local one.
+  const [savingDrift, setSavingDrift] = useState(false);
+  const setDriftInterval = useCallback(
+    async (minutes: number) => {
+      setSavingDrift(true);
+      setRunError(null);
+      const { data, error } = await api.PATCH("/api/applications/{id}", {
+        params: { path: { id: appId } },
+        body: { drift_interval_minutes: minutes },
+      });
+      setSavingDrift(false);
+      if (error || !data) {
+        setRunError(error?.message ?? "Could not save the drift schedule");
+        return;
+      }
+      setApp(data);
+    },
+    [appId],
+  );
+
   // Start a run against the saved workflow and jump to its live view. Runs are
   // started from here (not the workflow editor) — the editor only builds the DAG.
   const startRun = useCallback(
@@ -246,6 +267,25 @@ export function ApplicationDetail() {
                 >
                   Check drift
                 </button>
+                <label
+                  title="Run a drift check automatically on this schedule"
+                  className="inline-flex items-center gap-1.5 text-sm text-neutral-600"
+                >
+                  <span className="text-xs text-neutral-500">every</span>
+                  <select
+                    aria-label="Drift check schedule"
+                    value={String(app.drift_interval_minutes ?? 0)}
+                    onChange={(e) => void setDriftInterval(Number(e.target.value))}
+                    disabled={savingDrift}
+                    className="border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-black focus:outline-none disabled:opacity-50"
+                  >
+                    <option value="0">never</option>
+                    <option value="60">hour</option>
+                    <option value="360">6 hours</option>
+                    <option value="1440">day</option>
+                    <option value="10080">week</option>
+                  </select>
+                </label>
                 <button
                   type="button"
                   onClick={() => void startRun("uninstall")}

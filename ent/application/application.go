@@ -21,6 +21,8 @@ const (
 	FieldName = "name"
 	// FieldImported holds the string denoting the imported field in the database.
 	FieldImported = "imported"
+	// FieldDriftIntervalMinutes holds the string denoting the drift_interval_minutes field in the database.
+	FieldDriftIntervalMinutes = "drift_interval_minutes"
 	// FieldRunnerClusterID holds the string denoting the runner_cluster_id field in the database.
 	FieldRunnerClusterID = "runner_cluster_id"
 	// FieldGroupID holds the string denoting the group_id field in the database.
@@ -57,6 +59,7 @@ var Columns = []string{
 	FieldOrganizationID,
 	FieldName,
 	FieldImported,
+	FieldDriftIntervalMinutes,
 	FieldRunnerClusterID,
 	FieldGroupID,
 	FieldCreatedAt,
@@ -78,6 +81,10 @@ var (
 	NameValidator func(string) error
 	// DefaultImported holds the default value on creation for the "imported" field.
 	DefaultImported bool
+	// DefaultDriftIntervalMinutes holds the default value on creation for the "drift_interval_minutes" field.
+	DefaultDriftIntervalMinutes int
+	// DriftIntervalMinutesValidator is a validator for the "drift_interval_minutes" field. It is called by the builders before save.
+	DriftIntervalMinutesValidator func(int) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -109,6 +116,11 @@ func ByName(opts ...sql.OrderTermOption) OrderOption {
 // ByImported orders the results by the imported field.
 func ByImported(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImported, opts...).ToFunc()
+}
+
+// ByDriftIntervalMinutes orders the results by the drift_interval_minutes field.
+func ByDriftIntervalMinutes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDriftIntervalMinutes, opts...).ToFunc()
 }
 
 // ByRunnerClusterID orders the results by the runner_cluster_id field.

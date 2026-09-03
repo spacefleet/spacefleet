@@ -164,6 +164,18 @@ func runWorker(_ []string) {
 		return client.JobLive(ctx, id)
 	})
 
+	// Scheduled drift checks: start a `drift` run for every application whose
+	// drift interval has elapsed since its last check. Lives here, like the
+	// reaper, because enqueueing the run needs the River client this process
+	// owns; the run then executes like any user-started one.
+	go workflowsSvc.RunDriftScheduler(loopCtx, func(ctx context.Context, args workflows.WorkflowRunArgs) (string, error) {
+		res, err := client.Insert(ctx, args)
+		if err != nil {
+			return "", err
+		}
+		return strconv.FormatInt(res.Job.ID, 10), nil
+	})
+
 	// Heartbeat loop: emit an info-level log every 30s so deployments
 	// without health checks still have a clear "this worker is alive"
 	// signal in the log stream.

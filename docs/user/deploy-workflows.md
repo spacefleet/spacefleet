@@ -218,6 +218,12 @@ To reconcile drift, run **Deploy**: the plan shows the drifted resources being
 brought back to the configuration (or, if the outside change is what you
 want, change the configuration first).
 
+**On a schedule.** Next to **Check drift**, choose how often a check should run
+on its own — every hour, 6 hours, day, or week (or never). A scheduled check is
+an ordinary drift run, so it appears in the run history like any other. It is
+skipped while another run of the application is in progress and tried again
+on the next tick, and it never starts while a deploy is waiting for approval.
+
 ## Run the workflow
 
 The builder has three run actions. Each one runs the **whole** workflow,

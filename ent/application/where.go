@@ -71,6 +71,11 @@ func Imported(v bool) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldImported, v))
 }
 
+// DriftIntervalMinutes applies equality check predicate on the "drift_interval_minutes" field. It's identical to DriftIntervalMinutesEQ.
+func DriftIntervalMinutes(v int) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldDriftIntervalMinutes, v))
+}
+
 // RunnerClusterID applies equality check predicate on the "runner_cluster_id" field. It's identical to RunnerClusterIDEQ.
 func RunnerClusterID(v uuid.UUID) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldRunnerClusterID, v))
@@ -184,6 +189,46 @@ func ImportedEQ(v bool) predicate.Application {
 // ImportedNEQ applies the NEQ predicate on the "imported" field.
 func ImportedNEQ(v bool) predicate.Application {
 	return predicate.Application(sql.FieldNEQ(FieldImported, v))
+}
+
+// DriftIntervalMinutesEQ applies the EQ predicate on the "drift_interval_minutes" field.
+func DriftIntervalMinutesEQ(v int) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldDriftIntervalMinutes, v))
+}
+
+// DriftIntervalMinutesNEQ applies the NEQ predicate on the "drift_interval_minutes" field.
+func DriftIntervalMinutesNEQ(v int) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldDriftIntervalMinutes, v))
+}
+
+// DriftIntervalMinutesIn applies the In predicate on the "drift_interval_minutes" field.
+func DriftIntervalMinutesIn(vs ...int) predicate.Application {
+	return predicate.Application(sql.FieldIn(FieldDriftIntervalMinutes, vs...))
+}
+
+// DriftIntervalMinutesNotIn applies the NotIn predicate on the "drift_interval_minutes" field.
+func DriftIntervalMinutesNotIn(vs ...int) predicate.Application {
+	return predicate.Application(sql.FieldNotIn(FieldDriftIntervalMinutes, vs...))
+}
+
+// DriftIntervalMinutesGT applies the GT predicate on the "drift_interval_minutes" field.
+func DriftIntervalMinutesGT(v int) predicate.Application {
+	return predicate.Application(sql.FieldGT(FieldDriftIntervalMinutes, v))
+}
+
+// DriftIntervalMinutesGTE applies the GTE predicate on the "drift_interval_minutes" field.
+func DriftIntervalMinutesGTE(v int) predicate.Application {
+	return predicate.Application(sql.FieldGTE(FieldDriftIntervalMinutes, v))
+}
+
+// DriftIntervalMinutesLT applies the LT predicate on the "drift_interval_minutes" field.
+func DriftIntervalMinutesLT(v int) predicate.Application {
+	return predicate.Application(sql.FieldLT(FieldDriftIntervalMinutes, v))
+}
+
+// DriftIntervalMinutesLTE applies the LTE predicate on the "drift_interval_minutes" field.
+func DriftIntervalMinutesLTE(v int) predicate.Application {
+	return predicate.Application(sql.FieldLTE(FieldDriftIntervalMinutes, v))
 }
 
 // RunnerClusterIDEQ applies the EQ predicate on the "runner_cluster_id" field.

@@ -40,12 +40,18 @@ func init() {
 	applicationDescImported := applicationFields[3].Descriptor()
 	// application.DefaultImported holds the default value on creation for the imported field.
 	application.DefaultImported = applicationDescImported.Default.(bool)
+	// applicationDescDriftIntervalMinutes is the schema descriptor for drift_interval_minutes field.
+	applicationDescDriftIntervalMinutes := applicationFields[4].Descriptor()
+	// application.DefaultDriftIntervalMinutes holds the default value on creation for the drift_interval_minutes field.
+	application.DefaultDriftIntervalMinutes = applicationDescDriftIntervalMinutes.Default.(int)
+	// application.DriftIntervalMinutesValidator is a validator for the "drift_interval_minutes" field. It is called by the builders before save.
+	application.DriftIntervalMinutesValidator = applicationDescDriftIntervalMinutes.Validators[0].(func(int) error)
 	// applicationDescCreatedAt is the schema descriptor for created_at field.
-	applicationDescCreatedAt := applicationFields[6].Descriptor()
+	applicationDescCreatedAt := applicationFields[7].Descriptor()
 	// application.DefaultCreatedAt holds the default value on creation for the created_at field.
 	application.DefaultCreatedAt = applicationDescCreatedAt.Default.(func() time.Time)
 	// applicationDescUpdatedAt is the schema descriptor for updated_at field.
-	applicationDescUpdatedAt := applicationFields[7].Descriptor()
+	applicationDescUpdatedAt := applicationFields[8].Descriptor()
 	// application.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	application.DefaultUpdatedAt = applicationDescUpdatedAt.Default.(func() time.Time)
 	// application.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

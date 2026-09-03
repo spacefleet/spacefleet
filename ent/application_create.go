@@ -52,6 +52,20 @@ func (_c *ApplicationCreate) SetNillableImported(v *bool) *ApplicationCreate {
 	return _c
 }
 
+// SetDriftIntervalMinutes sets the "drift_interval_minutes" field.
+func (_c *ApplicationCreate) SetDriftIntervalMinutes(v int) *ApplicationCreate {
+	_c.mutation.SetDriftIntervalMinutes(v)
+	return _c
+}
+
+// SetNillableDriftIntervalMinutes sets the "drift_interval_minutes" field if the given value is not nil.
+func (_c *ApplicationCreate) SetNillableDriftIntervalMinutes(v *int) *ApplicationCreate {
+	if v != nil {
+		_c.SetDriftIntervalMinutes(*v)
+	}
+	return _c
+}
+
 // SetRunnerClusterID sets the "runner_cluster_id" field.
 func (_c *ApplicationCreate) SetRunnerClusterID(v uuid.UUID) *ApplicationCreate {
 	_c.mutation.SetRunnerClusterID(v)
@@ -163,6 +177,10 @@ func (_c *ApplicationCreate) defaults() {
 		v := application.DefaultImported
 		_c.mutation.SetImported(v)
 	}
+	if _, ok := _c.mutation.DriftIntervalMinutes(); !ok {
+		v := application.DefaultDriftIntervalMinutes
+		_c.mutation.SetDriftIntervalMinutes(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := application.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -192,6 +210,14 @@ func (_c *ApplicationCreate) check() error {
 	}
 	if _, ok := _c.mutation.Imported(); !ok {
 		return &ValidationError{Name: "imported", err: errors.New(`ent: missing required field "Application.imported"`)}
+	}
+	if _, ok := _c.mutation.DriftIntervalMinutes(); !ok {
+		return &ValidationError{Name: "drift_interval_minutes", err: errors.New(`ent: missing required field "Application.drift_interval_minutes"`)}
+	}
+	if v, ok := _c.mutation.DriftIntervalMinutes(); ok {
+		if err := application.DriftIntervalMinutesValidator(v); err != nil {
+			return &ValidationError{Name: "drift_interval_minutes", err: fmt.Errorf(`ent: validator failed for field "Application.drift_interval_minutes": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.RunnerClusterID(); !ok {
 		return &ValidationError{Name: "runner_cluster_id", err: errors.New(`ent: missing required field "Application.runner_cluster_id"`)}
@@ -251,6 +277,10 @@ func (_c *ApplicationCreate) createSpec() (*Application, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Imported(); ok {
 		_spec.SetField(application.FieldImported, field.TypeBool, value)
 		_node.Imported = value
+	}
+	if value, ok := _c.mutation.DriftIntervalMinutes(); ok {
+		_spec.SetField(application.FieldDriftIntervalMinutes, field.TypeInt, value)
+		_node.DriftIntervalMinutes = value
 	}
 	if value, ok := _c.mutation.GroupID(); ok {
 		_spec.SetField(application.FieldGroupID, field.TypeUUID, value)
@@ -371,6 +401,24 @@ func (u *ApplicationUpsert) SetImported(v bool) *ApplicationUpsert {
 // UpdateImported sets the "imported" field to the value that was provided on create.
 func (u *ApplicationUpsert) UpdateImported() *ApplicationUpsert {
 	u.SetExcluded(application.FieldImported)
+	return u
+}
+
+// SetDriftIntervalMinutes sets the "drift_interval_minutes" field.
+func (u *ApplicationUpsert) SetDriftIntervalMinutes(v int) *ApplicationUpsert {
+	u.Set(application.FieldDriftIntervalMinutes, v)
+	return u
+}
+
+// UpdateDriftIntervalMinutes sets the "drift_interval_minutes" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdateDriftIntervalMinutes() *ApplicationUpsert {
+	u.SetExcluded(application.FieldDriftIntervalMinutes)
+	return u
+}
+
+// AddDriftIntervalMinutes adds v to the "drift_interval_minutes" field.
+func (u *ApplicationUpsert) AddDriftIntervalMinutes(v int) *ApplicationUpsert {
+	u.Add(application.FieldDriftIntervalMinutes, v)
 	return u
 }
 
@@ -495,6 +543,27 @@ func (u *ApplicationUpsertOne) SetImported(v bool) *ApplicationUpsertOne {
 func (u *ApplicationUpsertOne) UpdateImported() *ApplicationUpsertOne {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.UpdateImported()
+	})
+}
+
+// SetDriftIntervalMinutes sets the "drift_interval_minutes" field.
+func (u *ApplicationUpsertOne) SetDriftIntervalMinutes(v int) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetDriftIntervalMinutes(v)
+	})
+}
+
+// AddDriftIntervalMinutes adds v to the "drift_interval_minutes" field.
+func (u *ApplicationUpsertOne) AddDriftIntervalMinutes(v int) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.AddDriftIntervalMinutes(v)
+	})
+}
+
+// UpdateDriftIntervalMinutes sets the "drift_interval_minutes" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdateDriftIntervalMinutes() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateDriftIntervalMinutes()
 	})
 }
 
@@ -793,6 +862,27 @@ func (u *ApplicationUpsertBulk) SetImported(v bool) *ApplicationUpsertBulk {
 func (u *ApplicationUpsertBulk) UpdateImported() *ApplicationUpsertBulk {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.UpdateImported()
+	})
+}
+
+// SetDriftIntervalMinutes sets the "drift_interval_minutes" field.
+func (u *ApplicationUpsertBulk) SetDriftIntervalMinutes(v int) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetDriftIntervalMinutes(v)
+	})
+}
+
+// AddDriftIntervalMinutes adds v to the "drift_interval_minutes" field.
+func (u *ApplicationUpsertBulk) AddDriftIntervalMinutes(v int) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.AddDriftIntervalMinutes(v)
+	})
+}
+
+// UpdateDriftIntervalMinutes sets the "drift_interval_minutes" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdateDriftIntervalMinutes() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdateDriftIntervalMinutes()
 	})
 }
 

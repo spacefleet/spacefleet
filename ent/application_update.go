@@ -58,6 +58,27 @@ func (_u *ApplicationUpdate) SetNillableImported(v *bool) *ApplicationUpdate {
 	return _u
 }
 
+// SetDriftIntervalMinutes sets the "drift_interval_minutes" field.
+func (_u *ApplicationUpdate) SetDriftIntervalMinutes(v int) *ApplicationUpdate {
+	_u.mutation.ResetDriftIntervalMinutes()
+	_u.mutation.SetDriftIntervalMinutes(v)
+	return _u
+}
+
+// SetNillableDriftIntervalMinutes sets the "drift_interval_minutes" field if the given value is not nil.
+func (_u *ApplicationUpdate) SetNillableDriftIntervalMinutes(v *int) *ApplicationUpdate {
+	if v != nil {
+		_u.SetDriftIntervalMinutes(*v)
+	}
+	return _u
+}
+
+// AddDriftIntervalMinutes adds value to the "drift_interval_minutes" field.
+func (_u *ApplicationUpdate) AddDriftIntervalMinutes(v int) *ApplicationUpdate {
+	_u.mutation.AddDriftIntervalMinutes(v)
+	return _u
+}
+
 // SetRunnerClusterID sets the "runner_cluster_id" field.
 func (_u *ApplicationUpdate) SetRunnerClusterID(v uuid.UUID) *ApplicationUpdate {
 	_u.mutation.SetRunnerClusterID(v)
@@ -157,6 +178,11 @@ func (_u *ApplicationUpdate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Application.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.DriftIntervalMinutes(); ok {
+		if err := application.DriftIntervalMinutesValidator(v); err != nil {
+			return &ValidationError{Name: "drift_interval_minutes", err: fmt.Errorf(`ent: validator failed for field "Application.drift_interval_minutes": %w`, err)}
+		}
+	}
 	if _u.mutation.OrganizationCleared() && len(_u.mutation.OrganizationIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Application.organization"`)
 	}
@@ -183,6 +209,12 @@ func (_u *ApplicationUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.Imported(); ok {
 		_spec.SetField(application.FieldImported, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.DriftIntervalMinutes(); ok {
+		_spec.SetField(application.FieldDriftIntervalMinutes, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDriftIntervalMinutes(); ok {
+		_spec.AddField(application.FieldDriftIntervalMinutes, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.GroupID(); ok {
 		_spec.SetField(application.FieldGroupID, field.TypeUUID, value)
@@ -267,6 +299,27 @@ func (_u *ApplicationUpdateOne) SetNillableImported(v *bool) *ApplicationUpdateO
 	if v != nil {
 		_u.SetImported(*v)
 	}
+	return _u
+}
+
+// SetDriftIntervalMinutes sets the "drift_interval_minutes" field.
+func (_u *ApplicationUpdateOne) SetDriftIntervalMinutes(v int) *ApplicationUpdateOne {
+	_u.mutation.ResetDriftIntervalMinutes()
+	_u.mutation.SetDriftIntervalMinutes(v)
+	return _u
+}
+
+// SetNillableDriftIntervalMinutes sets the "drift_interval_minutes" field if the given value is not nil.
+func (_u *ApplicationUpdateOne) SetNillableDriftIntervalMinutes(v *int) *ApplicationUpdateOne {
+	if v != nil {
+		_u.SetDriftIntervalMinutes(*v)
+	}
+	return _u
+}
+
+// AddDriftIntervalMinutes adds value to the "drift_interval_minutes" field.
+func (_u *ApplicationUpdateOne) AddDriftIntervalMinutes(v int) *ApplicationUpdateOne {
+	_u.mutation.AddDriftIntervalMinutes(v)
 	return _u
 }
 
@@ -382,6 +435,11 @@ func (_u *ApplicationUpdateOne) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Application.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.DriftIntervalMinutes(); ok {
+		if err := application.DriftIntervalMinutesValidator(v); err != nil {
+			return &ValidationError{Name: "drift_interval_minutes", err: fmt.Errorf(`ent: validator failed for field "Application.drift_interval_minutes": %w`, err)}
+		}
+	}
 	if _u.mutation.OrganizationCleared() && len(_u.mutation.OrganizationIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Application.organization"`)
 	}
@@ -425,6 +483,12 @@ func (_u *ApplicationUpdateOne) sqlSave(ctx context.Context) (_node *Application
 	}
 	if value, ok := _u.mutation.Imported(); ok {
 		_spec.SetField(application.FieldImported, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.DriftIntervalMinutes(); ok {
+		_spec.SetField(application.FieldDriftIntervalMinutes, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDriftIntervalMinutes(); ok {
+		_spec.AddField(application.FieldDriftIntervalMinutes, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.GroupID(); ok {
 		_spec.SetField(application.FieldGroupID, field.TypeUUID, value)

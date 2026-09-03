@@ -63,22 +63,24 @@ const (
 // ApplicationMutation represents an operation that mutates the Application nodes in the graph.
 type ApplicationMutation struct {
 	config
-	op                    Op
-	typ                   string
-	id                    *uuid.UUID
-	name                  *string
-	imported              *bool
-	group_id              *uuid.UUID
-	created_at            *time.Time
-	updated_at            *time.Time
-	clearedFields         map[string]struct{}
-	organization          *uuid.UUID
-	clearedorganization   bool
-	runner_cluster        *uuid.UUID
-	clearedrunner_cluster bool
-	done                  bool
-	oldValue              func(context.Context) (*Application, error)
-	predicates            []predicate.Application
+	op                        Op
+	typ                       string
+	id                        *uuid.UUID
+	name                      *string
+	imported                  *bool
+	drift_interval_minutes    *int
+	adddrift_interval_minutes *int
+	group_id                  *uuid.UUID
+	created_at                *time.Time
+	updated_at                *time.Time
+	clearedFields             map[string]struct{}
+	organization              *uuid.UUID
+	clearedorganization       bool
+	runner_cluster            *uuid.UUID
+	clearedrunner_cluster     bool
+	done                      bool
+	oldValue                  func(context.Context) (*Application, error)
+	predicates                []predicate.Application
 }
 
 var _ ent.Mutation = (*ApplicationMutation)(nil)
@@ -291,6 +293,62 @@ func (m *ApplicationMutation) OldImported(ctx context.Context) (v bool, err erro
 // ResetImported resets all changes to the "imported" field.
 func (m *ApplicationMutation) ResetImported() {
 	m.imported = nil
+}
+
+// SetDriftIntervalMinutes sets the "drift_interval_minutes" field.
+func (m *ApplicationMutation) SetDriftIntervalMinutes(i int) {
+	m.drift_interval_minutes = &i
+	m.adddrift_interval_minutes = nil
+}
+
+// DriftIntervalMinutes returns the value of the "drift_interval_minutes" field in the mutation.
+func (m *ApplicationMutation) DriftIntervalMinutes() (r int, exists bool) {
+	v := m.drift_interval_minutes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDriftIntervalMinutes returns the old "drift_interval_minutes" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldDriftIntervalMinutes(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDriftIntervalMinutes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDriftIntervalMinutes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDriftIntervalMinutes: %w", err)
+	}
+	return oldValue.DriftIntervalMinutes, nil
+}
+
+// AddDriftIntervalMinutes adds i to the "drift_interval_minutes" field.
+func (m *ApplicationMutation) AddDriftIntervalMinutes(i int) {
+	if m.adddrift_interval_minutes != nil {
+		*m.adddrift_interval_minutes += i
+	} else {
+		m.adddrift_interval_minutes = &i
+	}
+}
+
+// AddedDriftIntervalMinutes returns the value that was added to the "drift_interval_minutes" field in this mutation.
+func (m *ApplicationMutation) AddedDriftIntervalMinutes() (r int, exists bool) {
+	v := m.adddrift_interval_minutes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDriftIntervalMinutes resets all changes to the "drift_interval_minutes" field.
+func (m *ApplicationMutation) ResetDriftIntervalMinutes() {
+	m.drift_interval_minutes = nil
+	m.adddrift_interval_minutes = nil
 }
 
 // SetRunnerClusterID sets the "runner_cluster_id" field.
@@ -538,7 +596,7 @@ func (m *ApplicationMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ApplicationMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.organization != nil {
 		fields = append(fields, application.FieldOrganizationID)
 	}
@@ -547,6 +605,9 @@ func (m *ApplicationMutation) Fields() []string {
 	}
 	if m.imported != nil {
 		fields = append(fields, application.FieldImported)
+	}
+	if m.drift_interval_minutes != nil {
+		fields = append(fields, application.FieldDriftIntervalMinutes)
 	}
 	if m.runner_cluster != nil {
 		fields = append(fields, application.FieldRunnerClusterID)
@@ -574,6 +635,8 @@ func (m *ApplicationMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case application.FieldImported:
 		return m.Imported()
+	case application.FieldDriftIntervalMinutes:
+		return m.DriftIntervalMinutes()
 	case application.FieldRunnerClusterID:
 		return m.RunnerClusterID()
 	case application.FieldGroupID:
@@ -597,6 +660,8 @@ func (m *ApplicationMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldName(ctx)
 	case application.FieldImported:
 		return m.OldImported(ctx)
+	case application.FieldDriftIntervalMinutes:
+		return m.OldDriftIntervalMinutes(ctx)
 	case application.FieldRunnerClusterID:
 		return m.OldRunnerClusterID(ctx)
 	case application.FieldGroupID:
@@ -635,6 +700,13 @@ func (m *ApplicationMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetImported(v)
 		return nil
+	case application.FieldDriftIntervalMinutes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDriftIntervalMinutes(v)
+		return nil
 	case application.FieldRunnerClusterID:
 		v, ok := value.(uuid.UUID)
 		if !ok {
@@ -670,13 +742,21 @@ func (m *ApplicationMutation) SetField(name string, value ent.Value) error {
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *ApplicationMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.adddrift_interval_minutes != nil {
+		fields = append(fields, application.FieldDriftIntervalMinutes)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *ApplicationMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case application.FieldDriftIntervalMinutes:
+		return m.AddedDriftIntervalMinutes()
+	}
 	return nil, false
 }
 
@@ -685,6 +765,13 @@ func (m *ApplicationMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *ApplicationMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case application.FieldDriftIntervalMinutes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDriftIntervalMinutes(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Application numeric field %s", name)
 }
@@ -729,6 +816,9 @@ func (m *ApplicationMutation) ResetField(name string) error {
 		return nil
 	case application.FieldImported:
 		m.ResetImported()
+		return nil
+	case application.FieldDriftIntervalMinutes:
+		m.ResetDriftIntervalMinutes()
 		return nil
 	case application.FieldRunnerClusterID:
 		m.ResetRunnerClusterID()

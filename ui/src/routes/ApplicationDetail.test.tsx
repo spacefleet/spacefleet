@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +7,7 @@ import { api } from "../api/client";
 import { useObjectStream } from "../lib/useObjectStream";
 
 vi.mock("../api/client", () => ({
-  api: { GET: vi.fn(), POST: vi.fn(), DELETE: vi.fn() },
+  api: { GET: vi.fn(), POST: vi.fn(), DELETE: vi.fn(), PATCH: vi.fn() },
 }));
 
 vi.mock("../lib/useObjectStream", () => ({
@@ -25,6 +25,7 @@ const mockApi = api as unknown as {
   GET: ReturnType<typeof vi.fn>;
   POST: ReturnType<typeof vi.fn>;
   DELETE: ReturnType<typeof vi.fn>;
+  PATCH: ReturnType<typeof vi.fn>;
 };
 const mockStream = useObjectStream as unknown as ReturnType<typeof vi.fn>;
 
@@ -95,6 +96,7 @@ beforeEach(() => {
   mockApi.GET.mockReset();
   mockApi.POST.mockReset();
   mockApi.DELETE.mockReset();
+  mockApi.PATCH.mockReset();
   mockStream.mockReset();
   mockStream.mockReturnValue({ value: null, status: "connecting", error: null });
   mockApi.GET.mockImplementation((path: string) => {
@@ -244,5 +246,40 @@ describe("ApplicationDetail overview", () => {
     });
     renderDetail();
     expect(await screen.findByText(/No runs yet/)).toBeInTheDocument();
+  });
+});
+
+describe("drift schedule", () => {
+  it("saves the drift-check interval on the application and reflects it", async () => {
+    mockApi.PATCH.mockResolvedValue({
+      data: { ...app, drift_interval_minutes: 1440 },
+      error: undefined,
+      response: { status: 200 },
+    });
+    renderDetail();
+    await screen.findByText("web");
+    const select = screen.getByLabelText("Drift check schedule") as HTMLSelectElement;
+    expect(select.value).toBe("0");
+    await userEvent.selectOptions(select, "1440");
+    expect(mockApi.PATCH).toHaveBeenCalledWith(
+      "/api/applications/{id}",
+      expect.objectContaining({ body: { drift_interval_minutes: 1440 } }),
+    );
+    await waitFor(() => expect(select.value).toBe("1440"));
+  });
+
+  it("starts a drift check from the Check drift button", async () => {
+    mockApi.POST.mockResolvedValue({
+      data: { id: "run-9" },
+      error: undefined,
+      response: { status: 202 },
+    });
+    renderDetail();
+    await screen.findByText("web");
+    await userEvent.click(screen.getByRole("button", { name: /check drift/i }));
+    expect(mockApi.POST).toHaveBeenCalledWith(
+      "/api/applications/{id}/runs",
+      expect.objectContaining({ body: { action: "drift" } }),
+    );
   });
 });

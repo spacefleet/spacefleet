@@ -64,7 +64,18 @@ type CreateParams struct {
 // The runner cluster is fixed at registration; only the name can change.
 type UpdateParams struct {
 	Name *string
+	// DriftIntervalMinutes sets how often the worker starts a scheduled drift
+	// check for the application's OpenTofu components: 0 turns the schedule
+	// off; otherwise 15 minutes to a week (10080).
+	DriftIntervalMinutes *int
 }
+
+// Bounds for a scheduled drift-check interval (minutes): 0 is off; anything
+// else must be at least every 15 minutes and at most weekly.
+const (
+	MinDriftIntervalMinutes = 15
+	MaxDriftIntervalMinutes = 7 * 24 * 60
+)
 
 // ImportParams describes an application to adopt from a release already running
 // on the target cluster (the import flow). Same shape as a create — the workflow
@@ -134,6 +145,11 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, p UpdateParam
 	if p.Name != nil && !slug.Valid(*p.Name) {
 		return nil, validationErr("application name %q %s", *p.Name, slug.Rule)
 	}
+	if p.DriftIntervalMinutes != nil {
+		if m := *p.DriftIntervalMinutes; m != 0 && (m < MinDriftIntervalMinutes || m > MaxDriftIntervalMinutes) {
+			return nil, validationErr("drift check interval must be 0 (off) or between %d and %d minutes", MinDriftIntervalMinutes, MaxDriftIntervalMinutes)
+		}
+	}
 	app, err := s.Get(ctx, orgID, id)
 	if err != nil {
 		return nil, err
@@ -141,6 +157,9 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, p UpdateParam
 	upd := app.Update()
 	if p.Name != nil {
 		upd.SetName(*p.Name)
+	}
+	if p.DriftIntervalMinutes != nil {
+		upd.SetDriftIntervalMinutes(*p.DriftIntervalMinutes)
 	}
 	return upd.Save(ctx)
 }

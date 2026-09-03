@@ -26,6 +26,8 @@ type Application struct {
 	Name string `json:"name,omitempty"`
 	// Imported holds the value of the "imported" field.
 	Imported bool `json:"imported,omitempty"`
+	// DriftIntervalMinutes holds the value of the "drift_interval_minutes" field.
+	DriftIntervalMinutes int `json:"drift_interval_minutes,omitempty"`
 	// RunnerClusterID holds the value of the "runner_cluster_id" field.
 	RunnerClusterID uuid.UUID `json:"runner_cluster_id,omitempty"`
 	// GroupID holds the value of the "group_id" field.
@@ -80,6 +82,8 @@ func (*Application) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case application.FieldImported:
 			values[i] = new(sql.NullBool)
+		case application.FieldDriftIntervalMinutes:
+			values[i] = new(sql.NullInt64)
 		case application.FieldName:
 			values[i] = new(sql.NullString)
 		case application.FieldCreatedAt, application.FieldUpdatedAt:
@@ -124,6 +128,12 @@ func (_m *Application) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field imported", values[i])
 			} else if value.Valid {
 				_m.Imported = value.Bool
+			}
+		case application.FieldDriftIntervalMinutes:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field drift_interval_minutes", values[i])
+			} else if value.Valid {
+				_m.DriftIntervalMinutes = int(value.Int64)
 			}
 		case application.FieldRunnerClusterID:
 			if value, ok := values[i].(*uuid.UUID); !ok {
@@ -203,6 +213,9 @@ func (_m *Application) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("imported=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Imported))
+	builder.WriteString(", ")
+	builder.WriteString("drift_interval_minutes=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DriftIntervalMinutes))
 	builder.WriteString(", ")
 	builder.WriteString("runner_cluster_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RunnerClusterID))

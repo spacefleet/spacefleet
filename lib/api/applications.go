@@ -176,6 +176,10 @@ func (s *Server) UpdateApplication(ctx context.Context, req UpdateApplicationReq
 		}
 		params.Name = &name
 	}
+	if req.Body.DriftIntervalMinutes != nil {
+		m := *req.Body.DriftIntervalMinutes
+		params.DriftIntervalMinutes = &m
+	}
 	a, err := s.applications.Update(ctx, orgID, req.Id, params)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -251,13 +255,15 @@ func appWriteError[T defaultResp](err error) (T, bool) {
 
 func toAPIApplication(a *ent.Application) Application {
 	imported := a.Imported
+	drift := a.DriftIntervalMinutes
 	out := Application{
-		Id:              a.ID,
-		Name:            a.Name,
-		RunnerClusterId: a.RunnerClusterID,
-		Imported:        &imported,
-		CreatedAt:       a.CreatedAt,
-		UpdatedAt:       a.UpdatedAt,
+		Id:                   a.ID,
+		Name:                 a.Name,
+		RunnerClusterId:      a.RunnerClusterID,
+		Imported:             &imported,
+		DriftIntervalMinutes: &drift,
+		CreatedAt:            a.CreatedAt,
+		UpdatedAt:            a.UpdatedAt,
 	}
 	// group_id is an optional FK: uuid.Nil means the app sits at the org root.
 	if a.GroupID != uuid.Nil {

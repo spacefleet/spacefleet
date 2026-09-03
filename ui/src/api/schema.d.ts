@@ -1899,6 +1899,11 @@ export interface components {
              */
             imported?: boolean;
             /**
+             * @description How often, in minutes, a scheduled drift check runs on the
+             *     application's OpenTofu components; 0 means never.
+             */
+            drift_interval_minutes?: number;
+            /**
              * Format: uuid
              * @description The application group (folder) this application belongs to, or null
              *     when it sits at the org root (ungrouped).
@@ -1965,6 +1970,13 @@ export interface components {
              *     reuse as a DNS-1123 label.
              */
             name?: string;
+            /**
+             * @description How often, in minutes, to run a scheduled drift check on the
+             *     application's OpenTofu components: 0 turns the schedule off;
+             *     otherwise between 15 and 10080 (weekly). A check is skipped while
+             *     another run is in flight and retried on the next tick.
+             */
+            drift_interval_minutes?: number;
         };
         /**
          * @description A top-level folder for organizing an organization's applications. An

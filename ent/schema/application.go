@@ -34,6 +34,10 @@ func (Application) Fields() []ent.Field {
 		// lets the UI surface that the workflow is a best-effort reconstruction of
 		// a live release. Defaults false (created, not imported).
 		field.Bool("imported").Default(false),
+		// How often (minutes) the worker starts a scheduled drift check for the
+		// application's OpenTofu components; 0 means never. See
+		// workflows.RunDriftScheduler.
+		field.Int("drift_interval_minutes").Default(0).NonNegative(),
 		// FK column bound to the runner_cluster edge below: the Tekton-enabled
 		// cluster the management jobs run on. There is no app-level target cluster
 		// or namespace — targeting lives on the individual components.

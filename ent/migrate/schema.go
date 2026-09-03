@@ -14,6 +14,7 @@ var (
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "name", Type: field.TypeString},
 		{Name: "imported", Type: field.TypeBool, Default: false},
+		{Name: "drift_interval_minutes", Type: field.TypeInt, Default: 0},
 		{Name: "group_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -28,13 +29,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "applications_organizations_organization",
-				Columns:    []*schema.Column{ApplicationsColumns[6]},
+				Columns:    []*schema.Column{ApplicationsColumns[7]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "applications_clusters_runner_cluster",
-				Columns:    []*schema.Column{ApplicationsColumns[7]},
+				Columns:    []*schema.Column{ApplicationsColumns[8]},
 				RefColumns: []*schema.Column{ClustersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -43,12 +44,12 @@ var (
 			{
 				Name:    "application_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{ApplicationsColumns[6]},
+				Columns: []*schema.Column{ApplicationsColumns[7]},
 			},
 			{
 				Name:    "application_organization_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{ApplicationsColumns[6], ApplicationsColumns[1]},
+				Columns: []*schema.Column{ApplicationsColumns[7], ApplicationsColumns[1]},
 			},
 		},
 	}

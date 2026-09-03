@@ -2633,6 +2633,11 @@ components:
           description: |
             True when the application was adopted from a release already running
             on the cluster (the import flow) rather than created from scratch.
+        drift_interval_minutes:
+          type: integer
+          description: |
+            How often, in minutes, a scheduled drift check runs on the
+            application's OpenTofu components; 0 means never.
         group_id:
           type: string
           format: uuid
@@ -2719,6 +2724,15 @@ components:
             with a letter or digit (e.g. "my-app"). The name seeds the default
             Helm release name for the app's components, so it must be safe to
             reuse as a DNS-1123 label.
+        drift_interval_minutes:
+          type: integer
+          minimum: 0
+          maximum: 10080
+          description: |
+            How often, in minutes, to run a scheduled drift check on the
+            application's OpenTofu components: 0 turns the schedule off;
+            otherwise between 15 and 10080 (weekly). A check is skipped while
+            another run is in flight and retried on the next tick.
 
     ApplicationGroup:
       type: object
