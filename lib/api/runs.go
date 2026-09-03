@@ -327,8 +327,16 @@ func toAPIWorkflowRunDetail(r *ent.WorkflowRun, steps []*ent.ComponentRun, canSe
 		FinishedAt:    b.FinishedAt,
 		ComponentRuns: make([]ComponentRun, len(steps)),
 	}
+	// requires_approval is a property of the run's snapshot node, not the step
+	// row: read it off the graph so a client can tell a gated step apart before
+	// it parks (and after it was decided).
+	gated := snapshotGates(r.Graph)
 	for i, cr := range steps {
 		out.ComponentRuns[i] = toAPIComponentRun(cr, canSee)
+		if g, ok := gated[cr.ComponentID]; ok {
+			g := g
+			out.ComponentRuns[i].RequiresApproval = &g
+		}
 	}
 	if graph := redactGraph(r.Graph, canSee); graph != "" {
 		out.Graph = &graph
@@ -501,6 +509,25 @@ func toAPIComponentRunDetail(cr *ent.ComponentRun, canSee bool) ComponentRunDeta
 	if diff.HasChanges {
 		hc := true
 		out.HasChanges = &hc
+	}
+	return out
+}
+
+// snapshotGates reads each execution unit's requires_approval flag out of the
+// run's graph snapshot, keyed by unit id (the component run's component_id).
+// An empty or unparseable snapshot yields an empty map, leaving the field
+// unset.
+func snapshotGates(graph string) map[uuid.UUID]bool {
+	out := map[uuid.UUID]bool{}
+	if graph == "" {
+		return out
+	}
+	var snap workflows.GraphSnapshot
+	if err := json.Unmarshal([]byte(graph), &snap); err != nil {
+		return out
+	}
+	for _, n := range snap.Nodes {
+		out[n.ID] = n.RequiresApproval
 	}
 	return out
 }

@@ -3,6 +3,7 @@ package tekton
 import (
 	"context"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -222,4 +223,19 @@ func secretIDFromActions(t *testing.T, cs *fake.Clientset) string {
 	}
 	t.Fatal("no secret create action recorded")
 	return ""
+}
+
+// TestBuildTaskRunTimeout proves a RunSpec timeout lands on spec.timeout in
+// Tekton's duration form, and that a zero timeout leaves the field unset so
+// the cluster's default applies.
+func TestBuildTaskRunTimeout(t *testing.T) {
+	tr := buildTaskRun("ns", "", RunSpec{Name: "job", Image: "img", Script: "run", Timeout: 90 * time.Minute})
+	spec := tr.Object["spec"].(map[string]any)
+	if got := spec["timeout"]; got != "1h30m0s" {
+		t.Fatalf("spec.timeout = %v, want 1h30m0s", got)
+	}
+	tr = buildTaskRun("ns", "", RunSpec{Name: "job", Image: "img", Script: "run"})
+	if _, ok := tr.Object["spec"].(map[string]any)["timeout"]; ok {
+		t.Fatal("zero Timeout must leave spec.timeout unset")
+	}
 }

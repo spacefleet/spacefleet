@@ -68,6 +68,11 @@ type RunSpec struct {
 	// Env is the step's environment variables (name → value), rendered inline in
 	// the TaskRun. For non-secret values only. Optional.
 	Env map[string]string
+	// Timeout bounds the TaskRun on the cluster (spec.timeout). Zero leaves
+	// Tekton's default in force. The worker sets it to its own watch timeout so
+	// a step it has given up on is also stopped on the cluster, rather than
+	// running on unobserved.
+	Timeout time.Duration
 	// SecretEnv is the step's sensitive environment variables (name → value).
 	// Their values are stored in the per-run creds Secret and referenced from the
 	// step via env.valueFrom.secretKeyRef, so they never appear inline in the
@@ -223,6 +228,9 @@ func buildTaskRun(namespace, secretName string, spec RunSpec) *unstructured.Unst
 	trSpec := map[string]any{"taskSpec": taskSpec}
 	if spec.ServiceAccountName != "" {
 		trSpec["serviceAccountName"] = spec.ServiceAccountName
+	}
+	if spec.Timeout > 0 {
+		trSpec["timeout"] = spec.Timeout.String()
 	}
 	return &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": TektonGroup + "/v1",

@@ -407,6 +407,9 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 		tekton.RunComponentLabel: cr.ID.String(),
 	}
 	req.RecoverSelector = tekton.RunComponentLabel + "=" + cr.ID.String()
+	// Bound the TaskRun on the cluster to the watch: a step this job stops
+	// waiting for is stopped there too, instead of running on unobserved.
+	req.Spec.Timeout = workflowWatchTimeout
 	req.OnSubmitted = func(runName string) error {
 		return w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "running", "submitted run "+runName, runName)
 	}
