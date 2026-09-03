@@ -92,6 +92,9 @@ func NewWorker(svc *Service, resolver *deploy.Resolver) *WorkflowRunWorker {
 	w.resolveOutputs = svc.ResolveComponentOutputs
 	w.ensureHandover = tekton.EnsureHandoverSecret
 	w.deleteHandover = tekton.DeleteHandoverSecret
+	// A run the reaper settles had no live worker to sweep its planfile-handover
+	// Secrets; release them from here, the process that can reach the cluster.
+	svc.OnReaped(w.sweepReapedRun)
 	return w
 }
 
@@ -307,6 +310,10 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 	// re-attach via the per-component label), so only the unsettled work re-runs.
 	if final == runFailed && attemptsRemain {
 		if ctx.Err() != nil {
+			// Aborted mid-run. If CancelRun settled the run (it cancels the job after
+			// settling), no retry follows and the terminal sweep below is never
+			// reached — release the handover Secrets now rather than leak them.
+			w.sweepIfSettled(context.WithoutCancel(ctx), a, app, snapshot)
 			return fmt.Errorf("workflows: run %s aborted: %w", a.WorkflowRunID, ctx.Err())
 		}
 		if retryable {
@@ -343,9 +350,9 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 	// ownerReferences). A succeeded apply already deleted its own, so this
 	// catches the unhappy paths: a failed plan, a rejected approval (the resume
 	// job settles the run here), a skipped apply, and a tolerated in-step delete
-	// failure. Cancel- and reaper-settled runs never pass through here and leak
-	// until an operator sweeps by the stamped labels — the same posture as their
-	// TaskRuns. Best-effort on markCtx, like the bookkeeping above.
+	// failure. A cancelled run is swept on the aborted path above
+	// (sweepIfSettled) and a reaper-settled one through the reap hook
+	// (sweepReapedRun). Best-effort on markCtx, like the bookkeeping above.
 	w.sweepPlanArtifacts(markCtx, a, app, snapshot)
 
 	if final == runFailed {
@@ -585,6 +592,52 @@ func (w *WorkflowRunWorker) sweepPlanArtifacts(ctx context.Context, a WorkflowRu
 			log.Printf("worker: workflow run %s: sweep planfile secret %s: %v", a.WorkflowRunID, name, err)
 		}
 	}
+}
+
+// sweepIfSettled sweeps the run's planfile-handover Secrets if the run has
+// already been settled by someone other than this job — CancelRun, which
+// settles the row and then cancels the River job, so the job's context ends
+// and Work returns on its aborted path without reaching the terminal sweep.
+// The run is re-read on the (cancel-immune) ctx: a run still in flight is left
+// alone, since a retry may yet apply a reviewed plan.
+func (w *WorkflowRunWorker) sweepIfSettled(ctx context.Context, a WorkflowRunArgs, app *ent.Application, snapshot GraphSnapshot) {
+	run, _, err := w.svc.GetRun(ctx, a.OrgID, a.ApplicationID, a.WorkflowRunID)
+	if err != nil || !isTerminalRunStatus(string(run.Status)) {
+		return
+	}
+	w.sweepPlanArtifacts(ctx, a, app, snapshot)
+}
+
+// sweepReapedRun is the reaper hook (see Service.OnReaped): a run settled by
+// the reaper was abandoned by a worker that died, so its handover Secrets were
+// never swept. Rebuild the sweep inputs from the run row and release them.
+// Best-effort throughout — the run is already settled.
+func (w *WorkflowRunWorker) sweepReapedRun(ctx context.Context, run *ent.WorkflowRun) {
+	var snapshot GraphSnapshot
+	if run.Graph == "" || json.Unmarshal([]byte(run.Graph), &snapshot) != nil {
+		return
+	}
+	app, err := w.svc.getApp(ctx, run.OrganizationID, run.ApplicationID)
+	if err != nil {
+		log.Printf("worker: workflow run %s: resolve app for reaped-run sweep: %v", run.ID, err)
+		return
+	}
+	a := WorkflowRunArgs{
+		OrgID:         run.OrganizationID,
+		ApplicationID: run.ApplicationID,
+		WorkflowRunID: run.ID,
+		Action:        string(run.Action),
+	}
+	w.sweepPlanArtifacts(ctx, a, app, snapshot)
+}
+
+// isTerminalRunStatus reports whether a workflow run status is settled.
+func isTerminalRunStatus(status string) bool {
+	switch status {
+	case runSucceeded, runFailed, runPartial:
+		return true
+	}
+	return false
 }
 
 // defaultCaptureLogs reads a terminal run's full pod logs from the runner

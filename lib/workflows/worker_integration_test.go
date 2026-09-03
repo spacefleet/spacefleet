@@ -8,6 +8,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
@@ -483,5 +484,112 @@ func TestWorkDeterministicFailureSettlesWithoutRetry(t *testing.T) {
 	}
 	if !strings.Contains(cr.Message, "kubectl apply exited 1") {
 		t.Errorf("component message = %q, want the script failure", cr.Message)
+	}
+}
+
+// sweepingWorker builds a worker whose handover deletes are recorded rather
+// than sent to a cluster, over a resolver whose runner lookups always succeed.
+func sweepingWorker(svc *Service, deleted *[]string) *WorkflowRunWorker {
+	resolves := 0
+	return &WorkflowRunWorker{
+		svc:      svc,
+		resolver: deploy.NewResolver(countingConns{&resolves}, nil, nil, nil, nil),
+		deleteHandover: func(_ context.Context, _ k8s.Connection, namespace, name string) error {
+			*deleted = append(*deleted, namespace+"/"+name)
+			return nil
+		},
+	}
+}
+
+// TestSweepIfSettled proves the aborted-job path releases a cancelled run's
+// planfile-handover Secrets — CancelRun settles the run and then cancels the
+// River job, so Work never reaches its terminal sweep — while a run that is
+// still in flight (a retry may yet apply its reviewed plan) is left alone.
+func TestSweepIfSettled(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	planID := addComponent(t, client, org.ID, app.ID, "infra", nil).ID
+	run, err := svc.BeginRun(ctx, org.ID, app.ID, ActionDeploy)
+	if err != nil {
+		t.Fatalf("BeginRun: %v", err)
+	}
+	if err := svc.MarkRun(ctx, org.ID, run.ID, string(workflowrun.StatusRunning), "running"); err != nil {
+		t.Fatalf("MarkRun running: %v", err)
+	}
+	// The snapshot the job was driving: one OpenTofu plan unit.
+	snapshot := GraphSnapshot{Nodes: []GraphNode{
+		{ID: planID, Type: TypeTerraform, Config: map[string]string{terraformConfigCommand: terraformCommandPlan}},
+	}}
+	a := WorkflowRunArgs{OrgID: org.ID, ApplicationID: app.ID, WorkflowRunID: run.ID, Action: ActionDeploy}
+
+	var deleted []string
+	w := sweepingWorker(svc, &deleted)
+
+	// Still in flight: nothing is swept.
+	w.sweepIfSettled(ctx, a, app, snapshot)
+	if len(deleted) != 0 {
+		t.Fatalf("in-flight run swept: %v", deleted)
+	}
+
+	// Cancelled (settled by CancelRun): the run's handover Secret is released.
+	if _, err := svc.CancelRun(ctx, org.ID, app.ID, run.ID); err != nil {
+		t.Fatalf("CancelRun: %v", err)
+	}
+	w.sweepIfSettled(ctx, a, app, snapshot)
+	want := tekton.JobsNamespace + "/" + tofuPlanArtifactSecret(run.ID, planID)
+	if len(deleted) != 1 || deleted[0] != want {
+		t.Fatalf("deleted = %v, want [%s]", deleted, want)
+	}
+}
+
+// TestReaperSweepsAbandonedRun proves a run the reaper settles has its
+// planfile-handover Secrets released through the worker's reap hook — the
+// worker that owned the run died, so nothing else would — rebuilt from the
+// run row's own graph snapshot.
+func TestReaperSweepsAbandonedRun(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	tf := addComponent(t, client, org.ID, app.ID, "infra", map[string]string{
+		"repo_url": "https://example.com/infra.git", "path": ".",
+		terraformConfigBackend: "s3", terraformConfigBackendConfig: `{"bucket":"b","key":"k","region":"r"}`,
+	})
+	if _, err := client.Component.UpdateOneID(tf.ID).SetType(TypeTerraform).Save(ctx); err != nil {
+		t.Fatalf("set terraform type: %v", err)
+	}
+	run, err := svc.BeginRun(ctx, org.ID, app.ID, ActionDeploy)
+	if err != nil {
+		t.Fatalf("BeginRun: %v", err)
+	}
+	if err := svc.SetRunJob(ctx, org.ID, run.ID, "job-dead"); err != nil {
+		t.Fatalf("SetRunJob: %v", err)
+	}
+	if err := svc.MarkRun(ctx, org.ID, run.ID, string(workflowrun.StatusRunning), "running"); err != nil {
+		t.Fatalf("MarkRun running: %v", err)
+	}
+	if err := client.WorkflowRun.UpdateOneID(run.ID).SetStartedAt(time.Now().Add(-2 * reapMaxLifetime)).Exec(ctx); err != nil {
+		t.Fatalf("backdate started_at: %v", err)
+	}
+
+	var deleted []string
+	w := sweepingWorker(svc, &deleted)
+	svc.OnReaped(w.sweepReapedRun)
+
+	jobGone := func(context.Context, string) (bool, error) { return false, nil }
+	reaped, err := svc.ReapStuckRuns(ctx, reapMaxLifetime, jobGone)
+	if err != nil || reaped != 1 {
+		t.Fatalf("ReapStuckRuns = %d, %v; want 1 reaped", reaped, err)
+	}
+	// The plan unit keeps the authored id, so its Secret is keyed off it.
+	want := tekton.JobsNamespace + "/" + tofuPlanArtifactSecret(run.ID, tf.ID)
+	if len(deleted) != 1 || deleted[0] != want {
+		t.Fatalf("deleted = %v, want [%s]", deleted, want)
 	}
 }

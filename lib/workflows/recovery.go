@@ -178,6 +178,11 @@ func (s *Service) ReapStuckRuns(ctx context.Context, maxLifetime time.Duration, 
 			SetFinishedAt(time.Now()).
 			Save(ctx)
 		reaped++
+		// The worker that owned this run is gone, so nothing else will release
+		// what it left on the runner cluster; let the worker process sweep it.
+		if s.reapHook != nil {
+			s.reapHook(ctx, run)
+		}
 	}
 	return reaped, nil
 }

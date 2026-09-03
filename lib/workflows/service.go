@@ -28,11 +28,25 @@ import (
 // Service is a thin wrapper over the ent client.
 type Service struct {
 	ent *ent.Client
+	// reapHook, when set, is called for each run the reaper settles — after the
+	// run and its steps are marked failed — so the worker process can release
+	// what the abandoned run left on its runner cluster (planfile-handover
+	// Secrets). See OnReaped.
+	reapHook func(context.Context, *ent.WorkflowRun)
 }
 
 // NewService builds the workflow service over the ent client.
 func NewService(entClient *ent.Client) *Service {
 	return &Service{ent: entClient}
+}
+
+// OnReaped registers fn to run for every run ReapStuckRuns settles. Only the
+// worker process registers one (it owns the cluster connections); the service
+// itself never touches a cluster. fn runs synchronously inside the sweep and
+// must be best-effort — a reaped run is already settled by the time it is
+// called, so nothing fn does can change the run's outcome.
+func (s *Service) OnReaped(fn func(context.Context, *ent.WorkflowRun)) {
+	s.reapHook = fn
 }
 
 // ComponentInput is one node of a proposed workflow, as supplied by the canvas.
