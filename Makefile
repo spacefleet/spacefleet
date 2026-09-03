@@ -83,7 +83,7 @@ worker:
 ui-install:
 	cd ui && npm install
 
-# Vite dev server on :5173, proxies /api/* to the Go backend on :8080.
+# Vite dev server on :2424, proxies /api/*, /config.js, and /dex/* to the Go backend on :8080.
 ui-dev:
 	cd ui && npm run dev
 
