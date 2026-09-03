@@ -14,6 +14,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/membership"
+	"github.com/spacefleet/spacefleet/lib/workflows"
 )
 
 // TestGetApplicationComponentOutputs exercises the editor-gated, keys-only
@@ -58,7 +59,7 @@ func TestGetApplicationComponentOutputs(t *testing.T) {
 		t.Fatalf("create workflow run: %v", err)
 	}
 	if _, err := h.client.ComponentRun.Create().
-		SetOrganizationID(orgID).SetWorkflowRunID(wr.ID).SetComponentID(infra.ID).
+		SetOrganizationID(orgID).SetWorkflowRunID(wr.ID).SetComponentID(workflows.DeriveApplyID(infra.ID)).
 		SetStatus(componentrun.StatusSucceeded).
 		SetOutputs(`{"vpc_id":{"value":"vpc-1","type":"string","sensitive":false},"db_password":{"value":"s","type":"string","sensitive":true}}`).
 		SetFinishedAt(time.Now()).Save(ctx); err != nil {

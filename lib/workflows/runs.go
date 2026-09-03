@@ -281,6 +281,10 @@ func deriveApplyID(componentID uuid.UUID) uuid.UUID {
 	return uuid.NewSHA1(tofuExecNamespace, append([]byte("tofu-apply:"), componentID[:]...))
 }
 
+// DeriveApplyID is deriveApplyID for callers outside the package (tests that
+// seed an apply unit's component run under the id the worker would assign).
+func DeriveApplyID(componentID uuid.UUID) uuid.UUID { return deriveApplyID(componentID) }
+
 // Display-name suffixes expandExecutionNodes appends to an OpenTofu component's
 // plan/apply units. tofuApplyUnitID trims the apply suffix back off to recover
 // the authored component name a ${{ components.<name>.* }} reference uses, so
@@ -742,8 +746,8 @@ func (s *Service) LatestOutputKeys(ctx context.Context, orgID, appID uuid.UUID) 
 	if _, err := s.getApp(ctx, orgID, appID); err != nil {
 		return nil, err
 	}
-	// Outputs are keyed by the authored component id; scope the candidate set to
-	// the app's own components (org-scoped) so another app's runs can't leak in.
+	// Scope the candidate set to the app's own components (org-scoped) so another
+	// app's runs can't leak in.
 	ids, err := s.ent.Component.Query().
 		Where(component.OrganizationID(orgID), component.ApplicationID(appID)).
 		IDs(ctx)
@@ -754,12 +758,25 @@ func (s *Service) LatestOutputKeys(ctx context.Context, orgID, appID uuid.UUID) 
 	if len(ids) == 0 {
 		return out, nil
 	}
+	// Outputs are captured on an OpenTofu component's *apply* execution unit,
+	// whose component run carries the derived apply id (deriveApplyID), not the
+	// authored id — see expandExecutionNodes. Query both shapes and fold a
+	// derived id back onto its authored component so the result is keyed the
+	// way the editor (and ${{ components.<name>.* }}) addresses components.
+	authoredOf := make(map[uuid.UUID]uuid.UUID, len(ids)*2)
+	candidates := make([]uuid.UUID, 0, len(ids)*2)
+	for _, id := range ids {
+		applyID := deriveApplyID(id)
+		authoredOf[id] = id
+		authoredOf[applyID] = id
+		candidates = append(candidates, id, applyID)
+	}
 	// Every succeeded run that captured outputs for these components, newest
 	// first — so the first parseable row seen per component is its latest.
 	rows, err := s.ent.ComponentRun.Query().
 		Where(
 			componentrun.OrganizationID(orgID),
-			componentrun.ComponentIDIn(ids...),
+			componentrun.ComponentIDIn(candidates...),
 			componentrun.StatusEQ(componentrun.StatusSucceeded),
 			componentrun.OutputsNEQ(""),
 		).
@@ -769,17 +786,18 @@ func (s *Service) LatestOutputKeys(ctx context.Context, orgID, appID uuid.UUID) 
 		return nil, err
 	}
 	for _, cr := range rows {
-		if cr.ComponentID == uuid.Nil {
+		authored, ok := authoredOf[cr.ComponentID]
+		if !ok {
 			continue
 		}
-		if _, seen := out[cr.ComponentID]; seen {
+		if _, seen := out[authored]; seen {
 			continue // a newer row for this component already won (ordered desc)
 		}
 		keys := parseOutputKeys(cr.Outputs)
 		if len(keys) == 0 {
 			continue // unparseable/empty: leave it open for an older run to fill
 		}
-		out[cr.ComponentID] = keys
+		out[authored] = keys
 	}
 	return out, nil
 }

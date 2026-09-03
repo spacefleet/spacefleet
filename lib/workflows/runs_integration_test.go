@@ -140,9 +140,13 @@ func TestLatestOutputKeys(t *testing.T) {
 
 	now := time.Now()
 	// An older run with a different key set, then the latest — the latest wins.
+	// The latest is seeded the way the worker really stores outputs: on the
+	// apply execution unit's row, whose component_id is the *derived* apply id
+	// (expandExecutionNodes), not the authored component id. The result must
+	// still be keyed by the authored id.
 	addOutputRun(t, client, org.ID, app.ID, infra.ID,
 		`{"old_key":{"value":"x","type":"string","sensitive":false}}`, now.Add(-time.Hour))
-	addOutputRun(t, client, org.ID, app.ID, infra.ID,
+	addOutputRun(t, client, org.ID, app.ID, deriveApplyID(infra.ID),
 		`{"vpc_id":{"value":"vpc-1","type":"string","sensitive":false},"db_password":{"value":"s","type":"string","sensitive":true}}`, now)
 
 	// A failed run that captured outputs must be ignored (only succeeded counts);
