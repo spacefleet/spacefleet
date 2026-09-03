@@ -37,7 +37,35 @@ func (s *Server) GetComponentState(ctx context.Context, req GetComponentStateReq
 		Outputs:        toAPIComponentRunOutputs(cr.Outputs, canSeeSecrets),
 		Resources:      toAPITofuResources(cr.Resources),
 	}
+	// The latest drift check, when one has run: its verdict is parsed from the
+	// step's refresh-only plan. Addresses only — the state-vs-real diffs stay on
+	// the run's step detail, gated like every plan body.
+	if dc, err := s.workflows.LatestDriftCheck(ctx, orgID, req.Id, req.ComponentId); err == nil {
+		out.Drift = toAPIDriftStatus(dc)
+	} else if !ent.IsNotFound(err) {
+		return nil, err
+	}
 	return GetComponentState200JSONResponse(out), nil
+}
+
+// toAPIDriftStatus maps a settled drift-check step to the API drift status.
+// A failed check (the plan itself errored) reports has_drift=false with its
+// failed status, so a client can show "check failed" rather than "clean".
+func toAPIDriftStatus(cr *ent.ComponentRun) *DriftStatus {
+	out := &DriftStatus{
+		RunId:          cr.WorkflowRunID,
+		ComponentRunId: cr.ID,
+		CheckedAt:      cr.FinishedAt,
+		Status:         ComponentRunStatus(cr.Status),
+	}
+	if p := parseTofuPlan(cr); p != nil && cr.Status == "succeeded" {
+		out.HasDrift = p.HasDrift
+		if len(p.Drift) > 0 {
+			summary := toAPIPlanSummary(*p, false)
+			out.Drift = summary.Drift
+		}
+	}
+	return out
 }
 
 // toAPITofuResources maps the stored inventory JSON (component_runs.resources,

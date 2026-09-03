@@ -52,6 +52,33 @@ function planTitle(plan: PlanSummary): string {
 // outputs note. Rendered above the resource list on a plan step.
 export function PlanSummaryBar({ plan }: { plan: PlanSummary }) {
   const destructive = plan.destroy > 0 || plan.replace > 0;
+  const driftCount = plan.drift?.length ?? 0;
+
+  // A drift check proposes nothing: its whole verdict is whether anything
+  // changed outside of OpenTofu.
+  if (plan.refresh_only) {
+    return (
+      <div
+        className={`flex flex-wrap items-center gap-x-4 gap-y-1 border px-3 py-2 text-sm ${
+          plan.has_drift
+            ? "border-amber-200 bg-amber-50 text-amber-900"
+            : "border-neutral-200 bg-neutral-50 text-neutral-700"
+        }`}
+      >
+        {plan.has_drift ? (
+          <span className="font-medium">
+            Drift detected: {driftCount} resource{driftCount === 1 ? "" : "s"}{" "}
+            changed outside of OpenTofu since the last apply.
+          </span>
+        ) : (
+          <span className="font-medium">
+            No drift. Real infrastructure still matches the last apply.
+          </span>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       className={`flex flex-wrap items-center gap-x-4 gap-y-1 border px-3 py-2 text-sm ${
@@ -62,6 +89,12 @@ export function PlanSummaryBar({ plan }: { plan: PlanSummary }) {
             : "border-emerald-200 bg-emerald-50 text-emerald-900"
       }`}
     >
+      {plan.has_drift && (
+        <span className="w-full text-xs">
+          {driftCount} resource{driftCount === 1 ? "" : "s"} changed outside of
+          OpenTofu since the last apply — see the drift section below.
+        </span>
+      )}
       {plan.has_changes ? (
         <>
           <span className="font-medium">
@@ -93,21 +126,42 @@ export function PlanResourceList({ plan }: { plan: PlanSummary }) {
   const rows = [...plan.resources].sort(
     (a, b) => actionRank(a.action) - actionRank(b.action),
   );
-  if (rows.length === 0) {
-    return (
-      <p className="text-sm text-neutral-500">
-        {plan.has_changes
-          ? "No resource changes (outputs only)."
-          : "No resources change."}
-      </p>
-    );
-  }
+  const drift = plan.drift ?? [];
   return (
-    <ul className="divide-y divide-neutral-200 border border-neutral-200">
-      {rows.map((r) => (
-        <PlanResourceRow key={r.address + r.action} change={r} />
-      ))}
-    </ul>
+    <div className="flex flex-col gap-3">
+      {drift.length > 0 && (
+        <div>
+          <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-amber-700">
+            Changed outside of OpenTofu
+          </p>
+          <ul className="divide-y divide-amber-100 border border-amber-200">
+            {drift.map((r) => (
+              <PlanResourceRow key={"drift:" + r.address} change={r} />
+            ))}
+          </ul>
+        </div>
+      )}
+      {plan.refresh_only ? null : rows.length === 0 ? (
+        <p className="text-sm text-neutral-500">
+          {plan.has_changes
+            ? "No resource changes (outputs only)."
+            : "No resources change."}
+        </p>
+      ) : (
+        <div>
+          {drift.length > 0 && (
+            <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+              Planned actions
+            </p>
+          )}
+          <ul className="divide-y divide-neutral-200 border border-neutral-200">
+            {rows.map((r) => (
+              <PlanResourceRow key={r.address + r.action} change={r} />
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -186,6 +240,10 @@ function actionStyle(action: PlanAction): {
       return { symbol: "←", label: "import", className: "bg-sky-100 text-sky-800" };
     case "forget":
       return { symbol: "·", label: "forget", className: "bg-neutral-100 text-neutral-700" };
+    case "drift_update":
+      return { symbol: "~", label: "changed", className: "bg-amber-100 text-amber-800" };
+    case "drift_delete":
+      return { symbol: "-", label: "deleted", className: "bg-red-100 text-red-800" };
     default:
       return { symbol: "?", label: "other", className: "bg-neutral-100 text-neutral-700" };
   }

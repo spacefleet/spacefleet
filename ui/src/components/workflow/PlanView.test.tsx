@@ -82,3 +82,54 @@ describe("PlanResourceList", () => {
     expect(row).not.toHaveAttribute("aria-expanded");
   });
 });
+
+describe("drift", () => {
+  const driftPlan: PlanSummary = {
+    has_changes: true,
+    add: 0,
+    change: 0,
+    destroy: 0,
+    replace: 0,
+    resources: [],
+    refresh_only: true,
+    has_drift: true,
+    drift: [
+      { address: "aws_instance.web", action: "drift_update", detail: "has been changed", diff: "  # aws_instance.web has been changed\n      ~ instance_type = \"t3.micro\" -> \"t3.small\"" },
+      { address: "aws_s3_bucket.logs", action: "drift_delete", detail: "has been deleted" },
+    ],
+  };
+
+  it("headlines a drift check by its drift count and lists the drifted resources", () => {
+    render(
+      <>
+        <PlanSummaryBar plan={driftPlan} />
+        <PlanResourceList plan={driftPlan} />
+      </>,
+    );
+    expect(
+      screen.getByText(/Drift detected: 2 resources changed outside of OpenTofu/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Changed outside of OpenTofu")).toBeInTheDocument();
+    expect(screen.getByText("changed")).toBeInTheDocument();
+    expect(screen.getByText("deleted")).toBeInTheDocument();
+    // A refresh-only plan has no planned-actions list at all.
+    expect(screen.queryByText("No resources change.")).not.toBeInTheDocument();
+  });
+
+  it("reads 'no drift' for a clean drift check", () => {
+    render(
+      <PlanSummaryBar
+        plan={{ ...driftPlan, has_changes: false, has_drift: false, drift: undefined }}
+      />,
+    );
+    expect(screen.getByText(/No drift\./)).toBeInTheDocument();
+  });
+
+  it("notes drift above a normal plan's actions", () => {
+    render(<PlanSummaryBar plan={{ ...plan, has_drift: true, drift: driftPlan.drift }} />);
+    expect(
+      screen.getByText(/2 resources changed outside of OpenTofu since the last apply/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Plan: 2 to add, 1 to change, 1 to destroy.")).toBeInTheDocument();
+  });
+});

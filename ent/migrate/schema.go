@@ -635,7 +635,7 @@ var (
 	// WorkflowRunsColumns holds the columns for the "workflow_runs" table.
 	WorkflowRunsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
-		{Name: "action", Type: field.TypeEnum, Enums: []string{"deploy", "uninstall", "preview"}},
+		{Name: "action", Type: field.TypeEnum, Enums: []string{"deploy", "uninstall", "preview", "drift"}},
 		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "running", "succeeded", "failed", "partial", "awaiting_approval"}, Default: "pending"},
 		{Name: "message", Type: field.TypeString, Nullable: true},
 		{Name: "job_id", Type: field.TypeString, Nullable: true},

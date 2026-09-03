@@ -101,6 +101,10 @@ const (
 	ActionDeploy    = "deploy"
 	ActionUninstall = "uninstall"
 	ActionPreview   = "preview"
+	// ActionDrift is a drift check: a read-only refresh-only plan
+	// (`tofu plan -refresh-only`) that reports what changed outside of OpenTofu
+	// since the last apply, without proposing configuration changes.
+	ActionDrift = "drift"
 )
 
 // PlanfileName is the local filename the plan node saves its planfile to
@@ -309,7 +313,8 @@ func Script(a Apply) string {
 	appendFlags(&b, a.InitFlags)
 	b.WriteString("\n")
 
-	preview := a.Action == ActionPreview
+	preview := a.Action == ActionPreview || a.Action == ActionDrift
+	drift := a.Action == ActionDrift
 	destroy := a.Action == ActionUninstall
 
 	switch {
@@ -343,9 +348,14 @@ func Script(a Apply) string {
 		// material captured as the component_run logs. A non-preview plan node also
 		// saves the planfile and hands it to its apply node through the Secret.
 		if preview {
-			if destroy {
+			switch {
+			case drift:
+				// A refresh-only plan proposes no configuration changes; its only
+				// content is the "changes made outside of OpenTofu" it detected.
+				b.WriteString("tofu plan -input=false -refresh-only -no-color")
+			case destroy:
 				b.WriteString("tofu plan -input=false -destroy -no-color")
-			} else {
+			default:
 				b.WriteString("tofu plan -input=false -no-color")
 			}
 			appendFlags(&b, a.PlanFlags)

@@ -172,7 +172,7 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 	// then fails closed). Per-run so concurrent runs don't collide, and stable
 	// across an approval pause (the run id is unchanged on resume).
 	var planArtifactSecret string
-	if action != ActionPreview && planID != uuid.Nil {
+	if !isReadOnlyAction(action) && planID != uuid.Nil {
 		planArtifactSecret = tofuPlanArtifactSecret(runID, planID)
 	}
 
@@ -343,6 +343,8 @@ func tofuActionFor(action string) (string, error) {
 		return tofu.ActionUninstall, nil
 	case ActionPreview:
 		return tofu.ActionPreview, nil
+	case ActionDrift:
+		return tofu.ActionDrift, nil
 	default:
 		return "", fmt.Errorf("workflows: unknown run action %q", action)
 	}

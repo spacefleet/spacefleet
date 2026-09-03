@@ -36,7 +36,7 @@ func (WorkflowRun) Fields() []ent.Field {
 		field.UUID("application_id", uuid.UUID{}).Immutable(),
 		// What the run does across the whole workflow.
 		field.Enum("action").
-			Values("deploy", "uninstall", "preview"),
+			Values("deploy", "uninstall", "preview", "drift"),
 		// Run lifecycle: pending → running → succeeded / failed / partial. A run
 		// parks at awaiting_approval when a node hits an approval gate and waits for
 		// a human decision before resuming.

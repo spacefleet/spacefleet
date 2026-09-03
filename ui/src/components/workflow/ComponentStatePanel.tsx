@@ -6,6 +6,7 @@ import { OutputsTable } from "./OutputsTable";
 import { ResourcesTable } from "./ResourcesTable";
 
 type ComponentState = components["schemas"]["ComponentState"];
+type DriftStatus = components["schemas"]["DriftStatus"];
 
 // ComponentStatePanel is an OpenTofu component's persistent "what do I own"
 // view: the outputs and the managed-resource inventory its last successful
@@ -76,6 +77,8 @@ export function ComponentStatePanel({
         What this component manages, as of its last successful apply.
       </p>
 
+      {state?.drift && <DriftLine appId={appId} drift={state.drift} />}
+
       {error ? (
         <p className="text-sm text-red-600">{error}</p>
       ) : empty ? (
@@ -121,6 +124,59 @@ export function ComponentStatePanel({
             </p>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+// DriftLine is the one-line verdict of the component's latest drift check:
+// clean, drifted (with the count and the addresses), or a check that itself
+// failed (verdict unknown) — each linking to the check's run.
+function DriftLine({ appId, drift }: { appId: string; drift: DriftStatus }) {
+  const runLink = (
+    <Link
+      to={`/applications/${appId}/runs/${drift.run_id}`}
+      className="underline-offset-2 hover:underline"
+    >
+      {drift.checked_at
+        ? new Date(drift.checked_at).toLocaleString()
+        : "the latest check"}
+    </Link>
+  );
+  if (drift.status === "failed") {
+    return (
+      <p className="mb-3 border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
+        <span className="font-medium">Drift check failed</span> on {runLink}{" "}
+        — the verdict is unknown until a check completes.
+      </p>
+    );
+  }
+  if (!drift.has_drift) {
+    return (
+      <p className="mb-3 border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+        <span className="font-medium">No drift</span> as of {runLink}.
+      </p>
+    );
+  }
+  const drifted = drift.drift ?? [];
+  return (
+    <div className="mb-3 border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      <p>
+        <span className="font-medium">
+          Drift detected: {drifted.length} resource
+          {drifted.length === 1 ? "" : "s"}
+        </span>{" "}
+        changed outside of OpenTofu as of {runLink}.
+      </p>
+      {drifted.length > 0 && (
+        <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-xs">
+          {drifted.map((r) => (
+            <li key={r.address}>
+              {r.action === "drift_delete" ? "- " : "~ "}
+              {r.address}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

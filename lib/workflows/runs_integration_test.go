@@ -711,3 +711,38 @@ func TestReaperLeavesParkedRunsAlone(t *testing.T) {
 		t.Fatalf("run status after reap = %q, want awaiting_approval (untouched)", after.Status)
 	}
 }
+
+// TestBeginRunDriftNeedsTofu proves a drift check refuses to start on an
+// application with no OpenTofu component (there is no state to check), and
+// starts — with only the OpenTofu plan unit — when there is one.
+func TestBeginRunDriftNeedsTofu(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	addComponent(t, client, org.ID, app.ID, "api", nil)
+	if _, err := svc.BeginRun(ctx, org.ID, app.ID, ActionDrift); !errors.Is(err, ErrNoDriftTargets) {
+		t.Fatalf("BeginRun(drift) without tofu: err = %v, want ErrNoDriftTargets", err)
+	}
+
+	tf := addComponent(t, client, org.ID, app.ID, "infra", map[string]string{
+		"repo_url": "https://example.com/infra.git", "path": ".",
+		terraformConfigBackend: "s3", terraformConfigBackendConfig: `{"bucket":"b","key":"k","region":"r"}`,
+	})
+	if _, err := client.Component.UpdateOneID(tf.ID).SetType(TypeTerraform).Save(ctx); err != nil {
+		t.Fatalf("set terraform type: %v", err)
+	}
+	run, err := svc.BeginRun(ctx, org.ID, app.ID, ActionDrift)
+	if err != nil {
+		t.Fatalf("BeginRun(drift): %v", err)
+	}
+	_, steps, err := svc.GetRun(ctx, org.ID, app.ID, run.ID)
+	if err != nil {
+		t.Fatalf("GetRun: %v", err)
+	}
+	if len(steps) != 1 || steps[0].ComponentID != tf.ID {
+		t.Errorf("drift run steps = %+v, want only the tofu plan unit", steps)
+	}
+}

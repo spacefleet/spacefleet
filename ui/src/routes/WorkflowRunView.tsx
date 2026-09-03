@@ -75,6 +75,13 @@ type FlowNode = Node<RunNodeData & { componentRunId?: string }>;
 // A run is terminal once it reaches a settled status; the stream closes then.
 const TERMINAL: RunStatus[] = ["succeeded", "failed", "partial"];
 
+// A read-only run (preview, drift check) applies nothing: every step is an
+// independent dry-run/plan, there are no apply units to pair with plan units,
+// and the panel leads with what the step found rather than its logs.
+function isReadOnlyAction(action: string): boolean {
+  return action === "preview" || action === "drift";
+}
+
 // WorkflowRunView is the live DAG run view (route
 // /applications/:appId/runs/:runId). It renders the run's snapshot graph as a
 // read-only React Flow DAG, colors each node by its component-run status, and
@@ -245,7 +252,7 @@ export function WorkflowRunView() {
   // its own yet). Previews don't pair plan/apply (every unit dry-runs
   // independently), so they're excluded.
   const planSource = useMemo(() => {
-    if (!selectedRunId || !run || run.action === "preview") return null;
+    if (!selectedRunId || !run || isReadOnlyAction(run.action)) return null;
     const cr = run.component_runs?.find((c) => c.id === selectedRunId);
     if (!cr?.component_id) return null;
     const snapNodes = parseSnapshot(run.graph)?.nodes ?? [];
@@ -365,7 +372,8 @@ export function WorkflowRunView() {
                   run.component_runs?.find((cr) => cr.id === selectedRunId)
                     ?.status
                 }
-                isPreview={run.action === "preview"}
+                isPreview={isReadOnlyAction(run.action)}
+                isDrift={run.action === "drift"}
                 planRun={planSource}
                 canApprove={canApprove}
                 onDecided={load}
@@ -395,6 +403,7 @@ function ComponentRunPanel({
   componentRunId,
   liveStatus,
   isPreview,
+  isDrift,
   planRun,
   canApprove,
   onDecided,
@@ -408,7 +417,10 @@ function ComponentRunPanel({
   // The live status from the run stream; when it changes (notably as the step
   // settles) the fetch effect re-runs so the detail (logs/diff) stays current.
   liveStatus?: ComponentRunStatus;
+  // A read-only run (preview or drift check): the step's finding leads.
   isPreview: boolean;
+  // A drift check specifically: the finding is drift, not a deploy diff.
+  isDrift: boolean;
   // The upstream tofu plan step backing this apply step, when there is one. Its
   // logs are the review material for the approval gate, so the panel surfaces
   // them on a "Plan output" tab — leading while the step is parked.
@@ -660,8 +672,11 @@ function ComponentRunPanel({
           {isPreview && (
             <div className="flex items-center gap-4 border-b border-neutral-200 px-4">
               <TabButton active={tab === "diff"} onClick={() => setTab("diff")}>
-                Preview diff
-                <ChangesBadge hasChanges={detail.has_changes} />
+                {isDrift ? "Drift" : "Preview diff"}
+                <ChangesBadge
+                  hasChanges={detail.has_changes}
+                  words={isDrift ? ["drift", "no drift"] : undefined}
+                />
               </TabButton>
               <TabButton active={tab === "logs"} onClick={() => setTab("logs")}>
                 Logs
@@ -716,8 +731,12 @@ function ComponentRunPanel({
               ) : (
                 <p className="text-sm text-neutral-500">
                   {detail.has_changes === false
-                    ? "No changes."
-                    : "No diff captured."}
+                    ? isDrift
+                      ? "No drift detected."
+                      : "No changes."
+                    : isDrift
+                      ? "No drift report captured."
+                      : "No diff captured."}
                 </p>
               )
             ) : planRun && tab === "plan" ? (
@@ -817,15 +836,22 @@ function PlanBody({ plan, body }: { plan: PlanSummary; body?: string }) {
   );
 }
 
-function ChangesBadge({ hasChanges }: { hasChanges?: boolean }) {
+function ChangesBadge({
+  hasChanges,
+  words = ["changes", "no changes"],
+}: {
+  hasChanges?: boolean;
+  // The [positive, negative] wording — a drift check says drift / no drift.
+  words?: [string, string];
+}) {
   if (hasChanges === undefined) return null;
   return hasChanges ? (
     <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
-      changes
+      {words[0]}
     </span>
   ) : (
     <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-neutral-100 text-neutral-600">
-      no changes
+      {words[1]}
     </span>
   );
 }

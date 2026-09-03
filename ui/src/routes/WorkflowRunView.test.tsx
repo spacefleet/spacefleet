@@ -514,6 +514,48 @@ describe("WorkflowRunView", () => {
     expect(mockPodLogs).not.toHaveBeenCalledWith(expect.any(String), true);
   });
 
+  it("shows a drift check's finding on a Drift tab", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    const driftRun = {
+      ...runDetail,
+      action: "drift",
+      status: "succeeded",
+      graph: JSON.stringify({
+        nodes: [{ id: compA, name: "infra · plan", type: "terraform", config: { command: "plan" }, depends_on: [] }],
+      }),
+      component_runs: [
+        { id: "cr-a", component_id: compA, name: "infra · plan", type: "terraform", status: "succeeded" },
+      ],
+    };
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: driftRun, error: undefined });
+      return Promise.resolve({
+        data: {
+          id: "cr-a",
+          name: "infra · plan",
+          type: "terraform",
+          status: "succeeded",
+          logs: "drift logs",
+          diff: "drift body",
+          has_changes: true,
+          plan: {
+            has_changes: true, add: 0, change: 0, destroy: 0, replace: 0, resources: [],
+            refresh_only: true, has_drift: true,
+            drift: [{ address: "aws_instance.web", action: "drift_update", detail: "has been changed" }],
+          },
+        },
+        error: undefined,
+      });
+    });
+    renderRunView();
+    fireEvent.click(await screen.findByText("infra · plan"));
+    expect(await screen.findByRole("button", { name: /^drift/i })).toBeInTheDocument();
+    expect(screen.getByText(/Drift detected: 1 resource changed outside of OpenTofu/)).toBeInTheDocument();
+    expect(screen.getByText("aws_instance.web")).toBeInTheDocument();
+    expect(screen.getByText("changed")).toBeInTheDocument();
+  });
+
   // A settled deploy run for the tofu pair: both units succeeded, and the
   // apply unit captured the module's outputs. The detail mock parameterizes the
   // outputs so the masking tests can model an editor (value present) and a

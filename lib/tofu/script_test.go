@@ -623,3 +623,21 @@ func TestScriptAllowsDottedNames(t *testing.T) {
 		t.Errorf("expected cd into dotted path\n---\n%s", s)
 	}
 }
+
+// TestScriptDrift proves a drift check renders as a read-only refresh-only
+// plan: no planfile, no handover Secret, no destroy, no apply.
+func TestScriptDrift(t *testing.T) {
+	s := Script(Apply{
+		Command: CommandPlan, Action: ActionDrift, RepoURL: "r", Path: "p",
+		Backend: BackendS3, BackendConfig: map[string]string{"bucket": "b", "key": "k", "region": "r"},
+		PlanFlags: []string{"-var=env=prod"},
+	})
+	if !strings.Contains(s, "tofu plan -input=false -refresh-only -no-color '-var=env=prod'\n") {
+		t.Errorf("drift must be a refresh-only plan with the plan flags\n---\n%s", s)
+	}
+	for _, forbidden := range []string{"-out=", "kubectl", "-destroy", "tofu apply"} {
+		if strings.Contains(s, forbidden) {
+			t.Errorf("drift script must not contain %q\n---\n%s", forbidden, s)
+		}
+	}
+}

@@ -96,7 +96,9 @@ func (s *Server) StartRun(ctx context.Context, req StartRunRequestObject) (Start
 		case errors.Is(err, workflows.ErrRunInFlight):
 			return errResp[StartRundefaultJSONResponse](http.StatusConflict, "conflict", err.Error()), nil
 		case errors.Is(err, workflows.ErrInvalidAction):
-			return errResp[StartRundefaultJSONResponse](http.StatusBadRequest, "bad_request", "action must be deploy, uninstall, or preview"), nil
+			return errResp[StartRundefaultJSONResponse](http.StatusBadRequest, "bad_request", "action must be deploy, uninstall, preview, or drift"), nil
+		case errors.Is(err, workflows.ErrNoDriftTargets):
+			return errResp[StartRundefaultJSONResponse](http.StatusBadRequest, "bad_request", "this application has no OpenTofu component to check for drift"), nil
 		default:
 			return nil, err
 		}
@@ -396,28 +398,40 @@ func parseTofuPlan(cr *ent.ComponentRun) *tofu.Plan {
 // only when withDiffs (the detail endpoint, for editor-or-above); the list
 // shape carries addresses and actions alone.
 func toAPIPlanSummary(p tofu.Plan, withDiffs bool) *PlanSummary {
-	resources := make([]PlanResourceChange, 0, len(p.Resources))
-	for _, r := range p.Resources {
-		rc := PlanResourceChange{
-			Address: r.Address,
-			Action:  PlanResourceChangeAction(r.Action),
-			Detail:  optStr(r.Detail),
+	mapChanges := func(in []tofu.ResourceChange) []PlanResourceChange {
+		out := make([]PlanResourceChange, 0, len(in))
+		for _, r := range in {
+			rc := PlanResourceChange{
+				Address: r.Address,
+				Action:  PlanResourceChangeAction(r.Action),
+				Detail:  optStr(r.Detail),
+			}
+			if withDiffs {
+				rc.Diff = optStr(r.Diff)
+			}
+			out = append(out, rc)
 		}
-		if withDiffs {
-			rc.Diff = optStr(r.Diff)
-		}
-		resources = append(resources, rc)
+		return out
 	}
 	outputsChanged := p.OutputsChanged
-	return &PlanSummary{
+	refreshOnly := p.RefreshOnly
+	hasDrift := p.HasDrift
+	out := &PlanSummary{
 		HasChanges:     p.HasChanges,
 		Add:            p.Add,
 		Change:         p.Change,
 		Destroy:        p.Destroy,
 		Replace:        p.Replace,
 		OutputsChanged: &outputsChanged,
-		Resources:      resources,
+		Resources:      mapChanges(p.Resources),
+		RefreshOnly:    &refreshOnly,
+		HasDrift:       &hasDrift,
 	}
+	if len(p.Drift) > 0 {
+		drift := mapChanges(p.Drift)
+		out.Drift = &drift
+	}
+	return out
 }
 
 // toAPIComponentRunOutputs maps the stored `tofu output -json` JSON (the

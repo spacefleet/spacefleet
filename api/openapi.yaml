@@ -3325,8 +3325,13 @@ components:
 
     RunAction:
       type: string
-      description: What a workflow run does across the whole DAG.
-      enum: [deploy, uninstall, preview]
+      description: |
+        What a workflow run does across the whole DAG. `drift` is a drift
+        check: every OpenTofu component runs a read-only refresh-only plan
+        reporting what changed outside of OpenTofu since its last apply; Helm
+        and Manifest components take no part (400 if the application has no
+        OpenTofu component).
+      enum: [deploy, uninstall, preview, drift]
 
     RunStatus:
       type: string
@@ -3510,6 +3515,25 @@ components:
           description: Every planned resource action, in plan order.
           items:
             $ref: "#/components/schemas/PlanResourceChange"
+        refresh_only:
+          type: boolean
+          description: |
+            Whether this was a refresh-only plan (a drift check): it proposes
+            no configuration changes, so has_changes reflects drift alone.
+        has_drift:
+          type: boolean
+          description: |
+            Whether tofu found resources changed outside of OpenTofu since the
+            last apply — reported by every plan, and the whole content of a
+            drift check.
+        drift:
+          type: array
+          description: |
+            The drifted resources: each with action `drift_update` (changed
+            outside of OpenTofu) or `drift_delete` (deleted outside of
+            OpenTofu), and the state-vs-real diff on the detail for editors.
+          items:
+            $ref: "#/components/schemas/PlanResourceChange"
 
     PlanResourceChange:
       type: object
@@ -3521,7 +3545,7 @@ components:
           description: The resource address (e.g. module.vpc.aws_subnet.private[0]).
         action:
           type: string
-          enum: [create, update, replace, delete, read, move, import, forget, other]
+          enum: [create, update, replace, delete, read, move, import, forget, other, drift_update, drift_delete]
           description: The coarse action; `detail` carries tofu's own phrasing.
         detail:
           type: string
@@ -3614,6 +3638,42 @@ components:
           description: Every resource and data source in the module's state, in state order.
           items:
             $ref: "#/components/schemas/TofuResource"
+        drift:
+          $ref: "#/components/schemas/DriftStatus"
+
+    DriftStatus:
+      type: object
+      description: |
+        The result of an OpenTofu component's most recent drift check: whether
+        real infrastructure still matched the last apply, and which resources
+        had changed outside of OpenTofu. Absent until a drift check has run.
+      required: [run_id, component_run_id, status, has_drift]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+          description: The drift-check run.
+        component_run_id:
+          type: string
+          format: uuid
+          description: The component's step within it.
+        checked_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the check settled.
+        status:
+          $ref: "#/components/schemas/ComponentRunStatus"
+        has_drift:
+          type: boolean
+          description: |
+            Whether the check found drift. False when the check itself failed
+            (see status) — the verdict is then unknown, not clean.
+        drift:
+          type: array
+          description: The drifted resources (addresses and actions; no diffs).
+          items:
+            $ref: "#/components/schemas/PlanResourceChange"
 
     ComponentOutputKey:
       type: object

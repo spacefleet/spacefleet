@@ -257,3 +257,84 @@ func TestClassifyHeading(t *testing.T) {
 		}
 	}
 }
+
+// TestParsePlanDriftSection proves the "changes made outside of OpenTofu"
+// section a normal plan prints before its actions is read into Drift — kept
+// apart from the planned actions, which are unaffected.
+func TestParsePlanDriftSection(t *testing.T) {
+	p := ParsePlan(samplePlanLogs)
+	if !p.HasDrift || len(p.Drift) != 1 {
+		t.Fatalf("drift = %+v", p.Drift)
+	}
+	if d := p.Drift[0]; d.Address != "aws_s3_bucket.logs" || d.Action != ActionDriftDelete || !strings.Contains(d.Diff, `- bucket = "acme-logs" -> null`) {
+		t.Errorf("drift[0] = %+v", d)
+	}
+	if p.RefreshOnly {
+		t.Error("a normal plan is not refresh-only")
+	}
+	if len(p.Resources) != 6 {
+		t.Errorf("planned actions must be unaffected by the drift section, got %d", len(p.Resources))
+	}
+}
+
+// TestParsePlanRefreshOnlyDrift proves a drift check (refresh-only plan) that
+// found drift — which prints no actions heading and no "No changes." verdict,
+// only the drift section and the refresh-only explanation — is Found, has
+// changes (the drift), and carries the drifted resources.
+func TestParsePlanRefreshOnlyDrift(t *testing.T) {
+	logs := `Initializing the backend...
+
+Note: Objects have changed outside of OpenTofu
+
+OpenTofu detected the following changes made outside of OpenTofu since the
+last "tofu apply" which may have affected this plan:
+
+  # aws_instance.web has been changed
+  ~ resource "aws_instance" "web" {
+        id            = "i-1"
+      ~ instance_type = "t3.micro" -> "t3.small"
+        # (5 unchanged attributes hidden)
+    }
+
+  # aws_s3_bucket.logs has been deleted
+  - resource "aws_s3_bucket" "logs" {
+      - bucket = "acme-logs" -> null
+    }
+
+
+This is a refresh-only plan, so OpenTofu will not take any actions to undo
+these. If you were expecting these changes then you can apply this plan to
+record the updated values in the OpenTofu state without changing any real
+infrastructure.
+`
+	p := ParsePlan(logs)
+	if !p.Found || !p.RefreshOnly || !p.HasDrift || !p.HasChanges {
+		t.Fatalf("refresh-only drift parsed wrong: %+v", p)
+	}
+	if len(p.Drift) != 2 || p.Drift[0].Action != ActionDriftUpdate || p.Drift[1].Action != ActionDriftDelete {
+		t.Errorf("drift = %+v", p.Drift)
+	}
+	if !strings.Contains(p.Drift[0].Diff, `"t3.micro" -> "t3.small"`) {
+		t.Errorf("drift diff should carry the state-vs-real change: %q", p.Drift[0].Diff)
+	}
+	if len(p.Resources) != 0 || p.Add+p.Change+p.Destroy != 0 {
+		t.Errorf("a refresh-only plan proposes no actions: %+v", p)
+	}
+	if strings.Contains(p.Body, "This is a refresh-only plan") || !strings.Contains(p.Body, "aws_instance.web has been changed") {
+		t.Errorf("body = %q", p.Body)
+	}
+}
+
+// TestParsePlanRefreshOnlyClean proves a drift check with nothing drifted reads
+// as found, refresh-only, no drift, no changes.
+func TestParsePlanRefreshOnlyClean(t *testing.T) {
+	logs := `No changes. Your infrastructure still matches the configuration.
+
+OpenTofu has checked that the real remote objects still match the result of
+your most recent changes, and found no differences.
+`
+	p := ParsePlan(logs)
+	if !p.Found || !p.RefreshOnly || p.HasDrift || p.HasChanges || len(p.Drift) != 0 {
+		t.Fatalf("clean refresh-only parsed wrong: %+v", p)
+	}
+}

@@ -26,6 +26,11 @@ const (
 	ActionDeploy    = "deploy"
 	ActionUninstall = "uninstall"
 	ActionPreview   = "preview"
+	// ActionDrift is a drift check: every OpenTofu component runs a read-only
+	// refresh-only plan that reports what changed outside of OpenTofu since its
+	// last apply. Helm and Manifest components take no part (they have no
+	// state to drift from), so the run covers only the OpenTofu components.
+	ActionDrift = "drift"
 )
 
 // GraphSnapshot is the JSON shape stored on WorkflowRun.graph: the workflow's
@@ -83,12 +88,23 @@ type GraphGroup struct {
 // validAction reports whether action is one of the run actions.
 func validAction(action string) bool {
 	switch action {
-	case ActionDeploy, ActionUninstall, ActionPreview:
+	case ActionDeploy, ActionUninstall, ActionPreview, ActionDrift:
 		return true
 	default:
 		return false
 	}
 }
+
+// isReadOnlyAction reports whether a run action never mutates anything — a
+// preview or a drift check. Read-only runs plan every node independently (no
+// DAG deps, no approval gates) and never provision planfile-handover Secrets.
+func isReadOnlyAction(action string) bool {
+	return action == ActionPreview || action == ActionDrift
+}
+
+// ErrNoDriftTargets is returned by BeginRun for a drift check on an
+// application with no OpenTofu component — there is no state to check.
+var ErrNoDriftTargets = errors.New("workflows: this application has no OpenTofu component to check for drift")
 
 // BeginRun opens a new workflow run for the application: it verifies the app
 // belongs to the org, gates on no run already in flight (pending/running), then
@@ -137,6 +153,9 @@ func (s *Service) BeginRun(ctx context.Context, orgID, appID uuid.UUID, action s
 	}
 
 	snapshot := snapshotComponents(comps, groups, action)
+	if action == ActionDrift && len(snapshot.Nodes) == 0 {
+		return nil, ErrNoDriftTargets
+	}
 	graphJSON, err := json.Marshal(snapshot)
 	if err != nil {
 		return nil, err
@@ -315,7 +334,11 @@ const (
 // preview planned every module twice (both units rendered as plans).
 // This is a pure function (unit-testable).
 func expandExecutionNodes(nodes []GraphNode, action string) []GraphNode {
-	preview := action == ActionPreview
+	// A read-only run (preview, drift) applies nothing, so no apply units; a
+	// drift check additionally covers only OpenTofu components — a Helm or
+	// Manifest node has no state to drift from and is dropped from the run.
+	preview := isReadOnlyAction(action)
+	drift := action == ActionDrift
 	// applyOf maps a terraform component id to its apply unit id, so we can both
 	// emit the apply unit and rewire any dependent's edges onto it.
 	applyOf := make(map[uuid.UUID]uuid.UUID)
@@ -343,6 +366,9 @@ func expandExecutionNodes(nodes []GraphNode, action string) []GraphNode {
 	out := make([]GraphNode, 0, len(nodes)+len(applyOf))
 	for _, n := range nodes {
 		if n.Type != TypeTerraform {
+			if drift {
+				continue
+			}
 			n.DependsOn = remap(n.DependsOn)
 			out = append(out, n)
 			continue
@@ -771,6 +797,27 @@ func (s *Service) LatestComponentState(ctx context.Context, orgID, appID, compon
 			componentrun.ComponentID(deriveApplyID(componentID)),
 			componentrun.StatusEQ(componentrun.StatusSucceeded),
 			componentrun.Or(componentrun.OutputsNEQ(""), componentrun.ResourcesNEQ("")),
+		).
+		Order(ent.Desc(componentrun.FieldFinishedAt)).
+		First(ctx)
+}
+
+// LatestDriftCheck returns the most recent settled drift-check step for an
+// OpenTofu component — the plan unit (authored id) of the latest succeeded
+// or failed `drift` run — or ent's NotFoundError when the component has never
+// been drift-checked. Its logs carry the refresh-only plan the API parses for
+// the drift verdict. Org-scoped like every run read.
+func (s *Service) LatestDriftCheck(ctx context.Context, orgID, appID, componentID uuid.UUID) (*ent.ComponentRun, error) {
+	return s.ent.ComponentRun.Query().
+		Where(
+			componentrun.OrganizationID(orgID),
+			componentrun.ComponentID(componentID),
+			componentrun.StatusIn(componentrun.StatusSucceeded, componentrun.StatusFailed),
+			componentrun.HasWorkflowRunWith(
+				workflowrun.OrganizationID(orgID),
+				workflowrun.ApplicationID(appID),
+				workflowrun.ActionEQ(workflowrun.ActionDrift),
+			),
 		).
 		Order(ent.Desc(componentrun.FieldFinishedAt)).
 		First(ctx)

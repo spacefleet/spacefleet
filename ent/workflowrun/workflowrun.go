@@ -105,6 +105,7 @@ const (
 	ActionDeploy    Action = "deploy"
 	ActionUninstall Action = "uninstall"
 	ActionPreview   Action = "preview"
+	ActionDrift     Action = "drift"
 )
 
 func (a Action) String() string {
@@ -114,7 +115,7 @@ func (a Action) String() string {
 // ActionValidator is a validator for the "action" field enum values. It is called by the builders before save.
 func ActionValidator(a Action) error {
 	switch a {
-	case ActionDeploy, ActionUninstall, ActionPreview:
+	case ActionDeploy, ActionUninstall, ActionPreview, ActionDrift:
 		return nil
 	default:
 		return fmt.Errorf("workflowrun: invalid enum value for action field: %q", a)

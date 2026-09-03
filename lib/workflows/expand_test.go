@@ -206,3 +206,28 @@ func TestExpandExecutionNodes_PreviewPlanOnly(t *testing.T) {
 		t.Errorf("dependent should depend on the plan unit (authored id), got %v", helm.DependsOn)
 	}
 }
+
+// TestExpandExecutionNodes_DriftTofuOnly proves a drift check expands to only
+// the OpenTofu components' plan units: Helm/Manifest nodes are dropped (they
+// have no state to drift), no apply units are emitted, and a dependency on a
+// dropped node is simply gone (read-only runs clear deps anyway).
+func TestExpandExecutionNodes_DriftTofuOnly(t *testing.T) {
+	t.Parallel()
+
+	helmID, tfID := uuid.New(), uuid.New()
+	nodes := []GraphNode{
+		{ID: helmID, ComponentID: helmID, Name: "db", Type: TypeHelm},
+		{ID: tfID, ComponentID: tfID, Name: "infra", Type: TypeTerraform, Config: map[string]string{terraformConfigBackend: "s3"}, DependsOn: []uuid.UUID{helmID}, RequiresApproval: true},
+	}
+	out := expandExecutionNodes(nodes, ActionDrift)
+	if len(out) != 1 || out[0].ID != tfID {
+		t.Fatalf("expected only the tofu plan unit, got %+v", out)
+	}
+	if out[0].Config[terraformConfigCommand] != terraformCommandPlan || out[0].RequiresApproval {
+		t.Errorf("plan unit wrong: %+v", out[0])
+	}
+	// No tofu component at all: nothing to run.
+	if got := expandExecutionNodes(nodes[:1], ActionDrift); len(got) != 0 {
+		t.Errorf("a drift check over helm-only nodes should expand to nothing, got %+v", got)
+	}
+}

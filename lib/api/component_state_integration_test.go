@@ -139,3 +139,76 @@ func TestGetComponentState(t *testing.T) {
 		t.Fatalf("cross-org got %d, want 404\n%s", rec.Code, rec.Body.String())
 	}
 }
+
+// TestGetComponentStateDrift proves the state view carries the latest drift
+// check's verdict: a succeeded refresh-only plan that found drift reports
+// has_drift with the drifted addresses (no diffs), and a later failed check
+// reports its failed status with has_drift=false (unknown, not clean).
+func TestGetComponentStateDrift(t *testing.T) {
+	h := newHarness(t, nil)
+	ctx := context.Background()
+	editorTok, orgID := h.member("editor", membership.RoleEditor)
+
+	runner, err := h.client.Cluster.Create().
+		SetOrganizationID(orgID).SetName("runner").SetConnectionMethod(cluster.ConnectionMethodToken).Save(ctx)
+	if err != nil {
+		t.Fatalf("create runner: %v", err)
+	}
+	app, err := h.client.Application.Create().
+		SetOrganizationID(orgID).SetName("web").SetRunnerClusterID(runner.ID).Save(ctx)
+	if err != nil {
+		t.Fatalf("create app: %v", err)
+	}
+	infra, err := h.client.Component.Create().
+		SetOrganizationID(orgID).SetApplicationID(app.ID).SetName("infra").SetType("terraform").Save(ctx)
+	if err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	// The apply that gives the component a recorded state.
+	applyRun, _ := h.client.WorkflowRun.Create().SetOrganizationID(orgID).SetApplicationID(app.ID).SetAction("deploy").Save(ctx)
+	if _, err := h.client.ComponentRun.Create().
+		SetOrganizationID(orgID).SetWorkflowRunID(applyRun.ID).SetComponentID(workflows.DeriveApplyID(infra.ID)).
+		SetStatus(componentrun.StatusSucceeded).SetResources(`[{"address":"aws_instance.web","mode":"managed","type":"aws_instance","name":"web"}]`).
+		SetFinishedAt(time.Now().Add(-2 * time.Hour)).Save(ctx); err != nil {
+		t.Fatalf("create apply step: %v", err)
+	}
+	seedDrift := func(status componentrun.Status, logs string, finished time.Time) {
+		wr, err := h.client.WorkflowRun.Create().SetOrganizationID(orgID).SetApplicationID(app.ID).SetAction("drift").Save(ctx)
+		if err != nil {
+			t.Fatalf("create drift run: %v", err)
+		}
+		if _, err := h.client.ComponentRun.Create().
+			SetOrganizationID(orgID).SetWorkflowRunID(wr.ID).SetComponentID(infra.ID).SetType("terraform").
+			SetStatus(status).SetLogs(logs).SetFinishedAt(finished).Save(ctx); err != nil {
+			t.Fatalf("create drift step: %v", err)
+		}
+	}
+	driftLogs := "OpenTofu detected the following changes made outside of OpenTofu since the\nlast \"tofu apply\" which may have affected this plan:\n\n  # aws_instance.web has been changed\n  ~ resource \"aws_instance\" \"web\" {\n      ~ instance_type = \"t3.micro\" -> \"t3.small\"\n    }\n\nThis is a refresh-only plan, so OpenTofu will not take any actions to undo\nthese.\n"
+	seedDrift(componentrun.StatusSucceeded, driftLogs, time.Now().Add(-time.Hour))
+
+	path := "/api/applications/" + app.ID.String() + "/components/" + infra.ID.String() + "/state"
+	rec := testReq{method: http.MethodGet, path: path, token: editorTok, orgID: orgID.String()}.do(t, h.handler)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got %d\n%s", rec.Code, rec.Body.String())
+	}
+	var state ComponentState
+	if err := json.Unmarshal(rec.Body.Bytes(), &state); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if state.Drift == nil || !state.Drift.HasDrift || state.Drift.Status != ComponentRunStatusSucceeded {
+		t.Fatalf("drift = %+v, want a succeeded check with drift", state.Drift)
+	}
+	if d := *state.Drift.Drift; len(d) != 1 || d[0].Address != "aws_instance.web" || d[0].Action != DriftUpdate || d[0].Diff != nil {
+		t.Errorf("drifted resources = %+v", d)
+	}
+
+	// A newer check that failed: status failed, verdict unknown (has_drift=false).
+	seedDrift(componentrun.StatusFailed, "Error: Backend initialization required\n", time.Now())
+	rec = testReq{method: http.MethodGet, path: path, token: editorTok, orgID: orgID.String()}.do(t, h.handler)
+	if err := json.Unmarshal(rec.Body.Bytes(), &state); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if state.Drift == nil || state.Drift.HasDrift || state.Drift.Status != ComponentRunStatusFailed {
+		t.Errorf("after a failed check drift = %+v, want failed/no verdict", state.Drift)
+	}
+}

@@ -239,6 +239,15 @@ export function ApplicationDetail() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => void startRun("drift")}
+                  disabled={running}
+                  title="Run a read-only refresh-only plan on every OpenTofu component to find changes made outside of OpenTofu"
+                  className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  Check drift
+                </button>
+                <button
+                  type="button"
                   onClick={() => void startRun("uninstall")}
                   disabled={running}
                   className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"

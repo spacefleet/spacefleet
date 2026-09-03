@@ -169,7 +169,7 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 	// upstream "passes" would only serialize them for no benefit. A dry-run that errors
 	// marks just that component failed; clearing deps already lets the others still
 	// run, so ContinueOnFailure is irrelevant here. Deploy/uninstall keep the DAG deps.
-	preview := a.Action == ActionPreview
+	preview := isReadOnlyAction(a.Action)
 	nodes := make([]schedNode, 0, len(snapshot.Nodes))
 	for _, n := range snapshot.Nodes {
 		cr := crByComponent[n.ID]
@@ -613,8 +613,9 @@ func encodeValuesRevision(values map[int]string) string {
 // leftover Secret is inert (its names are per-run, so nothing ever reads it
 // again).
 func (w *WorkflowRunWorker) sweepPlanArtifacts(ctx context.Context, a WorkflowRunArgs, app *ent.Application, snapshot GraphSnapshot) {
-	// A preview neither pre-creates handover Secrets nor stores planfiles.
-	if a.Action == ActionPreview {
+	// A read-only run (preview, drift) neither pre-creates handover Secrets nor
+	// stores planfiles.
+	if isReadOnlyAction(a.Action) {
 		return
 	}
 	var names []string

@@ -194,6 +194,30 @@ You can see the inventory in two places:
 
 A long inventory can be filtered by address, type, provider, or id.
 
+### Drift detection
+
+Infrastructure changes outside of OpenTofu — someone resizes an instance in
+the console, a bucket is deleted by hand. **Check drift** on the application
+runs a read-only *refresh-only* plan on every OpenTofu component and reports
+what no longer matches the last apply. Nothing is changed, no planfile is
+saved, and no approval is involved; Helm and Manifest components take no part
+(the action is refused when the application has no OpenTofu component).
+
+The result appears in three places:
+
+- The run's step opens on a **Drift** tab: a headline verdict and, for each
+  drifted resource, whether it was **changed** or **deleted** outside of
+  OpenTofu, expandable to the state-versus-real difference.
+- The component's **State** panel in the workflow builder carries the latest
+  verdict — no drift, drift with the affected addresses, or a check that
+  failed — linking to the run that produced it.
+- Every ordinary plan also reports drift it noticed, above its planned
+  actions, since a deploy will reconcile it.
+
+To reconcile drift, run **Deploy**: the plan shows the drifted resources being
+brought back to the configuration (or, if the outside change is what you
+want, change the configuration first).
+
 ## Run the workflow
 
 The builder has three run actions. Each one runs the **whole** workflow,

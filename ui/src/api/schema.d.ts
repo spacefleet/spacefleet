@@ -2392,10 +2392,14 @@ export interface components {
             groups?: components["schemas"]["ComponentGroupInput"][];
         };
         /**
-         * @description What a workflow run does across the whole DAG.
+         * @description What a workflow run does across the whole DAG. `drift` is a drift
+         *     check: every OpenTofu component runs a read-only refresh-only plan
+         *     reporting what changed outside of OpenTofu since its last apply; Helm
+         *     and Manifest components take no part (400 if the application has no
+         *     OpenTofu component).
          * @enum {string}
          */
-        RunAction: "deploy" | "uninstall" | "preview";
+        RunAction: "deploy" | "uninstall" | "preview" | "drift";
         /**
          * @description The run's lifecycle: pending → running → a terminal succeeded / failed /
          *     partial (partial = only continue-on-failure nodes failed). A run parked
@@ -2532,6 +2536,23 @@ export interface components {
             outputs_changed?: boolean;
             /** @description Every planned resource action, in plan order. */
             resources: components["schemas"]["PlanResourceChange"][];
+            /**
+             * @description Whether this was a refresh-only plan (a drift check): it proposes
+             *     no configuration changes, so has_changes reflects drift alone.
+             */
+            refresh_only?: boolean;
+            /**
+             * @description Whether tofu found resources changed outside of OpenTofu since the
+             *     last apply — reported by every plan, and the whole content of a
+             *     drift check.
+             */
+            has_drift?: boolean;
+            /**
+             * @description The drifted resources: each with action `drift_update` (changed
+             *     outside of OpenTofu) or `drift_delete` (deleted outside of
+             *     OpenTofu), and the state-vs-real diff on the detail for editors.
+             */
+            drift?: components["schemas"]["PlanResourceChange"][];
         };
         /** @description One resource's planned action. */
         PlanResourceChange: {
@@ -2541,7 +2562,7 @@ export interface components {
              * @description The coarse action; `detail` carries tofu's own phrasing.
              * @enum {string}
              */
-            action: "create" | "update" | "replace" | "delete" | "read" | "move" | "import" | "forget" | "other";
+            action: "create" | "update" | "replace" | "delete" | "read" | "move" | "import" | "forget" | "other" | "drift_update" | "drift_delete";
             /**
              * @description Tofu's phrasing of the action from the plan ("must be replaced",
              *     "is tainted, so must be replaced", "has moved to …").
@@ -2620,6 +2641,37 @@ export interface components {
             };
             /** @description Every resource and data source in the module's state, in state order. */
             resources: components["schemas"]["TofuResource"][];
+            drift?: components["schemas"]["DriftStatus"];
+        };
+        /**
+         * @description The result of an OpenTofu component's most recent drift check: whether
+         *     real infrastructure still matched the last apply, and which resources
+         *     had changed outside of OpenTofu. Absent until a drift check has run.
+         */
+        DriftStatus: {
+            /**
+             * Format: uuid
+             * @description The drift-check run.
+             */
+            run_id: string;
+            /**
+             * Format: uuid
+             * @description The component's step within it.
+             */
+            component_run_id: string;
+            /**
+             * Format: date-time
+             * @description When the check settled.
+             */
+            checked_at?: string | null;
+            status: components["schemas"]["ComponentRunStatus"];
+            /**
+             * @description Whether the check found drift. False when the check itself failed
+             *     (see status) — the verdict is then unknown, not clean.
+             */
+            has_drift: boolean;
+            /** @description The drifted resources (addresses and actions; no diffs). */
+            drift?: components["schemas"]["PlanResourceChange"][];
         };
         /**
          * @description The name (and metadata) of one captured OpenTofu (Terraform) output

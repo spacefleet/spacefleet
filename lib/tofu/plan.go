@@ -37,6 +37,17 @@ type Plan struct {
 	// heading (or the "No changes." verdict) through the totals and any output
 	// changes — the review material, without the init/clone chatter around it.
 	Body string
+	// Drift lists the resources tofu found changed outside of OpenTofu since
+	// the last apply (the "Objects have changed outside of OpenTofu" section a
+	// plan prints before its actions, and the whole content of a refresh-only
+	// plan). Each entry's Action is ActionDriftUpdate or ActionDriftDelete.
+	Drift []ResourceChange
+	// HasDrift reports whether any drift was detected.
+	HasDrift bool
+	// RefreshOnly reports whether this was a refresh-only plan (a drift check):
+	// it proposes no configuration changes, so Found/HasChanges describe only
+	// the drift verdict.
+	RefreshOnly bool
 }
 
 // ResourceChange is one resource's planned action.
@@ -67,6 +78,10 @@ const (
 	// ActionOther is a heading the parser did not recognize; Detail carries the
 	// raw phrasing so nothing is lost.
 	ActionOther = "other"
+	// ActionDriftUpdate and ActionDriftDelete are the drift-section actions: a
+	// resource whose real object was changed, or deleted, outside of OpenTofu.
+	ActionDriftUpdate = "drift_update"
+	ActionDriftDelete = "drift_delete"
 )
 
 var (
@@ -88,12 +103,45 @@ func ParsePlan(logs string) Plan {
 	var p Plan
 	lines := strings.Split(logs, "\n")
 
-	// Locate the plan: either the actions heading or the no-changes verdict. The
-	// actions heading is preferred when both appear (a "No changes" that is
-	// really part of a warning is not a verdict).
-	start := -1
+	// The drift section — "Objects have changed outside of OpenTofu" — comes
+	// before the actions (it is the whole content of a refresh-only plan). Its
+	// headings use the same "# <address> <what happened>" shape as the actions.
+	driftStart, driftEnd := -1, -1
 	for i, line := range lines {
 		t := strings.TrimSpace(line)
+		if driftStart < 0 {
+			if strings.Contains(t, "detected the following changes made outside of") {
+				driftStart = i
+			}
+			continue
+		}
+		if isDriftTerminator(t) {
+			driftEnd = i
+			break
+		}
+	}
+	if driftStart >= 0 {
+		if driftEnd < 0 {
+			driftEnd = len(lines)
+		}
+		p.Drift = parseResourceBlocks(lines[driftStart+1:driftEnd], classifyDriftHeading)
+		p.HasDrift = len(p.Drift) > 0
+	}
+	for _, line := range lines {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, "This is a refresh-only plan") ||
+			strings.HasPrefix(t, "No changes. Your infrastructure still matches the configuration") {
+			p.RefreshOnly = true
+			break
+		}
+	}
+
+	// Locate the plan: either the actions heading or the no-changes verdict,
+	// after any drift section. The actions heading is preferred when both
+	// appear (a "No changes" that is really part of a warning is not a verdict).
+	start := -1
+	for i := max(driftEnd, 0); i < len(lines); i++ {
+		t := strings.TrimSpace(lines[i])
 		if strings.HasSuffix(t, "will perform the following actions:") {
 			start = i
 			p.HasChanges = true
@@ -105,9 +153,19 @@ func ParsePlan(logs string) Plan {
 		}
 	}
 	if start < 0 {
+		// A refresh-only plan that found drift prints no actions and no
+		// verdict — the drift section is the whole plan.
+		if p.HasDrift {
+			p.Found = true
+			p.HasChanges = true
+			p.Body = strings.TrimRight(strings.Join(lines[driftStart:driftEnd], "\n"), "\n ")
+		}
 		return p
 	}
 	p.Found = true
+	if p.RefreshOnly && p.HasDrift {
+		p.HasChanges = true
+	}
 
 	// The plan body runs from the heading to the first line that is clearly not
 	// part of it: the section separator, a diagnostics box, the saved-planfile
@@ -216,4 +274,64 @@ func classifyHeading(phrase string) (action, detail string) {
 		return ActionForget, detail
 	}
 	return ActionOther, detail
+}
+
+// classifyDriftHeading maps a drift-section heading ("has been changed",
+// "has been deleted") to its drift action.
+func classifyDriftHeading(phrase string) (action, detail string) {
+	detail = strings.TrimSpace(phrase)
+	switch {
+	case strings.HasPrefix(detail, "has been deleted"):
+		return ActionDriftDelete, detail
+	case strings.HasPrefix(detail, "has been changed"), strings.HasPrefix(detail, "has changed"):
+		return ActionDriftUpdate, detail
+	}
+	return ActionOther, detail
+}
+
+// isDriftTerminator reports whether a (trimmed) line ends the drift section:
+// the separator before the actions, the refresh-only explanation, or the
+// actions heading itself.
+func isDriftTerminator(t string) bool {
+	switch {
+	case strings.HasPrefix(t, "─"), strings.HasPrefix(t, "╷"):
+		return true
+	case strings.HasPrefix(t, "This is a refresh-only plan"),
+		strings.HasPrefix(t, "Unless you have made equivalent changes"):
+		return true
+	case strings.HasSuffix(t, "will perform the following actions:"),
+		strings.HasPrefix(t, "No changes."):
+		return true
+	}
+	return false
+}
+
+// parseResourceBlocks walks a section of plan text and returns one
+// ResourceChange per "# <address> <phrase>" heading, each carrying its block
+// (the heading through the line before the next heading). classify maps the
+// heading phrase to an action.
+func parseResourceBlocks(lines []string, classify func(string) (string, string)) []ResourceChange {
+	var out []ResourceChange
+	var cur *ResourceChange
+	var curLines []string
+	flush := func() {
+		if cur == nil {
+			return
+		}
+		cur.Diff = strings.TrimRight(strings.Join(curLines, "\n"), "\n ")
+		out = append(out, *cur)
+		cur, curLines = nil, nil
+	}
+	for _, line := range lines {
+		if m := resourceHeading.FindStringSubmatch(line); m != nil {
+			flush()
+			action, detail := classify(m[2])
+			cur = &ResourceChange{Address: m[1], Action: action, Detail: detail}
+		}
+		if cur != nil {
+			curLines = append(curLines, line)
+		}
+	}
+	flush()
+	return out
 }
