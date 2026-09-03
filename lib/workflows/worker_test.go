@@ -124,3 +124,31 @@ func TestNormalizeTofuOutputs(t *testing.T) {
 		}
 	}
 }
+
+// TestNormalizeTofuResources: a valid inventory round-trips (module-qualified
+// addresses and raw ids intact), records without an address are dropped,
+// empties yield "" (no column write), and a non-array shape — e.g. the
+// outputs object landing under the wrong key — is an error, never persisted.
+func TestNormalizeTofuResources(t *testing.T) {
+	t.Parallel()
+
+	got, err := normalizeTofuResources([]byte(`[{"address":"module.net.aws_vpc.main","mode":"managed","type":"aws_vpc","name":"main","provider":"registry.opentofu.org/hashicorp/aws","id":"vpc-1"},{"address":"","type":"orphan"},{"address":"data.aws_ami.x","mode":"data","type":"aws_ami","name":"x","provider":"p","id":null}]`))
+	if err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+	var back []tofuResource
+	if err := json.Unmarshal([]byte(got), &back); err != nil {
+		t.Fatalf("round-trip: %v", err)
+	}
+	if len(back) != 2 || back[0].Address != "module.net.aws_vpc.main" || string(back[0].ID) != `"vpc-1"` || string(back[1].ID) != "null" {
+		t.Errorf("normalized = %s", got)
+	}
+	for _, empty := range [][]byte{nil, []byte(`[]`), []byte(`[{"address":""}]`)} {
+		if got, err := normalizeTofuResources(empty); err != nil || got != "" {
+			t.Errorf("%q: got %q, %v; want empty", empty, got, err)
+		}
+	}
+	if _, err := normalizeTofuResources([]byte(`{"vpc_id":{"value":"x"}}`)); err == nil {
+		t.Error("an object (outputs shape) must be rejected")
+	}
+}

@@ -19,8 +19,6 @@ import {
   ArrowLeft,
   Ban,
   Check,
-  Eye,
-  EyeOff,
   Maximize2,
   Minimize2,
   X,
@@ -43,12 +41,13 @@ import {
   PlanResourceList,
   PlanSummaryBar,
 } from "../components/workflow/PlanView";
+import { OutputsTable } from "../components/workflow/OutputsTable";
+import { ResourcesTable } from "../components/workflow/ResourcesTable";
 
 type WorkflowRunDetail = components["schemas"]["WorkflowRunDetail"];
 type PlanSummary = components["schemas"]["PlanSummary"];
 type ComponentRun = components["schemas"]["ComponentRun"];
 type ComponentRunDetail = components["schemas"]["ComponentRunDetail"];
-type ComponentRunOutput = components["schemas"]["ComponentRunOutput"];
 type ComponentType = components["schemas"]["ComponentType"];
 type ComponentRunStatus = components["schemas"]["ComponentRunStatus"];
 type RunStatus = components["schemas"]["RunStatus"];
@@ -433,7 +432,9 @@ function ComponentRunPanel({
   // For preview runs the diff is what the user came to inspect, so it leads; a
   // parked apply step opens on its plan output (the thing being approved);
   // everything else opens on logs. (The panel remounts per selection via key.)
-  const [tab, setTab] = useState<"logs" | "diff" | "plan" | "outputs">(
+  const [tab, setTab] = useState<
+    "logs" | "diff" | "plan" | "outputs" | "resources"
+  >(
     isPreview
       ? "diff"
       : planRun && liveStatus === "awaiting_approval"
@@ -450,6 +451,9 @@ function ComponentRunPanel({
   const outputEntries = Object.entries(detail?.outputs ?? {}).sort(([a], [b]) =>
     a.localeCompare(b),
   );
+  // The managed-resource inventory a settled apply step recorded alongside
+  // its outputs.
+  const hasResources = (detail?.resources?.length ?? 0) > 0;
 
   const decide = useCallback(
     async (decision: "approve" | "reject") => {
@@ -664,7 +668,7 @@ function ComponentRunPanel({
               </TabButton>
             </div>
           )}
-          {!isPreview && (planRun || ownPlan || outputEntries.length > 0) && (
+          {!isPreview && (planRun || ownPlan || outputEntries.length > 0 || hasResources) && (
             <div className="flex items-center gap-4 border-b border-neutral-200 px-4">
               {planRun && (
                 <TabButton active={tab === "plan"} onClick={() => setTab("plan")}>
@@ -684,6 +688,17 @@ function ComponentRunPanel({
                   onClick={() => setTab("outputs")}
                 >
                   Outputs
+                </TabButton>
+              )}
+              {hasResources && (
+                <TabButton
+                  active={tab === "resources"}
+                  onClick={() => setTab("resources")}
+                >
+                  Resources
+                  <span className="text-xs text-neutral-400">
+                    {detail.resources?.length}
+                  </span>
                 </TabButton>
               )}
               <TabButton active={tab === "logs"} onClick={() => setTab("logs")}>
@@ -721,6 +736,8 @@ function ComponentRunPanel({
               <PlanBody plan={ownPlan} body={detail.diff} />
             ) : outputEntries.length > 0 && tab === "outputs" ? (
               <OutputsTable entries={outputEntries} />
+            ) : hasResources && tab === "resources" ? (
+              <ResourcesTable resources={detail.resources ?? []} />
             ) : live ? (
               <pre
                 data-testid="live-logs"
@@ -769,97 +786,6 @@ function TabButton({
       {children}
     </button>
   );
-}
-
-// OutputsTable lists the OpenTofu outputs captured from a settled apply step.
-// A sensitive output is masked by default; when the API sent its value (it
-// omits sensitive values for callers below editor), an eye toggle reveals and
-// re-masks it — a viewer sees only the masked entry, with nothing to reveal.
-function OutputsTable({
-  entries,
-}: {
-  entries: [string, ComponentRunOutput][];
-}) {
-  const [revealed, setRevealed] = useState<Set<string>>(new Set());
-  const toggle = (name: string) =>
-    setRevealed((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  return (
-    <div className="h-full overflow-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
-            <th className="px-2 py-1.5 font-medium">Output</th>
-            <th className="w-full px-2 py-1.5 font-medium">Value</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map(([name, output]) => {
-            const masked = output.sensitive && !revealed.has(name);
-            // The API omits a sensitive value below editor — then there is
-            // nothing to reveal.
-            const revealable =
-              output.sensitive &&
-              output.value !== undefined &&
-              output.value !== null;
-            return (
-              <tr key={name} className="border-b border-neutral-100 align-top">
-                <td className="whitespace-nowrap px-2 py-1.5 font-mono text-xs text-neutral-900">
-                  {name}
-                </td>
-                <td className="px-2 py-1.5">
-                  <span className="inline-flex items-center gap-2">
-                    {masked ? (
-                      <span className="font-mono text-xs text-neutral-400">
-                        ••••••••
-                      </span>
-                    ) : (
-                      <span className="break-all font-mono text-xs text-neutral-900">
-                        {formatOutputValue(output.value)}
-                      </span>
-                    )}
-                    {revealable && (
-                      <button
-                        type="button"
-                        onClick={() => toggle(name)}
-                        aria-label={
-                          masked ? `Reveal ${name}` : `Mask ${name}`
-                        }
-                        title={
-                          masked
-                            ? "Reveal this sensitive value"
-                            : "Mask this value again"
-                        }
-                        className="p-0.5 text-neutral-400 hover:text-neutral-900"
-                      >
-                        {masked ? (
-                          <Eye className="h-3.5 w-3.5" />
-                        ) : (
-                          <EyeOff className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                    )}
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-// formatOutputValue renders one output value: strings bare, everything else
-// (numbers, booleans, lists, objects) as compact JSON.
-function formatOutputValue(value: unknown): string {
-  if (value === undefined || value === null) return "";
-  if (typeof value === "string") return value;
-  return JSON.stringify(value);
 }
 
 // PlanBody is the structured reading of an OpenTofu plan: the headline totals,

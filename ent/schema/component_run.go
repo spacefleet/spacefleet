@@ -63,6 +63,12 @@ func (ComponentRun) Fields() []ent.Field {
 		// logs are persisted + streamed); sensitive values are redacted in API
 		// responses below editor.
 		field.Text("outputs").Optional(),
+		// Managed-resource inventory captured alongside outputs from a terraform
+		// apply step that succeeded on a deploy run: a JSON array of
+		// {"address","mode","type","name","provider","id"} records — the state
+		// reduced to one line per resource in the pod (see tofu.ResourcesFile),
+		// never the full state. Empty for every other step.
+		field.Text("resources").Optional(),
 		// Who approved this step's approval gate, and when. Set when a human approves
 		// an awaiting_approval step; empty/nil otherwise.
 		field.String("approved_by").Default(""),

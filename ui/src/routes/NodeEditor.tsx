@@ -16,6 +16,7 @@ import type {
   RefContext,
 } from "../components/workflow/refAutocomplete";
 import { VariablesEditor } from "../components/VariablesEditor";
+import { ComponentStatePanel } from "../components/workflow/ComponentStatePanel";
 import { stagedBackend } from "../components/variablesBackend";
 
 type ComponentType = components["schemas"]["ComponentType"];
@@ -357,6 +358,13 @@ export function NodeEditor() {
               backend={isNew ? stagedVarBackend : undefined}
             />
           </div>
+
+          {/* An OpenTofu component's recorded state: the resources it manages
+              and its outputs, as of its last successful apply. Only for a
+              saved node — a new one has no history. */}
+          {!isNew && draft?.type === "terraform" && (
+            <ComponentStatePanel appId={appId} componentId={nodeId} />
+          )}
         </>
       )}
     </div>

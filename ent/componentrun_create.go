@@ -150,6 +150,20 @@ func (_c *ComponentRunCreate) SetNillableOutputs(v *string) *ComponentRunCreate 
 	return _c
 }
 
+// SetResources sets the "resources" field.
+func (_c *ComponentRunCreate) SetResources(v string) *ComponentRunCreate {
+	_c.mutation.SetResources(v)
+	return _c
+}
+
+// SetNillableResources sets the "resources" field if the given value is not nil.
+func (_c *ComponentRunCreate) SetNillableResources(v *string) *ComponentRunCreate {
+	if v != nil {
+		_c.SetResources(*v)
+	}
+	return _c
+}
+
 // SetApprovedBy sets the "approved_by" field.
 func (_c *ComponentRunCreate) SetApprovedBy(v string) *ComponentRunCreate {
 	_c.mutation.SetApprovedBy(v)
@@ -442,6 +456,10 @@ func (_c *ComponentRunCreate) createSpec() (*ComponentRun, *sqlgraph.CreateSpec)
 		_spec.SetField(componentrun.FieldOutputs, field.TypeString, value)
 		_node.Outputs = value
 	}
+	if value, ok := _c.mutation.Resources(); ok {
+		_spec.SetField(componentrun.FieldResources, field.TypeString, value)
+		_node.Resources = value
+	}
 	if value, ok := _c.mutation.ApprovedBy(); ok {
 		_spec.SetField(componentrun.FieldApprovedBy, field.TypeString, value)
 		_node.ApprovedBy = value
@@ -695,6 +713,24 @@ func (u *ComponentRunUpsert) UpdateOutputs() *ComponentRunUpsert {
 // ClearOutputs clears the value of the "outputs" field.
 func (u *ComponentRunUpsert) ClearOutputs() *ComponentRunUpsert {
 	u.SetNull(componentrun.FieldOutputs)
+	return u
+}
+
+// SetResources sets the "resources" field.
+func (u *ComponentRunUpsert) SetResources(v string) *ComponentRunUpsert {
+	u.Set(componentrun.FieldResources, v)
+	return u
+}
+
+// UpdateResources sets the "resources" field to the value that was provided on create.
+func (u *ComponentRunUpsert) UpdateResources() *ComponentRunUpsert {
+	u.SetExcluded(componentrun.FieldResources)
+	return u
+}
+
+// ClearResources clears the value of the "resources" field.
+func (u *ComponentRunUpsert) ClearResources() *ComponentRunUpsert {
+	u.SetNull(componentrun.FieldResources)
 	return u
 }
 
@@ -1027,6 +1063,27 @@ func (u *ComponentRunUpsertOne) UpdateOutputs() *ComponentRunUpsertOne {
 func (u *ComponentRunUpsertOne) ClearOutputs() *ComponentRunUpsertOne {
 	return u.Update(func(s *ComponentRunUpsert) {
 		s.ClearOutputs()
+	})
+}
+
+// SetResources sets the "resources" field.
+func (u *ComponentRunUpsertOne) SetResources(v string) *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.SetResources(v)
+	})
+}
+
+// UpdateResources sets the "resources" field to the value that was provided on create.
+func (u *ComponentRunUpsertOne) UpdateResources() *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.UpdateResources()
+	})
+}
+
+// ClearResources clears the value of the "resources" field.
+func (u *ComponentRunUpsertOne) ClearResources() *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.ClearResources()
 	})
 }
 
@@ -1545,6 +1602,27 @@ func (u *ComponentRunUpsertBulk) UpdateOutputs() *ComponentRunUpsertBulk {
 func (u *ComponentRunUpsertBulk) ClearOutputs() *ComponentRunUpsertBulk {
 	return u.Update(func(s *ComponentRunUpsert) {
 		s.ClearOutputs()
+	})
+}
+
+// SetResources sets the "resources" field.
+func (u *ComponentRunUpsertBulk) SetResources(v string) *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.SetResources(v)
+	})
+}
+
+// UpdateResources sets the "resources" field to the value that was provided on create.
+func (u *ComponentRunUpsertBulk) UpdateResources() *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.UpdateResources()
+	})
+}
+
+// ClearResources clears the value of the "resources" field.
+func (u *ComponentRunUpsertBulk) ClearResources() *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.ClearResources()
 	})
 }
 

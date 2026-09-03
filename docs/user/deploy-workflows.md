@@ -173,6 +173,27 @@ for example, deploying into a namespace the OpenTofu step provisioned — with
 `${{ components.<name>.outputs.<key> }}`. See
 [Variables in component configuration](variable-interpolation.md).
 
+### Managed resources
+
+After each successful apply, Spacefleet also records **which resources the
+module now manages**: every resource and data source in its state, with its
+address, type, provider, and the identifier the provider assigned (an instance
+id, an ARN, a bucket name). Only those identity fields are recorded — never a
+resource's attribute values, so nothing sensitive in your state leaves the
+run.
+
+You can see the inventory in two places:
+
+- On the apply step of a run, under its **Resources** tab — the inventory as
+  of that apply.
+- On the component itself: open the node in the workflow builder and scroll to
+  **State**, which shows the resources and outputs from the component's most
+  recent successful apply, with a link to the run that recorded them. This is
+  the place to answer "what does this component own right now?" without
+  opening run history.
+
+A long inventory can be filtered by address, type, provider, or id.
+
 ## Run the workflow
 
 The builder has three run actions. Each one runs the **whole** workflow,

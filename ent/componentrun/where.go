@@ -101,6 +101,11 @@ func Outputs(v string) predicate.ComponentRun {
 	return predicate.ComponentRun(sql.FieldEQ(FieldOutputs, v))
 }
 
+// Resources applies equality check predicate on the "resources" field. It's identical to ResourcesEQ.
+func Resources(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldEQ(FieldResources, v))
+}
+
 // ApprovedBy applies equality check predicate on the "approved_by" field. It's identical to ApprovedByEQ.
 func ApprovedBy(v string) predicate.ComponentRun {
 	return predicate.ComponentRun(sql.FieldEQ(FieldApprovedBy, v))
@@ -699,6 +704,81 @@ func OutputsEqualFold(v string) predicate.ComponentRun {
 // OutputsContainsFold applies the ContainsFold predicate on the "outputs" field.
 func OutputsContainsFold(v string) predicate.ComponentRun {
 	return predicate.ComponentRun(sql.FieldContainsFold(FieldOutputs, v))
+}
+
+// ResourcesEQ applies the EQ predicate on the "resources" field.
+func ResourcesEQ(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldEQ(FieldResources, v))
+}
+
+// ResourcesNEQ applies the NEQ predicate on the "resources" field.
+func ResourcesNEQ(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldNEQ(FieldResources, v))
+}
+
+// ResourcesIn applies the In predicate on the "resources" field.
+func ResourcesIn(vs ...string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldIn(FieldResources, vs...))
+}
+
+// ResourcesNotIn applies the NotIn predicate on the "resources" field.
+func ResourcesNotIn(vs ...string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldNotIn(FieldResources, vs...))
+}
+
+// ResourcesGT applies the GT predicate on the "resources" field.
+func ResourcesGT(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldGT(FieldResources, v))
+}
+
+// ResourcesGTE applies the GTE predicate on the "resources" field.
+func ResourcesGTE(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldGTE(FieldResources, v))
+}
+
+// ResourcesLT applies the LT predicate on the "resources" field.
+func ResourcesLT(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldLT(FieldResources, v))
+}
+
+// ResourcesLTE applies the LTE predicate on the "resources" field.
+func ResourcesLTE(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldLTE(FieldResources, v))
+}
+
+// ResourcesContains applies the Contains predicate on the "resources" field.
+func ResourcesContains(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldContains(FieldResources, v))
+}
+
+// ResourcesHasPrefix applies the HasPrefix predicate on the "resources" field.
+func ResourcesHasPrefix(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldHasPrefix(FieldResources, v))
+}
+
+// ResourcesHasSuffix applies the HasSuffix predicate on the "resources" field.
+func ResourcesHasSuffix(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldHasSuffix(FieldResources, v))
+}
+
+// ResourcesIsNil applies the IsNil predicate on the "resources" field.
+func ResourcesIsNil() predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldIsNull(FieldResources))
+}
+
+// ResourcesNotNil applies the NotNil predicate on the "resources" field.
+func ResourcesNotNil() predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldNotNull(FieldResources))
+}
+
+// ResourcesEqualFold applies the EqualFold predicate on the "resources" field.
+func ResourcesEqualFold(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldEqualFold(FieldResources, v))
+}
+
+// ResourcesContainsFold applies the ContainsFold predicate on the "resources" field.
+func ResourcesContainsFold(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldContainsFold(FieldResources, v))
 }
 
 // ApprovedByEQ applies the EQ predicate on the "approved_by" field.

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/k8s"
 	"github.com/spacefleet/spacefleet/lib/tekton"
 	"github.com/spacefleet/spacefleet/lib/testsupport"
+	"github.com/spacefleet/spacefleet/lib/tofu"
 )
 
 // This file covers the worker's retry semantics against the real status guards
@@ -172,8 +174,12 @@ func TestWorkCapturesTofuOutputs(t *testing.T) {
 
 	w := newTestWorker(client, succeedingFuncs())
 	var reads, deletes []string
-	w.captureOutputs = func(_ context.Context, _ k8s.Connection, namespace, name string) ([]byte, error) {
-		reads = append(reads, namespace+"/"+name)
+	resourcesJSON := `[{"address":"aws_s3_bucket.data","mode":"managed","type":"aws_s3_bucket","name":"data","provider":"registry.opentofu.org/hashicorp/aws","id":"acme-data"},{"address":"module.net.aws_vpc.main","mode":"managed","type":"aws_vpc","name":"main","provider":"registry.opentofu.org/hashicorp/aws","id":"vpc-1"}]`
+	w.captureHandover = func(_ context.Context, _ k8s.Connection, namespace, name, key string) ([]byte, error) {
+		reads = append(reads, namespace+"/"+name+"#"+key)
+		if key == tofu.ResourcesKey {
+			return []byte(resourcesJSON), nil
+		}
 		return []byte(outputsJSON), nil
 	}
 	w.deleteHandover = func(_ context.Context, _ k8s.Connection, _, name string) error {
@@ -187,10 +193,14 @@ func TestWorkCapturesTofuOutputs(t *testing.T) {
 		t.Fatalf("run = %q, want %q", got, workflowrun.StatusSucceeded)
 	}
 
-	// The capture read exactly the apply pair's Secret, once.
-	wantRead := tekton.JobsNamespace + "/" + secretName
-	if len(reads) != 1 || reads[0] != wantRead {
-		t.Errorf("outputs reads = %v, want exactly [%s]", reads, wantRead)
+	// The capture read exactly the apply pair's Secret: its outputs key and its
+	// resources key, once each.
+	wantReads := []string{
+		tekton.JobsNamespace + "/" + secretName + "#" + tofu.OutputsKey,
+		tekton.JobsNamespace + "/" + secretName + "#" + tofu.ResourcesKey,
+	}
+	if !reflect.DeepEqual(reads, wantReads) {
+		t.Errorf("handover reads = %v, want %v", reads, wantReads)
 	}
 
 	// Persisted on the apply unit (canonicalized but content-identical) …
@@ -205,9 +215,17 @@ func TestWorkCapturesTofuOutputs(t *testing.T) {
 	if string(stored["namespace"].Value) != `"customer-a"` || !stored["db_password"].Sensitive {
 		t.Errorf("stored outputs = %s, want namespace + sensitive db_password", applyCR.Outputs)
 	}
+	// … with the resource inventory beside them …
+	var inventory []tofuResource
+	if err := json.Unmarshal([]byte(applyCR.Resources), &inventory); err != nil {
+		t.Fatalf("stored resources do not parse: %v (%q)", err, applyCR.Resources)
+	}
+	if len(inventory) != 2 || inventory[1].Address != "module.net.aws_vpc.main" || string(inventory[1].ID) != `"vpc-1"` {
+		t.Errorf("stored resources = %s", applyCR.Resources)
+	}
 	// … and never on the plan unit.
-	if planCR := componentRunFor(t, client, run.ID, tf.ID); planCR.Outputs != "" {
-		t.Errorf("plan unit outputs = %q, want empty", planCR.Outputs)
+	if planCR := componentRunFor(t, client, run.ID, tf.ID); planCR.Outputs != "" || planCR.Resources != "" {
+		t.Errorf("plan unit outputs/resources = %q/%q, want empty", planCR.Outputs, planCR.Resources)
 	}
 
 	// The worker deleted the spent Secret right after reading it; the terminal
@@ -243,7 +261,7 @@ func TestResolveComponentOutputs(t *testing.T) {
 		t.Helper()
 		run, args := beginRun(t, svc, org.ID, app.ID)
 		w := newTestWorker(client, succeedingFuncs())
-		w.captureOutputs = func(context.Context, k8s.Connection, string, string) ([]byte, error) {
+		w.captureHandover = func(context.Context, k8s.Connection, string, string, string) ([]byte, error) {
 			return []byte(outputs), nil
 		}
 		if err := w.Work(ctx, workerJob(args, 1, 3)); err != nil {
@@ -294,7 +312,7 @@ func TestWorkOutputsCaptureFailureDoesNotFailRun(t *testing.T) {
 	run, args := beginRun(t, svc, org.ID, app.ID)
 
 	w := newTestWorker(client, succeedingFuncs())
-	w.captureOutputs = func(context.Context, k8s.Connection, string, string) ([]byte, error) {
+	w.captureHandover = func(context.Context, k8s.Connection, string, string, string) ([]byte, error) {
 		return nil, errors.New("secret read: cluster API unreachable")
 	}
 	if err := w.Work(ctx, workerJob(args, 1, 3)); err != nil {

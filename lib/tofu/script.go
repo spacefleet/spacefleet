@@ -116,6 +116,26 @@ const PlanfileName = "tfplan"
 // through the handover Secret (see OutputsKey).
 const OutputsFile = "sf-outputs.json"
 
+// ResourcesFile is the local filename a deploy apply node saves the managed
+// resource inventory to after a successful apply: `tofu show -json` reduced in
+// the pod (with jq) to one small record per resource — address, mode, type,
+// name, provider, id — so the full state, which carries every attribute value
+// including sensitive ones, never leaves the pod and the record stays well
+// under the handover Secret's size limit.
+const ResourcesFile = "sf-resources.json"
+
+// ResourcesKey is the key the resource inventory is upserted under inside the
+// PlanArtifactSecret, alongside OutputsKey.
+const ResourcesKey = "resources"
+
+// resourcesFilter is the jq program that reduces `tofu show -json` to the
+// inventory: every resource of the root module and, recursively, its child
+// modules. Resource addresses in the JSON are already module-qualified.
+// `.values.id` is the provider-assigned identifier most resources carry; a
+// resource without one records null. The program contains no single quotes
+// so it can be passed as one single-quoted shell argument.
+const resourcesFilter = `[.values.root_module | recurse(.child_modules[]?) | .resources[]? | {address, mode, type, name, provider: .provider_name, id: ((.values // {}).id // null)}]`
+
 // OutputsKey is the key the captured outputs JSON is upserted under inside the
 // PlanArtifactSecret after a successful deploy apply — the planfile in there is
 // spent by then, so the Secret's last job is carrying the outputs back. The
@@ -354,6 +374,11 @@ func Script(a Apply) string {
 // downloads), never for a read-only preview.
 const kubectlInstall = "apk add --no-cache kubectl\n"
 
+// applyToolsInstall is kubectlInstall plus jq, for the apply path: jq reduces
+// the state to the resource inventory after a successful apply (see
+// resourcesFilter).
+const applyToolsInstall = "apk add --no-cache kubectl jq\n"
+
 // storePlanfile emits the lines a non-preview plan node runs to hand its saved
 // planfile to the apply node: install kubectl, then upsert the planfile into the
 // PlanArtifactSecret (a client-side apply, idempotent so an approval-resume
@@ -378,7 +403,7 @@ func storePlanfile(a Apply) string {
 // base64 and `base64 -d` (busybox) restores the binary planfile.
 func restorePlanfile(a Apply) string {
 	var b strings.Builder
-	b.WriteString(kubectlInstall)
+	b.WriteString(applyToolsInstall)
 	fmt.Fprintf(&b, "kubectl get secret %s --namespace %s -o %s | base64 -d > %s\n",
 		shQuote(a.PlanArtifactSecret), shQuote(a.Namespace), shQuote("jsonpath={.data."+PlanfileName+"}"), PlanfileName)
 	return b.String()
@@ -398,8 +423,12 @@ func restorePlanfile(a Apply) string {
 func storeOutputs(a Apply) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "tofu output -json > %s || echo '{}' > %s\n", OutputsFile, OutputsFile)
-	fmt.Fprintf(&b, "kubectl create secret generic %s --namespace %s --from-file=%s=%s --dry-run=client -o yaml | kubectl apply --namespace %s -f - || echo 'warning: failed to store outputs' >&2\n",
-		shQuote(a.PlanArtifactSecret), shQuote(a.Namespace), OutputsKey, OutputsFile, shQuote(a.Namespace))
+	// The resource inventory: the state reduced in-pod to one record per
+	// resource (never the full state, which carries every attribute value).
+	// Like the outputs it goes to a file, never stdout, and tolerates failure.
+	fmt.Fprintf(&b, "tofu show -json | jq -c %s > %s || echo '[]' > %s\n", shQuote(resourcesFilter), ResourcesFile, ResourcesFile)
+	fmt.Fprintf(&b, "kubectl create secret generic %s --namespace %s --from-file=%s=%s --from-file=%s=%s --dry-run=client -o yaml | kubectl apply --namespace %s -f - || echo 'warning: failed to store outputs' >&2\n",
+		shQuote(a.PlanArtifactSecret), shQuote(a.Namespace), OutputsKey, OutputsFile, ResourcesKey, ResourcesFile, shQuote(a.Namespace))
 	return b.String()
 }
 

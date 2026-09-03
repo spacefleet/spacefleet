@@ -1072,6 +1072,31 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/applications/{id}/components/{componentId}/state:
+    get:
+      summary: An OpenTofu component's last recorded state (outputs + resources)
+      description: |
+        Org-scoped. Returns what the component's most recent successful apply
+        recorded: its output values and the inventory of resources it manages,
+        with the run that recorded them. This is the component's persistent
+        "what do I own" view — the same data a run's apply step carries, found
+        without opening run history. Sensitive output values are omitted for
+        callers below editor. 404 when the component has never applied
+        successfully (or is not an OpenTofu component).
+      operationId: getComponentState
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+        - $ref: "#/components/parameters/ComponentID"
+      responses:
+        "200":
+          description: The component's last recorded outputs and resources
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComponentState"
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/applications/{id}/variables:
     get:
       summary: List an application's app-level variables
@@ -3527,6 +3552,69 @@ components:
             Whether the module marked this output sensitive. Sensitive values
             are masked in the UI and omitted entirely below editor.
 
+    TofuResource:
+      type: object
+      description: |
+        One resource an OpenTofu (Terraform) component manages, as recorded
+        after its last successful apply — the identity fields of the state
+        entry, never its attribute values.
+      required: [address, mode, type, name]
+      properties:
+        address:
+          type: string
+          description: The module-qualified resource address (e.g. module.net.aws_vpc.main).
+        mode:
+          type: string
+          description: "`managed` for a resource, `data` for a data source."
+        type:
+          type: string
+          description: The resource type (e.g. aws_vpc).
+        name:
+          type: string
+          description: The resource's local name within its module.
+        provider:
+          type: string
+          description: The provider that manages it (e.g. registry.opentofu.org/hashicorp/aws).
+        id:
+          description: |
+            The provider-assigned identifier (an instance id, an ARN, a name)
+            — usually a string; null when the resource has none.
+          nullable: true
+
+    ComponentState:
+      type: object
+      description: |
+        An OpenTofu (Terraform) component's last recorded state: the outputs
+        and managed-resource inventory captured by its most recent successful
+        apply, and the run that captured them.
+      required: [run_id, component_run_id, resources]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+          description: The workflow run whose apply recorded this state.
+        component_run_id:
+          type: string
+          format: uuid
+          description: The apply step (component run) that recorded it.
+        recorded_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When that apply step settled.
+        outputs:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ComponentRunOutput"
+          description: |
+            The module's output values, keyed by name. Absent when the module
+            has none. Sensitive values are omitted below editor.
+        resources:
+          type: array
+          description: Every resource and data source in the module's state, in state order.
+          items:
+            $ref: "#/components/schemas/TofuResource"
+
     ComponentOutputKey:
       type: object
       description: |
@@ -3582,6 +3670,14 @@ components:
                 Whether the step's diff/plan would change anything: the live
                 cluster for a Helm/Manifest preview, infrastructure or outputs
                 for an OpenTofu plan. False for other steps.
+            resources:
+              type: array
+              description: |
+                For an OpenTofu apply step that succeeded on a deploy run, the
+                inventory of resources the module manages as of that apply.
+                Absent for every other step.
+              items:
+                $ref: "#/components/schemas/TofuResource"
 
     WorkflowRunDetail:
       allOf:

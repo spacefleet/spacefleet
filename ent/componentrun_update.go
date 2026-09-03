@@ -183,6 +183,26 @@ func (_u *ComponentRunUpdate) ClearOutputs() *ComponentRunUpdate {
 	return _u
 }
 
+// SetResources sets the "resources" field.
+func (_u *ComponentRunUpdate) SetResources(v string) *ComponentRunUpdate {
+	_u.mutation.SetResources(v)
+	return _u
+}
+
+// SetNillableResources sets the "resources" field if the given value is not nil.
+func (_u *ComponentRunUpdate) SetNillableResources(v *string) *ComponentRunUpdate {
+	if v != nil {
+		_u.SetResources(*v)
+	}
+	return _u
+}
+
+// ClearResources clears the value of the "resources" field.
+func (_u *ComponentRunUpdate) ClearResources() *ComponentRunUpdate {
+	_u.mutation.ClearResources()
+	return _u
+}
+
 // SetApprovedBy sets the "approved_by" field.
 func (_u *ComponentRunUpdate) SetApprovedBy(v string) *ComponentRunUpdate {
 	_u.mutation.SetApprovedBy(v)
@@ -417,6 +437,12 @@ func (_u *ComponentRunUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if _u.mutation.OutputsCleared() {
 		_spec.ClearField(componentrun.FieldOutputs, field.TypeString)
 	}
+	if value, ok := _u.mutation.Resources(); ok {
+		_spec.SetField(componentrun.FieldResources, field.TypeString, value)
+	}
+	if _u.mutation.ResourcesCleared() {
+		_spec.ClearField(componentrun.FieldResources, field.TypeString)
+	}
 	if value, ok := _u.mutation.ApprovedBy(); ok {
 		_spec.SetField(componentrun.FieldApprovedBy, field.TypeString, value)
 	}
@@ -624,6 +650,26 @@ func (_u *ComponentRunUpdateOne) SetNillableOutputs(v *string) *ComponentRunUpda
 // ClearOutputs clears the value of the "outputs" field.
 func (_u *ComponentRunUpdateOne) ClearOutputs() *ComponentRunUpdateOne {
 	_u.mutation.ClearOutputs()
+	return _u
+}
+
+// SetResources sets the "resources" field.
+func (_u *ComponentRunUpdateOne) SetResources(v string) *ComponentRunUpdateOne {
+	_u.mutation.SetResources(v)
+	return _u
+}
+
+// SetNillableResources sets the "resources" field if the given value is not nil.
+func (_u *ComponentRunUpdateOne) SetNillableResources(v *string) *ComponentRunUpdateOne {
+	if v != nil {
+		_u.SetResources(*v)
+	}
+	return _u
+}
+
+// ClearResources clears the value of the "resources" field.
+func (_u *ComponentRunUpdateOne) ClearResources() *ComponentRunUpdateOne {
+	_u.mutation.ClearResources()
 	return _u
 }
 
@@ -890,6 +936,12 @@ func (_u *ComponentRunUpdateOne) sqlSave(ctx context.Context) (_node *ComponentR
 	}
 	if _u.mutation.OutputsCleared() {
 		_spec.ClearField(componentrun.FieldOutputs, field.TypeString)
+	}
+	if value, ok := _u.mutation.Resources(); ok {
+		_spec.SetField(componentrun.FieldResources, field.TypeString, value)
+	}
+	if _u.mutation.ResourcesCleared() {
+		_spec.ClearField(componentrun.FieldResources, field.TypeString)
 	}
 	if value, ok := _u.mutation.ApprovedBy(); ok {
 		_spec.SetField(componentrun.FieldApprovedBy, field.TypeString, value)

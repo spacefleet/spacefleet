@@ -879,6 +879,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{id}/components/{componentId}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An OpenTofu component's last recorded state (outputs + resources)
+         * @description Org-scoped. Returns what the component's most recent successful apply
+         *     recorded: its output values and the inventory of resources it manages,
+         *     with the run that recorded them. This is the component's persistent
+         *     "what do I own" view — the same data a run's apply step carries, found
+         *     without opening run history. Sensitive output values are omitted for
+         *     callers below editor. 404 when the component has never applied
+         *     successfully (or is not an OpenTofu component).
+         */
+        get: operations["getComponentState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{id}/variables": {
         parameters: {
             query?: never;
@@ -1062,7 +1088,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get one component run within a workflow run, with its logs */
+        /**
+         * Get one component run within a workflow run, with its logs
+         * @description The captured `logs` are written when the step settles. While a step is
+         *     still running, editors can follow its output live at
+         *     /api/applications/{id}/runs/{runId}/components/{componentRunId}/logs/stream
+         *     (Server-Sent Events: a `log` event per line, then `eof` when the
+         *     container exits; 404 until the step's pod is scheduled, 403 below
+         *     editor).
+         */
         get: operations["getComponentRun"];
         put?: never;
         post?: never;
@@ -2535,6 +2569,59 @@ export interface components {
             sensitive: boolean;
         };
         /**
+         * @description One resource an OpenTofu (Terraform) component manages, as recorded
+         *     after its last successful apply — the identity fields of the state
+         *     entry, never its attribute values.
+         */
+        TofuResource: {
+            /** @description The module-qualified resource address (e.g. module.net.aws_vpc.main). */
+            address: string;
+            /** @description `managed` for a resource, `data` for a data source. */
+            mode: string;
+            /** @description The resource type (e.g. aws_vpc). */
+            type: string;
+            /** @description The resource's local name within its module. */
+            name: string;
+            /** @description The provider that manages it (e.g. registry.opentofu.org/hashicorp/aws). */
+            provider?: string;
+            /**
+             * @description The provider-assigned identifier (an instance id, an ARN, a name)
+             *     — usually a string; null when the resource has none.
+             */
+            id?: unknown;
+        };
+        /**
+         * @description An OpenTofu (Terraform) component's last recorded state: the outputs
+         *     and managed-resource inventory captured by its most recent successful
+         *     apply, and the run that captured them.
+         */
+        ComponentState: {
+            /**
+             * Format: uuid
+             * @description The workflow run whose apply recorded this state.
+             */
+            run_id: string;
+            /**
+             * Format: uuid
+             * @description The apply step (component run) that recorded it.
+             */
+            component_run_id: string;
+            /**
+             * Format: date-time
+             * @description When that apply step settled.
+             */
+            recorded_at?: string | null;
+            /**
+             * @description The module's output values, keyed by name. Absent when the module
+             *     has none. Sensitive values are omitted below editor.
+             */
+            outputs?: {
+                [key: string]: components["schemas"]["ComponentRunOutput"];
+            };
+            /** @description Every resource and data source in the module's state, in state order. */
+            resources: components["schemas"]["TofuResource"][];
+        };
+        /**
          * @description The name (and metadata) of one captured OpenTofu (Terraform) output
          *     from a component's latest successful run — keys only, never the value.
          *     Powers editor autocomplete of `${{ components.<name>.outputs.<key> }}`.
@@ -2578,6 +2665,12 @@ export interface components {
              *     for an OpenTofu plan. False for other steps.
              */
             has_changes?: boolean;
+            /**
+             * @description For an OpenTofu apply step that succeeded on a deploy run, the
+             *     inventory of resources the module manages as of that apply.
+             *     Absent for every other step.
+             */
+            resources?: components["schemas"]["TofuResource"][];
         };
         WorkflowRunDetail: components["schemas"]["WorkflowRun"] & {
             component_runs: components["schemas"]["ComponentRun"][];
@@ -3878,6 +3971,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ComponentOutputKeys"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getComponentState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                componentId: components["parameters"]["ComponentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The component's last recorded outputs and resources */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentState"];
                 };
             };
             default: components["responses"]["Error"];

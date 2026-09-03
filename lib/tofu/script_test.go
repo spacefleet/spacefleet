@@ -137,14 +137,17 @@ func TestScriptApplyDeployUsesPlanfile(t *testing.T) {
 		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
 	wantContains := []string{
-		"apk add --no-cache kubectl",
+		"apk add --no-cache kubectl jq",
 		"kubectl get secret 'tfplan-run1-plan1' --namespace 'default' -o 'jsonpath={.data.tfplan}' | base64 -d > tfplan",
 		"tofu apply -input=false -no-color tfplan",
 		// After a successful deploy apply, the outputs are saved to a local file
 		// (never echoed — -json does not redact sensitive values) and handed back
 		// through the same Secret under the outputs key.
 		"tofu output -json > sf-outputs.json",
-		"kubectl create secret generic 'tfplan-run1-plan1' --namespace 'default' --from-file=outputs=sf-outputs.json --dry-run=client -o yaml | kubectl apply --namespace 'default' -f -",
+		// ... and the resource inventory: the state reduced in-pod by jq to
+		// address/type/id records, never the full state.
+		"tofu show -json | jq -c '" + resourcesFilter + "' > sf-resources.json || echo '[]' > sf-resources.json",
+		"kubectl create secret generic 'tfplan-run1-plan1' --namespace 'default' --from-file=outputs=sf-outputs.json --from-file=resources=sf-resources.json --dry-run=client -o yaml | kubectl apply --namespace 'default' -f -",
 	}
 	for _, w := range wantContains {
 		if !strings.Contains(s, w) {
@@ -279,6 +282,17 @@ func TestScriptDeployApplyOutputsCaptureIsBestEffort(t *testing.T) {
 	// Secret only.
 	if strings.Contains(s, "cat sf-outputs.json") || strings.Contains(s, "tofu output -json\n") {
 		t.Errorf("outputs must not be echoed to the step logs\n---\n%s", s)
+	}
+	// Likewise the state: only the jq-reduced inventory is written, to a file,
+	// and a reduction failure yields an empty inventory rather than a failed step.
+	if !strings.Contains(s, "> sf-resources.json || echo '[]' > sf-resources.json") {
+		t.Errorf("resource capture must tolerate failure\n---\n%s", s)
+	}
+	if strings.Contains(s, "tofu show -json\n") || strings.Contains(s, "tofu show -json >") {
+		t.Errorf("the full state must never be written or echoed\n---\n%s", s)
+	}
+	if strings.Contains(resourcesFilter, "'") {
+		t.Error("resourcesFilter must contain no single quotes (it is single-quoted in the script)")
 	}
 }
 

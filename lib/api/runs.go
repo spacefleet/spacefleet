@@ -485,6 +485,12 @@ func toAPIComponentRunDetail(cr *ent.ComponentRun, canSee bool) ComponentRunDeta
 	if canSee {
 		out.Logs = optStr(cr.Logs)
 	}
+	// An apply step that captured a resource inventory carries it (identity
+	// fields only, so it is not gated).
+	if cr.Resources != "" {
+		res := toAPITofuResources(cr.Resources)
+		out.Resources = &res
+	}
 	// An OpenTofu plan step's review material is its parsed plan: the body is
 	// the diff (any action — a deploy's plan is what an approver reads, not just
 	// a preview's), the resource list carries per-resource blocks for editors,

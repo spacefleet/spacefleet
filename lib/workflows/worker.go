@@ -42,13 +42,14 @@ const maxLogBytes = 1024 * 1024
 // any failure — log capture never fails the run.
 type runLogsFn func(ctx context.Context, runnerConn k8s.Connection, runName string) string
 
-// captureOutputsFn reads the captured-outputs key of a terraform pair's
-// handover Secret from the runner connection — the worker side of the
-// outputs channel a deploy apply step writes (see tofu.OutputsKey). A seam
-// like runLogsFn, overridden in tests; nil bytes mean "nothing captured" (a
-// missing Secret or key), an error is a read failure worth logging. Either
-// way capture is best-effort and never fails a succeeded step.
-type captureOutputsFn func(ctx context.Context, runnerConn k8s.Connection, namespace, secretName string) ([]byte, error)
+// captureHandoverFn reads one key of a terraform pair's handover Secret from
+// the runner connection — the worker side of the channel a deploy apply step
+// writes its outputs (tofu.OutputsKey) and resource inventory
+// (tofu.ResourcesKey) through. A seam like runLogsFn, overridden in tests;
+// nil bytes mean "nothing captured" (a missing Secret or key), an error is a
+// read failure worth logging. Either way capture is best-effort and never
+// fails a succeeded step.
+type captureHandoverFn func(ctx context.Context, runnerConn k8s.Connection, namespace, secretName, key string) ([]byte, error)
 
 // WorkflowRunWorker executes one workflow run: it loads the run's graph snapshot
 // + its ComponentRuns + the application, then drives the DAG through the pure
@@ -64,11 +65,11 @@ type WorkflowRunWorker struct {
 	resolver *deploy.Resolver
 
 	// Test seams. runFuncs defaults to the real tekton primitives; captureLogs to
-	// the real pod-log read; captureOutputs to the real handover-Secret read.
+	// the real pod-log read; captureHandover to the real handover-Secret read.
 	// Overridden in tests to drive Work without a cluster.
-	funcs          tekton.RunFuncs
-	captureLogs    runLogsFn
-	captureOutputs captureOutputsFn
+	funcs           tekton.RunFuncs
+	captureLogs     runLogsFn
+	captureHandover captureHandoverFn
 	// resolveOutputs reads a terraform apply unit's persisted outputs for the
 	// ${{ components.* }} render context (this run first, then the latest
 	// successful — svc.ResolveComponentOutputs in production); a seam so planner
@@ -88,7 +89,7 @@ type WorkflowRunWorker struct {
 func NewWorker(svc *Service, resolver *deploy.Resolver) *WorkflowRunWorker {
 	w := &WorkflowRunWorker{svc: svc, resolver: resolver, funcs: tekton.DefaultRunFuncs()}
 	w.captureLogs = defaultCaptureLogs
-	w.captureOutputs = defaultCaptureOutputs
+	w.captureHandover = tekton.ReadHandoverSecretKey
 	w.resolveOutputs = svc.ResolveComponentOutputs
 	w.ensureHandover = tekton.EnsureHandoverSecret
 	w.deleteHandover = tekton.DeleteHandoverSecret
@@ -465,12 +466,14 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 	return nodeResult{Status: statusSucceeded}
 }
 
-// captureTofuOutputs reads the outputs a terraform apply unit stored in its
-// pair's handover Secret, persists them on the unit's component_run row, and
-// deletes the Secret (its planfile is spent and its outputs are now durable).
-// Every failure is logged and swallowed — the apply already succeeded, so
-// missing outputs degrade the record, never the run — and a Secret left behind
-// by a failure here is still deleted by the terminal sweep.
+// captureTofuOutputs reads the outputs and resource inventory a terraform
+// apply unit stored in its pair's handover Secret, persists them on the unit's
+// component_run row, and deletes the Secret (its planfile is spent and its
+// contents are now durable). Every failure is logged and swallowed — the apply
+// already succeeded, so a missing record degrades the history, never the run —
+// and a Secret left behind by a failure here is still deleted by the terminal
+// sweep. The two keys are independent: an unreadable inventory does not cost
+// the outputs, and vice versa.
 func (w *WorkflowRunWorker) captureTofuOutputs(ctx context.Context, a WorkflowRunArgs, node GraphNode, byID map[uuid.UUID]GraphNode, runnerConn k8s.Connection, crID uuid.UUID) {
 	// The Secret is keyed off the upstream plan node, exactly as the planner
 	// named it; no plan node (defensive — the apply script fails closed there)
@@ -480,19 +483,21 @@ func (w *WorkflowRunWorker) captureTofuOutputs(ctx context.Context, a WorkflowRu
 		return
 	}
 	name := tofuPlanArtifactSecret(a.WorkflowRunID, planID)
-	raw, err := w.captureOutputs(ctx, runnerConn, tekton.JobsNamespace, name)
-	if err != nil {
+
+	var outputs, resources string
+	if raw, err := w.captureHandover(ctx, runnerConn, tekton.JobsNamespace, name, tofu.OutputsKey); err != nil {
 		log.Printf("worker: workflow run %s: read outputs from secret %s: %v", a.WorkflowRunID, name, err)
-		return
-	}
-	outputs, err := normalizeTofuOutputs(raw)
-	if err != nil {
+	} else if outputs, err = normalizeTofuOutputs(raw); err != nil {
 		log.Printf("worker: workflow run %s: parse outputs from secret %s: %v", a.WorkflowRunID, name, err)
-		return
 	}
-	if outputs != "" {
-		if err := w.svc.SetComponentRunOutputs(ctx, a.OrgID, crID, outputs); err != nil {
-			// Keep the Secret: the outputs aren't durable yet, and the terminal
+	if raw, err := w.captureHandover(ctx, runnerConn, tekton.JobsNamespace, name, tofu.ResourcesKey); err != nil {
+		log.Printf("worker: workflow run %s: read resources from secret %s: %v", a.WorkflowRunID, name, err)
+	} else if resources, err = normalizeTofuResources(raw); err != nil {
+		log.Printf("worker: workflow run %s: parse resources from secret %s: %v", a.WorkflowRunID, name, err)
+	}
+	if outputs != "" || resources != "" {
+		if err := w.svc.SetComponentRunOutputs(ctx, a.OrgID, crID, outputs, resources); err != nil {
+			// Keep the Secret: the record isn't durable yet, and the terminal
 			// sweep will delete it regardless.
 			log.Printf("worker: workflow run %s: persist outputs for component run %s: %v", a.WorkflowRunID, crID, err)
 			return
@@ -511,6 +516,49 @@ type tofuOutput struct {
 	Value     json.RawMessage `json:"value"`
 	Type      json.RawMessage `json:"type"`
 	Sensitive bool            `json:"sensitive"`
+}
+
+// tofuResource mirrors one record of the resource inventory the apply step
+// reduces from `tofu show -json` (see tofu.ResourcesFile): the module-qualified
+// address plus the parts a resource browser lists. id is raw JSON — a string
+// for nearly every provider, null for a resource without one.
+type tofuResource struct {
+	Address  string          `json:"address"`
+	Mode     string          `json:"mode"`
+	Type     string          `json:"type"`
+	Name     string          `json:"name"`
+	Provider string          `json:"provider"`
+	ID       json.RawMessage `json:"id"`
+}
+
+// normalizeTofuResources validates and canonicalizes the raw inventory bytes
+// read from the handover Secret into the JSON array persisted on
+// component_runs.resources. Empty input, an empty array, or an array with no
+// addressed records yields "" (nothing to keep); bytes that don't parse as
+// the inventory shape are an error for the caller to log. Records without an
+// address are dropped — the address is the identity everything keys on.
+func normalizeTofuResources(raw []byte) (string, error) {
+	if len(raw) == 0 {
+		return "", nil
+	}
+	var records []tofuResource
+	if err := json.Unmarshal(raw, &records); err != nil {
+		return "", err
+	}
+	kept := records[:0]
+	for _, r := range records {
+		if r.Address != "" {
+			kept = append(kept, r)
+		}
+	}
+	if len(kept) == 0 {
+		return "", nil
+	}
+	b, err := json.Marshal(kept)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 // normalizeTofuOutputs validates and canonicalizes the raw `tofu output -json`
@@ -534,13 +582,6 @@ func normalizeTofuOutputs(raw []byte) (string, error) {
 		return "", err
 	}
 	return string(b), nil
-}
-
-// defaultCaptureOutputs reads the tofu.OutputsKey entry of a terraform pair's
-// handover Secret from the runner connection — the production seam behind
-// w.captureOutputs.
-func defaultCaptureOutputs(ctx context.Context, runnerConn k8s.Connection, namespace, secretName string) ([]byte, error) {
-	return tekton.ReadHandoverSecretKey(ctx, runnerConn, namespace, secretName, tofu.OutputsKey)
 }
 
 // encodeValuesRevision serializes the resolved values-source revisions (the

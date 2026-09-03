@@ -749,6 +749,33 @@ type OutputKey struct {
 	Sensitive bool
 }
 
+// LatestComponentState returns the component run that last recorded an
+// OpenTofu component's state — the most recent succeeded apply unit (keyed by
+// the derived apply id) that captured outputs or a resource inventory — or
+// ent's NotFoundError when the component has never applied successfully. The
+// component must belong to the org-scoped application: the row is looked up
+// through the component, so another org's run can't be read by id.
+func (s *Service) LatestComponentState(ctx context.Context, orgID, appID, componentID uuid.UUID) (*ent.ComponentRun, error) {
+	ok, err := s.ent.Component.Query().
+		Where(component.OrganizationID(orgID), component.ApplicationID(appID), component.ID(componentID)).
+		Exist(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, &ent.NotFoundError{}
+	}
+	return s.ent.ComponentRun.Query().
+		Where(
+			componentrun.OrganizationID(orgID),
+			componentrun.ComponentID(deriveApplyID(componentID)),
+			componentrun.StatusEQ(componentrun.StatusSucceeded),
+			componentrun.Or(componentrun.OutputsNEQ(""), componentrun.ResourcesNEQ("")),
+		).
+		Order(ent.Desc(componentrun.FieldFinishedAt)).
+		First(ctx)
+}
+
 // LatestOutputKeys returns, per component of the application, the output keys
 // captured by that component's latest successful run — keys (and sensitivity)
 // only, never the values. It mirrors ResolveComponentOutputs's "latest
@@ -848,11 +875,16 @@ func parseOutputKeys(raw string) []OutputKey {
 // SetComponentRunOutputs persists the structured outputs a terraform apply
 // step handed back through its handover Secret (tofu's `output -json` JSON),
 // written when the step settles succeeded on a deploy run. Org-scoped.
-func (s *Service) SetComponentRunOutputs(ctx context.Context, orgID, componentRunID uuid.UUID, outputs string) error {
-	affected, err := s.ent.ComponentRun.Update().
-		Where(componentrun.OrganizationID(orgID), componentrun.ID(componentRunID)).
-		SetOutputs(outputs).
-		Save(ctx)
+func (s *Service) SetComponentRunOutputs(ctx context.Context, orgID, componentRunID uuid.UUID, outputs, resources string) error {
+	upd := s.ent.ComponentRun.Update().
+		Where(componentrun.OrganizationID(orgID), componentrun.ID(componentRunID))
+	if outputs != "" {
+		upd.SetOutputs(outputs)
+	}
+	if resources != "" {
+		upd.SetResources(resources)
+	}
+	affected, err := upd.Save(ctx)
 	if err != nil {
 		return err
 	}
