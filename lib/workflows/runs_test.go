@@ -45,7 +45,7 @@ func TestSnapshotComponents(t *testing.T) {
 			// no overrides set
 		},
 	}
-	snap := snapshotComponents(comps, nil)
+	snap := snapshotComponents(comps, nil, ActionDeploy)
 	if len(snap.Nodes) != 2 {
 		t.Fatalf("nodes = %d, want 2", len(snap.Nodes))
 	}

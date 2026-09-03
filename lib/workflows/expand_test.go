@@ -40,7 +40,7 @@ func TestExpandExecutionNodes_TerraformSplit(t *testing.T) {
 	}
 	helmUp := GraphNode{ID: upstream, ComponentID: upstream, Name: "db", Type: TypeHelm}
 
-	out := expandExecutionNodes([]GraphNode{helmUp, tf})
+	out := expandExecutionNodes([]GraphNode{helmUp, tf}, ActionDeploy)
 
 	// helm (passthrough) + plan + apply.
 	if len(out) != 3 {
@@ -109,7 +109,7 @@ func TestExpandExecutionNodes_RewiresDependents(t *testing.T) {
 		{ID: consumer, ComponentID: consumer, Name: "c", Type: TypeHelm, DependsOn: []uuid.UUID{tfB}},
 	}
 
-	out := expandExecutionNodes(nodes)
+	out := expandExecutionNodes(nodes, ActionDeploy)
 	if len(out) != 5 { // 2 tofu × 2 + 1 helm
 		t.Fatalf("expected 5 execution nodes, got %d", len(out))
 	}
@@ -141,7 +141,7 @@ func TestExpandExecutionNodes_NonTerraformUnchanged(t *testing.T) {
 		{ID: h, ComponentID: h, Name: "h", Type: TypeHelm},
 		{ID: m, ComponentID: m, Name: "m", Type: TypeManifest, DependsOn: []uuid.UUID{h}},
 	}
-	out := expandExecutionNodes(nodes)
+	out := expandExecutionNodes(nodes, ActionDeploy)
 	if len(out) != 2 {
 		t.Fatalf("expected 2 nodes, got %d", len(out))
 	}
@@ -166,5 +166,43 @@ func TestDeriveApplyID_Deterministic(t *testing.T) {
 	}
 	if a == deriveApplyID(uuid.New()) {
 		t.Errorf("distinct components must derive distinct apply ids")
+	}
+}
+
+// TestExpandExecutionNodes_PreviewPlanOnly proves a preview run expands a
+// terraform component into just its plan unit — no apply unit, so the module is
+// planned once — with dependents still pointing at the authored id (which is
+// the plan unit's id) and the authored continue-on-failure carried onto the
+// plan.
+func TestExpandExecutionNodes_PreviewPlanOnly(t *testing.T) {
+	t.Parallel()
+
+	tfID := uuid.New()
+	downstream := uuid.New()
+	tf := GraphNode{
+		ID: tfID, ComponentID: tfID, Name: "infra", Type: TypeTerraform,
+		Config: map[string]string{terraformConfigBackend: "s3"}, RequiresApproval: true, ContinueOnFailure: true,
+	}
+	app := GraphNode{ID: downstream, ComponentID: downstream, Name: "app", Type: TypeHelm, DependsOn: []uuid.UUID{tfID}}
+
+	out := expandExecutionNodes([]GraphNode{tf, app}, ActionPreview)
+	if len(out) != 2 {
+		t.Fatalf("expected 2 execution nodes (plan + helm), got %d: %+v", len(out), out)
+	}
+	for _, n := range out {
+		if n.ID == deriveApplyID(tfID) {
+			t.Fatal("a preview must not emit an apply unit")
+		}
+	}
+	plan := findNode(t, out, tfID)
+	if plan.Config[terraformConfigCommand] != terraformCommandPlan || plan.RequiresApproval {
+		t.Errorf("plan unit wrong: %+v", plan)
+	}
+	if !plan.ContinueOnFailure {
+		t.Error("preview plan unit should carry the authored continue_on_failure")
+	}
+	helm := findNode(t, out, downstream)
+	if len(helm.DependsOn) != 1 || helm.DependsOn[0] != tfID {
+		t.Errorf("dependent should depend on the plan unit (authored id), got %v", helm.DependsOn)
 	}
 }

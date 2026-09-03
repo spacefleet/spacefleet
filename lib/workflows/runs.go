@@ -136,7 +136,7 @@ func (s *Service) BeginRun(ctx context.Context, orgID, appID uuid.UUID, action s
 		return nil, err
 	}
 
-	snapshot := snapshotComponents(comps, groups)
+	snapshot := snapshotComponents(comps, groups, action)
 	graphJSON, err := json.Marshal(snapshot)
 	if err != nil {
 		return nil, err
@@ -190,7 +190,7 @@ func (s *Service) BeginRun(ctx context.Context, orgID, appID uuid.UUID, action s
 // groups are retained on the snapshot (with member ids) only so a future run view
 // can render the boxes. Optional FK fields are emitted only when set (non-zero),
 // so a snapshot reads cleanly.
-func snapshotComponents(comps []*ent.Component, groups []*ent.ComponentGroup) GraphSnapshot {
+func snapshotComponents(comps []*ent.Component, groups []*ent.ComponentGroup, action string) GraphSnapshot {
 	// Reuse the pure expansion: build the inputs from the live rows.
 	compInputs := make([]ComponentInput, 0, len(comps))
 	for _, c := range comps {
@@ -266,7 +266,7 @@ func snapshotComponents(comps []*ent.Component, groups []*ent.ComponentGroup) Gr
 	// snapshot. Groups are unaffected: their members still reference the plan
 	// unit (which keeps the authored id), and dependents are rewired to the apply
 	// unit inside the expansion.
-	return GraphSnapshot{Nodes: expandExecutionNodes(nodes), Groups: graphGroups}
+	return GraphSnapshot{Nodes: expandExecutionNodes(nodes, action), Groups: graphGroups}
 }
 
 // tofuExecNamespace is the fixed UUIDv5 namespace used to derive an OpenTofu
@@ -307,13 +307,20 @@ const (
 // on its apply unit, since the deployment only "completes" once apply finishes
 // (a terraform→terraform dependency therefore chains plan→…→apply→plan). Both
 // units carry ComponentID = the authored id so component-scoped variables and
-// credentials resolve under it. This is a pure function (unit-testable).
-func expandExecutionNodes(nodes []GraphNode) []GraphNode {
+// credentials resolve under it.
+//
+// A preview run applies nothing, so it gets no apply unit: the terraform
+// component becomes just its plan unit (a read-only plan), and dependents keep
+// depending on the authored id — which IS the plan unit's id. Without this a
+// preview planned every module twice (both units rendered as plans).
+// This is a pure function (unit-testable).
+func expandExecutionNodes(nodes []GraphNode, action string) []GraphNode {
+	preview := action == ActionPreview
 	// applyOf maps a terraform component id to its apply unit id, so we can both
 	// emit the apply unit and rewire any dependent's edges onto it.
 	applyOf := make(map[uuid.UUID]uuid.UUID)
 	for _, n := range nodes {
-		if n.Type == TypeTerraform {
+		if n.Type == TypeTerraform && !preview {
 			applyOf[n.ID] = deriveApplyID(n.ID)
 		}
 	}
@@ -341,8 +348,6 @@ func expandExecutionNodes(nodes []GraphNode) []GraphNode {
 			continue
 		}
 
-		applyID := applyOf[n.ID]
-
 		plan := n
 		plan.ID = n.ID
 		plan.Name = n.Name + tofuPlanNameSuffix
@@ -350,6 +355,15 @@ func expandExecutionNodes(nodes []GraphNode) []GraphNode {
 		plan.RequiresApproval = false
 		plan.ContinueOnFailure = false
 		plan.Config = withCommand(n.Config, terraformCommandPlan)
+
+		if preview {
+			// Read-only: the plan unit is the whole component. Its continue-on-failure
+			// is the authored one, since there is no apply unit to carry it.
+			plan.ContinueOnFailure = n.ContinueOnFailure
+			out = append(out, plan)
+			continue
+		}
+		applyID := applyOf[n.ID]
 
 		apply := n
 		apply.ID = applyID

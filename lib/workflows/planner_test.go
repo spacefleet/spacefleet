@@ -594,7 +594,7 @@ func helmOutputsWorker(outputs map[uuid.UUID]string) *WorkflowRunWorker {
 // run snapshot does (so the plan/apply units carry the production naming) and
 // returns the nodes keyed by execution-unit id.
 func tofuSnapshotByID(authored ...GraphNode) map[uuid.UUID]GraphNode {
-	nodes := expandExecutionNodes(authored)
+	nodes := expandExecutionNodes(authored, ActionDeploy)
 	byID := make(map[uuid.UUID]GraphNode, len(nodes))
 	for _, n := range nodes {
 		byID[n.ID] = n

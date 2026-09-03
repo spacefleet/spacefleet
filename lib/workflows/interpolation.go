@@ -202,16 +202,31 @@ func tofuApplyUnitID(name string, byID map[uuid.UUID]GraphNode) (uuid.UUID, erro
 	var id uuid.UUID
 	found := false
 	for _, n := range byID {
-		if n.Type != TypeTerraform || n.Config[terraformConfigCommand] != terraformCommandApply {
+		if n.Type != TypeTerraform {
 			continue
 		}
-		if strings.TrimSuffix(n.Name, tofuApplyNameSuffix) != name {
+		// Match on either unit: a preview snapshot carries only the plan unit
+		// (whose id is the authored id), so the apply id is derived from it —
+		// the outputs it resolves against are the latest recorded ones either way.
+		var candidate uuid.UUID
+		switch n.Config[terraformConfigCommand] {
+		case terraformCommandApply:
+			if strings.TrimSuffix(n.Name, tofuApplyNameSuffix) != name {
+				continue
+			}
+			candidate = n.ID
+		case terraformCommandPlan:
+			if strings.TrimSuffix(n.Name, tofuPlanNameSuffix) != name {
+				continue
+			}
+			candidate = deriveApplyID(n.ID)
+		default:
 			continue
 		}
-		if found {
+		if found && candidate != id {
 			return uuid.Nil, fmt.Errorf("component name %q is ambiguous in this run — rename one of the OpenTofu components", name)
 		}
-		id, found = n.ID, true
+		id, found = candidate, true
 	}
 	if !found {
 		return uuid.Nil, fmt.Errorf("component %q is not an OpenTofu component of this run — outputs can only be referenced from an upstream OpenTofu component", name)
