@@ -28,6 +28,7 @@ import {
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import { useObjectStream } from "../lib/useObjectStream";
+import { usePodLogs } from "../lib/usePodLogs";
 import type { components } from "../api/schema";
 import { formatDuration } from "../lib/duration";
 import { DiffView } from "../components/DiffView";
@@ -518,6 +519,15 @@ function ComponentRunPanel({
     };
   }, [appId, runId, planRunId]);
 
+  // While the step is running, follow its pod output live (editor+ only — the
+  // stream is gated like the captured logs). Once it settles, the detail
+  // refetch brings the durable captured logs, which take over below.
+  const live = liveStatus === "running" && !!detail?.run_name && canApprove;
+  const liveLogs = usePodLogs(
+    `/api/applications/${appId}/runs/${runId}/components/${componentRunId}/logs/stream`,
+    live,
+  );
+
   // A settled OpenTofu plan step carries its own parsed plan (on any action):
   // that is the step's content, so it gets a Plan tab that leads once loaded.
   const ownPlan = !isPreview && !planRun ? (detail?.plan ?? null) : null;
@@ -711,9 +721,23 @@ function ComponentRunPanel({
               <PlanBody plan={ownPlan} body={detail.diff} />
             ) : outputEntries.length > 0 && tab === "outputs" ? (
               <OutputsTable entries={outputEntries} />
+            ) : live ? (
+              <pre
+                data-testid="live-logs"
+                className="h-full w-full overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-100"
+              >
+                {liveLogs.lines.length > 0
+                  ? liveLogs.lines.join("\n")
+                  : liveLogs.error
+                    ? `Waiting for output… (${liveLogs.error})`
+                    : "Waiting for output…"}
+              </pre>
             ) : (
               <pre className="h-full w-full overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-100">
-                {detail.logs || "No logs were captured for this step."}
+                {detail.logs ||
+                  (liveLogs.lines.length > 0
+                    ? liveLogs.lines.join("\n")
+                    : "No logs were captured for this step.")}
               </pre>
             )}
           </div>

@@ -1336,6 +1336,13 @@ paths:
   /api/applications/{id}/runs/{runId}/components/{componentRunId}:
     get:
       summary: Get one component run within a workflow run, with its logs
+      description: |
+        The captured `logs` are written when the step settles. While a step is
+        still running, editors can follow its output live at
+        /api/applications/{id}/runs/{runId}/components/{componentRunId}/logs/stream
+        (Server-Sent Events: a `log` event per line, then `eof` when the
+        container exits; 404 until the step's pod is scheduled, 403 below
+        editor).
       operationId: getComponentRun
       parameters:
         - $ref: "#/components/parameters/ApplicationID"

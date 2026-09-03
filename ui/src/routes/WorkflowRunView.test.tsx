@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkflowRunView } from "./WorkflowRunView";
 import { api } from "../api/client";
 import { useObjectStream } from "../lib/useObjectStream";
+import { usePodLogs } from "../lib/usePodLogs";
 
 vi.mock("../api/client", () => ({
   api: { GET: vi.fn(), POST: vi.fn() },
@@ -17,11 +18,16 @@ vi.mock("../lib/useObjectStream", () => ({
   useObjectStream: vi.fn(),
 }));
 
+vi.mock("../lib/usePodLogs", () => ({
+  usePodLogs: vi.fn(() => ({ lines: [], status: "idle", ended: false, error: null })),
+}));
+
 const mockApi = api as unknown as {
   GET: ReturnType<typeof vi.fn>;
   POST: ReturnType<typeof vi.fn>;
 };
 const mockStream = useObjectStream as unknown as ReturnType<typeof vi.fn>;
+const mockPodLogs = usePodLogs as unknown as ReturnType<typeof vi.fn>;
 
 const compA = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const compB = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
@@ -117,6 +123,8 @@ const awaitingDetail = {
 };
 
 beforeEach(() => {
+  mockPodLogs.mockReset();
+  mockPodLogs.mockImplementation(() => ({ lines: [], status: "idle", ended: false, error: null }));
   mockApi.GET.mockReset();
   mockApi.POST.mockReset();
   mockStream.mockReset();
@@ -365,6 +373,10 @@ describe("WorkflowRunView", () => {
   // A parsed plan as the API returns it for a settled OpenTofu plan step (the
   // list shape's plan summary plus, on the detail, per-resource diffs and the
   // plan body for an editor).
+  type GetImpl = (
+    path: string,
+    opts?: unknown,
+  ) => Promise<{ data?: unknown; error?: unknown }>;
   const parsedPlan = {
     has_changes: true,
     add: 1,
@@ -386,7 +398,7 @@ describe("WorkflowRunView", () => {
     mockStream.mockReturnValue({ value: null, status: "live", error: null });
     mockAwaitingComponentDetails();
     // Layer the parsed plan onto the plan step's detail.
-    const base = mockApi.GET.getMockImplementation()!;
+    const base = mockApi.GET.getMockImplementation() as GetImpl;
     mockApi.GET.mockImplementation(async (path: string, opts?: unknown) => {
       const res = await base(path, opts);
       const o = opts as { params?: { path?: { componentRunId?: string } } } | undefined;
@@ -394,7 +406,7 @@ describe("WorkflowRunView", () => {
         path === "/api/applications/{id}/runs/{runId}/components/{componentRunId}" &&
         o?.params?.path?.componentRunId === "cr-a"
       ) {
-        return { data: { ...res.data, plan: parsedPlan, diff: "tofu plan body text", has_changes: true }, error: undefined };
+        return { data: { ...(res.data as object), plan: parsedPlan, diff: "tofu plan body text", has_changes: true }, error: undefined };
       }
       return res;
     });
@@ -426,14 +438,14 @@ describe("WorkflowRunView", () => {
         cr.id === "cr-a" ? { ...cr, plan: parsedPlan } : cr,
       ),
     };
-    const base = mockApi.GET.getMockImplementation()!;
+    const base = mockApi.GET.getMockImplementation() as GetImpl;
     mockApi.GET.mockImplementation(async (path: string, opts?: unknown) => {
       if (path === "/api/applications/{id}/runs/{runId}")
         return { data: withPlan, error: undefined };
       const res = await base(path, opts);
       const o = opts as { params?: { path?: { componentRunId?: string } } } | undefined;
       if (o?.params?.path?.componentRunId === "cr-a")
-        return { data: { ...res.data, plan: parsedPlan }, error: undefined };
+        return { data: { ...(res.data as object), plan: parsedPlan }, error: undefined };
       return res;
     });
     renderRunView();
@@ -446,6 +458,60 @@ describe("WorkflowRunView", () => {
       await screen.findByText("Plan: 1 to add, 0 to change, 1 to destroy."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^plan/i })).toBeInTheDocument();
+  });
+
+  it("follows a running step's output live, then hands over to the captured logs", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    // A deploy run with one step in flight that the worker has submitted (it
+    // has a run name), so its pod output can be followed.
+    const liveRun = {
+      ...runningDetail,
+      action: "deploy",
+      component_runs: [
+        { id: "cr-a", component_id: compA, name: "release", type: "helm", status: "succeeded" },
+        { id: "cr-b", component_id: compB, name: "apply", type: "manifest", status: "running", run_name: "manifest-apply-x1" },
+      ],
+    };
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: liveRun, error: undefined });
+      return Promise.resolve({
+        data: { id: "cr-b", name: "apply", type: "manifest", status: "running", run_name: "manifest-apply-x1", logs: "" },
+        error: undefined,
+      });
+    });
+    mockPodLogs.mockImplementation((_path: string, enabled: boolean) =>
+      enabled
+        ? { lines: ["kubectl apply -f .", "deployment.apps/web configured"], status: "live", ended: false, error: null }
+        : { lines: [], status: "idle", ended: false, error: null },
+    );
+    renderRunView();
+    fireEvent.click(await screen.findByText("apply"));
+    const pane = await screen.findByTestId("live-logs");
+    expect(pane).toHaveTextContent("deployment.apps/web configured");
+    // The stream was opened on the step's own log-stream path, enabled.
+    expect(mockPodLogs).toHaveBeenCalledWith(
+      "/api/applications/app-1/runs/run-1/components/cr-b/logs/stream",
+      true,
+    );
+  });
+
+  it("does not open a live log stream for a step that has no run name yet", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: { ...runningDetail, action: "deploy" }, error: undefined });
+      return Promise.resolve({
+        data: { id: "cr-b", name: "apply", type: "manifest", status: "running", logs: "" },
+        error: undefined,
+      });
+    });
+    renderRunView();
+    fireEvent.click(await screen.findByText("apply"));
+    expect(
+      await screen.findByText("No logs were captured for this step."),
+    ).toBeInTheDocument();
+    expect(mockPodLogs).not.toHaveBeenCalledWith(expect.any(String), true);
   });
 
   // A settled deploy run for the tofu pair: both units succeeded, and the

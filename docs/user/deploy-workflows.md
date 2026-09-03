@@ -208,10 +208,11 @@ When every step has settled the run reaches a terminal state:
 - **Partial** — only steps marked *continue on failure* failed; the run
   finished, but not everything succeeded.
 
-Select a component in the run view to see its detail: the captured log output,
-and — for a **Preview** run — the diff that step would apply. (Logs and diffs can
-echo a chart's values, so like the values themselves they're shown only to
-members who can edit the application.)
+Select a component in the run view to see its detail: its log output — followed
+live while the step is still running, then kept once it settles — and, for a
+**Preview** run, the diff that step would apply. (Logs and diffs can echo a
+chart's values, so like the values themselves they're shown only to members who
+can edit the application.)
 
 ## Run history
 

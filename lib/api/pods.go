@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -255,6 +256,15 @@ func (s *Server) StreamPodLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rc.Close()
 
+	pumpLogStream(ctx, w, rc)
+}
+
+// pumpLogStream writes an open log body to the response as SSE — a `log` event
+// per line, heartbeats while idle, an `eof` event when the source closes —
+// until the source ends or ctx is done. Shared by the pod-log and
+// component-run-log streams; the caller owns (and closes) rc, whose Close
+// unblocks the scanner when the request context ends.
+func pumpLogStream(ctx context.Context, w http.ResponseWriter, rc io.Reader) {
 	sse, ok := newSSEWriter(w)
 	if !ok {
 		writeStreamError(w, http.StatusInternalServerError, "internal", "streaming unsupported")
@@ -263,7 +273,6 @@ func (s *Server) StreamPodLogs(w http.ResponseWriter, r *http.Request) {
 
 	// Scanning the log body blocks, so it runs in its own goroutine feeding a
 	// channel; the main loop multiplexes lines with heartbeats and cancellation.
-	// When the request context ends, the deferred Close unblocks the scanner.
 	lines := make(chan string)
 	go func() {
 		defer close(lines)

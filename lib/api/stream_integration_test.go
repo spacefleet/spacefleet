@@ -436,3 +436,86 @@ func (f *streamFixture) getRuns(token string, orgID uuid.UUID) RunList {
 	}
 	return list
 }
+
+// getStream opens an SSE-style GET as token and returns the response (the
+// caller closes the body). Unlike openStream it does not assert a 200, so the
+// error paths of a stream endpoint can be checked.
+func (f *streamFixture) getStream(ctx context.Context, token string, orgID uuid.UUID, path string) *http.Response {
+	f.t.Helper()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.server.URL+path, nil)
+	if err != nil {
+		f.t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Organization-ID", orgID.String())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		f.t.Fatalf("do request: %v", err)
+	}
+	return resp
+}
+
+// TestStreamComponentRunLogsGates proves the live step-log stream is editor-only
+// (a viewer is refused before any cluster is touched, matching the captured
+// logs' redaction), answers 404 for a step the worker has not submitted yet
+// (no run name — the client falls back to the captured logs), and is
+// org-scoped like every run endpoint.
+func TestStreamComponentRunLogsGates(t *testing.T) {
+	f := newStreamFixture(t)
+	editor, orgID := f.member("editor", membership.RoleEditor)
+	appID := f.seedApp(orgID)
+	run, err := f.workflows.BeginRun(context.Background(), orgID, appID, workflows.ActionDeploy)
+	if err != nil {
+		t.Fatalf("BeginRun: %v", err)
+	}
+	_, steps, err := f.workflows.GetRun(context.Background(), orgID, appID, run.ID)
+	if err != nil || len(steps) == 0 {
+		t.Fatalf("GetRun: %v (%d steps)", err, len(steps))
+	}
+	path := "/api/applications/" + appID.String() + "/runs/" + run.ID.String() + "/components/" + steps[0].ID.String() + "/logs/stream"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// A viewer of the same org is refused.
+	viewerU, err := f.client.User.Create().SetOidcSubject("viewer").SetEmail("viewer@test.local").Save(ctx)
+	if err != nil {
+		t.Fatalf("create viewer: %v", err)
+	}
+	if _, err := f.client.Membership.Create().SetOrganizationID(orgID).SetUserID(viewerU.ID).SetRole(membership.RoleViewer).Save(ctx); err != nil {
+		t.Fatalf("viewer membership: %v", err)
+	}
+	resp := f.getStream(ctx, "viewer", orgID, path)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("viewer status = %d, want 403", resp.StatusCode)
+	}
+
+	// The editor may follow it, but the step has no run name yet: 404, not a
+	// cluster call (the fixture has no clusters service, which would be a 503).
+	resp = f.getStream(ctx, editor, orgID, path)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("editor pending-step status = %d, want 404", resp.StatusCode)
+	}
+
+	// Once the worker has recorded a run name the cluster path is reached — here
+	// that surfaces as the missing clusters service, proving the lookup happens
+	// only after the role and existence checks passed.
+	if err := f.workflows.MarkComponentRun(ctx, orgID, steps[0].ID, "running", "submitted", "tofu-infra-abc"); err != nil {
+		t.Fatalf("MarkComponentRun: %v", err)
+	}
+	resp = f.getStream(ctx, editor, orgID, path)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("editor running-step status = %d, want 503 (no clusters service in fixture)", resp.StatusCode)
+	}
+
+	// Another org's member cannot see the step at all.
+	other, otherOrg := f.member("other", membership.RoleEditor)
+	resp = f.getStream(ctx, other, otherOrg, path)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("cross-org status = %d, want 404", resp.StatusCode)
+	}
+}
