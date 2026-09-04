@@ -34,6 +34,8 @@ const (
 	FieldGraph = "graph"
 	// FieldArgs holds the string denoting the args field in the database.
 	FieldArgs = "args"
+	// FieldTrigger holds the string denoting the trigger field in the database.
+	FieldTrigger = "trigger"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldStartedAt holds the string denoting the started_at field in the database.
@@ -76,6 +78,7 @@ var Columns = []string{
 	FieldJobID,
 	FieldGraph,
 	FieldArgs,
+	FieldTrigger,
 	FieldCreatedAt,
 	FieldStartedAt,
 	FieldFinishedAt,
@@ -210,6 +213,11 @@ func ByGraph(opts ...sql.OrderTermOption) OrderOption {
 // ByArgs orders the results by the args field.
 func ByArgs(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldArgs, opts...).ToFunc()
+}
+
+// ByTrigger orders the results by the trigger field.
+func ByTrigger(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTrigger, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

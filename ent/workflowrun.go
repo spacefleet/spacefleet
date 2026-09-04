@@ -38,6 +38,8 @@ type WorkflowRun struct {
 	Graph string `json:"graph,omitempty"`
 	// Args holds the value of the "args" field.
 	Args string `json:"args,omitempty"`
+	// Trigger holds the value of the "trigger" field.
+	Trigger string `json:"trigger,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// StartedAt holds the value of the "started_at" field.
@@ -90,7 +92,7 @@ func (*WorkflowRun) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case workflowrun.FieldAction, workflowrun.FieldStatus, workflowrun.FieldMessage, workflowrun.FieldStartedBy, workflowrun.FieldJobID, workflowrun.FieldGraph, workflowrun.FieldArgs:
+		case workflowrun.FieldAction, workflowrun.FieldStatus, workflowrun.FieldMessage, workflowrun.FieldStartedBy, workflowrun.FieldJobID, workflowrun.FieldGraph, workflowrun.FieldArgs, workflowrun.FieldTrigger:
 			values[i] = new(sql.NullString)
 		case workflowrun.FieldCreatedAt, workflowrun.FieldStartedAt, workflowrun.FieldFinishedAt, workflowrun.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -170,6 +172,12 @@ func (_m *WorkflowRun) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field args", values[i])
 			} else if value.Valid {
 				_m.Args = value.String
+			}
+		case workflowrun.FieldTrigger:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field trigger", values[i])
+			} else if value.Valid {
+				_m.Trigger = value.String
 			}
 		case workflowrun.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -269,6 +277,9 @@ func (_m *WorkflowRun) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("args=")
 	builder.WriteString(_m.Args)
+	builder.WriteString(", ")
+	builder.WriteString("trigger=")
+	builder.WriteString(_m.Trigger)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

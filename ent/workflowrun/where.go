@@ -91,6 +91,11 @@ func Args(v string) predicate.WorkflowRun {
 	return predicate.WorkflowRun(sql.FieldEQ(FieldArgs, v))
 }
 
+// Trigger applies equality check predicate on the "trigger" field. It's identical to TriggerEQ.
+func Trigger(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldEQ(FieldTrigger, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.WorkflowRun {
 	return predicate.WorkflowRun(sql.FieldEQ(FieldCreatedAt, v))
@@ -564,6 +569,81 @@ func ArgsEqualFold(v string) predicate.WorkflowRun {
 // ArgsContainsFold applies the ContainsFold predicate on the "args" field.
 func ArgsContainsFold(v string) predicate.WorkflowRun {
 	return predicate.WorkflowRun(sql.FieldContainsFold(FieldArgs, v))
+}
+
+// TriggerEQ applies the EQ predicate on the "trigger" field.
+func TriggerEQ(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldEQ(FieldTrigger, v))
+}
+
+// TriggerNEQ applies the NEQ predicate on the "trigger" field.
+func TriggerNEQ(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldNEQ(FieldTrigger, v))
+}
+
+// TriggerIn applies the In predicate on the "trigger" field.
+func TriggerIn(vs ...string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldIn(FieldTrigger, vs...))
+}
+
+// TriggerNotIn applies the NotIn predicate on the "trigger" field.
+func TriggerNotIn(vs ...string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldNotIn(FieldTrigger, vs...))
+}
+
+// TriggerGT applies the GT predicate on the "trigger" field.
+func TriggerGT(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldGT(FieldTrigger, v))
+}
+
+// TriggerGTE applies the GTE predicate on the "trigger" field.
+func TriggerGTE(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldGTE(FieldTrigger, v))
+}
+
+// TriggerLT applies the LT predicate on the "trigger" field.
+func TriggerLT(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldLT(FieldTrigger, v))
+}
+
+// TriggerLTE applies the LTE predicate on the "trigger" field.
+func TriggerLTE(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldLTE(FieldTrigger, v))
+}
+
+// TriggerContains applies the Contains predicate on the "trigger" field.
+func TriggerContains(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldContains(FieldTrigger, v))
+}
+
+// TriggerHasPrefix applies the HasPrefix predicate on the "trigger" field.
+func TriggerHasPrefix(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldHasPrefix(FieldTrigger, v))
+}
+
+// TriggerHasSuffix applies the HasSuffix predicate on the "trigger" field.
+func TriggerHasSuffix(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldHasSuffix(FieldTrigger, v))
+}
+
+// TriggerIsNil applies the IsNil predicate on the "trigger" field.
+func TriggerIsNil() predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldIsNull(FieldTrigger))
+}
+
+// TriggerNotNil applies the NotNil predicate on the "trigger" field.
+func TriggerNotNil() predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldNotNull(FieldTrigger))
+}
+
+// TriggerEqualFold applies the EqualFold predicate on the "trigger" field.
+func TriggerEqualFold(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldEqualFold(FieldTrigger, v))
+}
+
+// TriggerContainsFold applies the ContainsFold predicate on the "trigger" field.
+func TriggerContainsFold(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldContainsFold(FieldTrigger, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

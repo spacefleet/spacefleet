@@ -2763,6 +2763,14 @@ components:
           description: |
             How often, in minutes, a scheduled drift check runs on the
             application's OpenTofu components; 0 means never.
+        push_trigger:
+          $ref: "#/components/schemas/PushTrigger"
+        pr_plans:
+          type: boolean
+          description: |
+            Whether a pull request against a branch one of the application's
+            components tracks starts a preview run at the pull request's
+            head, reported back to GitHub as a check run.
         group_id:
           type: string
           format: uuid
@@ -2858,6 +2866,48 @@ components:
             application's OpenTofu components: 0 turns the schedule off;
             otherwise between 15 and 10080 (weekly). A check is skipped while
             another run is in flight and retried on the next tick.
+        push_trigger:
+          $ref: "#/components/schemas/PushTrigger"
+        pr_plans:
+          type: boolean
+
+    PushTrigger:
+      type: string
+      description: |
+        What a GitHub push to a branch one of the application's components
+        tracks starts: nothing (empty), a `preview`, or a `deploy`. Only
+        components attached to a connected GitHub installation take part;
+        a component tracks the branch named by its git ref, or the
+        repository's default branch when it has none.
+      enum: ["", preview, deploy]
+
+    RunTrigger:
+      type: object
+      description: |
+        How a run was started when it was not a person or the scheduler: the
+        GitHub event, repository, branch, commit, and sender, and the pull
+        request number for a pull-request preview. Absent on other runs.
+      required: [source, event, repo, branch, sha]
+      properties:
+        source:
+          type: string
+          description: Always `github` today.
+        event:
+          type: string
+          enum: [push, pull_request]
+        repo:
+          type: string
+          description: The repository's full name, e.g. `acme/infra`.
+        branch:
+          type: string
+          description: The pushed branch, or a pull request's head branch.
+        sha:
+          type: string
+        sender:
+          type: string
+          description: The GitHub login that caused the event.
+        pr_number:
+          type: integer
 
     ApplicationGroup:
       type: object
@@ -3578,6 +3628,8 @@ components:
           $ref: "#/components/schemas/StateOperation"
         scope:
           $ref: "#/components/schemas/RunScope"
+        trigger:
+          $ref: "#/components/schemas/RunTrigger"
 
     RunList:
       type: object

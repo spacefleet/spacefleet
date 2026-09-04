@@ -159,3 +159,15 @@ func TestSPAFallback(t *testing.T) {
 		t.Fatalf("expected html content-type, got %q", ct)
 	}
 }
+
+// TestGitHubWebhookRouteIsPublic confirms POST /api/webhooks/github is mounted
+// outside the auth chain: with no token it reaches the handler, which
+// reports 503 (no webhook secret configured) rather than 401.
+func TestGitHubWebhookRouteIsPublic(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/github", strings.NewReader("{}"))
+	rec := httptest.NewRecorder()
+	handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 from the unconfigured webhook, got %d", rec.Code)
+	}
+}

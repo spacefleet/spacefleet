@@ -128,6 +128,20 @@ func (_c *WorkflowRunCreate) SetNillableArgs(v *string) *WorkflowRunCreate {
 	return _c
 }
 
+// SetTrigger sets the "trigger" field.
+func (_c *WorkflowRunCreate) SetTrigger(v string) *WorkflowRunCreate {
+	_c.mutation.SetTrigger(v)
+	return _c
+}
+
+// SetNillableTrigger sets the "trigger" field if the given value is not nil.
+func (_c *WorkflowRunCreate) SetNillableTrigger(v *string) *WorkflowRunCreate {
+	if v != nil {
+		_c.SetTrigger(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *WorkflowRunCreate) SetCreatedAt(v time.Time) *WorkflowRunCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -361,6 +375,10 @@ func (_c *WorkflowRunCreate) createSpec() (*WorkflowRun, *sqlgraph.CreateSpec) {
 		_spec.SetField(workflowrun.FieldArgs, field.TypeString, value)
 		_node.Args = value
 	}
+	if value, ok := _c.mutation.Trigger(); ok {
+		_spec.SetField(workflowrun.FieldTrigger, field.TypeString, value)
+		_node.Trigger = value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(workflowrun.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -574,6 +592,24 @@ func (u *WorkflowRunUpsert) UpdateArgs() *WorkflowRunUpsert {
 // ClearArgs clears the value of the "args" field.
 func (u *WorkflowRunUpsert) ClearArgs() *WorkflowRunUpsert {
 	u.SetNull(workflowrun.FieldArgs)
+	return u
+}
+
+// SetTrigger sets the "trigger" field.
+func (u *WorkflowRunUpsert) SetTrigger(v string) *WorkflowRunUpsert {
+	u.Set(workflowrun.FieldTrigger, v)
+	return u
+}
+
+// UpdateTrigger sets the "trigger" field to the value that was provided on create.
+func (u *WorkflowRunUpsert) UpdateTrigger() *WorkflowRunUpsert {
+	u.SetExcluded(workflowrun.FieldTrigger)
+	return u
+}
+
+// ClearTrigger clears the value of the "trigger" field.
+func (u *WorkflowRunUpsert) ClearTrigger() *WorkflowRunUpsert {
+	u.SetNull(workflowrun.FieldTrigger)
 	return u
 }
 
@@ -812,6 +848,27 @@ func (u *WorkflowRunUpsertOne) UpdateArgs() *WorkflowRunUpsertOne {
 func (u *WorkflowRunUpsertOne) ClearArgs() *WorkflowRunUpsertOne {
 	return u.Update(func(s *WorkflowRunUpsert) {
 		s.ClearArgs()
+	})
+}
+
+// SetTrigger sets the "trigger" field.
+func (u *WorkflowRunUpsertOne) SetTrigger(v string) *WorkflowRunUpsertOne {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.SetTrigger(v)
+	})
+}
+
+// UpdateTrigger sets the "trigger" field to the value that was provided on create.
+func (u *WorkflowRunUpsertOne) UpdateTrigger() *WorkflowRunUpsertOne {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.UpdateTrigger()
+	})
+}
+
+// ClearTrigger clears the value of the "trigger" field.
+func (u *WorkflowRunUpsertOne) ClearTrigger() *WorkflowRunUpsertOne {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.ClearTrigger()
 	})
 }
 
@@ -1225,6 +1282,27 @@ func (u *WorkflowRunUpsertBulk) UpdateArgs() *WorkflowRunUpsertBulk {
 func (u *WorkflowRunUpsertBulk) ClearArgs() *WorkflowRunUpsertBulk {
 	return u.Update(func(s *WorkflowRunUpsert) {
 		s.ClearArgs()
+	})
+}
+
+// SetTrigger sets the "trigger" field.
+func (u *WorkflowRunUpsertBulk) SetTrigger(v string) *WorkflowRunUpsertBulk {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.SetTrigger(v)
+	})
+}
+
+// UpdateTrigger sets the "trigger" field to the value that was provided on create.
+func (u *WorkflowRunUpsertBulk) UpdateTrigger() *WorkflowRunUpsertBulk {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.UpdateTrigger()
+	})
+}
+
+// ClearTrigger clears the value of the "trigger" field.
+func (u *WorkflowRunUpsertBulk) ClearTrigger() *WorkflowRunUpsertBulk {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.ClearTrigger()
 	})
 }
 

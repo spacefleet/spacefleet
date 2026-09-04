@@ -44,6 +44,9 @@ type Server struct {
 	// base64 key as the credential sealer). Both empty when no App is configured.
 	githubAppSlug string
 	secretKey     string
+	// githubWebhookSecret verifies GitHub webhook deliveries (run triggers).
+	// Empty leaves the webhook endpoint off.
+	githubWebhookSecret string
 
 	// allowOrgCreation gates the create-organization endpoint. When false,
 	// the server refuses to mint new organizations (see config.AllowOrgCreation)
@@ -86,6 +89,7 @@ type ServerDeps struct {
 	ExternalURL         string
 	EmailEnabled        bool
 	GitHubAppSlug       string
+	GitHubWebhookSecret string
 	SecretKey           string
 	JobQueue            *queue.Client
 }
@@ -108,6 +112,7 @@ func NewServer(d ServerDeps) *Server {
 		externalURL:         d.ExternalURL,
 		emailEnabled:        d.EmailEnabled,
 		githubAppSlug:       d.GitHubAppSlug,
+		githubWebhookSecret: d.GitHubWebhookSecret,
 		secretKey:           d.SecretKey,
 		jobQueue:            d.JobQueue,
 	}

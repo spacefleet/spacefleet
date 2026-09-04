@@ -79,6 +79,34 @@ func (_u *ApplicationUpdate) AddDriftIntervalMinutes(v int) *ApplicationUpdate {
 	return _u
 }
 
+// SetPushTrigger sets the "push_trigger" field.
+func (_u *ApplicationUpdate) SetPushTrigger(v string) *ApplicationUpdate {
+	_u.mutation.SetPushTrigger(v)
+	return _u
+}
+
+// SetNillablePushTrigger sets the "push_trigger" field if the given value is not nil.
+func (_u *ApplicationUpdate) SetNillablePushTrigger(v *string) *ApplicationUpdate {
+	if v != nil {
+		_u.SetPushTrigger(*v)
+	}
+	return _u
+}
+
+// SetPrPlans sets the "pr_plans" field.
+func (_u *ApplicationUpdate) SetPrPlans(v bool) *ApplicationUpdate {
+	_u.mutation.SetPrPlans(v)
+	return _u
+}
+
+// SetNillablePrPlans sets the "pr_plans" field if the given value is not nil.
+func (_u *ApplicationUpdate) SetNillablePrPlans(v *bool) *ApplicationUpdate {
+	if v != nil {
+		_u.SetPrPlans(*v)
+	}
+	return _u
+}
+
 // SetRunnerClusterID sets the "runner_cluster_id" field.
 func (_u *ApplicationUpdate) SetRunnerClusterID(v uuid.UUID) *ApplicationUpdate {
 	_u.mutation.SetRunnerClusterID(v)
@@ -216,6 +244,12 @@ func (_u *ApplicationUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if value, ok := _u.mutation.AddedDriftIntervalMinutes(); ok {
 		_spec.AddField(application.FieldDriftIntervalMinutes, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.PushTrigger(); ok {
+		_spec.SetField(application.FieldPushTrigger, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PrPlans(); ok {
+		_spec.SetField(application.FieldPrPlans, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.GroupID(); ok {
 		_spec.SetField(application.FieldGroupID, field.TypeUUID, value)
 	}
@@ -320,6 +354,34 @@ func (_u *ApplicationUpdateOne) SetNillableDriftIntervalMinutes(v *int) *Applica
 // AddDriftIntervalMinutes adds value to the "drift_interval_minutes" field.
 func (_u *ApplicationUpdateOne) AddDriftIntervalMinutes(v int) *ApplicationUpdateOne {
 	_u.mutation.AddDriftIntervalMinutes(v)
+	return _u
+}
+
+// SetPushTrigger sets the "push_trigger" field.
+func (_u *ApplicationUpdateOne) SetPushTrigger(v string) *ApplicationUpdateOne {
+	_u.mutation.SetPushTrigger(v)
+	return _u
+}
+
+// SetNillablePushTrigger sets the "push_trigger" field if the given value is not nil.
+func (_u *ApplicationUpdateOne) SetNillablePushTrigger(v *string) *ApplicationUpdateOne {
+	if v != nil {
+		_u.SetPushTrigger(*v)
+	}
+	return _u
+}
+
+// SetPrPlans sets the "pr_plans" field.
+func (_u *ApplicationUpdateOne) SetPrPlans(v bool) *ApplicationUpdateOne {
+	_u.mutation.SetPrPlans(v)
+	return _u
+}
+
+// SetNillablePrPlans sets the "pr_plans" field if the given value is not nil.
+func (_u *ApplicationUpdateOne) SetNillablePrPlans(v *bool) *ApplicationUpdateOne {
+	if v != nil {
+		_u.SetPrPlans(*v)
+	}
 	return _u
 }
 
@@ -489,6 +551,12 @@ func (_u *ApplicationUpdateOne) sqlSave(ctx context.Context) (_node *Application
 	}
 	if value, ok := _u.mutation.AddedDriftIntervalMinutes(); ok {
 		_spec.AddField(application.FieldDriftIntervalMinutes, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.PushTrigger(); ok {
+		_spec.SetField(application.FieldPushTrigger, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PrPlans(); ok {
+		_spec.SetField(application.FieldPrPlans, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.GroupID(); ok {
 		_spec.SetField(application.FieldGroupID, field.TypeUUID, value)

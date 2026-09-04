@@ -60,6 +60,11 @@ func (WorkflowRun) Fields() []ent.Field {
 		// state_op run's operation + typed fields (tofu.StateOp). Text like graph
 		// so ent stays decoupled from the Go shape; empty for every other action.
 		field.Text("args").Optional(),
+		// How the run was started when it was not a person or the scheduler:
+		// the JSON of a workflows.RunTrigger (a GitHub push or pull request —
+		// repository, branch, commit, sender, and the check run it reports to).
+		// Empty for every other run.
+		field.Text("trigger").Optional(),
 		field.Time("created_at").Default(time.Now).Immutable(),
 		// When the run started executing (nil while pending).
 		field.Time("started_at").Optional().Nillable(),

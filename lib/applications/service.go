@@ -21,6 +21,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/applicationgroup"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/lib/slug"
+	"github.com/spacefleet/spacefleet/lib/workflows"
 )
 
 // Service is a thin wrapper over the ent client.
@@ -68,6 +69,11 @@ type UpdateParams struct {
 	// check for the application's OpenTofu components: 0 turns the schedule
 	// off; otherwise 15 minutes to a week (10080).
 	DriftIntervalMinutes *int
+	// PushTrigger sets what a GitHub push to a tracked branch starts: "" (off),
+	// "preview", or "deploy" (workflows.ValidPushTrigger).
+	PushTrigger *string
+	// PRPlans turns speculative preview runs for pull requests on or off.
+	PRPlans *bool
 }
 
 // Bounds for a scheduled drift-check interval (minutes): 0 is off; anything
@@ -150,6 +156,9 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, p UpdateParam
 			return nil, validationErr("drift check interval must be 0 (off) or between %d and %d minutes", MinDriftIntervalMinutes, MaxDriftIntervalMinutes)
 		}
 	}
+	if p.PushTrigger != nil && !workflows.ValidPushTrigger(*p.PushTrigger) {
+		return nil, validationErr("push trigger must be empty (off), %q, or %q", workflows.PushTriggerPreview, workflows.PushTriggerDeploy)
+	}
 	app, err := s.Get(ctx, orgID, id)
 	if err != nil {
 		return nil, err
@@ -160,6 +169,12 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, p UpdateParam
 	}
 	if p.DriftIntervalMinutes != nil {
 		upd.SetDriftIntervalMinutes(*p.DriftIntervalMinutes)
+	}
+	if p.PushTrigger != nil {
+		upd.SetPushTrigger(*p.PushTrigger)
+	}
+	if p.PRPlans != nil {
+		upd.SetPrPlans(*p.PRPlans)
 	}
 	return upd.Save(ctx)
 }

@@ -32,6 +32,7 @@ import { RunStatusBadge } from "../components/workflow/status";
 import {
   runActionLabel,
   runScopeDescription,
+  runTriggerDescription,
   stateOpDescription,
 } from "../components/workflow/runAction";
 import {
@@ -316,6 +317,11 @@ export function WorkflowRunView() {
               {run.scope && (
                 <p className="mt-1 text-sm text-neutral-600">
                   {runScopeDescription(run.scope)}
+                </p>
+              )}
+              {run.trigger && (
+                <p className="mt-1 text-sm text-neutral-600">
+                  {runTriggerDescription(run.trigger)}
                 </p>
               )}
               {run.state_op && (

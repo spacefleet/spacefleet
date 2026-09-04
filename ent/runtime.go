@@ -46,12 +46,20 @@ func init() {
 	application.DefaultDriftIntervalMinutes = applicationDescDriftIntervalMinutes.Default.(int)
 	// application.DriftIntervalMinutesValidator is a validator for the "drift_interval_minutes" field. It is called by the builders before save.
 	application.DriftIntervalMinutesValidator = applicationDescDriftIntervalMinutes.Validators[0].(func(int) error)
+	// applicationDescPushTrigger is the schema descriptor for push_trigger field.
+	applicationDescPushTrigger := applicationFields[5].Descriptor()
+	// application.DefaultPushTrigger holds the default value on creation for the push_trigger field.
+	application.DefaultPushTrigger = applicationDescPushTrigger.Default.(string)
+	// applicationDescPrPlans is the schema descriptor for pr_plans field.
+	applicationDescPrPlans := applicationFields[6].Descriptor()
+	// application.DefaultPrPlans holds the default value on creation for the pr_plans field.
+	application.DefaultPrPlans = applicationDescPrPlans.Default.(bool)
 	// applicationDescCreatedAt is the schema descriptor for created_at field.
-	applicationDescCreatedAt := applicationFields[7].Descriptor()
+	applicationDescCreatedAt := applicationFields[9].Descriptor()
 	// application.DefaultCreatedAt holds the default value on creation for the created_at field.
 	application.DefaultCreatedAt = applicationDescCreatedAt.Default.(func() time.Time)
 	// applicationDescUpdatedAt is the schema descriptor for updated_at field.
-	applicationDescUpdatedAt := applicationFields[8].Descriptor()
+	applicationDescUpdatedAt := applicationFields[10].Descriptor()
 	// application.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	application.DefaultUpdatedAt = applicationDescUpdatedAt.Default.(func() time.Time)
 	// application.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -359,11 +367,11 @@ func init() {
 	workflowrunFields := schema.WorkflowRun{}.Fields()
 	_ = workflowrunFields
 	// workflowrunDescCreatedAt is the schema descriptor for created_at field.
-	workflowrunDescCreatedAt := workflowrunFields[10].Descriptor()
+	workflowrunDescCreatedAt := workflowrunFields[11].Descriptor()
 	// workflowrun.DefaultCreatedAt holds the default value on creation for the created_at field.
 	workflowrun.DefaultCreatedAt = workflowrunDescCreatedAt.Default.(func() time.Time)
 	// workflowrunDescUpdatedAt is the schema descriptor for updated_at field.
-	workflowrunDescUpdatedAt := workflowrunFields[13].Descriptor()
+	workflowrunDescUpdatedAt := workflowrunFields[14].Descriptor()
 	// workflowrun.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	workflowrun.DefaultUpdatedAt = workflowrunDescUpdatedAt.Default.(func() time.Time)
 	// workflowrun.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

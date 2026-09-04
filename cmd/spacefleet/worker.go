@@ -110,6 +110,11 @@ func runWorker(_ []string) {
 	// minter, the cloud-credentials resolver (for a terraform run's cloud auth),
 	// and the variables resolver (the env injected into every component job).
 	workflowsSvc := workflows.NewService(entClient)
+	// Pull-request previews report back to GitHub as check runs when the App
+	// is configured (the authenticator doubles as the check-run client).
+	if checks, ok := ghAuth.(workflows.CheckRunClient); ok {
+		workflowsSvc.SetGitHubChecks(checks, cfg.ExternalURL)
+	}
 	variablesSvc := variables.NewService(entClient, sealer)
 	runResolver := deploy.NewResolver(clustersSvc, chartCredsSvc, githubInstallsSvc, cloudCredsSvc, variablesSvc)
 

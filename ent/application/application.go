@@ -23,6 +23,10 @@ const (
 	FieldImported = "imported"
 	// FieldDriftIntervalMinutes holds the string denoting the drift_interval_minutes field in the database.
 	FieldDriftIntervalMinutes = "drift_interval_minutes"
+	// FieldPushTrigger holds the string denoting the push_trigger field in the database.
+	FieldPushTrigger = "push_trigger"
+	// FieldPrPlans holds the string denoting the pr_plans field in the database.
+	FieldPrPlans = "pr_plans"
 	// FieldRunnerClusterID holds the string denoting the runner_cluster_id field in the database.
 	FieldRunnerClusterID = "runner_cluster_id"
 	// FieldGroupID holds the string denoting the group_id field in the database.
@@ -60,6 +64,8 @@ var Columns = []string{
 	FieldName,
 	FieldImported,
 	FieldDriftIntervalMinutes,
+	FieldPushTrigger,
+	FieldPrPlans,
 	FieldRunnerClusterID,
 	FieldGroupID,
 	FieldCreatedAt,
@@ -85,6 +91,10 @@ var (
 	DefaultDriftIntervalMinutes int
 	// DriftIntervalMinutesValidator is a validator for the "drift_interval_minutes" field. It is called by the builders before save.
 	DriftIntervalMinutesValidator func(int) error
+	// DefaultPushTrigger holds the default value on creation for the "push_trigger" field.
+	DefaultPushTrigger string
+	// DefaultPrPlans holds the default value on creation for the "pr_plans" field.
+	DefaultPrPlans bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -121,6 +131,16 @@ func ByImported(opts ...sql.OrderTermOption) OrderOption {
 // ByDriftIntervalMinutes orders the results by the drift_interval_minutes field.
 func ByDriftIntervalMinutes(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDriftIntervalMinutes, opts...).ToFunc()
+}
+
+// ByPushTrigger orders the results by the push_trigger field.
+func ByPushTrigger(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPushTrigger, opts...).ToFunc()
+}
+
+// ByPrPlans orders the results by the pr_plans field.
+func ByPrPlans(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPrPlans, opts...).ToFunc()
 }
 
 // ByRunnerClusterID orders the results by the runner_cluster_id field.

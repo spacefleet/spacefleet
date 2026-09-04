@@ -130,6 +130,14 @@ var ErrNoDriftTargets = errors.New("workflows: this application has no OpenTofu 
 // it to 409), a ValidationError-style sentinel for an unknown action, and ent's
 // NotFoundError for an application not in the org.
 func (s *Service) BeginRun(ctx context.Context, orgID, appID uuid.UUID, action string) (*ent.WorkflowRun, error) {
+	return s.beginRun(ctx, orgID, appID, action, nil)
+}
+
+// beginRun is BeginRun with an optional adjustment of the freshly loaded
+// components before they are snapshotted — how a triggered pull-request
+// preview pins the affected components to the pull request's head branch.
+// adjust may mutate the rows' config maps (they are this call's own copies).
+func (s *Service) beginRun(ctx context.Context, orgID, appID uuid.UUID, action string, adjust func([]*ent.Component)) (*ent.WorkflowRun, error) {
 	if !validAction(action) {
 		return nil, ErrInvalidAction
 	}
@@ -147,6 +155,9 @@ func (s *Service) BeginRun(ctx context.Context, orgID, appID uuid.UUID, action s
 		All(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if adjust != nil {
+		adjust(comps)
 	}
 	groups, err := s.listGroups(ctx, orgID, appID)
 	if err != nil {

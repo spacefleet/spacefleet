@@ -28,6 +28,10 @@ type Application struct {
 	Imported bool `json:"imported,omitempty"`
 	// DriftIntervalMinutes holds the value of the "drift_interval_minutes" field.
 	DriftIntervalMinutes int `json:"drift_interval_minutes,omitempty"`
+	// PushTrigger holds the value of the "push_trigger" field.
+	PushTrigger string `json:"push_trigger,omitempty"`
+	// PrPlans holds the value of the "pr_plans" field.
+	PrPlans bool `json:"pr_plans,omitempty"`
 	// RunnerClusterID holds the value of the "runner_cluster_id" field.
 	RunnerClusterID uuid.UUID `json:"runner_cluster_id,omitempty"`
 	// GroupID holds the value of the "group_id" field.
@@ -80,11 +84,11 @@ func (*Application) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case application.FieldImported:
+		case application.FieldImported, application.FieldPrPlans:
 			values[i] = new(sql.NullBool)
 		case application.FieldDriftIntervalMinutes:
 			values[i] = new(sql.NullInt64)
-		case application.FieldName:
+		case application.FieldName, application.FieldPushTrigger:
 			values[i] = new(sql.NullString)
 		case application.FieldCreatedAt, application.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -134,6 +138,18 @@ func (_m *Application) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field drift_interval_minutes", values[i])
 			} else if value.Valid {
 				_m.DriftIntervalMinutes = int(value.Int64)
+			}
+		case application.FieldPushTrigger:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field push_trigger", values[i])
+			} else if value.Valid {
+				_m.PushTrigger = value.String
+			}
+		case application.FieldPrPlans:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field pr_plans", values[i])
+			} else if value.Valid {
+				_m.PrPlans = value.Bool
 			}
 		case application.FieldRunnerClusterID:
 			if value, ok := values[i].(*uuid.UUID); !ok {
@@ -216,6 +232,12 @@ func (_m *Application) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("drift_interval_minutes=")
 	builder.WriteString(fmt.Sprintf("%v", _m.DriftIntervalMinutes))
+	builder.WriteString(", ")
+	builder.WriteString("push_trigger=")
+	builder.WriteString(_m.PushTrigger)
+	builder.WriteString(", ")
+	builder.WriteString("pr_plans=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PrPlans))
 	builder.WriteString(", ")
 	builder.WriteString("runner_cluster_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RunnerClusterID))

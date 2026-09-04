@@ -2009,6 +2009,13 @@ export interface components {
              *     application's OpenTofu components; 0 means never.
              */
             drift_interval_minutes?: number;
+            push_trigger?: components["schemas"]["PushTrigger"];
+            /**
+             * @description Whether a pull request against a branch one of the application's
+             *     components tracks starts a preview run at the pull request's
+             *     head, reported back to GitHub as a check run.
+             */
+            pr_plans?: boolean;
             /**
              * Format: uuid
              * @description The application group (folder) this application belongs to, or null
@@ -2083,6 +2090,36 @@ export interface components {
              *     another run is in flight and retried on the next tick.
              */
             drift_interval_minutes?: number;
+            push_trigger?: components["schemas"]["PushTrigger"];
+            pr_plans?: boolean;
+        };
+        /**
+         * @description What a GitHub push to a branch one of the application's components
+         *     tracks starts: nothing (empty), a `preview`, or a `deploy`. Only
+         *     components attached to a connected GitHub installation take part;
+         *     a component tracks the branch named by its git ref, or the
+         *     repository's default branch when it has none.
+         * @enum {string}
+         */
+        PushTrigger: "" | "preview" | "deploy";
+        /**
+         * @description How a run was started when it was not a person or the scheduler: the
+         *     GitHub event, repository, branch, commit, and sender, and the pull
+         *     request number for a pull-request preview. Absent on other runs.
+         */
+        RunTrigger: {
+            /** @description Always `github` today. */
+            source: string;
+            /** @enum {string} */
+            event: "push" | "pull_request";
+            /** @description The repository's full name, e.g. `acme/infra`. */
+            repo: string;
+            /** @description The pushed branch, or a pull request's head branch. */
+            branch: string;
+            sha: string;
+            /** @description The GitHub login that caused the event. */
+            sender?: string;
+            pr_number?: number;
         };
         /**
          * @description A top-level folder for organizing an organization's applications. An
@@ -2600,6 +2637,7 @@ export interface components {
             started_by?: string;
             state_op?: components["schemas"]["StateOperation"];
             scope?: components["schemas"]["RunScope"];
+            trigger?: components["schemas"]["RunTrigger"];
         };
         RunList: {
             runs: components["schemas"]["WorkflowRun"][];

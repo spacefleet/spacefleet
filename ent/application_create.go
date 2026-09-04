@@ -66,6 +66,34 @@ func (_c *ApplicationCreate) SetNillableDriftIntervalMinutes(v *int) *Applicatio
 	return _c
 }
 
+// SetPushTrigger sets the "push_trigger" field.
+func (_c *ApplicationCreate) SetPushTrigger(v string) *ApplicationCreate {
+	_c.mutation.SetPushTrigger(v)
+	return _c
+}
+
+// SetNillablePushTrigger sets the "push_trigger" field if the given value is not nil.
+func (_c *ApplicationCreate) SetNillablePushTrigger(v *string) *ApplicationCreate {
+	if v != nil {
+		_c.SetPushTrigger(*v)
+	}
+	return _c
+}
+
+// SetPrPlans sets the "pr_plans" field.
+func (_c *ApplicationCreate) SetPrPlans(v bool) *ApplicationCreate {
+	_c.mutation.SetPrPlans(v)
+	return _c
+}
+
+// SetNillablePrPlans sets the "pr_plans" field if the given value is not nil.
+func (_c *ApplicationCreate) SetNillablePrPlans(v *bool) *ApplicationCreate {
+	if v != nil {
+		_c.SetPrPlans(*v)
+	}
+	return _c
+}
+
 // SetRunnerClusterID sets the "runner_cluster_id" field.
 func (_c *ApplicationCreate) SetRunnerClusterID(v uuid.UUID) *ApplicationCreate {
 	_c.mutation.SetRunnerClusterID(v)
@@ -181,6 +209,14 @@ func (_c *ApplicationCreate) defaults() {
 		v := application.DefaultDriftIntervalMinutes
 		_c.mutation.SetDriftIntervalMinutes(v)
 	}
+	if _, ok := _c.mutation.PushTrigger(); !ok {
+		v := application.DefaultPushTrigger
+		_c.mutation.SetPushTrigger(v)
+	}
+	if _, ok := _c.mutation.PrPlans(); !ok {
+		v := application.DefaultPrPlans
+		_c.mutation.SetPrPlans(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := application.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -218,6 +254,12 @@ func (_c *ApplicationCreate) check() error {
 		if err := application.DriftIntervalMinutesValidator(v); err != nil {
 			return &ValidationError{Name: "drift_interval_minutes", err: fmt.Errorf(`ent: validator failed for field "Application.drift_interval_minutes": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.PushTrigger(); !ok {
+		return &ValidationError{Name: "push_trigger", err: errors.New(`ent: missing required field "Application.push_trigger"`)}
+	}
+	if _, ok := _c.mutation.PrPlans(); !ok {
+		return &ValidationError{Name: "pr_plans", err: errors.New(`ent: missing required field "Application.pr_plans"`)}
 	}
 	if _, ok := _c.mutation.RunnerClusterID(); !ok {
 		return &ValidationError{Name: "runner_cluster_id", err: errors.New(`ent: missing required field "Application.runner_cluster_id"`)}
@@ -281,6 +323,14 @@ func (_c *ApplicationCreate) createSpec() (*Application, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DriftIntervalMinutes(); ok {
 		_spec.SetField(application.FieldDriftIntervalMinutes, field.TypeInt, value)
 		_node.DriftIntervalMinutes = value
+	}
+	if value, ok := _c.mutation.PushTrigger(); ok {
+		_spec.SetField(application.FieldPushTrigger, field.TypeString, value)
+		_node.PushTrigger = value
+	}
+	if value, ok := _c.mutation.PrPlans(); ok {
+		_spec.SetField(application.FieldPrPlans, field.TypeBool, value)
+		_node.PrPlans = value
 	}
 	if value, ok := _c.mutation.GroupID(); ok {
 		_spec.SetField(application.FieldGroupID, field.TypeUUID, value)
@@ -419,6 +469,30 @@ func (u *ApplicationUpsert) UpdateDriftIntervalMinutes() *ApplicationUpsert {
 // AddDriftIntervalMinutes adds v to the "drift_interval_minutes" field.
 func (u *ApplicationUpsert) AddDriftIntervalMinutes(v int) *ApplicationUpsert {
 	u.Add(application.FieldDriftIntervalMinutes, v)
+	return u
+}
+
+// SetPushTrigger sets the "push_trigger" field.
+func (u *ApplicationUpsert) SetPushTrigger(v string) *ApplicationUpsert {
+	u.Set(application.FieldPushTrigger, v)
+	return u
+}
+
+// UpdatePushTrigger sets the "push_trigger" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdatePushTrigger() *ApplicationUpsert {
+	u.SetExcluded(application.FieldPushTrigger)
+	return u
+}
+
+// SetPrPlans sets the "pr_plans" field.
+func (u *ApplicationUpsert) SetPrPlans(v bool) *ApplicationUpsert {
+	u.Set(application.FieldPrPlans, v)
+	return u
+}
+
+// UpdatePrPlans sets the "pr_plans" field to the value that was provided on create.
+func (u *ApplicationUpsert) UpdatePrPlans() *ApplicationUpsert {
+	u.SetExcluded(application.FieldPrPlans)
 	return u
 }
 
@@ -564,6 +638,34 @@ func (u *ApplicationUpsertOne) AddDriftIntervalMinutes(v int) *ApplicationUpsert
 func (u *ApplicationUpsertOne) UpdateDriftIntervalMinutes() *ApplicationUpsertOne {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.UpdateDriftIntervalMinutes()
+	})
+}
+
+// SetPushTrigger sets the "push_trigger" field.
+func (u *ApplicationUpsertOne) SetPushTrigger(v string) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetPushTrigger(v)
+	})
+}
+
+// UpdatePushTrigger sets the "push_trigger" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdatePushTrigger() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdatePushTrigger()
+	})
+}
+
+// SetPrPlans sets the "pr_plans" field.
+func (u *ApplicationUpsertOne) SetPrPlans(v bool) *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetPrPlans(v)
+	})
+}
+
+// UpdatePrPlans sets the "pr_plans" field to the value that was provided on create.
+func (u *ApplicationUpsertOne) UpdatePrPlans() *ApplicationUpsertOne {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdatePrPlans()
 	})
 }
 
@@ -883,6 +985,34 @@ func (u *ApplicationUpsertBulk) AddDriftIntervalMinutes(v int) *ApplicationUpser
 func (u *ApplicationUpsertBulk) UpdateDriftIntervalMinutes() *ApplicationUpsertBulk {
 	return u.Update(func(s *ApplicationUpsert) {
 		s.UpdateDriftIntervalMinutes()
+	})
+}
+
+// SetPushTrigger sets the "push_trigger" field.
+func (u *ApplicationUpsertBulk) SetPushTrigger(v string) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetPushTrigger(v)
+	})
+}
+
+// UpdatePushTrigger sets the "push_trigger" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdatePushTrigger() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdatePushTrigger()
+	})
+}
+
+// SetPrPlans sets the "pr_plans" field.
+func (u *ApplicationUpsertBulk) SetPrPlans(v bool) *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.SetPrPlans(v)
+	})
+}
+
+// UpdatePrPlans sets the "pr_plans" field to the value that was provided on create.
+func (u *ApplicationUpsertBulk) UpdatePrPlans() *ApplicationUpsertBulk {
+	return u.Update(func(s *ApplicationUpsert) {
+		s.UpdatePrPlans()
 	})
 }
 

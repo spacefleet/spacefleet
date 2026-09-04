@@ -142,6 +142,11 @@ type Config struct {
 	GitHubAppPrivateKey   string
 	GitHubAppClientID     string
 	GitHubAppClientSecret string
+	// GitHubAppWebhookSecret verifies GitHub webhook deliveries (run
+	// triggers: push and pull_request events). Optional: unset leaves the
+	// webhook endpoint off while the rest of the GitHub App keeps working.
+	// A secret, never surfaced to the browser.
+	GitHubAppWebhookSecret string
 }
 
 // GitHubAppEnabled reports whether the GitHub App is fully configured (App ID,
@@ -250,6 +255,7 @@ func Load() (*Config, error) {
 	cfg.GitHubAppPrivateKey = privateKey
 	cfg.GitHubAppClientID = os.Getenv("GITHUB_APP_CLIENT_ID")
 	cfg.GitHubAppClientSecret = os.Getenv("GITHUB_APP_CLIENT_SECRET")
+	cfg.GitHubAppWebhookSecret = os.Getenv("GITHUB_APP_WEBHOOK_SECRET")
 
 	return cfg, nil
 }

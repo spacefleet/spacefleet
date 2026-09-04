@@ -156,6 +156,26 @@ func (_u *WorkflowRunUpdate) ClearArgs() *WorkflowRunUpdate {
 	return _u
 }
 
+// SetTrigger sets the "trigger" field.
+func (_u *WorkflowRunUpdate) SetTrigger(v string) *WorkflowRunUpdate {
+	_u.mutation.SetTrigger(v)
+	return _u
+}
+
+// SetNillableTrigger sets the "trigger" field if the given value is not nil.
+func (_u *WorkflowRunUpdate) SetNillableTrigger(v *string) *WorkflowRunUpdate {
+	if v != nil {
+		_u.SetTrigger(*v)
+	}
+	return _u
+}
+
+// ClearTrigger clears the value of the "trigger" field.
+func (_u *WorkflowRunUpdate) ClearTrigger() *WorkflowRunUpdate {
+	_u.mutation.ClearTrigger()
+	return _u
+}
+
 // SetStartedAt sets the "started_at" field.
 func (_u *WorkflowRunUpdate) SetStartedAt(v time.Time) *WorkflowRunUpdate {
 	_u.mutation.SetStartedAt(v)
@@ -311,6 +331,12 @@ func (_u *WorkflowRunUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if _u.mutation.ArgsCleared() {
 		_spec.ClearField(workflowrun.FieldArgs, field.TypeString)
+	}
+	if value, ok := _u.mutation.Trigger(); ok {
+		_spec.SetField(workflowrun.FieldTrigger, field.TypeString, value)
+	}
+	if _u.mutation.TriggerCleared() {
+		_spec.ClearField(workflowrun.FieldTrigger, field.TypeString)
 	}
 	if value, ok := _u.mutation.StartedAt(); ok {
 		_spec.SetField(workflowrun.FieldStartedAt, field.TypeTime, value)
@@ -472,6 +498,26 @@ func (_u *WorkflowRunUpdateOne) SetNillableArgs(v *string) *WorkflowRunUpdateOne
 // ClearArgs clears the value of the "args" field.
 func (_u *WorkflowRunUpdateOne) ClearArgs() *WorkflowRunUpdateOne {
 	_u.mutation.ClearArgs()
+	return _u
+}
+
+// SetTrigger sets the "trigger" field.
+func (_u *WorkflowRunUpdateOne) SetTrigger(v string) *WorkflowRunUpdateOne {
+	_u.mutation.SetTrigger(v)
+	return _u
+}
+
+// SetNillableTrigger sets the "trigger" field if the given value is not nil.
+func (_u *WorkflowRunUpdateOne) SetNillableTrigger(v *string) *WorkflowRunUpdateOne {
+	if v != nil {
+		_u.SetTrigger(*v)
+	}
+	return _u
+}
+
+// ClearTrigger clears the value of the "trigger" field.
+func (_u *WorkflowRunUpdateOne) ClearTrigger() *WorkflowRunUpdateOne {
+	_u.mutation.ClearTrigger()
 	return _u
 }
 
@@ -660,6 +706,12 @@ func (_u *WorkflowRunUpdateOne) sqlSave(ctx context.Context) (_node *WorkflowRun
 	}
 	if _u.mutation.ArgsCleared() {
 		_spec.ClearField(workflowrun.FieldArgs, field.TypeString)
+	}
+	if value, ok := _u.mutation.Trigger(); ok {
+		_spec.SetField(workflowrun.FieldTrigger, field.TypeString, value)
+	}
+	if _u.mutation.TriggerCleared() {
+		_spec.ClearField(workflowrun.FieldTrigger, field.TypeString)
 	}
 	if value, ok := _u.mutation.StartedAt(); ok {
 		_spec.SetField(workflowrun.FieldStartedAt, field.TypeTime, value)

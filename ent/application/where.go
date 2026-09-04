@@ -76,6 +76,16 @@ func DriftIntervalMinutes(v int) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldDriftIntervalMinutes, v))
 }
 
+// PushTrigger applies equality check predicate on the "push_trigger" field. It's identical to PushTriggerEQ.
+func PushTrigger(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldPushTrigger, v))
+}
+
+// PrPlans applies equality check predicate on the "pr_plans" field. It's identical to PrPlansEQ.
+func PrPlans(v bool) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldPrPlans, v))
+}
+
 // RunnerClusterID applies equality check predicate on the "runner_cluster_id" field. It's identical to RunnerClusterIDEQ.
 func RunnerClusterID(v uuid.UUID) predicate.Application {
 	return predicate.Application(sql.FieldEQ(FieldRunnerClusterID, v))
@@ -229,6 +239,81 @@ func DriftIntervalMinutesLT(v int) predicate.Application {
 // DriftIntervalMinutesLTE applies the LTE predicate on the "drift_interval_minutes" field.
 func DriftIntervalMinutesLTE(v int) predicate.Application {
 	return predicate.Application(sql.FieldLTE(FieldDriftIntervalMinutes, v))
+}
+
+// PushTriggerEQ applies the EQ predicate on the "push_trigger" field.
+func PushTriggerEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldPushTrigger, v))
+}
+
+// PushTriggerNEQ applies the NEQ predicate on the "push_trigger" field.
+func PushTriggerNEQ(v string) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldPushTrigger, v))
+}
+
+// PushTriggerIn applies the In predicate on the "push_trigger" field.
+func PushTriggerIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldIn(FieldPushTrigger, vs...))
+}
+
+// PushTriggerNotIn applies the NotIn predicate on the "push_trigger" field.
+func PushTriggerNotIn(vs ...string) predicate.Application {
+	return predicate.Application(sql.FieldNotIn(FieldPushTrigger, vs...))
+}
+
+// PushTriggerGT applies the GT predicate on the "push_trigger" field.
+func PushTriggerGT(v string) predicate.Application {
+	return predicate.Application(sql.FieldGT(FieldPushTrigger, v))
+}
+
+// PushTriggerGTE applies the GTE predicate on the "push_trigger" field.
+func PushTriggerGTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldGTE(FieldPushTrigger, v))
+}
+
+// PushTriggerLT applies the LT predicate on the "push_trigger" field.
+func PushTriggerLT(v string) predicate.Application {
+	return predicate.Application(sql.FieldLT(FieldPushTrigger, v))
+}
+
+// PushTriggerLTE applies the LTE predicate on the "push_trigger" field.
+func PushTriggerLTE(v string) predicate.Application {
+	return predicate.Application(sql.FieldLTE(FieldPushTrigger, v))
+}
+
+// PushTriggerContains applies the Contains predicate on the "push_trigger" field.
+func PushTriggerContains(v string) predicate.Application {
+	return predicate.Application(sql.FieldContains(FieldPushTrigger, v))
+}
+
+// PushTriggerHasPrefix applies the HasPrefix predicate on the "push_trigger" field.
+func PushTriggerHasPrefix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasPrefix(FieldPushTrigger, v))
+}
+
+// PushTriggerHasSuffix applies the HasSuffix predicate on the "push_trigger" field.
+func PushTriggerHasSuffix(v string) predicate.Application {
+	return predicate.Application(sql.FieldHasSuffix(FieldPushTrigger, v))
+}
+
+// PushTriggerEqualFold applies the EqualFold predicate on the "push_trigger" field.
+func PushTriggerEqualFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldEqualFold(FieldPushTrigger, v))
+}
+
+// PushTriggerContainsFold applies the ContainsFold predicate on the "push_trigger" field.
+func PushTriggerContainsFold(v string) predicate.Application {
+	return predicate.Application(sql.FieldContainsFold(FieldPushTrigger, v))
+}
+
+// PrPlansEQ applies the EQ predicate on the "pr_plans" field.
+func PrPlansEQ(v bool) predicate.Application {
+	return predicate.Application(sql.FieldEQ(FieldPrPlans, v))
+}
+
+// PrPlansNEQ applies the NEQ predicate on the "pr_plans" field.
+func PrPlansNEQ(v bool) predicate.Application {
+	return predicate.Application(sql.FieldNEQ(FieldPrPlans, v))
 }
 
 // RunnerClusterIDEQ applies the EQ predicate on the "runner_cluster_id" field.

@@ -35,6 +35,10 @@ type Service struct {
 	// what the abandoned run left on its runner cluster (planfile-handover
 	// Secrets). See OnReaped.
 	reapHook func(context.Context, *ent.WorkflowRun)
+	// checks posts check runs for pull-request previews; externalURL is the
+	// deployment's public base URL those checks link to. See SetGitHubChecks.
+	checks      CheckRunClient
+	externalURL string
 }
 
 // NewService builds the workflow service over the ent client.

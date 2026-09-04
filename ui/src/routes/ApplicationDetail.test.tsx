@@ -249,6 +249,40 @@ describe("ApplicationDetail overview", () => {
   });
 });
 
+describe("triggers", () => {
+  it("saves the push trigger and pull-request plans on the application", async () => {
+    mockApi.PATCH.mockResolvedValueOnce({
+      data: { ...app, push_trigger: "deploy" },
+      error: undefined,
+      response: { status: 200 },
+    });
+    renderDetail();
+    await screen.findByText("web");
+    const select = screen.getByLabelText("On push") as HTMLSelectElement;
+    expect(select.value).toBe("");
+    await userEvent.selectOptions(select, "deploy");
+    expect(mockApi.PATCH).toHaveBeenCalledWith(
+      "/api/applications/{id}",
+      expect.objectContaining({ body: { push_trigger: "deploy" } }),
+    );
+    await waitFor(() => expect(select.value).toBe("deploy"));
+
+    mockApi.PATCH.mockResolvedValueOnce({
+      data: { ...app, push_trigger: "deploy", pr_plans: true },
+      error: undefined,
+      response: { status: 200 },
+    });
+    const prPlans = screen.getByLabelText("Plan pull requests") as HTMLInputElement;
+    expect(prPlans.checked).toBe(false);
+    await userEvent.click(prPlans);
+    expect(mockApi.PATCH).toHaveBeenLastCalledWith(
+      "/api/applications/{id}",
+      expect.objectContaining({ body: { pr_plans: true } }),
+    );
+    await waitFor(() => expect(prPlans.checked).toBe(true));
+  });
+});
+
 describe("drift schedule", () => {
   it("saves the drift-check interval on the application and reflects it", async () => {
     mockApi.PATCH.mockResolvedValue({

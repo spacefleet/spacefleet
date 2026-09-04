@@ -38,6 +38,13 @@ func (Application) Fields() []ent.Field {
 		// application's OpenTofu components; 0 means never. See
 		// workflows.RunDriftScheduler.
 		field.Int("drift_interval_minutes").Default(0).NonNegative(),
+		// What a GitHub push to a branch one of the application's components
+		// tracks starts: "" (nothing), "preview", or "deploy". See
+		// workflows.TriggerRuns.
+		field.String("push_trigger").Default(""),
+		// Whether a pull request against a tracked branch starts a preview run
+		// at the pull request's head, reported back to GitHub as a check run.
+		field.Bool("pr_plans").Default(false),
 		// FK column bound to the runner_cluster edge below: the Tekton-enabled
 		// cluster the management jobs run on. There is no app-level target cluster
 		// or namespace — targeting lives on the individual components.

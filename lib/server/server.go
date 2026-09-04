@@ -71,6 +71,11 @@ func New(cfg *config.Config) (*http.Server, error) {
 	applicationsSvc := applications.NewService(entClient)
 	applicationGroupsSvc := applicationgroups.NewService(entClient)
 	workflowsSvc := workflows.NewService(entClient)
+	// Pull-request previews report back to GitHub as check runs when the App
+	// is configured (the authenticator doubles as the check-run client).
+	if checks, ok := ghAuth.(workflows.CheckRunClient); ok {
+		workflowsSvc.SetGitHubChecks(checks, cfg.ExternalURL)
+	}
 	variablesSvc := variables.NewService(entClient, sealer)
 	invitesSvc := invitations.NewService(entClient)
 
@@ -108,6 +113,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 		ExternalURL:         cfg.ExternalURL,
 		EmailEnabled:        cfg.EmailEnabled(),
 		GitHubAppSlug:       cfg.GitHubAppSlug,
+		GitHubWebhookSecret: cfg.GitHubAppWebhookSecret,
 		SecretKey:           cfg.SecretKey,
 		JobQueue:            jobQueue,
 	}

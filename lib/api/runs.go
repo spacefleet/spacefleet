@@ -168,6 +168,9 @@ func (s *Server) CancelRun(ctx context.Context, req CancelRunRequestObject) (Can
 			_ = s.jobQueue.JobCancel(ctx, jobID)
 		}
 	}
+	// A cancelled pull-request preview settles its check run here — the
+	// worker's settle path is bypassed by the cancel.
+	s.workflows.CompleteTriggerCheck(ctx, orgID, run.ID)
 	return CancelRun200JSONResponse(toAPIWorkflowRun(run)), nil
 }
 
@@ -327,7 +330,31 @@ func toAPIWorkflowRun(r *ent.WorkflowRun) WorkflowRun {
 		StartedBy:     optStr(r.StartedBy),
 		StateOp:       toAPIStateOperation(r),
 		Scope:         toAPIRunScope(r),
+		Trigger:       toAPIRunTrigger(r),
 	}
+}
+
+// toAPIRunTrigger maps a triggered run's stored trigger to the API shape;
+// nil for a run a person or the scheduler started (or an undecodable one).
+// The check run id and installation id stay internal.
+func toAPIRunTrigger(r *ent.WorkflowRun) *RunTrigger {
+	t, ok, err := workflows.TriggerOf(r)
+	if err != nil || !ok {
+		return nil
+	}
+	out := &RunTrigger{
+		Source: t.Source,
+		Event:  RunTriggerEvent(t.Event),
+		Repo:   t.Repo,
+		Branch: t.Branch,
+		Sha:    t.SHA,
+		Sender: optStr(t.Sender),
+	}
+	if t.PRNumber != 0 {
+		n := t.PRNumber
+		out.PrNumber = &n
+	}
+	return out
 }
 
 // toAPIWorkflowRunDetail is toAPIWorkflowRun plus the component runs and the
@@ -347,6 +374,7 @@ func toAPIWorkflowRunDetail(r *ent.WorkflowRun, steps []*ent.ComponentRun, canSe
 		StartedBy:     b.StartedBy,
 		StateOp:       b.StateOp,
 		Scope:         b.Scope,
+		Trigger:       b.Trigger,
 		ComponentRuns: make([]ComponentRun, len(steps)),
 	}
 	// requires_approval is a property of the run's snapshot node, not the step

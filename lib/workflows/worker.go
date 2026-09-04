@@ -349,6 +349,8 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 	// can't clobber a run CancelRun already settled.
 	markCtx := context.WithoutCancel(ctx)
 	_ = w.svc.MarkRun(markCtx, a.OrgID, a.WorkflowRunID, final, "workflow "+final)
+	// A pull-request preview reports its outcome back to GitHub once settled.
+	w.svc.CompleteTriggerCheck(markCtx, a.OrgID, a.WorkflowRunID)
 
 	// Settle any component run the scheduler left non-terminal. The cases that bite:
 	// a gated node that parked at awaiting_approval on a branch while a parallel

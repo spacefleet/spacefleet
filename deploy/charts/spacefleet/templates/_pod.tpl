@@ -103,6 +103,13 @@ the ConfigMap, the DATABASE_URL secret ref, and any extraEnv.
       name: {{ include "spacefleet.envSecretName" $ }}
       key: GITHUB_APP_CLIENT_SECRET
 {{- end }}
+{{- with .webhookSecret }}
+- name: GITHUB_APP_WEBHOOK_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "spacefleet.envSecretName" $ }}
+      key: GITHUB_APP_WEBHOOK_SECRET
+{{- end }}
 {{- end }}
 {{- with .Values.config.extraEnv }}
 {{- toYaml . | nindent 0 }}

@@ -71,6 +71,8 @@ type ApplicationMutation struct {
 	imported                  *bool
 	drift_interval_minutes    *int
 	adddrift_interval_minutes *int
+	push_trigger              *string
+	pr_plans                  *bool
 	group_id                  *uuid.UUID
 	created_at                *time.Time
 	updated_at                *time.Time
@@ -352,6 +354,78 @@ func (m *ApplicationMutation) ResetDriftIntervalMinutes() {
 	m.adddrift_interval_minutes = nil
 }
 
+// SetPushTrigger sets the "push_trigger" field.
+func (m *ApplicationMutation) SetPushTrigger(s string) {
+	m.push_trigger = &s
+}
+
+// PushTrigger returns the value of the "push_trigger" field in the mutation.
+func (m *ApplicationMutation) PushTrigger() (r string, exists bool) {
+	v := m.push_trigger
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPushTrigger returns the old "push_trigger" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldPushTrigger(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPushTrigger is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPushTrigger requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPushTrigger: %w", err)
+	}
+	return oldValue.PushTrigger, nil
+}
+
+// ResetPushTrigger resets all changes to the "push_trigger" field.
+func (m *ApplicationMutation) ResetPushTrigger() {
+	m.push_trigger = nil
+}
+
+// SetPrPlans sets the "pr_plans" field.
+func (m *ApplicationMutation) SetPrPlans(b bool) {
+	m.pr_plans = &b
+}
+
+// PrPlans returns the value of the "pr_plans" field in the mutation.
+func (m *ApplicationMutation) PrPlans() (r bool, exists bool) {
+	v := m.pr_plans
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrPlans returns the old "pr_plans" field's value of the Application entity.
+// If the Application object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ApplicationMutation) OldPrPlans(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrPlans is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrPlans requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrPlans: %w", err)
+	}
+	return oldValue.PrPlans, nil
+}
+
+// ResetPrPlans resets all changes to the "pr_plans" field.
+func (m *ApplicationMutation) ResetPrPlans() {
+	m.pr_plans = nil
+}
+
 // SetRunnerClusterID sets the "runner_cluster_id" field.
 func (m *ApplicationMutation) SetRunnerClusterID(u uuid.UUID) {
 	m.runner_cluster = &u
@@ -597,7 +671,7 @@ func (m *ApplicationMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ApplicationMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 10)
 	if m.organization != nil {
 		fields = append(fields, application.FieldOrganizationID)
 	}
@@ -609,6 +683,12 @@ func (m *ApplicationMutation) Fields() []string {
 	}
 	if m.drift_interval_minutes != nil {
 		fields = append(fields, application.FieldDriftIntervalMinutes)
+	}
+	if m.push_trigger != nil {
+		fields = append(fields, application.FieldPushTrigger)
+	}
+	if m.pr_plans != nil {
+		fields = append(fields, application.FieldPrPlans)
 	}
 	if m.runner_cluster != nil {
 		fields = append(fields, application.FieldRunnerClusterID)
@@ -638,6 +718,10 @@ func (m *ApplicationMutation) Field(name string) (ent.Value, bool) {
 		return m.Imported()
 	case application.FieldDriftIntervalMinutes:
 		return m.DriftIntervalMinutes()
+	case application.FieldPushTrigger:
+		return m.PushTrigger()
+	case application.FieldPrPlans:
+		return m.PrPlans()
 	case application.FieldRunnerClusterID:
 		return m.RunnerClusterID()
 	case application.FieldGroupID:
@@ -663,6 +747,10 @@ func (m *ApplicationMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldImported(ctx)
 	case application.FieldDriftIntervalMinutes:
 		return m.OldDriftIntervalMinutes(ctx)
+	case application.FieldPushTrigger:
+		return m.OldPushTrigger(ctx)
+	case application.FieldPrPlans:
+		return m.OldPrPlans(ctx)
 	case application.FieldRunnerClusterID:
 		return m.OldRunnerClusterID(ctx)
 	case application.FieldGroupID:
@@ -707,6 +795,20 @@ func (m *ApplicationMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDriftIntervalMinutes(v)
+		return nil
+	case application.FieldPushTrigger:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPushTrigger(v)
+		return nil
+	case application.FieldPrPlans:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrPlans(v)
 		return nil
 	case application.FieldRunnerClusterID:
 		v, ok := value.(uuid.UUID)
@@ -820,6 +922,12 @@ func (m *ApplicationMutation) ResetField(name string) error {
 		return nil
 	case application.FieldDriftIntervalMinutes:
 		m.ResetDriftIntervalMinutes()
+		return nil
+	case application.FieldPushTrigger:
+		m.ResetPushTrigger()
+		return nil
+	case application.FieldPrPlans:
+		m.ResetPrPlans()
 		return nil
 	case application.FieldRunnerClusterID:
 		m.ResetRunnerClusterID()
@@ -14742,6 +14850,7 @@ type WorkflowRunMutation struct {
 	job_id              *string
 	graph               *string
 	args                *string
+	trigger             *string
 	created_at          *time.Time
 	started_at          *time.Time
 	finished_at         *time.Time
@@ -15249,6 +15358,55 @@ func (m *WorkflowRunMutation) ResetArgs() {
 	delete(m.clearedFields, workflowrun.FieldArgs)
 }
 
+// SetTrigger sets the "trigger" field.
+func (m *WorkflowRunMutation) SetTrigger(s string) {
+	m.trigger = &s
+}
+
+// Trigger returns the value of the "trigger" field in the mutation.
+func (m *WorkflowRunMutation) Trigger() (r string, exists bool) {
+	v := m.trigger
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTrigger returns the old "trigger" field's value of the WorkflowRun entity.
+// If the WorkflowRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkflowRunMutation) OldTrigger(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTrigger is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTrigger requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTrigger: %w", err)
+	}
+	return oldValue.Trigger, nil
+}
+
+// ClearTrigger clears the value of the "trigger" field.
+func (m *WorkflowRunMutation) ClearTrigger() {
+	m.trigger = nil
+	m.clearedFields[workflowrun.FieldTrigger] = struct{}{}
+}
+
+// TriggerCleared returns if the "trigger" field was cleared in this mutation.
+func (m *WorkflowRunMutation) TriggerCleared() bool {
+	_, ok := m.clearedFields[workflowrun.FieldTrigger]
+	return ok
+}
+
+// ResetTrigger resets all changes to the "trigger" field.
+func (m *WorkflowRunMutation) ResetTrigger() {
+	m.trigger = nil
+	delete(m.clearedFields, workflowrun.FieldTrigger)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *WorkflowRunMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -15507,7 +15665,7 @@ func (m *WorkflowRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorkflowRunMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 14)
 	if m.organization != nil {
 		fields = append(fields, workflowrun.FieldOrganizationID)
 	}
@@ -15534,6 +15692,9 @@ func (m *WorkflowRunMutation) Fields() []string {
 	}
 	if m.args != nil {
 		fields = append(fields, workflowrun.FieldArgs)
+	}
+	if m.trigger != nil {
+		fields = append(fields, workflowrun.FieldTrigger)
 	}
 	if m.created_at != nil {
 		fields = append(fields, workflowrun.FieldCreatedAt)
@@ -15573,6 +15734,8 @@ func (m *WorkflowRunMutation) Field(name string) (ent.Value, bool) {
 		return m.Graph()
 	case workflowrun.FieldArgs:
 		return m.Args()
+	case workflowrun.FieldTrigger:
+		return m.Trigger()
 	case workflowrun.FieldCreatedAt:
 		return m.CreatedAt()
 	case workflowrun.FieldStartedAt:
@@ -15608,6 +15771,8 @@ func (m *WorkflowRunMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldGraph(ctx)
 	case workflowrun.FieldArgs:
 		return m.OldArgs(ctx)
+	case workflowrun.FieldTrigger:
+		return m.OldTrigger(ctx)
 	case workflowrun.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case workflowrun.FieldStartedAt:
@@ -15688,6 +15853,13 @@ func (m *WorkflowRunMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetArgs(v)
 		return nil
+	case workflowrun.FieldTrigger:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTrigger(v)
+		return nil
 	case workflowrun.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -15761,6 +15933,9 @@ func (m *WorkflowRunMutation) ClearedFields() []string {
 	if m.FieldCleared(workflowrun.FieldArgs) {
 		fields = append(fields, workflowrun.FieldArgs)
 	}
+	if m.FieldCleared(workflowrun.FieldTrigger) {
+		fields = append(fields, workflowrun.FieldTrigger)
+	}
 	if m.FieldCleared(workflowrun.FieldStartedAt) {
 		fields = append(fields, workflowrun.FieldStartedAt)
 	}
@@ -15795,6 +15970,9 @@ func (m *WorkflowRunMutation) ClearField(name string) error {
 		return nil
 	case workflowrun.FieldArgs:
 		m.ClearArgs()
+		return nil
+	case workflowrun.FieldTrigger:
+		m.ClearTrigger()
 		return nil
 	case workflowrun.FieldStartedAt:
 		m.ClearStartedAt()
@@ -15836,6 +16014,9 @@ func (m *WorkflowRunMutation) ResetField(name string) error {
 		return nil
 	case workflowrun.FieldArgs:
 		m.ResetArgs()
+		return nil
+	case workflowrun.FieldTrigger:
+		m.ResetTrigger()
 		return nil
 	case workflowrun.FieldCreatedAt:
 		m.ResetCreatedAt()

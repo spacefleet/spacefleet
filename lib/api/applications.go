@@ -180,6 +180,14 @@ func (s *Server) UpdateApplication(ctx context.Context, req UpdateApplicationReq
 		m := *req.Body.DriftIntervalMinutes
 		params.DriftIntervalMinutes = &m
 	}
+	if req.Body.PushTrigger != nil {
+		t := string(*req.Body.PushTrigger)
+		params.PushTrigger = &t
+	}
+	if req.Body.PrPlans != nil {
+		p := *req.Body.PrPlans
+		params.PRPlans = &p
+	}
 	a, err := s.applications.Update(ctx, orgID, req.Id, params)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -256,12 +264,16 @@ func appWriteError[T defaultResp](err error) (T, bool) {
 func toAPIApplication(a *ent.Application) Application {
 	imported := a.Imported
 	drift := a.DriftIntervalMinutes
+	pushTrigger := PushTrigger(a.PushTrigger)
+	prPlans := a.PrPlans
 	out := Application{
 		Id:                   a.ID,
 		Name:                 a.Name,
 		RunnerClusterId:      a.RunnerClusterID,
 		Imported:             &imported,
 		DriftIntervalMinutes: &drift,
+		PushTrigger:          &pushTrigger,
+		PrPlans:              &prPlans,
 		CreatedAt:            a.CreatedAt,
 		UpdatedAt:            a.UpdatedAt,
 	}

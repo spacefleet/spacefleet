@@ -611,6 +611,24 @@ describe("WorkflowRunView", () => {
     expect(screen.getByText("Only infra, targeting aws_instance.web")).toBeInTheDocument();
   });
 
+  it("says what triggered a run started from GitHub", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    const triggered = {
+      ...runDetail,
+      action: "preview",
+      trigger: { source: "github", event: "pull_request", repo: "acme/infra", branch: "feature/x", sha: "def4567890", sender: "kyle", pr_number: 12 },
+    };
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: triggered, error: undefined });
+      return Promise.resolve({ data: { id: "cr-a", name: "a", type: "helm", status: "succeeded" }, error: undefined });
+    });
+    renderRunView();
+    expect(
+      await screen.findByText("Triggered by pull request #12 on acme/infra (feature/x @ def4567) by kyle"),
+    ).toBeInTheDocument();
+  });
+
   it("explains a gate's approval policy and tally", async () => {
     mockStream.mockReturnValue({ value: null, status: "live", error: null });
     const policyRun = {

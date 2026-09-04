@@ -349,6 +349,30 @@ how to designate one.) Only one run can be in progress for an application at a
 time; starting a second while one is still going is refused, so two runs never
 fight over the same releases.
 
+## Triggers
+
+A run can start from GitHub instead of a click, once the operator has
+enabled the GitHub App's webhook (see the operator guide). On the
+application page, under **Triggers**:
+
+- **On push** — what a push to a tracked branch starts: nothing, a
+  **preview**, or a **deploy**. Use preview to see every change land as a
+  dry run; use deploy for a continuous-deployment branch.
+- **Plan pull requests** — every pull request against a tracked branch
+  starts a preview at the pull request's head, and its result is posted on
+  the pull request as a **check** named after the application: the plan
+  counts for each OpenTofu step and a link to the run. Pull requests from
+  forks are never planned.
+
+A component **tracks** a branch when it is attached to a connected GitHub
+installation, its repository is the one the event came from, and either its
+git ref is that branch or it has no git ref and the branch is the
+repository's default. Any component tracking the branch triggers the whole
+workflow run, exactly as if you had clicked the action; the run shows what
+triggered it, and the run history lists it as started by the GitHub user.
+A trigger that arrives while another run is in progress is skipped (a pull
+request gets a neutral check saying so — push again once the run finishes).
+
 ## Approvals
 
 Any component can **require manual approval**: the run parks at that step

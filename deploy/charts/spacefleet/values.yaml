@@ -115,6 +115,11 @@ config:
     # -- Inline GitHub App OAuth client secret. Prefer config.secrets.envFrom
     # for GitOps. Empty disables the feature.
     clientSecret: ""
+    # -- Inline GitHub App webhook secret, to let pushes and pull requests
+    # trigger runs (the App's webhook URL is "<external URL>/api/webhooks/github").
+    # Optional: empty leaves the webhook endpoint off. Prefer
+    # config.secrets.envFrom (GITHUB_APP_WEBHOOK_SECRET) for GitOps.
+    webhookSecret: ""
 
   # -- Extra environment variables for both web and worker pods. Standard
   # core/v1 EnvVar entries, e.g. [{name: FOO, value: bar}]. Plaintext — for

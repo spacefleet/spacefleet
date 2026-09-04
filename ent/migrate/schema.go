@@ -15,6 +15,8 @@ var (
 		{Name: "name", Type: field.TypeString},
 		{Name: "imported", Type: field.TypeBool, Default: false},
 		{Name: "drift_interval_minutes", Type: field.TypeInt, Default: 0},
+		{Name: "push_trigger", Type: field.TypeString, Default: ""},
+		{Name: "pr_plans", Type: field.TypeBool, Default: false},
 		{Name: "group_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -29,13 +31,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "applications_organizations_organization",
-				Columns:    []*schema.Column{ApplicationsColumns[7]},
+				Columns:    []*schema.Column{ApplicationsColumns[9]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "applications_clusters_runner_cluster",
-				Columns:    []*schema.Column{ApplicationsColumns[8]},
+				Columns:    []*schema.Column{ApplicationsColumns[10]},
 				RefColumns: []*schema.Column{ClustersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -44,12 +46,12 @@ var (
 			{
 				Name:    "application_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{ApplicationsColumns[7]},
+				Columns: []*schema.Column{ApplicationsColumns[9]},
 			},
 			{
 				Name:    "application_organization_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{ApplicationsColumns[7], ApplicationsColumns[1]},
+				Columns: []*schema.Column{ApplicationsColumns[9], ApplicationsColumns[1]},
 			},
 		},
 	}
@@ -647,6 +649,7 @@ var (
 		{Name: "job_id", Type: field.TypeString, Nullable: true},
 		{Name: "graph", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "args", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "trigger", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "started_at", Type: field.TypeTime, Nullable: true},
 		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
@@ -662,13 +665,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "workflow_runs_organizations_organization",
-				Columns:    []*schema.Column{WorkflowRunsColumns[12]},
+				Columns:    []*schema.Column{WorkflowRunsColumns[13]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "workflow_runs_applications_application",
-				Columns:    []*schema.Column{WorkflowRunsColumns[13]},
+				Columns:    []*schema.Column{WorkflowRunsColumns[14]},
 				RefColumns: []*schema.Column{ApplicationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -677,17 +680,17 @@ var (
 			{
 				Name:    "workflowrun_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{WorkflowRunsColumns[12]},
+				Columns: []*schema.Column{WorkflowRunsColumns[13]},
 			},
 			{
 				Name:    "workflowrun_application_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{WorkflowRunsColumns[13], WorkflowRunsColumns[8]},
+				Columns: []*schema.Column{WorkflowRunsColumns[14], WorkflowRunsColumns[9]},
 			},
 			{
 				Name:    "workflowrun_organization_id_job_id",
 				Unique:  false,
-				Columns: []*schema.Column{WorkflowRunsColumns[12], WorkflowRunsColumns[5]},
+				Columns: []*schema.Column{WorkflowRunsColumns[13], WorkflowRunsColumns[5]},
 			},
 		},
 	}

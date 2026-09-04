@@ -60,9 +60,13 @@ App** (under the user or organization that should own the App), and set:
   organization from claiming another organization's installation. (With this
   checked, GitHub disables the separate *Setup URL* field — that's expected;
   Spacefleet doesn't use it.)
-- **Webhook** — **uncheck "Active".** Spacefleet doesn't use webhooks.
+- **Webhook** — optional. Leave it **inactive** unless you want pushes and
+  pull requests to trigger runs; see [Run triggers](#run-triggers-webhook)
+  below for the settings.
 - **Repository permissions** → **Contents: Read-only.** This is the only
-  permission needed (to read chart files); leave everything else at *No access*.
+  permission needed to read chart and module files; leave everything else at
+  *No access* unless you enable run triggers (which need **Checks:
+  Read and write** and **Pull requests: Read-only** — see below).
 - **Where can this GitHub App be installed?** — your choice. "Only on this
   account" keeps it private to your organization; "Any account" lets other
   organizations install it too.
@@ -93,6 +97,7 @@ Spacefleet reads the following, set by the Helm chart under `config.github`:
 | `config.github.privateKey` | `GITHUB_APP_PRIVATE_KEY` | _(empty)_ | App private key (PEM) — **a secret**, see below. |
 | `config.github.clientId` | `GITHUB_APP_CLIENT_ID` | _(empty)_ | App OAuth Client ID (`Iv1.…`-style). **Empty disables the feature.** |
 | `config.github.clientSecret` | `GITHUB_APP_CLIENT_SECRET` | _(empty)_ | App OAuth client secret — **a secret**, see below. |
+| `config.github.webhookSecret` | `GITHUB_APP_WEBHOOK_SECRET` | _(empty)_ | App webhook secret — **a secret**; optional, enables [run triggers](#run-triggers-webhook). |
 
 **The feature is enabled only when all five are set.** With any empty,
 Spacefleet treats the GitHub App as not configured and the Git chart source
@@ -195,6 +200,44 @@ in the app's UI (under **Admin → GitHub**):
 Nothing credential-bearing is stored for the installation — at each deploy,
 Spacefleet mints a short-lived access token from your App's private key, uses it
 for that one fetch, and discards it.
+
+## Run triggers (webhook)
+
+Optionally, the same App can tell Spacefleet about **pushes and pull
+requests**, so an application can preview or deploy itself when its
+repository changes, and pull requests can carry a plan as a status check.
+Users turn this on per application (see the user guide's *Triggers*
+section); your part is to let GitHub reach Spacefleet:
+
+1. On the App's settings page, under **Webhook**, check **Active** and set:
+   - **Webhook URL** — `https://<your external URL>/api/webhooks/github`
+     (your `config.externalURL` with `/api/webhooks/github` appended).
+   - **Webhook secret** — a random string you generate (for example
+     `openssl rand -hex 32`). GitHub signs every delivery with it, and
+     Spacefleet rejects anything that is not signed with the same secret.
+2. Under **Repository permissions**, add **Checks: Read and write** (to post
+   the plan as a check on pull requests) and **Pull requests: Read-only**.
+   Existing installations will be asked to approve the new permissions.
+3. Under **Subscribe to events**, check **Push** and **Pull request**.
+4. Supply the secret to Spacefleet as `config.github.webhookSecret`, or as
+   `GITHUB_APP_WEBHOOK_SECRET` in the Secret referenced by
+   `config.secrets.envFrom`, exactly like the other GitHub App secrets above.
+   Both the web and worker pods need it alongside the other five values.
+
+Leaving the webhook secret empty keeps the endpoint off: deliveries are
+refused, and everything else about the App keeps working.
+
+Deliveries are matched to applications through the **installation** they
+came from, so a webhook can only ever start runs for applications whose
+components are attached to that installation and sourced from that
+repository. Pull requests from **forks** are never planned — that would run
+a stranger's code with the component's credentials. If a delivery seems to
+have no effect, check the App's **Advanced → Recent Deliveries** page on
+GitHub: a `401` means the secret differs between GitHub and Spacefleet, a
+`503` means the secret isn't configured on the pods, and a `200` with
+`"started": 0` means no application matched (the component isn't attached
+to that installation, the repository URL differs, or the branch isn't the
+one the component tracks).
 
 ## Leaving it unconfigured
 

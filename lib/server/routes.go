@@ -66,6 +66,11 @@ func registerRoutes(mux *http.ServeMux, cfg *config.Config, deps api.ServerDeps,
 	mux.Handle("GET /api/runs/stream",
 		auth.RequireAuth(publicAPIPaths, verifier)(auth.OrgContext(http.HandlerFunc(srv.StreamOrgRuns))))
 
+	// GitHub webhook deliveries (run triggers). Public — authenticated by the
+	// delivery's HMAC signature against the App's webhook secret, not by a
+	// user token — so it is mounted outside the auth chain. See lib/api/webhooks.go.
+	mux.Handle("POST /api/webhooks/github", http.HandlerFunc(srv.GitHubWebhook))
+
 	// Public config exposed to the browser as `window.appConfig`. Only
 	// pre-approved, non-secret values go here — it ships to every client.
 	mux.HandleFunc("/config.js", appConfigHandler(cfg))

@@ -2,6 +2,7 @@ import type { components } from "../../api/schema";
 
 type StateOperation = components["schemas"]["StateOperation"];
 type RunScope = components["schemas"]["RunScope"];
+type RunTrigger = components["schemas"]["RunTrigger"];
 
 // runActionLabel renders a run action for display. Every action but
 // `state_op` reads fine as its raw value (capitalised by the caller); a
@@ -37,4 +38,15 @@ export function stateOpDescription(op: StateOperation): string {
     default:
       return "State operation";
   }
+}
+
+// runTriggerDescription is the one-line reading of what started a triggered
+// run: the push or pull request, its branch and commit, and who caused it.
+export function runTriggerDescription(t: RunTrigger): string {
+  const sha = t.sha ? t.sha.slice(0, 7) : "";
+  const by = t.sender ? ` by ${t.sender}` : "";
+  if (t.event === "pull_request") {
+    return `Triggered by pull request #${t.pr_number ?? "?"} on ${t.repo} (${t.branch}${sha ? ` @ ${sha}` : ""})${by}`;
+  }
+  return `Triggered by a push to ${t.branch} on ${t.repo}${sha ? ` (${sha})` : ""}${by}`;
 }
