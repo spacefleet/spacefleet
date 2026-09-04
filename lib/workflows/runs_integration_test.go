@@ -814,3 +814,150 @@ func TestBeginStateOp(t *testing.T) {
 		t.Errorf("deploy during op: err = %v, want ErrRunInFlight", err)
 	}
 }
+
+// TestApprovalPolicy drives a gated step through a 2-of-2 policy with named
+// approvers and no self-approval: the starter is refused, an outsider is
+// refused, the first approval leaves the gate parked (no resume), a repeat
+// approval is refused, the second opens the gate; the policy is the
+// snapshot's, and a step with the default policy still opens on one approval.
+func TestApprovalPolicy(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	comp := addComponent(t, client, org.ID, app.ID, "api", nil)
+	if _, err := client.Component.UpdateOneID(comp.ID).
+		SetRequiresApproval(true).
+		SetApprovalPolicy(ApprovalPolicy{Approvers: []string{"a@example.com", "b@example.com"}, Required: 2, RequireDifferentApprover: true}).
+		Save(ctx); err != nil {
+		t.Fatalf("set policy: %v", err)
+	}
+	run, err := svc.BeginRun(ctx, org.ID, app.ID, ActionDeploy)
+	if err != nil {
+		t.Fatalf("BeginRun: %v", err)
+	}
+	if err := svc.SetRunStartedBy(ctx, org.ID, run.ID, "a@example.com"); err != nil {
+		t.Fatalf("SetRunStartedBy: %v", err)
+	}
+	// Park the run and the step, as the worker would.
+	if err := svc.MarkRun(ctx, org.ID, run.ID, "awaiting_approval", "awaiting"); err != nil {
+		t.Fatalf("park run: %v", err)
+	}
+	_, steps, _ := svc.GetRun(ctx, org.ID, app.ID, run.ID)
+	step := steps[0]
+	if err := svc.MarkComponentRun(ctx, org.ID, step.ID, "awaiting_approval", "awaiting", ""); err != nil {
+		t.Fatalf("park step: %v", err)
+	}
+	if p := snapshotPolicy(run.Graph, step.ComponentID); p == nil || p.Required != 2 {
+		t.Fatalf("snapshot policy = %+v", p)
+	}
+
+	approve := func(who string) (bool, error) {
+		_, open, err := svc.ApproveComponentRun(ctx, org.ID, app.ID, run.ID, step.ID, who, DecisionApprove)
+		return open, err
+	}
+	if _, err := approve("A@example.com"); !errors.Is(err, ErrSelfApproval) {
+		t.Errorf("starter: err = %v, want ErrSelfApproval", err)
+	}
+	if _, err := approve("c@example.com"); !errors.Is(err, ErrNotAnApprover) {
+		t.Errorf("outsider: err = %v, want ErrNotAnApprover", err)
+	}
+	// The starter's approval was refused, so b's is the first of two.
+	if open, err := approve("b@example.com"); err != nil || open {
+		t.Fatalf("first approval: err=%v open=%v, want parked", err, open)
+	}
+	cr, _ := client.ComponentRun.Get(ctx, step.ID)
+	if cr.Status != componentrun.StatusAwaitingApproval || cr.ApprovedAt != nil || len(ParseApprovals(cr.Approvals)) != 1 || cr.Message != "1 of 2 approvals (b@example.com)" {
+		t.Errorf("after first approval: %+v", cr)
+	}
+	if _, err := approve("B@example.com"); !errors.Is(err, ErrAlreadyApproved) {
+		t.Errorf("repeat: err = %v, want ErrAlreadyApproved", err)
+	}
+	// Relax self-approval on the snapshot is impossible (it is immutable), so
+	// the second approval must come from the other named approver — who is the
+	// starter here. Re-stamp the starter to prove the gate opens for a
+	// different second approver.
+	if err := svc.SetRunStartedBy(ctx, org.ID, run.ID, "someone-else@example.com"); err != nil {
+		t.Fatalf("restamp starter: %v", err)
+	}
+	if open, err := approve("a@example.com"); err != nil || !open {
+		t.Fatalf("second approval: err=%v open=%v, want open", err, open)
+	}
+	cr, _ = client.ComponentRun.Get(ctx, step.ID)
+	if cr.Status != componentrun.StatusPending || cr.ApprovedBy != "a@example.com" || len(ParseApprovals(cr.Approvals)) != 2 {
+		t.Errorf("after second approval: %+v", cr)
+	}
+
+	// Default policy on another app: one approval from anyone opens the gate.
+	app2 := newApp(t, client, org.ID, "web2")
+	c2 := addComponent(t, client, org.ID, app2.ID, "api", nil)
+	if _, err := client.Component.UpdateOneID(c2.ID).SetRequiresApproval(true).Save(ctx); err != nil {
+		t.Fatalf("gate: %v", err)
+	}
+	run2, _ := svc.BeginRun(ctx, org.ID, app2.ID, ActionDeploy)
+	_ = svc.SetRunStartedBy(ctx, org.ID, run2.ID, "x@example.com")
+	_ = svc.MarkRun(ctx, org.ID, run2.ID, "awaiting_approval", "awaiting")
+	_, steps2, _ := svc.GetRun(ctx, org.ID, app2.ID, run2.ID)
+	_ = svc.MarkComponentRun(ctx, org.ID, steps2[0].ID, "awaiting_approval", "awaiting", "")
+	if _, open, err := svc.ApproveComponentRun(ctx, org.ID, app2.ID, run2.ID, steps2[0].ID, "x@example.com", DecisionApprove); err != nil || !open {
+		t.Errorf("default policy self-approval: err=%v open=%v, want open", err, open)
+	}
+}
+
+// TestReapExpiredApprovals fails a run whose gate outlived its policy
+// timeout — the parked step fails, the others skip, the run fails — and
+// leaves a gate without a timeout (or within it) alone.
+func TestReapExpiredApprovals(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	gated := addComponent(t, client, org.ID, app.ID, "api", nil)
+	if _, err := client.Component.UpdateOneID(gated.ID).SetRequiresApproval(true).
+		SetApprovalPolicy(ApprovalPolicy{TimeoutMinutes: 30}).Save(ctx); err != nil {
+		t.Fatalf("set policy: %v", err)
+	}
+	after := addComponent(t, client, org.ID, app.ID, "after", nil)
+	if _, err := client.Component.UpdateOneID(after.ID).SetDependsOn([]uuid.UUID{gated.ID}).Save(ctx); err != nil {
+		t.Fatalf("set dependency: %v", err)
+	}
+	run, err := svc.BeginRun(ctx, org.ID, app.ID, ActionDeploy)
+	if err != nil {
+		t.Fatalf("BeginRun: %v", err)
+	}
+	_ = svc.MarkRun(ctx, org.ID, run.ID, "awaiting_approval", "awaiting")
+	step := componentRunFor(t, client, run.ID, gated.ID)
+	_ = svc.MarkComponentRun(ctx, org.ID, step.ID, "awaiting_approval", "awaiting", "")
+
+	// Fresh: nothing to reap.
+	if n, err := svc.ReapExpiredApprovals(ctx); err != nil || n != 0 {
+		t.Fatalf("fresh gate: n=%d err=%v", n, err)
+	}
+	// Age the parked step past the timeout.
+	if _, err := client.ComponentRun.UpdateOneID(step.ID).SetUpdatedAt(time.Now().Add(-31 * time.Minute)).Save(ctx); err != nil {
+		t.Fatalf("age step: %v", err)
+	}
+	if n, err := svc.ReapExpiredApprovals(ctx); err != nil || n != 1 {
+		t.Fatalf("expired gate: n=%d err=%v, want 1", n, err)
+	}
+	if got := runStatus(t, client, run.ID); got != workflowrun.StatusFailed {
+		t.Errorf("run = %q, want failed", got)
+	}
+	if cr := componentRunFor(t, client, run.ID, gated.ID); cr.Status != componentrun.StatusFailed || cr.Message != "approval timed out after 30 minutes" {
+		t.Errorf("gated step = %+v", cr)
+	}
+	// The dependent was skipped; a second sweep finds nothing.
+	_, steps, _ := svc.GetRun(ctx, org.ID, app.ID, run.ID)
+	for _, cr := range steps {
+		if cr.ComponentID != gated.ID && cr.Status != componentrun.StatusSkipped {
+			t.Errorf("dependent = %q, want skipped", cr.Status)
+		}
+	}
+	if n, _ := svc.ReapExpiredApprovals(ctx); n != 0 {
+		t.Errorf("second sweep reaped %d", n)
+	}
+}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { ComponentFields, type EditableComponent } from "./ComponentFields";
@@ -17,6 +17,7 @@ function makeComponent(
     config: {},
     continue_on_failure: false,
     requires_approval: true,
+    approval_policy: null,
     target_cluster_id: null,
     target_namespace: "",
     chart_credential_id: null,
@@ -262,5 +263,35 @@ describe("terraform state backends", () => {
       container_name: "tfstate",
       key: "prod.tfstate",
     });
+  });
+});
+
+describe("approval policy", () => {
+  it("edits the gate's policy and stores the default as null", async () => {
+    const user = userEvent.setup();
+    let latest: EditableComponent | null = null;
+    render(
+      <Harness
+        initial={makeComponent({ type: "helm", requires_approval: true })}
+        onComponent={(c) => {
+          latest = c;
+        }}
+      />,
+    );
+    await user.type(screen.getByLabelText("Approvers"), "Ops@example.com, sre@example.com");
+    expect(latest!.approval_policy?.approvers).toEqual(["Ops@example.com", "sre@example.com"]);
+    fireEvent.change(screen.getByLabelText("Approvals required"), { target: { value: "2" } });
+    expect(latest!.approval_policy?.required).toBe(2);
+    await user.click(screen.getByRole("checkbox", { name: /different approver/ }));
+    expect(latest!.approval_policy?.require_different_approver).toBe(true);
+    fireEvent.change(screen.getByLabelText("Approval timeout (minutes)"), { target: { value: "90" } });
+    expect(latest!.approval_policy?.timeout_minutes).toBe(90);
+
+    // Clearing everything returns to the default policy.
+    await user.clear(screen.getByLabelText("Approvers"));
+    fireEvent.change(screen.getByLabelText("Approvals required"), { target: { value: "1" } });
+    await user.click(screen.getByRole("checkbox", { name: /different approver/ }));
+    fireEvent.change(screen.getByLabelText("Approval timeout (minutes)"), { target: { value: "" } });
+    expect(latest!.approval_policy).toBeNull();
   });
 });

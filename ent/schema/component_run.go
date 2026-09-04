@@ -73,6 +73,11 @@ func (ComponentRun) Fields() []ent.Field {
 		// an awaiting_approval step; empty/nil otherwise.
 		field.String("approved_by").Default(""),
 		field.Time("approved_at").Optional().Nillable(),
+		// Every approval recorded on this step's gate, in order, as a JSON
+		// array of {"by": email, "at": time} — the N-of-M tally. approved_by /
+		// approved_at above are the decision that opened (or rejected) the
+		// gate, and stay the scheduler's signal.
+		field.Text("approvals").Optional(),
 		// The git commit SHAs this step actually resolved (chart / values), for an
 		// auditable, reproducible run. Empty when the source wasn't a git clone.
 		field.String("chart_revision").Optional(),

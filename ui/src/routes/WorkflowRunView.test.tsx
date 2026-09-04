@@ -594,6 +594,42 @@ describe("WorkflowRunView", () => {
     expect(screen.getByRole("button", { name: /approve/i })).toBeInTheDocument();
   });
 
+  it("explains a gate's approval policy and tally", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    const policyRun = {
+      ...awaitingDetail,
+      started_by: "dev@example.com",
+      graph: JSON.stringify({
+        nodes: [
+          { id: compA, name: "infra · plan", type: "terraform", config: { command: "plan" }, depends_on: [] },
+          {
+            id: compB, name: "infra · apply", type: "terraform", config: { command: "apply" }, depends_on: [compA],
+            approval_policy: { approvers: ["ops@example.com", "sre@example.com"], required: 2, require_different_approver: true, timeout_minutes: 60 },
+          },
+        ],
+      }),
+    };
+    mockApi.GET.mockImplementation((path: string, opts?: { params?: { path?: { componentRunId?: string } } }) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: policyRun, error: undefined });
+      const id = opts?.params?.path?.componentRunId;
+      return Promise.resolve({
+        data: id === "cr-b"
+          ? { id: "cr-b", name: "infra · apply", type: "terraform", status: "awaiting_approval", approvals: [{ by: "ops@example.com", at: "2026-09-04T10:00:00Z" }] }
+          : { id: "cr-a", name: "infra · plan", type: "terraform", status: "succeeded", logs: "plan" },
+        error: undefined,
+      });
+    });
+    renderRunView();
+    expect(await screen.findByText(/by dev@example.com/)).toBeInTheDocument();
+    fireEvent.click(await screen.findByText("infra · apply"));
+    const line = await screen.findByTestId("approval-policy");
+    expect(line).toHaveTextContent("Approvers: ops@example.com, sre@example.com");
+    expect(line).toHaveTextContent("1 of 2 approvals (ops@example.com)");
+    expect(line).toHaveTextContent("dev@example.com started this run and cannot approve it");
+    expect(line).toHaveTextContent("times out after 60 min");
+  });
+
   // A settled deploy run for the tofu pair: both units succeeded, and the
   // apply unit captured the module's outputs. The detail mock parameterizes the
   // outputs so the masking tests can model an editor (value present) and a

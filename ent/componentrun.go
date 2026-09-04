@@ -46,6 +46,8 @@ type ComponentRun struct {
 	ApprovedBy string `json:"approved_by,omitempty"`
 	// ApprovedAt holds the value of the "approved_at" field.
 	ApprovedAt *time.Time `json:"approved_at,omitempty"`
+	// Approvals holds the value of the "approvals" field.
+	Approvals string `json:"approvals,omitempty"`
 	// ChartRevision holds the value of the "chart_revision" field.
 	ChartRevision string `json:"chart_revision,omitempty"`
 	// ValuesRevision holds the value of the "values_revision" field.
@@ -102,7 +104,7 @@ func (*ComponentRun) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case componentrun.FieldName, componentrun.FieldType, componentrun.FieldStatus, componentrun.FieldMessage, componentrun.FieldRunName, componentrun.FieldLogs, componentrun.FieldOutputs, componentrun.FieldResources, componentrun.FieldApprovedBy, componentrun.FieldChartRevision, componentrun.FieldValuesRevision:
+		case componentrun.FieldName, componentrun.FieldType, componentrun.FieldStatus, componentrun.FieldMessage, componentrun.FieldRunName, componentrun.FieldLogs, componentrun.FieldOutputs, componentrun.FieldResources, componentrun.FieldApprovedBy, componentrun.FieldApprovals, componentrun.FieldChartRevision, componentrun.FieldValuesRevision:
 			values[i] = new(sql.NullString)
 		case componentrun.FieldApprovedAt, componentrun.FieldCreatedAt, componentrun.FieldStartedAt, componentrun.FieldFinishedAt, componentrun.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -207,6 +209,12 @@ func (_m *ComponentRun) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ApprovedAt = new(time.Time)
 				*_m.ApprovedAt = value.Time
+			}
+		case componentrun.FieldApprovals:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field approvals", values[i])
+			} else if value.Valid {
+				_m.Approvals = value.String
 			}
 		case componentrun.FieldChartRevision:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -332,6 +340,9 @@ func (_m *ComponentRun) String() string {
 		builder.WriteString("approved_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("approvals=")
+	builder.WriteString(_m.Approvals)
 	builder.WriteString(", ")
 	builder.WriteString("chart_revision=")
 	builder.WriteString(_m.ChartRevision)

@@ -38,11 +38,16 @@ export interface EditableComponent {
   // defaults this on (its apply waits for review after the plan); helm/manifest
   // nodes can opt in too.
   requires_approval: boolean;
+  // The policy applied at that gate; null is the default (any editor, one
+  // approval, self-approval allowed, no timeout).
+  approval_policy: ApprovalPolicy | null;
   target_cluster_id: string | null;
   target_namespace: string;
   chart_credential_id: string | null;
   github_installation_id: string | null;
 }
+
+type ApprovalPolicy = components["schemas"]["ApprovalPolicy"];
 
 interface ComponentFieldsProps {
   component: EditableComponent;
@@ -338,6 +343,121 @@ export function ComponentFields({
           </label>
         </Field>
       )}
+      {component.requires_approval && (
+        <ApprovalPolicyFields
+          policy={component.approval_policy}
+          onChange={(p) => set("approval_policy", p)}
+          disabled={disabled}
+        />
+      )}
+    </div>
+  );
+}
+
+// ApprovalPolicyFields edits the gate's policy: named approvers, how many
+// approvals open the gate, whether the run's starter may approve, and a
+// timeout. Every field empty/off is the default policy (stored as null).
+function ApprovalPolicyFields({
+  policy,
+  onChange,
+  disabled,
+}: {
+  policy: ApprovalPolicy | null;
+  onChange: (next: ApprovalPolicy | null) => void;
+  disabled: boolean;
+}) {
+  const p = policy ?? {};
+  const approverCount = (p.approvers ?? []).length;
+  // The approvers box is free text while typing (a trailing comma must
+  // survive a keystroke), parsed into the list on every change.
+  const [approversText, setApproversText] = useState(
+    (p.approvers ?? []).join(", "),
+  );
+  function update(patch: Partial<ApprovalPolicy>) {
+    const next: ApprovalPolicy = { ...p, ...patch };
+    if (!next.approvers?.length) delete next.approvers;
+    if (!next.required || next.required <= 1) delete next.required;
+    if (!next.require_different_approver)
+      delete next.require_different_approver;
+    if (!next.timeout_minutes) delete next.timeout_minutes;
+    onChange(Object.keys(next).length === 0 ? null : next);
+  }
+  return (
+    <div className="ml-6 space-y-3 border-l-2 border-neutral-200 pl-4">
+      <Field
+        label="Approvers"
+        help="Who may approve, by email, comma-separated. Empty lets any editor or admin approve. Anyone with edit access can still reject."
+      >
+        <input
+          type="text"
+          aria-label="Approvers"
+          className="w-full border border-neutral-300 px-3 py-2 text-sm"
+          placeholder="ops@example.com, sre@example.com"
+          value={approversText}
+          onChange={(e) => {
+            setApproversText(e.target.value);
+            update({
+              approvers: e.target.value
+                .split(",")
+                .map((a) => a.trim())
+                .filter((a) => a !== ""),
+            });
+          }}
+          disabled={disabled}
+        />
+      </Field>
+      <Field
+        label="Approvals required"
+        help={
+          approverCount > 0
+            ? `How many of the ${approverCount} named approvers must approve (N-of-M).`
+            : "How many distinct people must approve before the step runs."
+        }
+      >
+        <input
+          type="number"
+          aria-label="Approvals required"
+          min={1}
+          max={approverCount > 0 ? approverCount : undefined}
+          className="w-24 border border-neutral-300 px-3 py-2 text-sm"
+          value={p.required ?? 1}
+          onChange={(e) =>
+            update({ required: Math.max(1, Number(e.target.value) || 1) })
+          }
+          disabled={disabled}
+        />
+      </Field>
+      <label className="flex items-center gap-2 text-sm text-neutral-700">
+        <input
+          type="checkbox"
+          className="h-4 w-4 accent-black"
+          checked={p.require_different_approver ?? false}
+          onChange={(e) =>
+            update({ require_different_approver: e.target.checked })
+          }
+          disabled={disabled}
+        />
+        Require a different approver than whoever started the run
+      </label>
+      <Field
+        label="Approval timeout (minutes)"
+        help="Fail the run if nobody decides within this time. Empty or 0 waits indefinitely."
+      >
+        <input
+          type="number"
+          aria-label="Approval timeout (minutes)"
+          min={0}
+          max={10080}
+          className="w-28 border border-neutral-300 px-3 py-2 text-sm"
+          value={p.timeout_minutes ?? ""}
+          onChange={(e) =>
+            update({
+              timeout_minutes: Math.max(0, Number(e.target.value) || 0),
+            })
+          }
+          disabled={disabled}
+        />
+      </Field>
     </div>
   );
 }

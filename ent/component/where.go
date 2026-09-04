@@ -281,6 +281,16 @@ func RequiresApprovalNEQ(v bool) predicate.Component {
 	return predicate.Component(sql.FieldNEQ(FieldRequiresApproval, v))
 }
 
+// ApprovalPolicyIsNil applies the IsNil predicate on the "approval_policy" field.
+func ApprovalPolicyIsNil() predicate.Component {
+	return predicate.Component(sql.FieldIsNull(FieldApprovalPolicy))
+}
+
+// ApprovalPolicyNotNil applies the NotNil predicate on the "approval_policy" field.
+func ApprovalPolicyNotNil() predicate.Component {
+	return predicate.Component(sql.FieldNotNull(FieldApprovalPolicy))
+}
+
 // TargetClusterIDEQ applies the EQ predicate on the "target_cluster_id" field.
 func TargetClusterIDEQ(v uuid.UUID) predicate.Component {
 	return predicate.Component(sql.FieldEQ(FieldTargetClusterID, v))

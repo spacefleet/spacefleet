@@ -62,6 +62,9 @@ func (s *Server) StartStateOperation(ctx context.Context, req StartStateOperatio
 			return nil, err
 		}
 	}
+	if err := s.recordRunStarter(ctx, orgID, run); err != nil {
+		return nil, err
+	}
 	// Same non-atomic enqueue posture as StartRun: the pending run arms the
 	// application's in-flight gate, so a failed Insert must fail the run rather
 	// than leave it pending with no job behind it.

@@ -72,6 +72,20 @@ func (_c *WorkflowRunCreate) SetNillableMessage(v *string) *WorkflowRunCreate {
 	return _c
 }
 
+// SetStartedBy sets the "started_by" field.
+func (_c *WorkflowRunCreate) SetStartedBy(v string) *WorkflowRunCreate {
+	_c.mutation.SetStartedBy(v)
+	return _c
+}
+
+// SetNillableStartedBy sets the "started_by" field if the given value is not nil.
+func (_c *WorkflowRunCreate) SetNillableStartedBy(v *string) *WorkflowRunCreate {
+	if v != nil {
+		_c.SetStartedBy(*v)
+	}
+	return _c
+}
+
 // SetJobID sets the "job_id" field.
 func (_c *WorkflowRunCreate) SetJobID(v string) *WorkflowRunCreate {
 	_c.mutation.SetJobID(v)
@@ -331,6 +345,10 @@ func (_c *WorkflowRunCreate) createSpec() (*WorkflowRun, *sqlgraph.CreateSpec) {
 		_spec.SetField(workflowrun.FieldMessage, field.TypeString, value)
 		_node.Message = value
 	}
+	if value, ok := _c.mutation.StartedBy(); ok {
+		_spec.SetField(workflowrun.FieldStartedBy, field.TypeString, value)
+		_node.StartedBy = value
+	}
 	if value, ok := _c.mutation.JobID(); ok {
 		_spec.SetField(workflowrun.FieldJobID, field.TypeString, value)
 		_node.JobID = value
@@ -484,6 +502,24 @@ func (u *WorkflowRunUpsert) UpdateMessage() *WorkflowRunUpsert {
 // ClearMessage clears the value of the "message" field.
 func (u *WorkflowRunUpsert) ClearMessage() *WorkflowRunUpsert {
 	u.SetNull(workflowrun.FieldMessage)
+	return u
+}
+
+// SetStartedBy sets the "started_by" field.
+func (u *WorkflowRunUpsert) SetStartedBy(v string) *WorkflowRunUpsert {
+	u.Set(workflowrun.FieldStartedBy, v)
+	return u
+}
+
+// UpdateStartedBy sets the "started_by" field to the value that was provided on create.
+func (u *WorkflowRunUpsert) UpdateStartedBy() *WorkflowRunUpsert {
+	u.SetExcluded(workflowrun.FieldStartedBy)
+	return u
+}
+
+// ClearStartedBy clears the value of the "started_by" field.
+func (u *WorkflowRunUpsert) ClearStartedBy() *WorkflowRunUpsert {
+	u.SetNull(workflowrun.FieldStartedBy)
 	return u
 }
 
@@ -692,6 +728,27 @@ func (u *WorkflowRunUpsertOne) UpdateMessage() *WorkflowRunUpsertOne {
 func (u *WorkflowRunUpsertOne) ClearMessage() *WorkflowRunUpsertOne {
 	return u.Update(func(s *WorkflowRunUpsert) {
 		s.ClearMessage()
+	})
+}
+
+// SetStartedBy sets the "started_by" field.
+func (u *WorkflowRunUpsertOne) SetStartedBy(v string) *WorkflowRunUpsertOne {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.SetStartedBy(v)
+	})
+}
+
+// UpdateStartedBy sets the "started_by" field to the value that was provided on create.
+func (u *WorkflowRunUpsertOne) UpdateStartedBy() *WorkflowRunUpsertOne {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.UpdateStartedBy()
+	})
+}
+
+// ClearStartedBy clears the value of the "started_by" field.
+func (u *WorkflowRunUpsertOne) ClearStartedBy() *WorkflowRunUpsertOne {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.ClearStartedBy()
 	})
 }
 
@@ -1084,6 +1141,27 @@ func (u *WorkflowRunUpsertBulk) UpdateMessage() *WorkflowRunUpsertBulk {
 func (u *WorkflowRunUpsertBulk) ClearMessage() *WorkflowRunUpsertBulk {
 	return u.Update(func(s *WorkflowRunUpsert) {
 		s.ClearMessage()
+	})
+}
+
+// SetStartedBy sets the "started_by" field.
+func (u *WorkflowRunUpsertBulk) SetStartedBy(v string) *WorkflowRunUpsertBulk {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.SetStartedBy(v)
+	})
+}
+
+// UpdateStartedBy sets the "started_by" field to the value that was provided on create.
+func (u *WorkflowRunUpsertBulk) UpdateStartedBy() *WorkflowRunUpsertBulk {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.UpdateStartedBy()
+	})
+}
+
+// ClearStartedBy clears the value of the "started_by" field.
+func (u *WorkflowRunUpsertBulk) ClearStartedBy() *WorkflowRunUpsertBulk {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.ClearStartedBy()
 	})
 }
 

@@ -203,6 +203,16 @@ func (s *Service) RunReaper(ctx context.Context, liveJob LiveJobFunc) {
 		case n > 0:
 			log.Printf("worker: workflow run reaper: failed %d abandoned run(s)", n)
 		}
+		// Approval gates with a policy timeout that has elapsed fail on the
+		// same cadence (a parked run has no job to probe; the timeout is
+		// purely a matter of elapsed time).
+		n, err = s.ReapExpiredApprovals(ctx)
+		switch {
+		case err != nil:
+			log.Printf("worker: approval timeouts: %v", err)
+		case n > 0:
+			log.Printf("worker: approval timeouts: failed %d run(s) whose approval timed out", n)
+		}
 	}
 
 	sweep()

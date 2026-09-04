@@ -26,6 +26,8 @@ const (
 	FieldStatus = "status"
 	// FieldMessage holds the string denoting the message field in the database.
 	FieldMessage = "message"
+	// FieldStartedBy holds the string denoting the started_by field in the database.
+	FieldStartedBy = "started_by"
 	// FieldJobID holds the string denoting the job_id field in the database.
 	FieldJobID = "job_id"
 	// FieldGraph holds the string denoting the graph field in the database.
@@ -70,6 +72,7 @@ var Columns = []string{
 	FieldAction,
 	FieldStatus,
 	FieldMessage,
+	FieldStartedBy,
 	FieldJobID,
 	FieldGraph,
 	FieldArgs,
@@ -187,6 +190,11 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByMessage orders the results by the message field.
 func ByMessage(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMessage, opts...).ToFunc()
+}
+
+// ByStartedBy orders the results by the started_by field.
+func ByStartedBy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStartedBy, opts...).ToFunc()
 }
 
 // ByJobID orders the results by the job_id field.

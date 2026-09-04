@@ -42,6 +42,8 @@ const (
 	FieldApprovedBy = "approved_by"
 	// FieldApprovedAt holds the string denoting the approved_at field in the database.
 	FieldApprovedAt = "approved_at"
+	// FieldApprovals holds the string denoting the approvals field in the database.
+	FieldApprovals = "approvals"
 	// FieldChartRevision holds the string denoting the chart_revision field in the database.
 	FieldChartRevision = "chart_revision"
 	// FieldValuesRevision holds the string denoting the values_revision field in the database.
@@ -92,6 +94,7 @@ var Columns = []string{
 	FieldResources,
 	FieldApprovedBy,
 	FieldApprovedAt,
+	FieldApprovals,
 	FieldChartRevision,
 	FieldValuesRevision,
 	FieldCreatedAt,
@@ -224,6 +227,11 @@ func ByApprovedBy(opts ...sql.OrderTermOption) OrderOption {
 // ByApprovedAt orders the results by the approved_at field.
 func ByApprovedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldApprovedAt, opts...).ToFunc()
+}
+
+// ByApprovals orders the results by the approvals field.
+func ByApprovals(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldApprovals, opts...).ToFunc()
 }
 
 // ByChartRevision orders the results by the chart_revision field.

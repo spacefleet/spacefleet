@@ -30,6 +30,8 @@ type WorkflowRun struct {
 	Status workflowrun.Status `json:"status,omitempty"`
 	// Message holds the value of the "message" field.
 	Message string `json:"message,omitempty"`
+	// StartedBy holds the value of the "started_by" field.
+	StartedBy string `json:"started_by,omitempty"`
 	// JobID holds the value of the "job_id" field.
 	JobID string `json:"job_id,omitempty"`
 	// Graph holds the value of the "graph" field.
@@ -88,7 +90,7 @@ func (*WorkflowRun) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case workflowrun.FieldAction, workflowrun.FieldStatus, workflowrun.FieldMessage, workflowrun.FieldJobID, workflowrun.FieldGraph, workflowrun.FieldArgs:
+		case workflowrun.FieldAction, workflowrun.FieldStatus, workflowrun.FieldMessage, workflowrun.FieldStartedBy, workflowrun.FieldJobID, workflowrun.FieldGraph, workflowrun.FieldArgs:
 			values[i] = new(sql.NullString)
 		case workflowrun.FieldCreatedAt, workflowrun.FieldStartedAt, workflowrun.FieldFinishedAt, workflowrun.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -144,6 +146,12 @@ func (_m *WorkflowRun) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field message", values[i])
 			} else if value.Valid {
 				_m.Message = value.String
+			}
+		case workflowrun.FieldStartedBy:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field started_by", values[i])
+			} else if value.Valid {
+				_m.StartedBy = value.String
 			}
 		case workflowrun.FieldJobID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -249,6 +257,9 @@ func (_m *WorkflowRun) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("message=")
 	builder.WriteString(_m.Message)
+	builder.WriteString(", ")
+	builder.WriteString("started_by=")
+	builder.WriteString(_m.StartedBy)
 	builder.WriteString(", ")
 	builder.WriteString("job_id=")
 	builder.WriteString(_m.JobID)

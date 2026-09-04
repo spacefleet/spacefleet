@@ -116,6 +116,11 @@ func ApprovedAt(v time.Time) predicate.ComponentRun {
 	return predicate.ComponentRun(sql.FieldEQ(FieldApprovedAt, v))
 }
 
+// Approvals applies equality check predicate on the "approvals" field. It's identical to ApprovalsEQ.
+func Approvals(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldEQ(FieldApprovals, v))
+}
+
 // ChartRevision applies equality check predicate on the "chart_revision" field. It's identical to ChartRevisionEQ.
 func ChartRevision(v string) predicate.ComponentRun {
 	return predicate.ComponentRun(sql.FieldEQ(FieldChartRevision, v))
@@ -894,6 +899,81 @@ func ApprovedAtIsNil() predicate.ComponentRun {
 // ApprovedAtNotNil applies the NotNil predicate on the "approved_at" field.
 func ApprovedAtNotNil() predicate.ComponentRun {
 	return predicate.ComponentRun(sql.FieldNotNull(FieldApprovedAt))
+}
+
+// ApprovalsEQ applies the EQ predicate on the "approvals" field.
+func ApprovalsEQ(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldEQ(FieldApprovals, v))
+}
+
+// ApprovalsNEQ applies the NEQ predicate on the "approvals" field.
+func ApprovalsNEQ(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldNEQ(FieldApprovals, v))
+}
+
+// ApprovalsIn applies the In predicate on the "approvals" field.
+func ApprovalsIn(vs ...string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldIn(FieldApprovals, vs...))
+}
+
+// ApprovalsNotIn applies the NotIn predicate on the "approvals" field.
+func ApprovalsNotIn(vs ...string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldNotIn(FieldApprovals, vs...))
+}
+
+// ApprovalsGT applies the GT predicate on the "approvals" field.
+func ApprovalsGT(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldGT(FieldApprovals, v))
+}
+
+// ApprovalsGTE applies the GTE predicate on the "approvals" field.
+func ApprovalsGTE(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldGTE(FieldApprovals, v))
+}
+
+// ApprovalsLT applies the LT predicate on the "approvals" field.
+func ApprovalsLT(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldLT(FieldApprovals, v))
+}
+
+// ApprovalsLTE applies the LTE predicate on the "approvals" field.
+func ApprovalsLTE(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldLTE(FieldApprovals, v))
+}
+
+// ApprovalsContains applies the Contains predicate on the "approvals" field.
+func ApprovalsContains(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldContains(FieldApprovals, v))
+}
+
+// ApprovalsHasPrefix applies the HasPrefix predicate on the "approvals" field.
+func ApprovalsHasPrefix(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldHasPrefix(FieldApprovals, v))
+}
+
+// ApprovalsHasSuffix applies the HasSuffix predicate on the "approvals" field.
+func ApprovalsHasSuffix(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldHasSuffix(FieldApprovals, v))
+}
+
+// ApprovalsIsNil applies the IsNil predicate on the "approvals" field.
+func ApprovalsIsNil() predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldIsNull(FieldApprovals))
+}
+
+// ApprovalsNotNil applies the NotNil predicate on the "approvals" field.
+func ApprovalsNotNil() predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldNotNull(FieldApprovals))
+}
+
+// ApprovalsEqualFold applies the EqualFold predicate on the "approvals" field.
+func ApprovalsEqualFold(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldEqualFold(FieldApprovals, v))
+}
+
+// ApprovalsContainsFold applies the ContainsFold predicate on the "approvals" field.
+func ApprovalsContainsFold(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldContainsFold(FieldApprovals, v))
 }
 
 // ChartRevisionEQ applies the EQ predicate on the "chart_revision" field.

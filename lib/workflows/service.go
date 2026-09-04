@@ -56,13 +56,17 @@ func (s *Service) OnReaped(fn func(context.Context, *ent.WorkflowRun)) {
 // can reference sibling nodes across an edit and so identity survives a replace.
 // Config is the type-specific, non-secret param map, validated per type.
 type ComponentInput struct {
-	ID                   uuid.UUID
-	Name                 string
-	Type                 string
-	Config               map[string]string
-	DependsOn            []uuid.UUID
-	ContinueOnFailure    bool
-	RequiresApproval     bool
+	ID                uuid.UUID
+	Name              string
+	Type              string
+	Config            map[string]string
+	DependsOn         []uuid.UUID
+	ContinueOnFailure bool
+	RequiresApproval  bool
+	// ApprovalPolicy applies at the node's approval gate; the zero value is
+	// the default policy. Normalised by ReplaceWorkflow (see
+	// normalizeApprovalPolicy).
+	ApprovalPolicy       ApprovalPolicy
 	TargetClusterID      *uuid.UUID
 	TargetNamespace      string
 	ChartCredentialID    *uuid.UUID
@@ -103,6 +107,16 @@ func (s *Service) ReplaceWorkflow(ctx context.Context, orgID, appID uuid.UUID, n
 	app, err := s.getApp(ctx, orgID, appID)
 	if err != nil {
 		return nil, nil, err
+	}
+	// Normalise each node's approval policy (trim/lowercase/dedupe the
+	// approvers, bound the counts) before the DAG validation, so what is
+	// persisted is canonical and a bad policy is a 400 like any config error.
+	for i := range nodes {
+		p, err := normalizeApprovalPolicy(nodes[i])
+		if err != nil {
+			return nil, nil, err
+		}
+		nodes[i].ApprovalPolicy = p
 	}
 	if err := validateWorkflow(nodes, groups); err != nil {
 		return nil, nil, err
@@ -229,6 +243,7 @@ func (s *Service) createComponent(ctx context.Context, tx *ent.Tx, orgID, appID 
 		SetDependsOn(nonNilIDs(n.DependsOn)).
 		SetContinueOnFailure(n.ContinueOnFailure).
 		SetRequiresApproval(n.RequiresApproval).
+		SetApprovalPolicy(n.ApprovalPolicy).
 		SetTargetNamespace(n.TargetNamespace).
 		SetPosition(nonNilFloatMap(n.Position))
 	if n.TargetClusterID != nil && *n.TargetClusterID != uuid.Nil {

@@ -3223,6 +3223,8 @@ components:
             When true, the run parks at this node (status awaiting_approval)
             until a human approves it; the node only runs once approved. Used to
             gate destructive or sensitive steps (e.g. an OpenTofu apply).
+        approval_policy:
+          $ref: "#/components/schemas/ApprovalPolicy"
         target_cluster_id:
           type: string
           format: uuid
@@ -3260,6 +3262,41 @@ components:
             Id of the explicit group container this component is a parallel
             member of, or null when ungrouped. A node that depends on a group
             waits for all of its members.
+
+    ApprovalPolicy:
+      type: object
+      description: |
+        The policy applied at a component's approval gate (requires_approval).
+        All fields optional; the empty policy is the default: any editor or
+        admin may approve, one approval opens the gate, the person who started
+        the run may approve, and a parked run waits indefinitely.
+      properties:
+        approvers:
+          type: array
+          items:
+            type: string
+          description: |
+            Who may approve, by email. Empty means any editor or admin of the
+            organization. Anyone with edit access may still reject.
+        required:
+          type: integer
+          minimum: 0
+          description: |
+            How many distinct approvals open the gate (N-of-M). 0 and 1 both
+            mean one. With named approvers, at most their number.
+        require_different_approver:
+          type: boolean
+          description: |
+            When true, the person who started the run cannot approve it
+            (no self-approval).
+        timeout_minutes:
+          type: integer
+          minimum: 0
+          maximum: 10080
+          description: |
+            Fail the run when the gate has waited this long without a
+            decision. 0 waits indefinitely. Counted from the step parking (or
+            its last partial approval).
 
     ComponentInput:
       type: object
@@ -3301,6 +3338,8 @@ components:
           description: |
             When true, the run parks at this node until a human approves it
             (status awaiting_approval). Defaults to false.
+        approval_policy:
+          $ref: "#/components/schemas/ApprovalPolicy"
         target_cluster_id:
           type: string
           format: uuid
@@ -3490,6 +3529,11 @@ components:
           format: date-time
           nullable: true
           description: When the run settled; absent until terminal.
+        started_by:
+          type: string
+          description: |
+            Email of the user who started the run; empty for a run the
+            scheduler started (a scheduled drift check).
         state_op:
           $ref: "#/components/schemas/StateOperation"
 
@@ -3509,6 +3553,17 @@ components:
         skipped. A gated step parks at awaiting_approval (a non-terminal pause)
         until a human approves it, then moves back to pending and runs.
       enum: [pending, running, succeeded, failed, skipped, awaiting_approval]
+
+    Approval:
+      type: object
+      required: [by, at]
+      properties:
+        by:
+          type: string
+          description: Email of the approver.
+        at:
+          type: string
+          format: date-time
 
     ComponentRun:
       type: object
@@ -3554,6 +3609,13 @@ components:
           format: date-time
           nullable: true
           description: When the approval/rejection decision was made; absent until then.
+        approvals:
+          type: array
+          description: |
+            Every approval recorded on this step's gate so far, in order — the
+            N-of-M tally. Empty until someone approves.
+          items:
+            $ref: "#/components/schemas/Approval"
         chart_revision:
           type: string
           description: Git commit SHA the chart was resolved to (git sources only).

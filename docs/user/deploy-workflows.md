@@ -318,6 +318,31 @@ how to designate one.) Only one run can be in progress for an application at a
 time; starting a second while one is still going is refused, so two runs never
 fight over the same releases.
 
+## Approvals
+
+Any component can **require manual approval**: the run parks at that step
+(and an OpenTofu component does so by default, between its plan and its
+apply) until someone decides. By default any editor or admin of the
+organization can approve, one approval is enough, the person who started the
+run may approve it themselves, and a parked run waits indefinitely.
+
+Each gated component can tighten that with an **approval policy**:
+
+- **Approvers** — the people, by email, who may approve. Anyone with edit
+  access can still *reject*; refusing a change never needs the list.
+- **Approvals required** — how many distinct approvals open the gate
+  (two-of-three, say). Until the count is reached the step stays parked and
+  shows who has approved so far.
+- **Require a different approver** — the person who started the run cannot
+  approve it. A scheduled run has no starter, so anyone may approve it.
+- **Approval timeout** — if nobody decides within this many minutes of the
+  step parking, the run fails. Steps after it are skipped, exactly as if the
+  step had been rejected.
+
+The policy that applies to a run is the one in force when the run started;
+editing a component while a run is parked does not change that run's gate.
+Every run also records who started it, shown on the run page.
+
 ## Watch a run
 
 When you start a run, Spacefleet opens the **run view** and shows progress live —

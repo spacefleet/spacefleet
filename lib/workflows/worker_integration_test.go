@@ -664,8 +664,8 @@ func TestWorkStateOpGatedThenRecordsState(t *testing.T) {
 	}
 
 	// Approve, then the resume attempt runs the operation.
-	if _, err := svc.ApproveComponentRun(ctx, org.ID, app.ID, run.ID, step.ID, "ops@example.com", DecisionApprove); err != nil {
-		t.Fatalf("approve: %v", err)
+	if _, open, err := svc.ApproveComponentRun(ctx, org.ID, app.ID, run.ID, step.ID, "ops@example.com", DecisionApprove); err != nil || !open {
+		t.Fatalf("approve: err=%v open=%v", err, open)
 	}
 	if err := w.Work(ctx, workerJob(args, 1, 3)); err != nil {
 		t.Fatalf("Work (resumed): %v", err)

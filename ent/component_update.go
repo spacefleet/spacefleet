@@ -19,6 +19,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/predicate"
+	"github.com/spacefleet/spacefleet/ent/schema"
 )
 
 // ComponentUpdate is the builder for updating Component entities.
@@ -117,6 +118,26 @@ func (_u *ComponentUpdate) SetNillableRequiresApproval(v *bool) *ComponentUpdate
 	if v != nil {
 		_u.SetRequiresApproval(*v)
 	}
+	return _u
+}
+
+// SetApprovalPolicy sets the "approval_policy" field.
+func (_u *ComponentUpdate) SetApprovalPolicy(v schema.ApprovalPolicy) *ComponentUpdate {
+	_u.mutation.SetApprovalPolicy(v)
+	return _u
+}
+
+// SetNillableApprovalPolicy sets the "approval_policy" field if the given value is not nil.
+func (_u *ComponentUpdate) SetNillableApprovalPolicy(v *schema.ApprovalPolicy) *ComponentUpdate {
+	if v != nil {
+		_u.SetApprovalPolicy(*v)
+	}
+	return _u
+}
+
+// ClearApprovalPolicy clears the value of the "approval_policy" field.
+func (_u *ComponentUpdate) ClearApprovalPolicy() *ComponentUpdate {
+	_u.mutation.ClearApprovalPolicy()
 	return _u
 }
 
@@ -385,6 +406,12 @@ func (_u *ComponentUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.RequiresApproval(); ok {
 		_spec.SetField(component.FieldRequiresApproval, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.ApprovalPolicy(); ok {
+		_spec.SetField(component.FieldApprovalPolicy, field.TypeJSON, value)
+	}
+	if _u.mutation.ApprovalPolicyCleared() {
+		_spec.ClearField(component.FieldApprovalPolicy, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.TargetNamespace(); ok {
 		_spec.SetField(component.FieldTargetNamespace, field.TypeString, value)
 	}
@@ -619,6 +646,26 @@ func (_u *ComponentUpdateOne) SetNillableRequiresApproval(v *bool) *ComponentUpd
 	if v != nil {
 		_u.SetRequiresApproval(*v)
 	}
+	return _u
+}
+
+// SetApprovalPolicy sets the "approval_policy" field.
+func (_u *ComponentUpdateOne) SetApprovalPolicy(v schema.ApprovalPolicy) *ComponentUpdateOne {
+	_u.mutation.SetApprovalPolicy(v)
+	return _u
+}
+
+// SetNillableApprovalPolicy sets the "approval_policy" field if the given value is not nil.
+func (_u *ComponentUpdateOne) SetNillableApprovalPolicy(v *schema.ApprovalPolicy) *ComponentUpdateOne {
+	if v != nil {
+		_u.SetApprovalPolicy(*v)
+	}
+	return _u
+}
+
+// ClearApprovalPolicy clears the value of the "approval_policy" field.
+func (_u *ComponentUpdateOne) ClearApprovalPolicy() *ComponentUpdateOne {
+	_u.mutation.ClearApprovalPolicy()
 	return _u
 }
 
@@ -916,6 +963,12 @@ func (_u *ComponentUpdateOne) sqlSave(ctx context.Context) (_node *Component, er
 	}
 	if value, ok := _u.mutation.RequiresApproval(); ok {
 		_spec.SetField(component.FieldRequiresApproval, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ApprovalPolicy(); ok {
+		_spec.SetField(component.FieldApprovalPolicy, field.TypeJSON, value)
+	}
+	if _u.mutation.ApprovalPolicyCleared() {
+		_spec.ClearField(component.FieldApprovalPolicy, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.TargetNamespace(); ok {
 		_spec.SetField(component.FieldTargetNamespace, field.TypeString, value)

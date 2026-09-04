@@ -155,11 +155,11 @@ func init() {
 	// component.DefaultRequiresApproval holds the default value on creation for the requires_approval field.
 	component.DefaultRequiresApproval = componentDescRequiresApproval.Default.(bool)
 	// componentDescCreatedAt is the schema descriptor for created_at field.
-	componentDescCreatedAt := componentFields[15].Descriptor()
+	componentDescCreatedAt := componentFields[16].Descriptor()
 	// component.DefaultCreatedAt holds the default value on creation for the created_at field.
 	component.DefaultCreatedAt = componentDescCreatedAt.Default.(func() time.Time)
 	// componentDescUpdatedAt is the schema descriptor for updated_at field.
-	componentDescUpdatedAt := componentFields[16].Descriptor()
+	componentDescUpdatedAt := componentFields[17].Descriptor()
 	// component.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	component.DefaultUpdatedAt = componentDescUpdatedAt.Default.(func() time.Time)
 	// component.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -195,11 +195,11 @@ func init() {
 	// componentrun.DefaultApprovedBy holds the default value on creation for the approved_by field.
 	componentrun.DefaultApprovedBy = componentrunDescApprovedBy.Default.(string)
 	// componentrunDescCreatedAt is the schema descriptor for created_at field.
-	componentrunDescCreatedAt := componentrunFields[16].Descriptor()
+	componentrunDescCreatedAt := componentrunFields[17].Descriptor()
 	// componentrun.DefaultCreatedAt holds the default value on creation for the created_at field.
 	componentrun.DefaultCreatedAt = componentrunDescCreatedAt.Default.(func() time.Time)
 	// componentrunDescUpdatedAt is the schema descriptor for updated_at field.
-	componentrunDescUpdatedAt := componentrunFields[19].Descriptor()
+	componentrunDescUpdatedAt := componentrunFields[20].Descriptor()
 	// componentrun.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	componentrun.DefaultUpdatedAt = componentrunDescUpdatedAt.Default.(func() time.Time)
 	// componentrun.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -359,11 +359,11 @@ func init() {
 	workflowrunFields := schema.WorkflowRun{}.Fields()
 	_ = workflowrunFields
 	// workflowrunDescCreatedAt is the schema descriptor for created_at field.
-	workflowrunDescCreatedAt := workflowrunFields[9].Descriptor()
+	workflowrunDescCreatedAt := workflowrunFields[10].Descriptor()
 	// workflowrun.DefaultCreatedAt holds the default value on creation for the created_at field.
 	workflowrun.DefaultCreatedAt = workflowrunDescCreatedAt.Default.(func() time.Time)
 	// workflowrunDescUpdatedAt is the schema descriptor for updated_at field.
-	workflowrunDescUpdatedAt := workflowrunFields[12].Descriptor()
+	workflowrunDescUpdatedAt := workflowrunFields[13].Descriptor()
 	// workflowrun.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	workflowrun.DefaultUpdatedAt = workflowrunDescUpdatedAt.Default.(func() time.Time)
 	// workflowrun.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

@@ -15,14 +15,7 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import {
-  ArrowLeft,
-  Ban,
-  Check,
-  Maximize2,
-  Minimize2,
-  X,
-} from "lucide-react";
+import { ArrowLeft, Ban, Check, Maximize2, Minimize2, X } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import { useObjectStream } from "../lib/useObjectStream";
@@ -69,7 +62,9 @@ interface SnapshotNode {
   type: string;
   config?: Record<string, string>;
   depends_on?: string[];
+  approval_policy?: ApprovalPolicy;
 }
+type ApprovalPolicy = components["schemas"]["ApprovalPolicy"];
 interface GraphSnapshot {
   nodes?: SnapshotNode[];
 }
@@ -204,7 +199,12 @@ export function WorkflowRunView() {
     const snapshot = parseSnapshot(run?.graph);
     const snapNodes = snapshot?.nodes ?? [];
 
-    let layoutNodes: { id: string; name: string; type: string; depends_on: string[] }[];
+    let layoutNodes: {
+      id: string;
+      name: string;
+      type: string;
+      depends_on: string[];
+    }[];
     if (snapNodes.length > 0) {
       layoutNodes = snapNodes.map((n) => ({
         id: n.id,
@@ -275,6 +275,18 @@ export function WorkflowRunView() {
     return null;
   }, [selectedRunId, run, runsByComponent]);
 
+  // The selected step's approval policy, as snapshotted at run start, so the
+  // gate can say who may approve and how many approvals it needs.
+  const selectedPolicy = useMemo(() => {
+    if (!selectedRunId || !run) return null;
+    const cr = run.component_runs?.find((c) => c.id === selectedRunId);
+    if (!cr?.component_id) return null;
+    const node = parseSnapshot(run.graph)?.nodes?.find(
+      (n) => n.id === cr.component_id,
+    );
+    return node?.approval_policy ?? null;
+  }, [selectedRunId, run]);
+
   return (
     <div className="flex h-[calc(100vh-7rem)] flex-col">
       <button
@@ -326,7 +338,8 @@ export function WorkflowRunView() {
               )}
               <RunStatusBadge status={run.status} />
               <span className="text-xs text-neutral-500">
-                started {new Date(run.created_at).toLocaleString()} ·{" "}
+                started {new Date(run.created_at).toLocaleString()}
+                {run.started_by && <> by {run.started_by}</>} ·{" "}
                 {formatDuration(run.created_at, run.finished_at ?? undefined)}
               </span>
             </div>
@@ -364,7 +377,8 @@ export function WorkflowRunView() {
                   // shrunken strip needs more headroom than the 0.5 default.
                   minZoom={0.1}
                   onNodeClick={(_, n) => {
-                    const crId = (n.data as { componentRunId?: string }).componentRunId;
+                    const crId = (n.data as { componentRunId?: string })
+                      .componentRunId;
                     if (crId) setSelectedRunId(crId);
                   }}
                   fitView
@@ -391,6 +405,8 @@ export function WorkflowRunView() {
                 isPreview={isReadOnlyAction(run.action)}
                 isDrift={run.action === "drift"}
                 stateOp={run.state_op ?? null}
+                policy={selectedPolicy}
+                startedBy={run.started_by ?? ""}
                 planRun={planSource}
                 canApprove={canApprove}
                 onDecided={load}
@@ -422,6 +438,8 @@ function ComponentRunPanel({
   isPreview,
   isDrift,
   stateOp,
+  policy,
+  startedBy,
   planRun,
   canApprove,
   onDecided,
@@ -442,6 +460,10 @@ function ComponentRunPanel({
   // The state operation of a state_op run: its gate shows the exact command
   // the step will run, since there is no plan to review.
   stateOp: StateOperation | null;
+  // The step's approval policy (from the run snapshot) and who started the
+  // run, so the gate can explain who may approve and show the N-of-M tally.
+  policy: ApprovalPolicy | null;
+  startedBy: string;
   // The upstream tofu plan step backing this apply step, when there is one. Its
   // logs are the review material for the approval gate, so the panel surfaces
   // them on a "Plan output" tab — leading while the step is parked.
@@ -663,6 +685,11 @@ function ComponentRunPanel({
                       {stateOp.command}
                     </code>
                   )}
+                  <ApprovalPolicyLine
+                    policy={policy}
+                    approvals={detail.approvals ?? []}
+                    startedBy={startedBy}
+                  />
                 </div>
                 {canApprove ? (
                   <div className="flex items-center gap-2">
@@ -714,44 +741,57 @@ function ComponentRunPanel({
               </TabButton>
             </div>
           )}
-          {!isPreview && (planRun || ownPlan || outputEntries.length > 0 || hasResources) && (
-            <div className="flex items-center gap-4 border-b border-neutral-200 px-4">
-              {planRun && (
-                <TabButton active={tab === "plan"} onClick={() => setTab("plan")}>
-                  Plan output
-                  {planDetail?.plan && <PlanCounts plan={planDetail.plan} />}
-                </TabButton>
-              )}
-              {ownPlan && (
-                <TabButton active={tab === "plan"} onClick={() => setTab("plan")}>
-                  Plan
-                  <PlanCounts plan={ownPlan} />
-                </TabButton>
-              )}
-              {outputEntries.length > 0 && (
+          {!isPreview &&
+            (planRun ||
+              ownPlan ||
+              outputEntries.length > 0 ||
+              hasResources) && (
+              <div className="flex items-center gap-4 border-b border-neutral-200 px-4">
+                {planRun && (
+                  <TabButton
+                    active={tab === "plan"}
+                    onClick={() => setTab("plan")}
+                  >
+                    Plan output
+                    {planDetail?.plan && <PlanCounts plan={planDetail.plan} />}
+                  </TabButton>
+                )}
+                {ownPlan && (
+                  <TabButton
+                    active={tab === "plan"}
+                    onClick={() => setTab("plan")}
+                  >
+                    Plan
+                    <PlanCounts plan={ownPlan} />
+                  </TabButton>
+                )}
+                {outputEntries.length > 0 && (
+                  <TabButton
+                    active={tab === "outputs"}
+                    onClick={() => setTab("outputs")}
+                  >
+                    Outputs
+                  </TabButton>
+                )}
+                {hasResources && (
+                  <TabButton
+                    active={tab === "resources"}
+                    onClick={() => setTab("resources")}
+                  >
+                    Resources
+                    <span className="text-xs text-neutral-400">
+                      {detail.resources?.length}
+                    </span>
+                  </TabButton>
+                )}
                 <TabButton
-                  active={tab === "outputs"}
-                  onClick={() => setTab("outputs")}
+                  active={tab === "logs"}
+                  onClick={() => setTab("logs")}
                 >
-                  Outputs
+                  Logs
                 </TabButton>
-              )}
-              {hasResources && (
-                <TabButton
-                  active={tab === "resources"}
-                  onClick={() => setTab("resources")}
-                >
-                  Resources
-                  <span className="text-xs text-neutral-400">
-                    {detail.resources?.length}
-                  </span>
-                </TabButton>
-              )}
-              <TabButton active={tab === "logs"} onClick={() => setTab("logs")}>
-                Logs
-              </TabButton>
-            </div>
-          )}
+              </div>
+            )}
 
           <div className="min-h-0 flex-1 p-3">
             {isPreview && tab === "diff" ? (
@@ -858,9 +898,7 @@ function PlanBody({ plan, body }: { plan: PlanSummary; body?: string }) {
           >
             {showText ? "Hide full plan text" : "Show full plan text"}
           </button>
-          {showText && (
-            <DiffView diff={body} className="mt-2 max-h-[40rem]" />
-          )}
+          {showText && <DiffView diff={body} className="mt-2 max-h-[40rem]" />}
         </div>
       )}
     </div>
@@ -920,4 +958,43 @@ function computeDepths(
   };
   for (const n of nodes) resolve(n.id, new Set());
   return depth;
+}
+
+// ApprovalPolicyLine explains a parked gate's policy: who may approve, the
+// N-of-M tally so far, whether the starter is excluded, and the timeout.
+// Renders nothing for the default policy with no approvals yet.
+function ApprovalPolicyLine({
+  policy,
+  approvals,
+  startedBy,
+}: {
+  policy: ApprovalPolicy | null;
+  approvals: { by: string; at: string }[];
+  startedBy: string;
+}) {
+  const required = Math.max(1, policy?.required ?? 1);
+  const parts: string[] = [];
+  if (policy?.approvers?.length) {
+    parts.push(`Approvers: ${policy.approvers.join(", ")}`);
+  }
+  if (required > 1 || approvals.length > 0) {
+    parts.push(
+      `${approvals.length} of ${required} approval${required === 1 ? "" : "s"}` +
+        (approvals.length > 0
+          ? ` (${approvals.map((a) => a.by).join(", ")})`
+          : ""),
+    );
+  }
+  if (policy?.require_different_approver && startedBy) {
+    parts.push(`${startedBy} started this run and cannot approve it`);
+  }
+  if (policy?.timeout_minutes) {
+    parts.push(`times out after ${policy.timeout_minutes} min`);
+  }
+  if (parts.length === 0) return null;
+  return (
+    <p data-testid="approval-policy" className="mt-1.5 text-xs text-violet-800">
+      {parts.join(" · ")}
+    </p>
+  );
 }

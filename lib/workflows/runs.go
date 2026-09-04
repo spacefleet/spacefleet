@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -65,18 +67,22 @@ type GraphNode struct {
 	// synthetic ID (see expandExecutionNodes) but must still resolve its
 	// component-scoped variables and credentials under the authored component id —
 	// so the planner passes ComponentID (not ID) to the resolver.
-	ComponentID          uuid.UUID         `json:"component_id"`
-	Name                 string            `json:"name"`
-	Type                 string            `json:"type"`
-	Config               map[string]string `json:"config"`
-	DependsOn            []uuid.UUID       `json:"depends_on"`
-	ContinueOnFailure    bool              `json:"continue_on_failure"`
-	RequiresApproval     bool              `json:"requires_approval"`
-	TargetClusterID      *uuid.UUID        `json:"target_cluster_id,omitempty"`
-	TargetNamespace      string            `json:"target_namespace,omitempty"`
-	ChartCredentialID    *uuid.UUID        `json:"chart_credential_id,omitempty"`
-	GitHubInstallationID *uuid.UUID        `json:"github_installation_id,omitempty"`
-	GroupID              *uuid.UUID        `json:"group_id,omitempty"`
+	ComponentID       uuid.UUID         `json:"component_id"`
+	Name              string            `json:"name"`
+	Type              string            `json:"type"`
+	Config            map[string]string `json:"config"`
+	DependsOn         []uuid.UUID       `json:"depends_on"`
+	ContinueOnFailure bool              `json:"continue_on_failure"`
+	RequiresApproval  bool              `json:"requires_approval"`
+	// ApprovalPolicy is the node's approval policy as it was when the run
+	// began; nil is the default policy. Read by ApproveComponentRun and the
+	// approval-timeout sweep, so a policy edit never changes an in-flight gate.
+	ApprovalPolicy       *ApprovalPolicy `json:"approval_policy,omitempty"`
+	TargetClusterID      *uuid.UUID      `json:"target_cluster_id,omitempty"`
+	TargetNamespace      string          `json:"target_namespace,omitempty"`
+	ChartCredentialID    *uuid.UUID      `json:"chart_credential_id,omitempty"`
+	GitHubInstallationID *uuid.UUID      `json:"github_installation_id,omitempty"`
+	GroupID              *uuid.UUID      `json:"group_id,omitempty"`
 }
 
 // GraphGroup is one authored group container in a snapshot, retained so a future
@@ -267,6 +273,10 @@ func snapshotComponents(comps []*ent.Component, groups []*ent.ComponentGroup, ac
 			ContinueOnFailure: c.ContinueOnFailure,
 			RequiresApproval:  c.RequiresApproval,
 			TargetNamespace:   c.TargetNamespace,
+		}
+		if !isZeroPolicy(c.ApprovalPolicy) {
+			p := c.ApprovalPolicy
+			n.ApprovalPolicy = &p
 		}
 		if c.TargetClusterID != uuid.Nil {
 			id := c.TargetClusterID
@@ -462,23 +472,33 @@ var ErrInvalidDecision = errors.New("workflows: invalid approval decision")
 var ErrNotAwaitingApproval = errors.New("workflows: run or component is not awaiting approval")
 
 // ApproveComponentRun records a manual-approval decision on a parked gate and
-// returns the run so the handler can re-enqueue the resume job. It verifies — all
-// org-scoped, and confirming the run belongs to the app and the component run to
-// the run — that the run is awaiting_approval and the target component run is
-// awaiting_approval, then, in one transaction:
+// returns the run plus whether the gate opened (so the handler knows to
+// enqueue the resume job). It verifies — all org-scoped, and confirming the
+// run belongs to the app and the component run to the run — that the run is
+// awaiting_approval and the target component run is awaiting_approval, applies
+// the step's approval policy (as snapshotted at run start), then, in one
+// transaction:
 //
-//   - approve: stamps approved_by/approved_at and moves the component run back to
-//     pending so the resumed worker re-evaluates it as runnable (the gate cleared).
-//   - reject: settles the component run failed ("approval rejected"); its dependents
-//     skip on resume and the run settles failed/partial.
+//   - approve: checks the approver is allowed (a named approver when the
+//     policy lists any — ErrNotAnApprover; not the run's starter when the
+//     policy forbids self-approval — ErrSelfApproval; not already counted —
+//     ErrAlreadyApproved), appends the approval to the step's tally, and, once
+//     the tally reaches the required count, stamps approved_by/approved_at and
+//     moves the component run back to pending so the resumed worker
+//     re-evaluates it as runnable (gateOpen=true). Short of the count the step
+//     stays parked with the tally on its message (gateOpen=false).
+//   - reject: settles the component run failed ("approval rejected"); its
+//     dependents skip on resume and the run settles failed/partial. Any editor
+//     may reject: refusing a change never needs the approver list.
 //
-// In both cases the run is left awaiting_approval here — the handler enqueues a
-// resume job, whose worker flips the run back to running (and on to terminal). The
-// status guards are re-asserted as predicates inside the tx so a concurrent decision
-// or a cancel that settled the run first makes this a no-op (ErrNotAwaitingApproval).
-func (s *Service) ApproveComponentRun(ctx context.Context, orgID, appID, runID, crID uuid.UUID, approver, decision string) (*ent.WorkflowRun, error) {
+// In both cases the run is left awaiting_approval here — the handler enqueues
+// a resume job when the gate opened or the step was rejected, whose worker
+// flips the run back to running (and on to terminal). The status guards are
+// re-asserted as predicates inside the tx so a concurrent decision or a cancel
+// that settled the run first makes this a no-op (ErrNotAwaitingApproval).
+func (s *Service) ApproveComponentRun(ctx context.Context, orgID, appID, runID, crID uuid.UUID, approver, decision string) (*ent.WorkflowRun, bool, error) {
 	if decision != DecisionApprove && decision != DecisionReject {
-		return nil, ErrInvalidDecision
+		return nil, false, ErrInvalidDecision
 	}
 
 	run, err := s.ent.WorkflowRun.Query().
@@ -489,10 +509,10 @@ func (s *Service) ApproveComponentRun(ctx context.Context, orgID, appID, runID, 
 		).
 		Only(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if run.Status != workflowrun.StatusAwaitingApproval {
-		return nil, ErrNotAwaitingApproval
+		return nil, false, ErrNotAwaitingApproval
 	}
 
 	// Confirm the component run belongs to this run (and org) and is the parked gate.
@@ -504,32 +524,57 @@ func (s *Service) ApproveComponentRun(ctx context.Context, orgID, appID, runID, 
 		).
 		Only(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if cr.Status != componentrun.StatusAwaitingApproval {
-		return nil, ErrNotAwaitingApproval
-	}
-
-	tx, err := s.ent.Tx(ctx)
-	if err != nil {
-		return nil, err
+		return nil, false, ErrNotAwaitingApproval
 	}
 
 	now := time.Now()
-	upd := tx.ComponentRun.Update().
+	who := strings.ToLower(strings.TrimSpace(approver))
+	upd := s.ent.ComponentRun.Update().
 		Where(
 			componentrun.OrganizationID(orgID),
 			componentrun.WorkflowRunID(runID),
 			componentrun.ID(crID),
 			componentrun.StatusEQ(componentrun.StatusAwaitingApproval),
 		)
+	gateOpen := false
 	switch decision {
 	case DecisionApprove:
-		upd.SetApprovedBy(approver).
-			SetApprovedAt(now).
-			SetStatus(componentrun.StatusPending).
-			SetMessage("approved by " + approver)
+		policy := snapshotPolicy(run.Graph, cr.ComponentID)
+		if policy != nil {
+			if len(policy.Approvers) > 0 && !containsFold(policy.Approvers, who) {
+				return nil, false, ErrNotAnApprover
+			}
+			if policy.RequireDifferentApprover && run.StartedBy != "" && strings.EqualFold(run.StartedBy, who) {
+				return nil, false, ErrSelfApproval
+			}
+		}
+		approvals := ParseApprovals(cr.Approvals)
+		for _, a := range approvals {
+			if strings.EqualFold(a.By, who) {
+				return nil, false, ErrAlreadyApproved
+			}
+		}
+		approvals = append(approvals, Approval{By: approver, At: now})
+		tally, err := json.Marshal(approvals)
+		if err != nil {
+			return nil, false, err
+		}
+		need := approvalsRequired(policy)
+		upd.SetApprovals(string(tally))
+		if len(approvals) >= need {
+			gateOpen = true
+			upd.SetApprovedBy(approver).
+				SetApprovedAt(now).
+				SetStatus(componentrun.StatusPending).
+				SetMessage("approved by " + approverNames(approvals))
+		} else {
+			upd.SetMessage(fmt.Sprintf("%d of %d approvals (%s)", len(approvals), need, approverNames(approvals)))
+		}
 	case DecisionReject:
+		gateOpen = true
 		upd.SetApprovedBy(approver).
 			SetApprovedAt(now).
 			SetStatus(componentrun.StatusFailed).
@@ -538,21 +583,40 @@ func (s *Service) ApproveComponentRun(ctx context.Context, orgID, appID, runID, 
 	}
 	affected, err := upd.Save(ctx)
 	if err != nil {
-		return nil, rollback(tx, err)
+		return nil, false, err
 	}
 	if affected == 0 {
-		return nil, rollback(tx, ErrNotAwaitingApproval)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, err
+		return nil, false, ErrNotAwaitingApproval
 	}
 
 	// Re-read the run so the handler returns the current row (still awaiting_approval
 	// until the resume job it enqueues flips it back to running).
-	return s.ent.WorkflowRun.Query().
+	run, err = s.ent.WorkflowRun.Query().
 		Where(workflowrun.OrganizationID(orgID), workflowrun.ID(runID)).
 		Only(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	return run, gateOpen, nil
+}
+
+// containsFold reports whether list holds s, case-insensitively.
+func containsFold(list []string, s string) bool {
+	for _, v := range list {
+		if strings.EqualFold(v, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// approverNames joins the approvers of a tally for a step message.
+func approverNames(approvals []Approval) string {
+	names := make([]string, 0, len(approvals))
+	for _, a := range approvals {
+		names = append(names, a.By)
+	}
+	return strings.Join(names, ", ")
 }
 
 // SetRunJob records the River job id driving a run, after the handler enqueues

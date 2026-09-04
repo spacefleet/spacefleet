@@ -103,6 +103,11 @@ func (s *Server) StartRun(ctx context.Context, req StartRunRequestObject) (Start
 			return nil, err
 		}
 	}
+	// Record who started the run before it can be resumed or approved: the
+	// no-self-approval rule compares approvers against it.
+	if err := s.recordRunStarter(ctx, orgID, run); err != nil {
+		return nil, err
+	}
 	// force is the per-run forced-roll opt-in; only meaningful for deploy (the
 	// planner ignores it for uninstall/preview) but carried on the job args so a
 	// River retry re-plans identically. Defaults to false when absent.
@@ -221,18 +226,27 @@ func (s *Server) decideComponentRun(ctx context.Context, appID, runID, crID uuid
 		approver = u.ID.String()
 	}
 
-	run, err := s.workflows.ApproveComponentRun(ctx, orgID, appID, runID, crID, approver, decision)
+	run, gateOpen, err := s.workflows.ApproveComponentRun(ctx, orgID, appID, runID, crID, approver, decision)
 	if err != nil {
 		switch {
 		case ent.IsNotFound(err):
 			return nil, &apiError{http.StatusNotFound, "not_found", "component run not found"}, nil
 		case errors.Is(err, workflows.ErrNotAwaitingApproval):
 			return nil, &apiError{http.StatusConflict, "conflict", err.Error()}, nil
+		case errors.Is(err, workflows.ErrAlreadyApproved):
+			return nil, &apiError{http.StatusConflict, "conflict", err.Error()}, nil
+		case errors.Is(err, workflows.ErrNotAnApprover), errors.Is(err, workflows.ErrSelfApproval):
+			return nil, &apiError{http.StatusForbidden, "forbidden", err.Error()}, nil
 		case errors.Is(err, workflows.ErrInvalidDecision):
 			return nil, &apiError{http.StatusBadRequest, "bad_request", err.Error()}, nil
 		default:
 			return nil, nil, err
 		}
+	}
+	// A partial approval (N-of-M not yet reached) leaves the step parked: there
+	// is nothing to resume yet.
+	if !gateOpen {
+		return run, nil, nil
 	}
 
 	// Enqueue a fresh executor job to resume the run. The run is still
@@ -310,6 +324,7 @@ func toAPIWorkflowRun(r *ent.WorkflowRun) WorkflowRun {
 		CreatedAt:     r.CreatedAt,
 		StartedAt:     r.StartedAt,
 		FinishedAt:    r.FinishedAt,
+		StartedBy:     optStr(r.StartedBy),
 		StateOp:       toAPIStateOperation(r),
 	}
 }
@@ -328,6 +343,7 @@ func toAPIWorkflowRunDetail(r *ent.WorkflowRun, steps []*ent.ComponentRun, canSe
 		CreatedAt:     b.CreatedAt,
 		StartedAt:     b.StartedAt,
 		FinishedAt:    b.FinishedAt,
+		StartedBy:     b.StartedBy,
 		StateOp:       b.StateOp,
 		ComponentRuns: make([]ComponentRun, len(steps)),
 	}
@@ -374,6 +390,13 @@ func toAPIComponentRun(cr *ent.ComponentRun, canSee bool) ComponentRun {
 	}
 	if cr.ApprovedBy != "" {
 		out.ApprovedBy = &cr.ApprovedBy
+	}
+	if approvals := workflows.ParseApprovals(cr.Approvals); len(approvals) > 0 {
+		list := make([]Approval, 0, len(approvals))
+		for _, a := range approvals {
+			list = append(list, Approval{By: a.By, At: a.At})
+		}
+		out.Approvals = &list
 	}
 	if p := parseTofuPlan(cr); p != nil {
 		out.Plan = toAPIPlanSummary(*p, false)
@@ -497,6 +520,9 @@ func toAPIComponentRunDetail(cr *ent.ComponentRun, canSee bool) ComponentRunDeta
 		CreatedAt:      b.CreatedAt,
 		StartedAt:      b.StartedAt,
 		FinishedAt:     b.FinishedAt,
+		ApprovedAt:     b.ApprovedAt,
+		ApprovedBy:     b.ApprovedBy,
+		Approvals:      b.Approvals,
 	}
 	if canSee {
 		out.Logs = optStr(cr.Logs)
@@ -581,4 +607,23 @@ func redactGraph(graph string, canSee bool) string {
 		return ""
 	}
 	return string(out)
+}
+
+// recordRunStarter stamps the authenticated user's identity (email, falling
+// back to the id) on a freshly opened run as started_by, so the run history
+// says who started it and approval policy can refuse self-approval.
+func (s *Server) recordRunStarter(ctx context.Context, orgID uuid.UUID, run *ent.WorkflowRun) error {
+	u, err := s.currentUser(ctx)
+	if err != nil {
+		return err
+	}
+	who := u.Email
+	if who == "" {
+		who = u.ID.String()
+	}
+	if err := s.workflows.SetRunStartedBy(ctx, orgID, run.ID, who); err != nil {
+		return err
+	}
+	run.StartedBy = who
+	return nil
 }

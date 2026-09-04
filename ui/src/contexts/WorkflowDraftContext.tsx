@@ -24,7 +24,10 @@ import { useOrg } from "./OrgContext";
 import type { components } from "../api/schema";
 import { githubAppEnabled } from "../lib/appConfig";
 import { TOFU_SEED_VERSION } from "../lib/tofuVersions";
-import type { BuilderNodeData, GroupNodeData } from "../components/workflow/nodes";
+import type {
+  BuilderNodeData,
+  GroupNodeData,
+} from "../components/workflow/nodes";
 import type { EditableComponent } from "../components/workflow/ComponentFields";
 
 type Component = components["schemas"]["Component"];
@@ -106,6 +109,7 @@ function seedComponent(id: string, type: ComponentType): EditableComponent {
     id,
     type,
     continue_on_failure: false,
+    approval_policy: null,
     target_cluster_id: null,
     target_namespace: "",
     chart_credential_id: null,
@@ -113,14 +117,29 @@ function seedComponent(id: string, type: ComponentType): EditableComponent {
   };
   switch (type) {
     case "helm":
-      return { ...base, name: "helm release", config: { chart_source: "http_repo" }, requires_approval: false };
+      return {
+        ...base,
+        name: "helm release",
+        config: { chart_source: "http_repo" },
+        requires_approval: false,
+      };
     case "terraform":
       // New nodes run the newest supported OpenTofu line — which locks state
       // automatically (native s3 locking); only pre-existing nodes (no
       // tofu_version) stay on the server's older default line.
-      return { ...base, name: "opentofu", config: { backend: "s3", tofu_version: TOFU_SEED_VERSION }, requires_approval: true };
+      return {
+        ...base,
+        name: "opentofu",
+        config: { backend: "s3", tofu_version: TOFU_SEED_VERSION },
+        requires_approval: true,
+      };
     default:
-      return { ...base, name: "manifest apply", config: {}, requires_approval: false };
+      return {
+        ...base,
+        name: "manifest apply",
+        config: {},
+        requires_approval: false,
+      };
   }
 }
 
@@ -134,6 +153,7 @@ function toEditable(c: Component): EditableComponent {
     config: { ...c.config },
     continue_on_failure: c.continue_on_failure,
     requires_approval: c.requires_approval ?? false,
+    approval_policy: c.approval_policy ?? null,
     target_cluster_id: c.target_cluster_id ?? null,
     target_namespace: c.target_namespace ?? "",
     chart_credential_id: c.chart_credential_id ?? null,
@@ -218,7 +238,9 @@ const WorkflowDraftContext = createContext<WorkflowDraftValue | null>(null);
 export function useWorkflowDraft(): WorkflowDraftValue {
   const ctx = useContext(WorkflowDraftContext);
   if (!ctx)
-    throw new Error("useWorkflowDraft must be used within a WorkflowDraftProvider");
+    throw new Error(
+      "useWorkflowDraft must be used within a WorkflowDraftProvider",
+    );
   return ctx;
 }
 
@@ -245,10 +267,14 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
 
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [credentials, setCredentials] = useState<ChartCredential[]>([]);
-  const [cloudCredentials, setCloudCredentials] = useState<CloudCredential[]>([]);
+  const [cloudCredentials, setCloudCredentials] = useState<CloudCredential[]>(
+    [],
+  );
   const [installations, setInstallations] = useState<GitHubInstallation[]>([]);
   const [appVariableNames, setAppVariableNames] = useState<string[]>([]);
-  const [componentOutputs, setComponentOutputs] = useState<ComponentOutputKeys>({});
+  const [componentOutputs, setComponentOutputs] = useState<ComponentOutputKeys>(
+    {},
+  );
 
   // Staged component variables for not-yet-saved components, keyed by component
   // id. A ref (not state): the node editor owns the on-screen list, this is just
@@ -327,7 +353,10 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
         id: c.id,
         type: "component",
         position: {
-          x: typeof c.position?.x === "number" ? c.position.x : 80 + (i % 4) * 240,
+          x:
+            typeof c.position?.x === "number"
+              ? c.position.x
+              : 80 + (i % 4) * 240,
           y:
             typeof c.position?.y === "number"
               ? c.position.y
@@ -414,9 +443,12 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       setAppVariableNames((data ?? []).map((v) => v.name));
     })();
     void (async () => {
-      const { data } = await api.GET("/api/applications/{id}/component-outputs", {
-        params: { path: { id: appId } },
-      });
+      const { data } = await api.GET(
+        "/api/applications/{id}/component-outputs",
+        {
+          params: { path: { id: appId } },
+        },
+      );
       setComponentOutputs(data ?? {});
     })();
   }, [appId, currentOrg?.id]);
@@ -465,71 +497,79 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   // over so it's obvious the group is a drop target. We only rewrite group data
   // when the target actually changes, leaving the dragged node's position to the
   // normal onNodesChange flow.
-  const onNodeDrag = useCallback((dragged: Node) => {
-    setNodes((ns) => {
-      const node = ns.find((n) => n.id === dragged.id) as FlowNode | undefined;
-      if (!node || isGroupNode(node)) return clearDropHighlights(ns);
+  const onNodeDrag = useCallback(
+    (dragged: Node) => {
+      setNodes((ns) => {
+        const node = ns.find((n) => n.id === dragged.id) as
+          FlowNode | undefined;
+        if (!node || isGroupNode(node)) return clearDropHighlights(ns);
 
-      // dragged.position is live (and parent-relative when the node has a parent).
-      const parent = node.parentId
-        ? ns.find((n) => n.id === node.parentId)
-        : undefined;
-      const x = (parent?.position.x ?? 0) + dragged.position.x;
-      const y = (parent?.position.y ?? 0) + dragged.position.y;
-      const targetId = groupAt(ns, x, y)?.id;
+        // dragged.position is live (and parent-relative when the node has a parent).
+        const parent = node.parentId
+          ? ns.find((n) => n.id === node.parentId)
+          : undefined;
+        const x = (parent?.position.x ?? 0) + dragged.position.x;
+        const y = (parent?.position.y ?? 0) + dragged.position.y;
+        const targetId = groupAt(ns, x, y)?.id;
 
-      let changed = false;
-      const next = ns.map((n) => {
-        if (!isGroupNode(n)) return n;
-        const should = n.id === targetId;
-        if (((n.data as GroupNodeData).isDropTarget ?? false) !== should) {
-          changed = true;
-          return { ...n, data: { ...n.data, isDropTarget: should } };
-        }
-        return n;
+        let changed = false;
+        const next = ns.map((n) => {
+          if (!isGroupNode(n)) return n;
+          const should = n.id === targetId;
+          if (((n.data as GroupNodeData).isDropTarget ?? false) !== should) {
+            changed = true;
+            return { ...n, data: { ...n.data, isDropTarget: should } };
+          }
+          return n;
+        });
+        return changed ? next : ns;
       });
-      return changed ? next : ns;
-    });
-  }, [clearDropHighlights]);
+    },
+    [clearDropHighlights],
+  );
 
   // On drag stop, decide group membership: if a component node's bounds land
   // inside a group node, adopt it (parentId + position relative to the parent,
   // expandParent so the group grows to keep it enclosed); if dragged clear of
   // every group, detach it. Group nodes themselves never become children. Any
   // drop-target highlight from the drag is cleared.
-  const onNodeDragStop = useCallback((dragged: Node) => {
-    setNodes((prev) => {
-      const ns = clearDropHighlights(prev);
-      const node = ns.find((n) => n.id === dragged.id) as FlowNode | undefined;
-      if (!node || isGroupNode(node)) return ns;
+  const onNodeDragStop = useCallback(
+    (dragged: Node) => {
+      setNodes((prev) => {
+        const ns = clearDropHighlights(prev);
+        const node = ns.find((n) => n.id === dragged.id) as
+          FlowNode | undefined;
+        if (!node || isGroupNode(node)) return ns;
 
-      const abs = absPos(ns, node);
-      const target = groupAt(ns, abs.x, abs.y);
-      const nextParentId = target?.id;
-      if (nextParentId === node.parentId) return ns; // no membership change
+        const abs = absPos(ns, node);
+        const target = groupAt(ns, abs.x, abs.y);
+        const nextParentId = target?.id;
+        if (nextParentId === node.parentId) return ns; // no membership change
 
-      markDirty();
-      return ns.map((n) => {
-        if (n.id !== node.id) return n;
-        if (nextParentId) {
-          const g = ns.find((x) => x.id === nextParentId)!;
-          return {
-            ...n,
-            parentId: nextParentId,
-            extent: "parent" as const,
-            expandParent: true,
-            position: { x: abs.x - g.position.x, y: abs.y - g.position.y },
-          };
-        }
-        // Detached: restore absolute position, drop parent linkage.
-        const rest = { ...n, position: abs };
-        delete rest.parentId;
-        delete rest.extent;
-        delete rest.expandParent;
-        return rest;
+        markDirty();
+        return ns.map((n) => {
+          if (n.id !== node.id) return n;
+          if (nextParentId) {
+            const g = ns.find((x) => x.id === nextParentId)!;
+            return {
+              ...n,
+              parentId: nextParentId,
+              extent: "parent" as const,
+              expandParent: true,
+              position: { x: abs.x - g.position.x, y: abs.y - g.position.y },
+            };
+          }
+          // Detached: restore absolute position, drop parent linkage.
+          const rest = { ...n, position: abs };
+          delete rest.parentId;
+          delete rest.extent;
+          delete rest.expandParent;
+          return rest;
+        });
       });
-    });
-  }, [clearDropHighlights, markDirty]);
+    },
+    [clearDropHighlights, markDirty],
+  );
 
   // addComponent navigates to the node editor's create route (carrying the type
   // in a `new` query param) WITHOUT mutating state. The editor calls
@@ -557,13 +597,18 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
         if (ns.some((n) => n.id === id)) return ns;
         // Tile new top-level nodes into a non-overlapping grid (same spacing as the
         // load-time fallback layout) so they don't stack and overlap.
-        const slot = ns.filter((n) => n.type === "component" && !n.parentId).length;
+        const slot = ns.filter(
+          (n) => n.type === "component" && !n.parentId,
+        ).length;
         return [
           ...ns,
           {
             id,
             type: "component",
-            position: { x: 80 + (slot % 4) * 240, y: 80 + Math.floor(slot / 4) * 160 },
+            position: {
+              x: 80 + (slot % 4) * 240,
+              y: 80 + Math.floor(slot / 4) * 160,
+            },
             data: {
               name: editable.name,
               type: editable.type,
@@ -668,24 +713,27 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     [markDirty, requestFocus],
   );
 
-  const updateComponent = useCallback((next: EditableComponent) => {
-    setNodes((ns) =>
-      ns.map((n) =>
-        n.id === next.id && n.type === "component"
-          ? {
-              ...n,
-              data: {
-                name: next.name,
-                type: next.type,
-                continueOnFailure: next.continue_on_failure,
-                component: next,
-              },
-            }
-          : n,
-      ),
-    );
-    markDirty();
-  }, [markDirty]);
+  const updateComponent = useCallback(
+    (next: EditableComponent) => {
+      setNodes((ns) =>
+        ns.map((n) =>
+          n.id === next.id && n.type === "component"
+            ? {
+                ...n,
+                data: {
+                  name: next.name,
+                  type: next.type,
+                  continueOnFailure: next.continue_on_failure,
+                  component: next,
+                },
+              }
+            : n,
+        ),
+      );
+      markDirty();
+    },
+    [markDirty],
+  );
 
   const isProvisional = useCallback(
     (id: string) => provisional.has(id),
@@ -733,7 +781,8 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   // so reads/writes don't re-render the provider and survive editor⇄canvas
   // navigation. The node editor's in-memory VariablesEditor reads/writes these.
   const getStagedVars = useCallback(
-    (componentId: string): Variable[] => stagedVarsRef.current.get(componentId) ?? [],
+    (componentId: string): Variable[] =>
+      stagedVarsRef.current.get(componentId) ?? [],
     [],
   );
   const setStagedVars = useCallback((componentId: string, vars: Variable[]) => {
@@ -756,7 +805,11 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
             "/api/applications/{id}/components/{componentId}/variables",
             {
               params: { path: { id: appId, componentId } },
-              body: { name: v.name, value: v.value ?? "", sensitive: v.sensitive },
+              body: {
+                name: v.name,
+                value: v.value ?? "",
+                sensitive: v.sensitive,
+              },
             },
           );
           if (error) {
@@ -764,7 +817,8 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
             remaining.push(v);
           }
         }
-        if (remaining.length > 0) stagedVarsRef.current.set(componentId, remaining);
+        if (remaining.length > 0)
+          stagedVarsRef.current.set(componentId, remaining);
         else stagedVarsRef.current.delete(componentId);
       }
       setVarFlushError(
@@ -776,31 +830,34 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     [appId],
   );
 
-  const deleteNode = useCallback((id: string) => {
-    setNodes((ns) => {
-      // Detach any children of a deleted group so they aren't orphaned (React
-      // Flow would drop a child whose parent is gone). Restore absolute position.
-      const target = ns.find((n) => n.id === id);
-      const isGroup = target?.type === "group";
-      return ns
-        .filter((n) => n.id !== id)
-        .map((n) => {
-          if (isGroup && n.parentId === id) {
-            const abs = {
-              x: (target?.position.x ?? 0) + n.position.x,
-              y: (target?.position.y ?? 0) + n.position.y,
-            };
-            const rest = { ...n, position: abs };
-            delete rest.parentId;
-            delete rest.extent;
-            return rest;
-          }
-          return n;
-        });
-    });
-    setEdges((es) => es.filter((e) => e.source !== id && e.target !== id));
-    markDirty();
-  }, [markDirty]);
+  const deleteNode = useCallback(
+    (id: string) => {
+      setNodes((ns) => {
+        // Detach any children of a deleted group so they aren't orphaned (React
+        // Flow would drop a child whose parent is gone). Restore absolute position.
+        const target = ns.find((n) => n.id === id);
+        const isGroup = target?.type === "group";
+        return ns
+          .filter((n) => n.id !== id)
+          .map((n) => {
+            if (isGroup && n.parentId === id) {
+              const abs = {
+                x: (target?.position.x ?? 0) + n.position.x,
+                y: (target?.position.y ?? 0) + n.position.y,
+              };
+              const rest = { ...n, position: abs };
+              delete rest.parentId;
+              delete rest.extent;
+              return rest;
+            }
+            return n;
+          });
+      });
+      setEdges((es) => es.filter((e) => e.source !== id && e.target !== id));
+      markDirty();
+    },
+    [markDirty],
+  );
 
   const getComponent = useCallback(
     (id: string): EditableComponent | null => {
@@ -855,6 +912,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
         depends_on: dependsByTarget.get(n.id) ?? [],
         continue_on_failure: c.continue_on_failure,
         requires_approval: c.requires_approval,
+        approval_policy: c.approval_policy ?? undefined,
         target_cluster_id: c.target_cluster_id,
         target_namespace: c.target_namespace,
         chart_credential_id: c.chart_credential_id,

@@ -32,6 +32,8 @@ const (
 	FieldContinueOnFailure = "continue_on_failure"
 	// FieldRequiresApproval holds the string denoting the requires_approval field in the database.
 	FieldRequiresApproval = "requires_approval"
+	// FieldApprovalPolicy holds the string denoting the approval_policy field in the database.
+	FieldApprovalPolicy = "approval_policy"
 	// FieldTargetClusterID holds the string denoting the target_cluster_id field in the database.
 	FieldTargetClusterID = "target_cluster_id"
 	// FieldTargetNamespace holds the string denoting the target_namespace field in the database.
@@ -117,6 +119,7 @@ var Columns = []string{
 	FieldDependsOn,
 	FieldContinueOnFailure,
 	FieldRequiresApproval,
+	FieldApprovalPolicy,
 	FieldTargetClusterID,
 	FieldTargetNamespace,
 	FieldChartCredentialID,

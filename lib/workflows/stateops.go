@@ -80,6 +80,10 @@ func stateOpSnapshot(c *ent.Component, op tofu.StateOp) GraphSnapshot {
 		DependsOn:        []uuid.UUID{},
 		RequiresApproval: true,
 	}
+	if !isZeroPolicy(c.ApprovalPolicy) {
+		p := c.ApprovalPolicy
+		n.ApprovalPolicy = &p
+	}
 	if c.GithubInstallationID != uuid.Nil {
 		id := c.GithubInstallationID
 		n.GitHubInstallationID = &id

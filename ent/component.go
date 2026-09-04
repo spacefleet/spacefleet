@@ -18,6 +18,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/schema"
 )
 
 // Component is the model entity for the Component schema.
@@ -41,6 +42,8 @@ type Component struct {
 	ContinueOnFailure bool `json:"continue_on_failure,omitempty"`
 	// RequiresApproval holds the value of the "requires_approval" field.
 	RequiresApproval bool `json:"requires_approval,omitempty"`
+	// ApprovalPolicy holds the value of the "approval_policy" field.
+	ApprovalPolicy schema.ApprovalPolicy `json:"approval_policy,omitempty"`
 	// TargetClusterID holds the value of the "target_cluster_id" field.
 	TargetClusterID uuid.UUID `json:"target_cluster_id,omitempty"`
 	// TargetNamespace holds the value of the "target_namespace" field.
@@ -153,7 +156,7 @@ func (*Component) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case component.FieldConfig, component.FieldDependsOn, component.FieldPosition:
+		case component.FieldConfig, component.FieldDependsOn, component.FieldApprovalPolicy, component.FieldPosition:
 			values[i] = new([]byte)
 		case component.FieldContinueOnFailure, component.FieldRequiresApproval:
 			values[i] = new(sql.NullBool)
@@ -235,6 +238,14 @@ func (_m *Component) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field requires_approval", values[i])
 			} else if value.Valid {
 				_m.RequiresApproval = value.Bool
+			}
+		case component.FieldApprovalPolicy:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field approval_policy", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ApprovalPolicy); err != nil {
+					return fmt.Errorf("unmarshal field approval_policy: %w", err)
+				}
 			}
 		case component.FieldTargetClusterID:
 			if value, ok := values[i].(*uuid.UUID); !ok {
@@ -375,6 +386,9 @@ func (_m *Component) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("requires_approval=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RequiresApproval))
+	builder.WriteString(", ")
+	builder.WriteString("approval_policy=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ApprovalPolicy))
 	builder.WriteString(", ")
 	builder.WriteString("target_cluster_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TargetClusterID))

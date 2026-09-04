@@ -20,6 +20,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/schema"
 )
 
 // ComponentCreate is the builder for creating a Component entity.
@@ -98,6 +99,20 @@ func (_c *ComponentCreate) SetRequiresApproval(v bool) *ComponentCreate {
 func (_c *ComponentCreate) SetNillableRequiresApproval(v *bool) *ComponentCreate {
 	if v != nil {
 		_c.SetRequiresApproval(*v)
+	}
+	return _c
+}
+
+// SetApprovalPolicy sets the "approval_policy" field.
+func (_c *ComponentCreate) SetApprovalPolicy(v schema.ApprovalPolicy) *ComponentCreate {
+	_c.mutation.SetApprovalPolicy(v)
+	return _c
+}
+
+// SetNillableApprovalPolicy sets the "approval_policy" field if the given value is not nil.
+func (_c *ComponentCreate) SetNillableApprovalPolicy(v *schema.ApprovalPolicy) *ComponentCreate {
+	if v != nil {
+		_c.SetApprovalPolicy(*v)
 	}
 	return _c
 }
@@ -413,6 +428,10 @@ func (_c *ComponentCreate) createSpec() (*Component, *sqlgraph.CreateSpec) {
 		_spec.SetField(component.FieldRequiresApproval, field.TypeBool, value)
 		_node.RequiresApproval = value
 	}
+	if value, ok := _c.mutation.ApprovalPolicy(); ok {
+		_spec.SetField(component.FieldApprovalPolicy, field.TypeJSON, value)
+		_node.ApprovalPolicy = value
+	}
 	if value, ok := _c.mutation.TargetNamespace(); ok {
 		_spec.SetField(component.FieldTargetNamespace, field.TypeString, value)
 		_node.TargetNamespace = value
@@ -664,6 +683,24 @@ func (u *ComponentUpsert) SetRequiresApproval(v bool) *ComponentUpsert {
 // UpdateRequiresApproval sets the "requires_approval" field to the value that was provided on create.
 func (u *ComponentUpsert) UpdateRequiresApproval() *ComponentUpsert {
 	u.SetExcluded(component.FieldRequiresApproval)
+	return u
+}
+
+// SetApprovalPolicy sets the "approval_policy" field.
+func (u *ComponentUpsert) SetApprovalPolicy(v schema.ApprovalPolicy) *ComponentUpsert {
+	u.Set(component.FieldApprovalPolicy, v)
+	return u
+}
+
+// UpdateApprovalPolicy sets the "approval_policy" field to the value that was provided on create.
+func (u *ComponentUpsert) UpdateApprovalPolicy() *ComponentUpsert {
+	u.SetExcluded(component.FieldApprovalPolicy)
+	return u
+}
+
+// ClearApprovalPolicy clears the value of the "approval_policy" field.
+func (u *ComponentUpsert) ClearApprovalPolicy() *ComponentUpsert {
+	u.SetNull(component.FieldApprovalPolicy)
 	return u
 }
 
@@ -939,6 +976,27 @@ func (u *ComponentUpsertOne) SetRequiresApproval(v bool) *ComponentUpsertOne {
 func (u *ComponentUpsertOne) UpdateRequiresApproval() *ComponentUpsertOne {
 	return u.Update(func(s *ComponentUpsert) {
 		s.UpdateRequiresApproval()
+	})
+}
+
+// SetApprovalPolicy sets the "approval_policy" field.
+func (u *ComponentUpsertOne) SetApprovalPolicy(v schema.ApprovalPolicy) *ComponentUpsertOne {
+	return u.Update(func(s *ComponentUpsert) {
+		s.SetApprovalPolicy(v)
+	})
+}
+
+// UpdateApprovalPolicy sets the "approval_policy" field to the value that was provided on create.
+func (u *ComponentUpsertOne) UpdateApprovalPolicy() *ComponentUpsertOne {
+	return u.Update(func(s *ComponentUpsert) {
+		s.UpdateApprovalPolicy()
+	})
+}
+
+// ClearApprovalPolicy clears the value of the "approval_policy" field.
+func (u *ComponentUpsertOne) ClearApprovalPolicy() *ComponentUpsertOne {
+	return u.Update(func(s *ComponentUpsert) {
+		s.ClearApprovalPolicy()
 	})
 }
 
@@ -1401,6 +1459,27 @@ func (u *ComponentUpsertBulk) SetRequiresApproval(v bool) *ComponentUpsertBulk {
 func (u *ComponentUpsertBulk) UpdateRequiresApproval() *ComponentUpsertBulk {
 	return u.Update(func(s *ComponentUpsert) {
 		s.UpdateRequiresApproval()
+	})
+}
+
+// SetApprovalPolicy sets the "approval_policy" field.
+func (u *ComponentUpsertBulk) SetApprovalPolicy(v schema.ApprovalPolicy) *ComponentUpsertBulk {
+	return u.Update(func(s *ComponentUpsert) {
+		s.SetApprovalPolicy(v)
+	})
+}
+
+// UpdateApprovalPolicy sets the "approval_policy" field to the value that was provided on create.
+func (u *ComponentUpsertBulk) UpdateApprovalPolicy() *ComponentUpsertBulk {
+	return u.Update(func(s *ComponentUpsert) {
+		s.UpdateApprovalPolicy()
+	})
+}
+
+// ClearApprovalPolicy clears the value of the "approval_policy" field.
+func (u *ComponentUpsertBulk) ClearApprovalPolicy() *ComponentUpsertBulk {
+	return u.Update(func(s *ComponentUpsert) {
+		s.ClearApprovalPolicy()
 	})
 }
 

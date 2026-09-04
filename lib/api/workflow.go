@@ -134,6 +134,7 @@ func toComponentInput(c ComponentInput) workflows.ComponentInput {
 		Config:               derefMap(c.Config),
 		ContinueOnFailure:    c.ContinueOnFailure != nil && *c.ContinueOnFailure,
 		RequiresApproval:     c.RequiresApproval != nil && *c.RequiresApproval,
+		ApprovalPolicy:       toApprovalPolicy(c.ApprovalPolicy),
 		TargetClusterID:      c.TargetClusterId,
 		TargetNamespace:      strings.TrimSpace(deref(c.TargetNamespace)),
 		ChartCredentialID:    c.ChartCredentialId,
@@ -210,6 +211,7 @@ func toAPIComponent(c *ent.Component, canSee bool) Component {
 		DependsOn:         nonNilUUIDs(c.DependsOn),
 		ContinueOnFailure: c.ContinueOnFailure,
 		RequiresApproval:  &c.RequiresApproval,
+		ApprovalPolicy:    toAPIApprovalPolicy(c.ApprovalPolicy),
 	}
 	if c.TargetNamespace != "" {
 		ns := c.TargetNamespace
@@ -290,6 +292,55 @@ func float64MapToFloat32(in map[string]float64) map[string]float32 {
 	out := make(map[string]float32, len(in))
 	for k, v := range in {
 		out[k] = float32(v)
+	}
+	return out
+}
+
+// toApprovalPolicy maps the API policy (all fields optional) to the service
+// policy; a nil object is the default policy. The service normalises it.
+func toApprovalPolicy(p *ApprovalPolicy) workflows.ApprovalPolicy {
+	if p == nil {
+		return workflows.ApprovalPolicy{}
+	}
+	out := workflows.ApprovalPolicy{}
+	if p.Approvers != nil {
+		out.Approvers = *p.Approvers
+	}
+	if p.Required != nil {
+		out.Required = *p.Required
+	}
+	if p.RequireDifferentApprover != nil {
+		out.RequireDifferentApprover = *p.RequireDifferentApprover
+	}
+	if p.TimeoutMinutes != nil {
+		out.TimeoutMinutes = *p.TimeoutMinutes
+	}
+	return out
+}
+
+// toAPIApprovalPolicy maps a stored policy to the API shape, omitting the
+// object entirely for the default policy so the common component reads
+// unchanged.
+func toAPIApprovalPolicy(p workflows.ApprovalPolicy) *ApprovalPolicy {
+	if len(p.Approvers) == 0 && p.Required == 0 && !p.RequireDifferentApprover && p.TimeoutMinutes == 0 {
+		return nil
+	}
+	out := &ApprovalPolicy{}
+	if len(p.Approvers) > 0 {
+		approvers := append([]string(nil), p.Approvers...)
+		out.Approvers = &approvers
+	}
+	if p.Required != 0 {
+		r := p.Required
+		out.Required = &r
+	}
+	if p.RequireDifferentApprover {
+		t := true
+		out.RequireDifferentApprover = &t
+	}
+	if p.TimeoutMinutes != 0 {
+		m := p.TimeoutMinutes
+		out.TimeoutMinutes = &m
 	}
 	return out
 }

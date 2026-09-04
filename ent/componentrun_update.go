@@ -237,6 +237,26 @@ func (_u *ComponentRunUpdate) ClearApprovedAt() *ComponentRunUpdate {
 	return _u
 }
 
+// SetApprovals sets the "approvals" field.
+func (_u *ComponentRunUpdate) SetApprovals(v string) *ComponentRunUpdate {
+	_u.mutation.SetApprovals(v)
+	return _u
+}
+
+// SetNillableApprovals sets the "approvals" field if the given value is not nil.
+func (_u *ComponentRunUpdate) SetNillableApprovals(v *string) *ComponentRunUpdate {
+	if v != nil {
+		_u.SetApprovals(*v)
+	}
+	return _u
+}
+
+// ClearApprovals clears the value of the "approvals" field.
+func (_u *ComponentRunUpdate) ClearApprovals() *ComponentRunUpdate {
+	_u.mutation.ClearApprovals()
+	return _u
+}
+
 // SetChartRevision sets the "chart_revision" field.
 func (_u *ComponentRunUpdate) SetChartRevision(v string) *ComponentRunUpdate {
 	_u.mutation.SetChartRevision(v)
@@ -451,6 +471,12 @@ func (_u *ComponentRunUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if _u.mutation.ApprovedAtCleared() {
 		_spec.ClearField(componentrun.FieldApprovedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Approvals(); ok {
+		_spec.SetField(componentrun.FieldApprovals, field.TypeString, value)
+	}
+	if _u.mutation.ApprovalsCleared() {
+		_spec.ClearField(componentrun.FieldApprovals, field.TypeString)
 	}
 	if value, ok := _u.mutation.ChartRevision(); ok {
 		_spec.SetField(componentrun.FieldChartRevision, field.TypeString, value)
@@ -707,6 +733,26 @@ func (_u *ComponentRunUpdateOne) ClearApprovedAt() *ComponentRunUpdateOne {
 	return _u
 }
 
+// SetApprovals sets the "approvals" field.
+func (_u *ComponentRunUpdateOne) SetApprovals(v string) *ComponentRunUpdateOne {
+	_u.mutation.SetApprovals(v)
+	return _u
+}
+
+// SetNillableApprovals sets the "approvals" field if the given value is not nil.
+func (_u *ComponentRunUpdateOne) SetNillableApprovals(v *string) *ComponentRunUpdateOne {
+	if v != nil {
+		_u.SetApprovals(*v)
+	}
+	return _u
+}
+
+// ClearApprovals clears the value of the "approvals" field.
+func (_u *ComponentRunUpdateOne) ClearApprovals() *ComponentRunUpdateOne {
+	_u.mutation.ClearApprovals()
+	return _u
+}
+
 // SetChartRevision sets the "chart_revision" field.
 func (_u *ComponentRunUpdateOne) SetChartRevision(v string) *ComponentRunUpdateOne {
 	_u.mutation.SetChartRevision(v)
@@ -951,6 +997,12 @@ func (_u *ComponentRunUpdateOne) sqlSave(ctx context.Context) (_node *ComponentR
 	}
 	if _u.mutation.ApprovedAtCleared() {
 		_spec.ClearField(componentrun.FieldApprovedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Approvals(); ok {
+		_spec.SetField(componentrun.FieldApprovals, field.TypeString, value)
+	}
+	if _u.mutation.ApprovalsCleared() {
+		_spec.ClearField(componentrun.FieldApprovals, field.TypeString)
 	}
 	if value, ok := _u.mutation.ChartRevision(); ok {
 		_spec.SetField(componentrun.FieldChartRevision, field.TypeString, value)

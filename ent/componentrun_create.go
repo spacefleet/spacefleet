@@ -192,6 +192,20 @@ func (_c *ComponentRunCreate) SetNillableApprovedAt(v *time.Time) *ComponentRunC
 	return _c
 }
 
+// SetApprovals sets the "approvals" field.
+func (_c *ComponentRunCreate) SetApprovals(v string) *ComponentRunCreate {
+	_c.mutation.SetApprovals(v)
+	return _c
+}
+
+// SetNillableApprovals sets the "approvals" field if the given value is not nil.
+func (_c *ComponentRunCreate) SetNillableApprovals(v *string) *ComponentRunCreate {
+	if v != nil {
+		_c.SetApprovals(*v)
+	}
+	return _c
+}
+
 // SetChartRevision sets the "chart_revision" field.
 func (_c *ComponentRunCreate) SetChartRevision(v string) *ComponentRunCreate {
 	_c.mutation.SetChartRevision(v)
@@ -467,6 +481,10 @@ func (_c *ComponentRunCreate) createSpec() (*ComponentRun, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.ApprovedAt(); ok {
 		_spec.SetField(componentrun.FieldApprovedAt, field.TypeTime, value)
 		_node.ApprovedAt = &value
+	}
+	if value, ok := _c.mutation.Approvals(); ok {
+		_spec.SetField(componentrun.FieldApprovals, field.TypeString, value)
+		_node.Approvals = value
 	}
 	if value, ok := _c.mutation.ChartRevision(); ok {
 		_spec.SetField(componentrun.FieldChartRevision, field.TypeString, value)
@@ -761,6 +779,24 @@ func (u *ComponentRunUpsert) UpdateApprovedAt() *ComponentRunUpsert {
 // ClearApprovedAt clears the value of the "approved_at" field.
 func (u *ComponentRunUpsert) ClearApprovedAt() *ComponentRunUpsert {
 	u.SetNull(componentrun.FieldApprovedAt)
+	return u
+}
+
+// SetApprovals sets the "approvals" field.
+func (u *ComponentRunUpsert) SetApprovals(v string) *ComponentRunUpsert {
+	u.Set(componentrun.FieldApprovals, v)
+	return u
+}
+
+// UpdateApprovals sets the "approvals" field to the value that was provided on create.
+func (u *ComponentRunUpsert) UpdateApprovals() *ComponentRunUpsert {
+	u.SetExcluded(componentrun.FieldApprovals)
+	return u
+}
+
+// ClearApprovals clears the value of the "approvals" field.
+func (u *ComponentRunUpsert) ClearApprovals() *ComponentRunUpsert {
+	u.SetNull(componentrun.FieldApprovals)
 	return u
 }
 
@@ -1119,6 +1155,27 @@ func (u *ComponentRunUpsertOne) UpdateApprovedAt() *ComponentRunUpsertOne {
 func (u *ComponentRunUpsertOne) ClearApprovedAt() *ComponentRunUpsertOne {
 	return u.Update(func(s *ComponentRunUpsert) {
 		s.ClearApprovedAt()
+	})
+}
+
+// SetApprovals sets the "approvals" field.
+func (u *ComponentRunUpsertOne) SetApprovals(v string) *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.SetApprovals(v)
+	})
+}
+
+// UpdateApprovals sets the "approvals" field to the value that was provided on create.
+func (u *ComponentRunUpsertOne) UpdateApprovals() *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.UpdateApprovals()
+	})
+}
+
+// ClearApprovals clears the value of the "approvals" field.
+func (u *ComponentRunUpsertOne) ClearApprovals() *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.ClearApprovals()
 	})
 }
 
@@ -1658,6 +1715,27 @@ func (u *ComponentRunUpsertBulk) UpdateApprovedAt() *ComponentRunUpsertBulk {
 func (u *ComponentRunUpsertBulk) ClearApprovedAt() *ComponentRunUpsertBulk {
 	return u.Update(func(s *ComponentRunUpsert) {
 		s.ClearApprovedAt()
+	})
+}
+
+// SetApprovals sets the "approvals" field.
+func (u *ComponentRunUpsertBulk) SetApprovals(v string) *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.SetApprovals(v)
+	})
+}
+
+// UpdateApprovals sets the "approvals" field to the value that was provided on create.
+func (u *ComponentRunUpsertBulk) UpdateApprovals() *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.UpdateApprovals()
+	})
+}
+
+// ClearApprovals clears the value of the "approvals" field.
+func (u *ComponentRunUpsertBulk) ClearApprovals() *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.ClearApprovals()
 	})
 }
 

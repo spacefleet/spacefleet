@@ -35,6 +35,8 @@ function componentsEqual(a: EditableComponent, b: EditableComponent): boolean {
     a.type !== b.type ||
     a.continue_on_failure !== b.continue_on_failure ||
     a.requires_approval !== b.requires_approval ||
+    JSON.stringify(a.approval_policy ?? null) !==
+      JSON.stringify(b.approval_policy ?? null) ||
     a.target_cluster_id !== b.target_cluster_id ||
     a.target_namespace !== b.target_namespace ||
     a.chart_credential_id !== b.chart_credential_id ||
@@ -176,7 +178,11 @@ export function NodeEditor() {
   // next workflow save; a saved node uses the default API backend. Memoized so
   // the VariablesEditor's transport identity is stable across renders.
   const stagedVarBackend = useMemo(
-    () => stagedBackend(() => getStagedVars(nodeId), (vars) => setStagedVars(nodeId, vars)),
+    () =>
+      stagedBackend(
+        () => getStagedVars(nodeId),
+        (vars) => setStagedVars(nodeId, vars),
+      ),
     [getStagedVars, setStagedVars, nodeId],
   );
 
@@ -189,7 +195,8 @@ export function NodeEditor() {
     const outputKeysByName: Record<string, OutputKeyInfo[]> = {};
     for (const n of nodes) {
       if (n.type !== "component") continue;
-      const name = (n.data as { component?: EditableComponent }).component?.name;
+      const name = (n.data as { component?: EditableComponent }).component
+        ?.name;
       if (!name || !upstreamOutputs.includes(name)) continue;
       const keys = componentOutputs[n.id];
       if (keys) outputKeysByName[name] = keys;
@@ -216,7 +223,9 @@ export function NodeEditor() {
             renamedFrom,
             nodes
               .filter((n) => n.type === "component" && n.id !== nodeId)
-              .map((n) => (n.data as { component?: EditableComponent }).component)
+              .map(
+                (n) => (n.data as { component?: EditableComponent }).component,
+              )
               .filter((c): c is EditableComponent => c != null),
           )
         : [],
@@ -312,9 +321,7 @@ export function NodeEditor() {
           {canEdit && (
             <div className="mt-4 flex items-center justify-end gap-3">
               <span className="mr-auto text-xs text-neutral-400">
-                {hasUnsaved
-                  ? "Unsaved changes"
-                  : "Saved to workflow"}
+                {hasUnsaved ? "Unsaved changes" : "Saved to workflow"}
               </span>
               <button
                 type="button"
@@ -345,8 +352,8 @@ export function NodeEditor() {
               Variables
             </h2>
             <p className="mb-3 mt-1 text-xs text-neutral-500">
-              Passed to this component’s job as environment variables, overriding
-              any app-level variable of the same name.{" "}
+              Passed to this component’s job as environment variables,
+              overriding any app-level variable of the same name.{" "}
               {isNew
                 ? "Saved when you save this node."
                 : "Saved separately from the node above."}{" "}

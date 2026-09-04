@@ -76,6 +76,26 @@ func (_u *WorkflowRunUpdate) ClearMessage() *WorkflowRunUpdate {
 	return _u
 }
 
+// SetStartedBy sets the "started_by" field.
+func (_u *WorkflowRunUpdate) SetStartedBy(v string) *WorkflowRunUpdate {
+	_u.mutation.SetStartedBy(v)
+	return _u
+}
+
+// SetNillableStartedBy sets the "started_by" field if the given value is not nil.
+func (_u *WorkflowRunUpdate) SetNillableStartedBy(v *string) *WorkflowRunUpdate {
+	if v != nil {
+		_u.SetStartedBy(*v)
+	}
+	return _u
+}
+
+// ClearStartedBy clears the value of the "started_by" field.
+func (_u *WorkflowRunUpdate) ClearStartedBy() *WorkflowRunUpdate {
+	_u.mutation.ClearStartedBy()
+	return _u
+}
+
 // SetJobID sets the "job_id" field.
 func (_u *WorkflowRunUpdate) SetJobID(v string) *WorkflowRunUpdate {
 	_u.mutation.SetJobID(v)
@@ -268,6 +288,12 @@ func (_u *WorkflowRunUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if _u.mutation.MessageCleared() {
 		_spec.ClearField(workflowrun.FieldMessage, field.TypeString)
 	}
+	if value, ok := _u.mutation.StartedBy(); ok {
+		_spec.SetField(workflowrun.FieldStartedBy, field.TypeString, value)
+	}
+	if _u.mutation.StartedByCleared() {
+		_spec.ClearField(workflowrun.FieldStartedBy, field.TypeString)
+	}
 	if value, ok := _u.mutation.JobID(); ok {
 		_spec.SetField(workflowrun.FieldJobID, field.TypeString, value)
 	}
@@ -366,6 +392,26 @@ func (_u *WorkflowRunUpdateOne) SetNillableMessage(v *string) *WorkflowRunUpdate
 // ClearMessage clears the value of the "message" field.
 func (_u *WorkflowRunUpdateOne) ClearMessage() *WorkflowRunUpdateOne {
 	_u.mutation.ClearMessage()
+	return _u
+}
+
+// SetStartedBy sets the "started_by" field.
+func (_u *WorkflowRunUpdateOne) SetStartedBy(v string) *WorkflowRunUpdateOne {
+	_u.mutation.SetStartedBy(v)
+	return _u
+}
+
+// SetNillableStartedBy sets the "started_by" field if the given value is not nil.
+func (_u *WorkflowRunUpdateOne) SetNillableStartedBy(v *string) *WorkflowRunUpdateOne {
+	if v != nil {
+		_u.SetStartedBy(*v)
+	}
+	return _u
+}
+
+// ClearStartedBy clears the value of the "started_by" field.
+func (_u *WorkflowRunUpdateOne) ClearStartedBy() *WorkflowRunUpdateOne {
+	_u.mutation.ClearStartedBy()
 	return _u
 }
 
@@ -590,6 +636,12 @@ func (_u *WorkflowRunUpdateOne) sqlSave(ctx context.Context) (_node *WorkflowRun
 	}
 	if _u.mutation.MessageCleared() {
 		_spec.ClearField(workflowrun.FieldMessage, field.TypeString)
+	}
+	if value, ok := _u.mutation.StartedBy(); ok {
+		_spec.SetField(workflowrun.FieldStartedBy, field.TypeString, value)
+	}
+	if _u.mutation.StartedByCleared() {
+		_spec.ClearField(workflowrun.FieldStartedBy, field.TypeString)
 	}
 	if value, ok := _u.mutation.JobID(); ok {
 		_spec.SetField(workflowrun.FieldJobID, field.TypeString, value)

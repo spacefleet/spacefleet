@@ -45,6 +45,27 @@ type Component struct {
 	ent.Schema
 }
 
+// ApprovalPolicy is the per-component approval policy applied whenever the
+// node parks at its approval gate (requires_approval). The zero value is the
+// pre-existing behaviour: any editor or admin may approve, one approval opens
+// the gate, the person who started the run may approve it, and a parked run
+// waits forever. Stored as one JSON column so the policy can grow without
+// migrations.
+type ApprovalPolicy struct {
+	// Approvers lists who may approve, by email (lowercased). Empty means any
+	// editor or admin of the organization.
+	Approvers []string `json:"approvers,omitempty"`
+	// Required is how many distinct approvals open the gate (N-of-M). 0 and 1
+	// both mean one.
+	Required int `json:"required,omitempty"`
+	// RequireDifferentApprover forbids the person who started the run from
+	// approving it (no self-approval).
+	RequireDifferentApprover bool `json:"require_different_approver,omitempty"`
+	// TimeoutMinutes fails the run when the gate has waited this long without
+	// a decision. 0 waits forever.
+	TimeoutMinutes int `json:"timeout_minutes,omitempty"`
+}
+
 func (Component) Fields() []ent.Field {
 	return []ent.Field{
 		field.UUID("id", uuid.UUID{}).Default(uuid.New),
@@ -74,6 +95,10 @@ func (Component) Fields() []ent.Field {
 		// human to approve before it executes. The general per-component approval-gate
 		// flag; OpenTofu's apply node is its first consumer.
 		field.Bool("requires_approval").Default(false),
+		// The policy applied at that gate (who, how many, self-approval, a
+		// timeout). The zero value keeps the original any-editor, one-approval
+		// behaviour. See ApprovalPolicy.
+		field.JSON("approval_policy", ApprovalPolicy{}).Optional(),
 		// The cluster this component deploys into. Required for helm/manifest,
 		// unset for terraform (validated per type in the service). Optional at the
 		// schema/column level because terraform leaves it unset. Bound to the

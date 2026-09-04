@@ -46,6 +46,10 @@ func (WorkflowRun) Fields() []ent.Field {
 			Default("pending"),
 		// Human-readable detail: a progress line or the terminal summary.
 		field.String("message").Optional(),
+		// Who started the run — the user's email, or empty for a run the
+		// scheduler started. Approval policy compares approvers against it
+		// (no self-approval).
+		field.String("started_by").Optional(),
 		// River job id of the workflow job driving this run, for correlation.
 		field.String("job_id").Optional(),
 		// JSON snapshot of the workflow (nodes + edges + config) as it was when the

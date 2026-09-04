@@ -2334,6 +2334,7 @@ export interface components {
              *     gate destructive or sensitive steps (e.g. an OpenTofu apply).
              */
             requires_approval?: boolean;
+            approval_policy?: components["schemas"]["ApprovalPolicy"];
             /**
              * Format: uuid
              * @description The cluster this component deploys into. Required for helm and
@@ -2370,6 +2371,35 @@ export interface components {
             group_id?: string | null;
         };
         /**
+         * @description The policy applied at a component's approval gate (requires_approval).
+         *     All fields optional; the empty policy is the default: any editor or
+         *     admin may approve, one approval opens the gate, the person who started
+         *     the run may approve, and a parked run waits indefinitely.
+         */
+        ApprovalPolicy: {
+            /**
+             * @description Who may approve, by email. Empty means any editor or admin of the
+             *     organization. Anyone with edit access may still reject.
+             */
+            approvers?: string[];
+            /**
+             * @description How many distinct approvals open the gate (N-of-M). 0 and 1 both
+             *     mean one. With named approvers, at most their number.
+             */
+            required?: number;
+            /**
+             * @description When true, the person who started the run cannot approve it
+             *     (no self-approval).
+             */
+            require_different_approver?: boolean;
+            /**
+             * @description Fail the run when the gate has waited this long without a
+             *     decision. 0 waits indefinitely. Counted from the step parking (or
+             *     its last partial approval).
+             */
+            timeout_minutes?: number;
+        };
+        /**
          * @description One proposed workflow node, supplied by the canvas. id is client-provided
          *     (a stable uuid per node) so depends_on edges and canvas identity survive a
          *     replace.
@@ -2396,6 +2426,7 @@ export interface components {
              *     (status awaiting_approval). Defaults to false.
              */
             requires_approval?: boolean;
+            approval_policy?: components["schemas"]["ApprovalPolicy"];
             /**
              * Format: uuid
              * @description The cluster this component deploys into. Required for helm and
@@ -2527,6 +2558,11 @@ export interface components {
              * @description When the run settled; absent until terminal.
              */
             finished_at?: string | null;
+            /**
+             * @description Email of the user who started the run; empty for a run the
+             *     scheduler started (a scheduled drift check).
+             */
+            started_by?: string;
             state_op?: components["schemas"]["StateOperation"];
         };
         RunList: {
@@ -2539,6 +2575,12 @@ export interface components {
          * @enum {string}
          */
         ComponentRunStatus: "pending" | "running" | "succeeded" | "failed" | "skipped" | "awaiting_approval";
+        Approval: {
+            /** @description Email of the approver. */
+            by: string;
+            /** Format: date-time */
+            at: string;
+        };
         /** @description The execution of one workflow node within a run. */
         ComponentRun: {
             /** Format: uuid */
@@ -2573,6 +2615,11 @@ export interface components {
              * @description When the approval/rejection decision was made; absent until then.
              */
             approved_at?: string | null;
+            /**
+             * @description Every approval recorded on this step's gate so far, in order — the
+             *     N-of-M tally. Empty until someone approves.
+             */
+            approvals?: components["schemas"]["Approval"][];
             /** @description Git commit SHA the chart was resolved to (git sources only). */
             chart_revision?: string;
             /** @description Git commit SHAs the values sources were resolved to. */

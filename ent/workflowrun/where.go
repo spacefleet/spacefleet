@@ -71,6 +71,11 @@ func Message(v string) predicate.WorkflowRun {
 	return predicate.WorkflowRun(sql.FieldEQ(FieldMessage, v))
 }
 
+// StartedBy applies equality check predicate on the "started_by" field. It's identical to StartedByEQ.
+func StartedBy(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldEQ(FieldStartedBy, v))
+}
+
 // JobID applies equality check predicate on the "job_id" field. It's identical to JobIDEQ.
 func JobID(v string) predicate.WorkflowRun {
 	return predicate.WorkflowRun(sql.FieldEQ(FieldJobID, v))
@@ -259,6 +264,81 @@ func MessageEqualFold(v string) predicate.WorkflowRun {
 // MessageContainsFold applies the ContainsFold predicate on the "message" field.
 func MessageContainsFold(v string) predicate.WorkflowRun {
 	return predicate.WorkflowRun(sql.FieldContainsFold(FieldMessage, v))
+}
+
+// StartedByEQ applies the EQ predicate on the "started_by" field.
+func StartedByEQ(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldEQ(FieldStartedBy, v))
+}
+
+// StartedByNEQ applies the NEQ predicate on the "started_by" field.
+func StartedByNEQ(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldNEQ(FieldStartedBy, v))
+}
+
+// StartedByIn applies the In predicate on the "started_by" field.
+func StartedByIn(vs ...string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldIn(FieldStartedBy, vs...))
+}
+
+// StartedByNotIn applies the NotIn predicate on the "started_by" field.
+func StartedByNotIn(vs ...string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldNotIn(FieldStartedBy, vs...))
+}
+
+// StartedByGT applies the GT predicate on the "started_by" field.
+func StartedByGT(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldGT(FieldStartedBy, v))
+}
+
+// StartedByGTE applies the GTE predicate on the "started_by" field.
+func StartedByGTE(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldGTE(FieldStartedBy, v))
+}
+
+// StartedByLT applies the LT predicate on the "started_by" field.
+func StartedByLT(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldLT(FieldStartedBy, v))
+}
+
+// StartedByLTE applies the LTE predicate on the "started_by" field.
+func StartedByLTE(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldLTE(FieldStartedBy, v))
+}
+
+// StartedByContains applies the Contains predicate on the "started_by" field.
+func StartedByContains(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldContains(FieldStartedBy, v))
+}
+
+// StartedByHasPrefix applies the HasPrefix predicate on the "started_by" field.
+func StartedByHasPrefix(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldHasPrefix(FieldStartedBy, v))
+}
+
+// StartedByHasSuffix applies the HasSuffix predicate on the "started_by" field.
+func StartedByHasSuffix(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldHasSuffix(FieldStartedBy, v))
+}
+
+// StartedByIsNil applies the IsNil predicate on the "started_by" field.
+func StartedByIsNil() predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldIsNull(FieldStartedBy))
+}
+
+// StartedByNotNil applies the NotNil predicate on the "started_by" field.
+func StartedByNotNil() predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldNotNull(FieldStartedBy))
+}
+
+// StartedByEqualFold applies the EqualFold predicate on the "started_by" field.
+func StartedByEqualFold(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldEqualFold(FieldStartedBy, v))
+}
+
+// StartedByContainsFold applies the ContainsFold predicate on the "started_by" field.
+func StartedByContainsFold(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldContainsFold(FieldStartedBy, v))
 }
 
 // JobIDEQ applies the EQ predicate on the "job_id" field.
