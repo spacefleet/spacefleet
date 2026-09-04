@@ -158,6 +158,18 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 		nodeByID[n.ID] = n
 	}
 
+	// A state operation's arguments live on the run row (the durable source —
+	// the approval resume job carries only ids). Undecodable args are a
+	// deterministic failure: settle the run rather than retry it.
+	var stateOp *tofu.StateOp
+	if op, ok, err := StateOpOf(run); err != nil {
+		_ = w.svc.MarkRun(ctx, a.OrgID, a.WorkflowRunID, "failed", err.Error())
+		_, _ = w.svc.SettleStuckComponentRuns(ctx, a.OrgID, a.WorkflowRunID, "skipped (invalid state operation)")
+		return err
+	} else if ok {
+		stateOp = &op
+	}
+
 	_ = w.svc.MarkRun(ctx, a.OrgID, a.WorkflowRunID, "running", "running workflow")
 
 	// Build the scheduler nodes from the snapshot. For a preview run we deliberately
@@ -229,7 +241,7 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 		if !ok {
 			return nodeResult{Status: statusFailed, Err: fmt.Errorf("workflows: component run for node %s missing", sn.ID)}
 		}
-		res := w.runComponent(ctx, a, app, node, cr, nodeByID, attemptsRemain)
+		res := w.runComponent(ctx, a, app, node, cr, nodeByID, attemptsRemain, stateOp)
 		if res.Status == statusFailed && res.Retryable {
 			ranMu.Lock()
 			retryable = true
@@ -377,7 +389,7 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 // (whether River will retry the job after a returned error) decides whether a
 // retryable executor failure may leave the component run in-flight for the retry
 // to pick up (H3), or must settle it failed because no retry will follow.
-func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs, app *ent.Application, node GraphNode, cr *ent.ComponentRun, byID map[uuid.UUID]GraphNode, attemptsRemain bool) nodeResult {
+func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs, app *ent.Application, node GraphNode, cr *ent.ComponentRun, byID map[uuid.UUID]GraphNode, attemptsRemain bool, stateOp *tofu.StateOp) nodeResult {
 	// Retry short-circuit: a component already settled in a prior attempt is not
 	// re-run; its stored status drives the scheduler so dependents see the same
 	// outcome. Skipped is treated as a non-pass terminal too.
@@ -392,7 +404,7 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 
 	_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "running", "starting "+a.Action, "")
 
-	req, err := w.planComponent(ctx, app, node, a.Action, a.Force, cr.RunName, a.WorkflowRunID, byID)
+	req, err := w.planComponent(ctx, app, node, a.Action, a.Force, cr.RunName, a.WorkflowRunID, byID, stateOp)
 	if err != nil {
 		_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "failed", err.Error(), "")
 		return nodeResult{Status: statusFailed, Err: err}
@@ -454,20 +466,37 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 		_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "failed", msg, runName)
 		return nodeResult{Status: statusFailed, Err: fmt.Errorf("workflows: component %q run %s failed: %s", node.Name, runName, msg)}
 	}
-	// A terraform apply unit that succeeded on a deploy run handed the module's
-	// `tofu output -json` back through the pair's handover Secret — read and
-	// persist it before settling the step (so the settled row already carries
-	// its outputs), then delete the spent Secret. Best-effort throughout: a
-	// capture failure never fails a step whose apply succeeded.
-	if a.Action == ActionDeploy && node.Type == TypeTerraform && node.Config[terraformConfigCommand] == terraformCommandApply {
+	// A terraform apply unit that succeeded on a deploy run — or a state
+	// operation's unit — handed the module's `tofu output -json` and resource
+	// inventory back through its handover Secret: read and persist them before
+	// settling the step (so the settled row already carries them), then delete
+	// the spent Secret. Best-effort throughout: a capture failure never fails a
+	// step whose apply succeeded.
+	if recordsTofuState(a.Action, node) {
 		w.captureTofuOutputs(ctx, a, node, byID, runnerConn, cr.ID)
 	}
 	_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "succeeded", finalStatus.Message, runName)
 	return nodeResult{Status: statusSucceeded}
 }
 
+// recordsTofuState reports whether a succeeded unit hands outputs + inventory
+// back through its handover Secret: a deploy's apply unit, or a state
+// operation's unit (whose state the operation just changed).
+func recordsTofuState(action string, node GraphNode) bool {
+	if node.Type != TypeTerraform {
+		return false
+	}
+	switch node.Config[terraformConfigCommand] {
+	case terraformCommandApply:
+		return action == ActionDeploy
+	case terraformCommandStateOp:
+		return action == ActionStateOp
+	}
+	return false
+}
+
 // captureTofuOutputs reads the outputs and resource inventory a terraform
-// apply unit stored in its pair's handover Secret, persists them on the unit's
+// apply unit (or state-op unit) stored in its handover Secret, persists them on the unit's
 // component_run row, and deletes the Secret (its planfile is spent and its
 // contents are now durable). Every failure is logged and swallowed — the apply
 // already succeeded, so a missing record degrades the history, never the run —
@@ -475,10 +504,10 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 // sweep. The two keys are independent: an unreadable inventory does not cost
 // the outputs, and vice versa.
 func (w *WorkflowRunWorker) captureTofuOutputs(ctx context.Context, a WorkflowRunArgs, node GraphNode, byID map[uuid.UUID]GraphNode, runnerConn k8s.Connection, crID uuid.UUID) {
-	// The Secret is keyed off the upstream plan node, exactly as the planner
-	// named it; no plan node (defensive — the apply script fails closed there)
-	// means no Secret to read.
-	planID := upstreamTofuPlanID(node, byID)
+	// The Secret is keyed off the upstream plan node (or the state-op unit
+	// itself), exactly as the planner named it; no plan node (defensive — the
+	// apply script fails closed there) means no Secret to read.
+	planID := tofuHandoverPlanID(node, byID)
 	if planID == uuid.Nil {
 		return
 	}
@@ -606,7 +635,7 @@ func encodeValuesRevision(values map[int]string) string {
 
 // sweepPlanArtifacts best-effort deletes every planfile-handover Secret a
 // terminal run may have left on the runner cluster — one per terraform plan
-// node in the snapshot, named exactly as the planner keyed them. Deleting the
+// (or state-op) node in the snapshot, named exactly as the planner keyed them. Deleting the
 // Secret garbage-collects the pair's ServiceAccount/Role/RoleBinding through
 // their ownerReferences; a Secret the apply step already deleted is a no-op.
 // Failures are logged, never propagated: the run is already settled, and a
@@ -620,7 +649,7 @@ func (w *WorkflowRunWorker) sweepPlanArtifacts(ctx context.Context, a WorkflowRu
 	}
 	var names []string
 	for _, n := range snapshot.Nodes {
-		if n.Type == TypeTerraform && n.Config[terraformConfigCommand] == terraformCommandPlan {
+		if ownsTofuHandover(n) {
 			names = append(names, tofuPlanArtifactSecret(a.WorkflowRunID, n.ID))
 		}
 	}

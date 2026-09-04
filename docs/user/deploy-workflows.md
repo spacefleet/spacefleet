@@ -87,6 +87,34 @@ created with until you change it. Upgrading is always safe for your state;
 OpenTofu does not guarantee that a newer release's state can be read by an
 older one, so treat a downgrade as one-way unless you know otherwise.
 
+### Input variables
+
+Your [variables](variable-interpolation.md) — at the group, application, and
+component level — already reach every component job as environment
+variables. For an OpenTofu component, turn on **Expose variables as OpenTofu
+inputs** and each one is also passed as a root-module input: a variable named
+`region` becomes `var.region`, exactly as if `TF_VAR_region` had been set.
+Precedence is the usual one (a component variable beats an application one,
+which beats a group one), a sensitive variable stays sensitive on the way
+in, and the value must be valid for the input's declared type — a string is
+passed as-is, while a list, map, or object is written as HCL (for example
+`["a", "b"]`). Variables the module does not declare are ignored.
+
+This is the recommended way to feed a module its inputs. Plan flags such as
+`-var=env=prod` still work for one-off overrides.
+
+### Workspaces
+
+One module can back several environments without duplicating the code: give
+each component a **Workspace** (`staging`, `prod`, …) and it is selected —
+created on first use — before every plan, apply, drift check, and state
+operation of that component. Each workspace has its own state under the
+component's backend: with the Amazon S3 backend, a workspace's state lives
+at `env:/<workspace>/<state key>` in the bucket, while the default workspace
+(no name) stays at the state key itself. So two components can share one
+bucket and key and still keep separate state, as long as their workspaces
+differ.
+
 ### State backend
 
 The component's state always lives where the component says — Spacefleet
@@ -223,6 +251,36 @@ on its own — every hour, 6 hours, day, or week (or never). A scheduled check i
 an ordinary drift run, so it appears in the run history like any other. It is
 skipped while another run of the application is in progress and tried again
 on the next tick, and it never starts while a deploy is waiting for approval.
+
+### State operations
+
+Some state surgery is occasionally unavoidable: a lock left behind by a run
+that died, a resource you want OpenTofu to stop managing without destroying
+it, a rename that would otherwise become a destroy and a create, or existing
+infrastructure you want to adopt. Rather than doing these from a laptop with
+production credentials, run them from the component's **State** panel in the
+workflow builder, under **Operations** (editor or above):
+
+| Operation | What it runs | Fields |
+| --- | --- | --- |
+| Stop managing a resource | `tofu state rm` | resource address |
+| Rename a resource | `tofu state mv` | current and new address |
+| Import existing infrastructure | `tofu import` | resource address and the provider's id |
+| Release a stuck state lock | `tofu force-unlock` | the lock id from the "Error acquiring the state lock" message |
+
+These are the only four; there is no free-form command. Each starts a
+**State operation** run of a single step that is **always** parked for
+approval first: the run shows the exact command that will run, and an editor
+or admin approves or rejects it exactly like a gated apply. Nothing touches
+state until it is approved. An import carries the component's `-var` /
+`-var-file` plan flags so the resource's configuration resolves the same way
+it does for a plan.
+
+After the operation succeeds, the component's recorded state (its resources
+and outputs) is refreshed, so the **State** panel shows the result. A state
+operation counts as a run of the application: it appears in the run history,
+and it cannot start while another run is in progress (nor can a deploy start
+while one is waiting for approval).
 
 ## Run the workflow
 

@@ -636,11 +636,12 @@ var (
 	// WorkflowRunsColumns holds the columns for the "workflow_runs" table.
 	WorkflowRunsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
-		{Name: "action", Type: field.TypeEnum, Enums: []string{"deploy", "uninstall", "preview", "drift"}},
+		{Name: "action", Type: field.TypeEnum, Enums: []string{"deploy", "uninstall", "preview", "drift", "state_op"}},
 		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "running", "succeeded", "failed", "partial", "awaiting_approval"}, Default: "pending"},
 		{Name: "message", Type: field.TypeString, Nullable: true},
 		{Name: "job_id", Type: field.TypeString, Nullable: true},
 		{Name: "graph", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "args", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "started_at", Type: field.TypeTime, Nullable: true},
 		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
@@ -656,13 +657,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "workflow_runs_organizations_organization",
-				Columns:    []*schema.Column{WorkflowRunsColumns[10]},
+				Columns:    []*schema.Column{WorkflowRunsColumns[11]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "workflow_runs_applications_application",
-				Columns:    []*schema.Column{WorkflowRunsColumns[11]},
+				Columns:    []*schema.Column{WorkflowRunsColumns[12]},
 				RefColumns: []*schema.Column{ApplicationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -671,17 +672,17 @@ var (
 			{
 				Name:    "workflowrun_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{WorkflowRunsColumns[10]},
+				Columns: []*schema.Column{WorkflowRunsColumns[11]},
 			},
 			{
 				Name:    "workflowrun_application_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{WorkflowRunsColumns[11], WorkflowRunsColumns[6]},
+				Columns: []*schema.Column{WorkflowRunsColumns[12], WorkflowRunsColumns[7]},
 			},
 			{
 				Name:    "workflowrun_organization_id_job_id",
 				Unique:  false,
-				Columns: []*schema.Column{WorkflowRunsColumns[10], WorkflowRunsColumns[4]},
+				Columns: []*schema.Column{WorkflowRunsColumns[11], WorkflowRunsColumns[4]},
 			},
 		},
 	}

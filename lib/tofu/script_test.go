@@ -641,3 +641,104 @@ func TestScriptDrift(t *testing.T) {
 		}
 	}
 }
+
+// TestScriptStateOps proves a state-operation unit renders as: init, the
+// handover tooling installed *before* the operation, the exact operation
+// argv shell-quoted per token (an import carrying only the -var/-var-file
+// plan flags), then the outputs + inventory handed back through the Secret —
+// and never a plan, apply, planfile, or destroy.
+func TestScriptStateOps(t *testing.T) {
+	t.Parallel()
+	base := Apply{
+		Command: CommandStateOp, Action: ActionStateOp, RepoURL: "r", Path: "p",
+		Backend: BackendS3, BackendConfig: map[string]string{"bucket": "b", "key": "k", "region": "r"},
+		Namespace: "sf-jobs", PlanArtifactSecret: "tfplan-run1-comp1",
+		PlanFlags: []string{"-var=env=prod", "-target=aws_instance.web"},
+	}
+	cases := []struct {
+		op   StateOp
+		want string
+	}{
+		{StateOp{Operation: StateOpForceUnlock, LockID: "abc"}, "tofu 'force-unlock' '-force' 'abc'\n"},
+		{StateOp{Operation: StateOpRemove, Address: "aws_instance.web"}, "tofu 'state' 'rm' 'aws_instance.web'\n"},
+		{StateOp{Operation: StateOpMove, Address: "a.b", NewAddress: "c.d"}, "tofu 'state' 'mv' 'a.b' 'c.d'\n"},
+		{StateOp{Operation: StateOpImport, Address: "aws_s3_bucket.data", ImportID: "acme-data"},
+			"tofu 'import' '-input=false' '-no-color' '-var=env=prod' 'aws_s3_bucket.data' 'acme-data'\n"},
+	}
+	for _, tc := range cases {
+		a := base
+		op := tc.op
+		a.StateOp = &op
+		s := Script(a)
+		if !strings.Contains(s, "tofu init -input=false -no-color\n"+applyToolsInstall+tc.want) {
+			t.Errorf("%s: want init, tooling, then %q\n---\n%s", tc.op.Operation, tc.want, s)
+		}
+		if !strings.Contains(s, "tofu output -json > "+OutputsFile) || !strings.Contains(s, "--from-file="+ResourcesKey+"="+ResourcesFile) {
+			t.Errorf("%s: must hand outputs + inventory back through the Secret\n---\n%s", tc.op.Operation, s)
+		}
+		for _, forbidden := range []string{"tofu plan", "tofu apply", "-out=", "-destroy", "-target"} {
+			if strings.Contains(s, forbidden) {
+				t.Errorf("%s: script must not contain %q\n---\n%s", tc.op.Operation, forbidden, s)
+			}
+		}
+		if strings.Contains(s, "exit 1") {
+			t.Errorf("%s: script must not fail closed\n---\n%s", tc.op.Operation, s)
+		}
+	}
+
+	// Fail closed without a valid operation or without a handover Secret.
+	a := base
+	if s := Script(a); !strings.Contains(s, "no valid state operation") {
+		t.Errorf("missing op must fail closed\n---\n%s", s)
+	}
+	a.StateOp = &StateOp{Operation: StateOpRemove}
+	if s := Script(a); !strings.Contains(s, "no valid state operation") {
+		t.Errorf("invalid op must fail closed\n---\n%s", s)
+	}
+	a.StateOp = &StateOp{Operation: StateOpRemove, Address: "a"}
+	a.PlanArtifactSecret = ""
+	if s := Script(a); !strings.Contains(s, "no handover secret") {
+		t.Errorf("missing secret must fail closed\n---\n%s", s)
+	}
+}
+
+// TestScriptWorkspace proves a workspace is selected (created on first use)
+// right after init and before any command, for a plan, an apply, a drift
+// check, and a state operation alike — quoted as one token — and that no
+// workspace line is emitted when none is set.
+func TestScriptWorkspace(t *testing.T) {
+	t.Parallel()
+	base := Apply{
+		RepoURL: "r", Path: "p", Backend: BackendS3, Namespace: "sf-jobs",
+		BackendConfig:      map[string]string{"bucket": "b", "key": "k", "region": "r"},
+		PlanArtifactSecret: "tfplan-run1-comp1", Workspace: "prod",
+		InitFlags: []string{"-upgrade"},
+	}
+	cases := []struct {
+		name string
+		mut  func(a *Apply)
+		next string
+	}{
+		{"plan", func(a *Apply) { a.Command, a.Action = CommandPlan, ActionDeploy }, "tofu plan"},
+		{"apply", func(a *Apply) { a.Command, a.Action = CommandApply, ActionDeploy }, applyToolsInstall},
+		{"drift", func(a *Apply) { a.Command, a.Action, a.PlanArtifactSecret = CommandPlan, ActionDrift, "" }, "tofu plan -input=false -refresh-only"},
+		{"state op", func(a *Apply) {
+			a.Command, a.Action = CommandStateOp, ActionStateOp
+			a.StateOp = &StateOp{Operation: StateOpRemove, Address: "a.b"}
+		}, applyToolsInstall},
+	}
+	for _, tc := range cases {
+		a := base
+		tc.mut(&a)
+		s := Script(a)
+		want := "tofu init -input=false -no-color '-upgrade'\ntofu workspace select -or-create=true 'prod'\n" + tc.next
+		if !strings.Contains(s, want) {
+			t.Errorf("%s: workspace must be selected right after init, before %q\n---\n%s", tc.name, tc.next, s)
+		}
+	}
+	a := base
+	a.Command, a.Action, a.Workspace = CommandPlan, ActionDeploy, ""
+	if s := Script(a); strings.Contains(s, "workspace") {
+		t.Errorf("no workspace must emit no workspace line\n---\n%s", s)
+	}
+}

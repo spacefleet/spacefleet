@@ -5,6 +5,7 @@ import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import { formatDuration } from "../lib/duration";
 import { RunStatusBadge } from "../components/workflow/status";
+import { runActionLabel } from "../components/workflow/runAction";
 import type { StreamStatus } from "../lib/resourceStream";
 import { useObjectStream } from "../lib/useObjectStream";
 
@@ -210,7 +211,7 @@ export function RunsIndex() {
                     {clusterLabel(runnerClusterId(r), clusterNameById)}
                   </td>
                   <td className="px-4 py-3 capitalize text-neutral-600">
-                    {r.action}
+                    {runActionLabel(r.action)}
                   </td>
                   <td className="px-4 py-3">
                     <RunStatusBadge status={r.status} />

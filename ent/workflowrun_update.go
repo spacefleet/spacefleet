@@ -116,6 +116,26 @@ func (_u *WorkflowRunUpdate) ClearGraph() *WorkflowRunUpdate {
 	return _u
 }
 
+// SetArgs sets the "args" field.
+func (_u *WorkflowRunUpdate) SetArgs(v string) *WorkflowRunUpdate {
+	_u.mutation.SetArgs(v)
+	return _u
+}
+
+// SetNillableArgs sets the "args" field if the given value is not nil.
+func (_u *WorkflowRunUpdate) SetNillableArgs(v *string) *WorkflowRunUpdate {
+	if v != nil {
+		_u.SetArgs(*v)
+	}
+	return _u
+}
+
+// ClearArgs clears the value of the "args" field.
+func (_u *WorkflowRunUpdate) ClearArgs() *WorkflowRunUpdate {
+	_u.mutation.ClearArgs()
+	return _u
+}
+
 // SetStartedAt sets the "started_at" field.
 func (_u *WorkflowRunUpdate) SetStartedAt(v time.Time) *WorkflowRunUpdate {
 	_u.mutation.SetStartedAt(v)
@@ -260,6 +280,12 @@ func (_u *WorkflowRunUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if _u.mutation.GraphCleared() {
 		_spec.ClearField(workflowrun.FieldGraph, field.TypeString)
 	}
+	if value, ok := _u.mutation.Args(); ok {
+		_spec.SetField(workflowrun.FieldArgs, field.TypeString, value)
+	}
+	if _u.mutation.ArgsCleared() {
+		_spec.ClearField(workflowrun.FieldArgs, field.TypeString)
+	}
 	if value, ok := _u.mutation.StartedAt(); ok {
 		_spec.SetField(workflowrun.FieldStartedAt, field.TypeTime, value)
 	}
@@ -380,6 +406,26 @@ func (_u *WorkflowRunUpdateOne) SetNillableGraph(v *string) *WorkflowRunUpdateOn
 // ClearGraph clears the value of the "graph" field.
 func (_u *WorkflowRunUpdateOne) ClearGraph() *WorkflowRunUpdateOne {
 	_u.mutation.ClearGraph()
+	return _u
+}
+
+// SetArgs sets the "args" field.
+func (_u *WorkflowRunUpdateOne) SetArgs(v string) *WorkflowRunUpdateOne {
+	_u.mutation.SetArgs(v)
+	return _u
+}
+
+// SetNillableArgs sets the "args" field if the given value is not nil.
+func (_u *WorkflowRunUpdateOne) SetNillableArgs(v *string) *WorkflowRunUpdateOne {
+	if v != nil {
+		_u.SetArgs(*v)
+	}
+	return _u
+}
+
+// ClearArgs clears the value of the "args" field.
+func (_u *WorkflowRunUpdateOne) ClearArgs() *WorkflowRunUpdateOne {
+	_u.mutation.ClearArgs()
 	return _u
 }
 
@@ -556,6 +602,12 @@ func (_u *WorkflowRunUpdateOne) sqlSave(ctx context.Context) (_node *WorkflowRun
 	}
 	if _u.mutation.GraphCleared() {
 		_spec.ClearField(workflowrun.FieldGraph, field.TypeString)
+	}
+	if value, ok := _u.mutation.Args(); ok {
+		_spec.SetField(workflowrun.FieldArgs, field.TypeString, value)
+	}
+	if _u.mutation.ArgsCleared() {
+		_spec.ClearField(workflowrun.FieldArgs, field.TypeString)
 	}
 	if value, ok := _u.mutation.StartedAt(); ok {
 		_spec.SetField(workflowrun.FieldStartedAt, field.TypeTime, value)

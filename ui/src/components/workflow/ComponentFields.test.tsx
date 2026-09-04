@@ -181,3 +181,29 @@ describe("helm values-from-git editor", () => {
     );
   });
 });
+
+describe("terraform inputs and workspace", () => {
+  it("stores the TF_VAR opt-in as config.expose_tf_vars and the workspace as config.workspace", async () => {
+    const user = userEvent.setup();
+    let latest: EditableComponent | null = null;
+    render(
+      <Harness
+        initial={makeComponent()}
+        onComponent={(c) => {
+          latest = c;
+        }}
+      />,
+    );
+    const toggle = screen.getByRole("checkbox", {
+      name: "Expose variables as OpenTofu inputs",
+    });
+    expect(toggle).not.toBeChecked();
+    await user.click(toggle);
+    expect(latest!.config.expose_tf_vars).toBe("true");
+    await user.click(toggle);
+    expect(latest!.config.expose_tf_vars).toBe("");
+
+    await user.type(screen.getByPlaceholderText("default"), "prod");
+    expect(latest!.config.workspace).toBe("prod");
+  });
+});

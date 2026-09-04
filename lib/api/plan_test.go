@@ -45,7 +45,7 @@ func TestToAPIComponentRun_TofuPlan(t *testing.T) {
 	if !list.Plan.HasChanges || list.Plan.Add != 2 || list.Plan.Destroy != 1 || list.Plan.Replace != 1 {
 		t.Errorf("list plan summary wrong: %+v", *list.Plan)
 	}
-	if len(list.Plan.Resources) != 2 || list.Plan.Resources[1].Action != Replace {
+	if len(list.Plan.Resources) != 2 || list.Plan.Resources[1].Action != PlanResourceChangeActionReplace {
 		t.Errorf("list plan resources wrong: %+v", list.Plan.Resources)
 	}
 	for _, r := range list.Plan.Resources {

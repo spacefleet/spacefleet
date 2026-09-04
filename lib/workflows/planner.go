@@ -41,7 +41,10 @@ const (
 // per-component dry-run (helm diff / kubectl diff), and the worker clears the
 // scheduler deps for a preview run so every component's dry-run is independently
 // runnable and they preview concurrently rather than gating on upstream "passes".
-func (w *WorkflowRunWorker) planComponent(ctx context.Context, app *ent.Application, node GraphNode, action string, force bool, existingRun string, runID uuid.UUID, byID map[uuid.UUID]GraphNode) (tekton.RunRequest, error) {
+//
+// stateOp is the operation of a state_op run (decoded from the run row by the
+// worker), nil for every other action; only a terraform unit reads it.
+func (w *WorkflowRunWorker) planComponent(ctx context.Context, app *ent.Application, node GraphNode, action string, force bool, existingRun string, runID uuid.UUID, byID map[uuid.UUID]GraphNode, stateOp *tofu.StateOp) (tekton.RunRequest, error) {
 	switch node.Type {
 	case TypeHelm:
 		// runID feeds the ${{ run.id }} interpolation context; byID resolves
@@ -55,7 +58,7 @@ func (w *WorkflowRunWorker) planComponent(ctx context.Context, app *ent.Applicat
 		// force is helm-only; a terraform plan/apply has no equivalent. runID + byID
 		// let planTofu derive the planfile-handover Secret and the shared backend
 		// state identity it shares with its plan node.
-		return w.planTofu(ctx, app, node, action, existingRun, runID, byID)
+		return w.planTofu(ctx, app, node, action, existingRun, runID, byID, stateOp)
 	default:
 		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q has unsupported type %q for execution", node.Name, node.Type)
 	}
@@ -150,22 +153,24 @@ func (w *WorkflowRunWorker) planManifest(ctx context.Context, app *ent.Applicati
 // package doc. The handover Secret and the backend state identity are both keyed
 // off the plan node's id, so an apply node resolves its upstream plan node (via
 // byID) and shares the plan's state and planfile.
-func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, node GraphNode, action, existingRun string, runID uuid.UUID, byID map[uuid.UUID]GraphNode) (tekton.RunRequest, error) {
+//
+// A state_op unit (a guarded state operation, see BeginStateOp) is its own
+// handover owner like a plan unit: the same Secret carries the refreshed
+// outputs + inventory back after the operation, so the state view stays
+// current. stateOp is that run's decoded operation.
+func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, node GraphNode, action, existingRun string, runID uuid.UUID, byID map[uuid.UUID]GraphNode, stateOp *tofu.StateOp) (tekton.RunRequest, error) {
 	tofuAction, err := tofuActionFor(action)
 	if err != nil {
 		return tekton.RunRequest{}, err
 	}
 
-	// Resolve the plan node id this component is bound to: a plan node is its own
-	// reference; an apply node points at its single upstream terraform plan node
-	// (guaranteed by expandExecutionNodes, which makes the apply unit depend on
-	// exactly its plan unit). Both the backend state Secret and the
-	// planfile-handover Secret are keyed off it so plan and apply share state and
-	// the apply applies the plan's saved planfile.
-	planID := node.ID
-	if node.Config[terraformConfigCommand] == terraformCommandApply {
-		planID = upstreamTofuPlanID(node, byID)
-	}
+	// Resolve the plan node id this component is bound to: a plan (or state_op)
+	// node is its own reference; an apply node points at its single upstream
+	// terraform plan node (guaranteed by expandExecutionNodes, which makes the
+	// apply unit depend on exactly its plan unit). Both the backend state Secret
+	// and the planfile-handover Secret are keyed off it so plan and apply share
+	// state and the apply applies the plan's saved planfile.
+	planID := tofuHandoverPlanID(node, byID)
 
 	// The planfile-handover Secret name. Left empty for a preview (read-only, no
 	// planfile) or when an apply node has no upstream plan (defensive: the script
@@ -245,6 +250,9 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		DynamoDBLockTable:  backendConfig[s3BackendKeyDynamoTable],
 		DynamoDBLockRegion: backendConfig[s3BackendKeyRegion],
 		PullsChart:         pullsChart,
+		// Opt-in: the component's resolved variables double as the module's
+		// TF_VAR_ inputs (validated at write time to "true"/"false"/"").
+		ExposeTFVars: node.Config[terraformConfigExposeTFVars] == "true",
 	})
 	if err != nil {
 		return tekton.RunRequest{}, err
@@ -285,6 +293,8 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		InitFlags:          initFlags,
 		PlanFlags:          planFlags,
 		ApplyFlags:         applyFlags,
+		StateOp:            stateOp,
+		Workspace:          node.Config[terraformConfigWorkspace],
 	})
 
 	return tekton.RunRequest{
@@ -345,6 +355,8 @@ func tofuActionFor(action string) (string, error) {
 		return tofu.ActionPreview, nil
 	case ActionDrift:
 		return tofu.ActionDrift, nil
+	case ActionStateOp:
+		return tofu.ActionStateOp, nil
 	default:
 		return "", fmt.Errorf("workflows: unknown run action %q", action)
 	}
@@ -409,6 +421,31 @@ func upstreamTofuPlanID(node GraphNode, byID map[uuid.UUID]GraphNode) uuid.UUID 
 		}
 	}
 	return uuid.Nil
+}
+
+// tofuHandoverPlanID returns the id the handover Secret (and backend state
+// identity) of a terraform unit is keyed off: an apply unit's upstream plan
+// unit; a plan or state_op unit itself. uuid.Nil for an apply with no
+// upstream plan (defensive; the script then fails closed).
+func tofuHandoverPlanID(node GraphNode, byID map[uuid.UUID]GraphNode) uuid.UUID {
+	if node.Config[terraformConfigCommand] == terraformCommandApply {
+		return upstreamTofuPlanID(node, byID)
+	}
+	return node.ID
+}
+
+// ownsTofuHandover reports whether a snapshot node is the unit a handover
+// Secret is named after — a terraform plan or state_op unit — so the terminal
+// sweep can enumerate every Secret a run may have provisioned.
+func ownsTofuHandover(n GraphNode) bool {
+	if n.Type != TypeTerraform {
+		return false
+	}
+	switch n.Config[terraformConfigCommand] {
+	case terraformCommandPlan, terraformCommandStateOp:
+		return true
+	}
+	return false
 }
 
 // tofuRunPrefix is the TaskRun generateName prefix for a terraform component (a

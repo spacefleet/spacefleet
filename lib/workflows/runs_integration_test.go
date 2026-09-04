@@ -16,6 +16,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
 	"github.com/spacefleet/spacefleet/lib/testsupport"
+	"github.com/spacefleet/spacefleet/lib/tofu"
 )
 
 // This file is the DB-backed half of the run tests: BeginRun's transactional
@@ -744,5 +745,72 @@ func TestBeginRunDriftNeedsTofu(t *testing.T) {
 	}
 	if len(steps) != 1 || steps[0].ComponentID != tf.ID {
 		t.Errorf("drift run steps = %+v, want only the tofu plan unit", steps)
+	}
+}
+
+// TestBeginStateOp proves a state operation opens a one-step, always-gated
+// state_op run with its arguments on the row, only for an OpenTofu component
+// of the org-scoped application, only when nothing is in flight, and only
+// with a valid operation.
+func TestBeginStateOp(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	helmComp := addComponent(t, client, org.ID, app.ID, "api", nil)
+	tf := addComponent(t, client, org.ID, app.ID, "infra", map[string]string{
+		"repo_url": "https://example.com/infra.git", "path": ".",
+		terraformConfigBackend: "s3", terraformConfigBackendConfig: `{"bucket":"b","key":"k","region":"r"}`,
+	})
+	if _, err := client.Component.UpdateOneID(tf.ID).SetType(TypeTerraform).Save(ctx); err != nil {
+		t.Fatalf("set terraform type: %v", err)
+	}
+	rm := tofu.StateOp{Operation: tofu.StateOpRemove, Address: "aws_instance.web"}
+
+	if _, err := svc.BeginStateOp(ctx, org.ID, app.ID, helmComp.ID, rm); !errors.Is(err, ErrNotTofuComponent) {
+		t.Errorf("helm component: err = %v, want ErrNotTofuComponent", err)
+	}
+	if _, err := svc.BeginStateOp(ctx, org.ID, app.ID, uuid.New(), rm); !ent.IsNotFound(err) {
+		t.Errorf("unknown component: err = %v, want NotFound", err)
+	}
+	if _, err := svc.BeginStateOp(ctx, org.ID, app.ID, tf.ID, tofu.StateOp{Operation: tofu.StateOpRemove}); !errors.Is(err, tofu.ErrInvalidStateOp) {
+		t.Errorf("invalid op: err = %v, want ErrInvalidStateOp", err)
+	}
+	other := newOrg(t, client, "Other")
+	if _, err := svc.BeginStateOp(ctx, other.ID, app.ID, tf.ID, rm); !ent.IsNotFound(err) {
+		t.Errorf("cross-org: err = %v, want NotFound", err)
+	}
+
+	run, err := svc.BeginStateOp(ctx, org.ID, app.ID, tf.ID, rm)
+	if err != nil {
+		t.Fatalf("BeginStateOp: %v", err)
+	}
+	if run.Action != workflowrun.ActionStateOp || run.Status != workflowrun.StatusPending {
+		t.Errorf("run = %s/%s, want state_op/pending", run.Action, run.Status)
+	}
+	op, ok, err := StateOpOf(run)
+	if err != nil || !ok || op != rm {
+		t.Errorf("stored op = %+v (ok=%v err=%v), want %+v", op, ok, err, rm)
+	}
+	_, steps, err := svc.GetRun(ctx, org.ID, app.ID, run.ID)
+	if err != nil {
+		t.Fatalf("GetRun: %v", err)
+	}
+	if len(steps) != 1 || steps[0].ComponentID != tf.ID || steps[0].Name != "infra · state rm" || steps[0].Type != TypeTerraform {
+		t.Errorf("steps = %+v, want one state-op unit under the authored id", steps)
+	}
+	var snap GraphSnapshot
+	if err := json.Unmarshal([]byte(run.Graph), &snap); err != nil || len(snap.Nodes) != 1 || !snap.Nodes[0].RequiresApproval || snap.Nodes[0].Config[terraformConfigCommand] != terraformCommandStateOp {
+		t.Errorf("snapshot = %s (err %v), want one gated state_op node", run.Graph, err)
+	}
+
+	// The pending run arms the in-flight gate for every kind of run.
+	if _, err := svc.BeginStateOp(ctx, org.ID, app.ID, tf.ID, rm); !errors.Is(err, ErrRunInFlight) {
+		t.Errorf("second op: err = %v, want ErrRunInFlight", err)
+	}
+	if _, err := svc.BeginRun(ctx, org.ID, app.ID, ActionDeploy); !errors.Is(err, ErrRunInFlight) {
+		t.Errorf("deploy during op: err = %v, want ErrRunInFlight", err)
 	}
 }

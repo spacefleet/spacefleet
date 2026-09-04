@@ -360,10 +360,15 @@ export function NodeEditor() {
           </div>
 
           {/* An OpenTofu component's recorded state: the resources it manages
-              and its outputs, as of its last successful apply. Only for a
-              saved node — a new one has no history. */}
+              and its outputs, as of its last successful apply, plus — for an
+              editor — the guarded state operations. Only for a saved node — a
+              new one has no history. */}
           {!isNew && draft?.type === "terraform" && (
-            <ComponentStatePanel appId={appId} componentId={nodeId} />
+            <ComponentStatePanel
+              appId={appId}
+              componentId={nodeId}
+              canEdit={canEdit}
+            />
           )}
         </>
       )}

@@ -14,6 +14,7 @@ import { useObjectStream } from "../lib/useObjectStream";
 import type { components } from "../api/schema";
 import { DeleteApplicationDialog } from "../components/DeleteApplicationDialog";
 import { RunStatusBadge } from "../components/workflow/status";
+import { runActionLabel } from "../components/workflow/runAction";
 import { WorkflowOverview } from "../components/workflow/WorkflowOverview";
 import { VariablesEditor } from "../components/VariablesEditor";
 import { formatDuration } from "../lib/duration";
@@ -342,7 +343,7 @@ export function ApplicationDetail() {
               >
                 <span className="flex items-center gap-3">
                   <span className="capitalize text-neutral-700">
-                    {displayRun.action}
+                    {runActionLabel(displayRun.action)}
                   </span>
                   <RunStatusBadge status={displayRun.status} />
                 </span>

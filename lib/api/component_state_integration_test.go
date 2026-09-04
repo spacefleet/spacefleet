@@ -198,7 +198,7 @@ func TestGetComponentStateDrift(t *testing.T) {
 	if state.Drift == nil || !state.Drift.HasDrift || state.Drift.Status != ComponentRunStatusSucceeded {
 		t.Fatalf("drift = %+v, want a succeeded check with drift", state.Drift)
 	}
-	if d := *state.Drift.Drift; len(d) != 1 || d[0].Address != "aws_instance.web" || d[0].Action != DriftUpdate || d[0].Diff != nil {
+	if d := *state.Drift.Drift; len(d) != 1 || d[0].Address != "aws_instance.web" || d[0].Action != PlanResourceChangeActionDriftUpdate || d[0].Diff != nil {
 		t.Errorf("drifted resources = %+v", d)
 	}
 

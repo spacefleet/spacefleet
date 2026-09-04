@@ -31,6 +31,11 @@ const (
 	// last apply. Helm and Manifest components take no part (they have no
 	// state to drift from), so the run covers only the OpenTofu components.
 	ActionDrift = "drift"
+	// ActionStateOp is a guarded state operation on one OpenTofu component —
+	// force-unlock / state rm / state mv / import — run as a single, always
+	// gated execution unit. It is not started through BeginRun (it needs a
+	// component and typed arguments): see BeginStateOp.
+	ActionStateOp = "state_op"
 )
 
 // GraphSnapshot is the JSON shape stored on WorkflowRun.graph: the workflow's
@@ -85,7 +90,9 @@ type GraphGroup struct {
 	Size     map[string]float64 `json:"size,omitempty"`
 }
 
-// validAction reports whether action is one of the run actions.
+// validAction reports whether action is one of the whole-workflow run actions
+// BeginRun starts. A state operation is deliberately not one: it targets one
+// component with typed arguments and starts through BeginStateOp.
 func validAction(action string) bool {
 	switch action {
 	case ActionDeploy, ActionUninstall, ActionPreview, ActionDrift:
@@ -124,20 +131,8 @@ func (s *Service) BeginRun(ctx context.Context, orgID, appID uuid.UUID, action s
 		return nil, err
 	}
 
-	// In-flight gate: refuse if any run for this app is still pending or running.
-	// This is the run analogue of applications.BeginRollout's settled-status guard.
-	inFlight, err := s.ent.WorkflowRun.Query().
-		Where(
-			workflowrun.OrganizationID(orgID),
-			workflowrun.ApplicationID(appID),
-			workflowrun.StatusIn(workflowrun.StatusPending, workflowrun.StatusRunning, workflowrun.StatusAwaitingApproval),
-		).
-		Exist(ctx)
-	if err != nil {
+	if err := s.assertNoRunInFlight(ctx, orgID, appID); err != nil {
 		return nil, err
-	}
-	if inFlight {
-		return nil, ErrRunInFlight
 	}
 
 	comps, err := s.ent.Component.Query().
@@ -156,6 +151,37 @@ func (s *Service) BeginRun(ctx context.Context, orgID, appID uuid.UUID, action s
 	if action == ActionDrift && len(snapshot.Nodes) == 0 {
 		return nil, ErrNoDriftTargets
 	}
+	return s.createRun(ctx, orgID, appID, action, "", snapshot)
+}
+
+// assertNoRunInFlight is the in-flight gate every run start passes: it
+// refuses (ErrRunInFlight) while any run for the application is still
+// pending, running, or parked at a gate. This is the run analogue of
+// applications.BeginRollout's settled-status guard — two concurrent runs would
+// race the same releases and the same state.
+func (s *Service) assertNoRunInFlight(ctx context.Context, orgID, appID uuid.UUID) error {
+	inFlight, err := s.ent.WorkflowRun.Query().
+		Where(
+			workflowrun.OrganizationID(orgID),
+			workflowrun.ApplicationID(appID),
+			workflowrun.StatusIn(workflowrun.StatusPending, workflowrun.StatusRunning, workflowrun.StatusAwaitingApproval),
+		).
+		Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if inFlight {
+		return ErrRunInFlight
+	}
+	return nil
+}
+
+// createRun persists a new pending run over an already-built snapshot — the
+// WorkflowRun row (with the snapshot and any per-run args) plus one
+// ComponentRun per execution unit — in one transaction. Shared by BeginRun
+// and BeginStateOp so the two cannot drift in how a run and its steps are
+// laid down.
+func (s *Service) createRun(ctx context.Context, orgID, appID uuid.UUID, action, args string, snapshot GraphSnapshot) (*ent.WorkflowRun, error) {
 	graphJSON, err := json.Marshal(snapshot)
 	if err != nil {
 		return nil, err
@@ -166,13 +192,16 @@ func (s *Service) BeginRun(ctx context.Context, orgID, appID uuid.UUID, action s
 		return nil, err
 	}
 
-	run, err := tx.WorkflowRun.Create().
+	create := tx.WorkflowRun.Create().
 		SetOrganizationID(orgID).
 		SetApplicationID(appID).
 		SetAction(workflowrun.Action(action)).
 		SetStatus(workflowrun.StatusPending).
-		SetGraph(string(graphJSON)).
-		Save(ctx)
+		SetGraph(string(graphJSON))
+	if args != "" {
+		create.SetArgs(args)
+	}
+	run, err := create.Save(ctx)
 	if err != nil {
 		return nil, rollback(tx, err)
 	}
@@ -776,8 +805,10 @@ type OutputKey struct {
 }
 
 // LatestComponentState returns the component run that last recorded an
-// OpenTofu component's state — the most recent succeeded apply unit (keyed by
-// the derived apply id) that captured outputs or a resource inventory — or
+// OpenTofu component's state — the most recent succeeded step that captured
+// outputs or a resource inventory: a deploy's apply unit (keyed by the derived
+// apply id) or a state operation's unit (keyed by the authored id; a plan or
+// drift unit under that id never captures either, so they cannot match) — or
 // ent's NotFoundError when the component has never applied successfully. The
 // component must belong to the org-scoped application: the row is looked up
 // through the component, so another org's run can't be read by id.
@@ -794,7 +825,7 @@ func (s *Service) LatestComponentState(ctx context.Context, orgID, appID, compon
 	return s.ent.ComponentRun.Query().
 		Where(
 			componentrun.OrganizationID(orgID),
-			componentrun.ComponentID(deriveApplyID(componentID)),
+			componentrun.ComponentIDIn(deriveApplyID(componentID), componentID),
 			componentrun.StatusEQ(componentrun.StatusSucceeded),
 			componentrun.Or(componentrun.OutputsNEQ(""), componentrun.ResourcesNEQ("")),
 		).

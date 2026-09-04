@@ -37,6 +37,10 @@ import {
 } from "../components/workflow/nodes";
 import { RunStatusBadge } from "../components/workflow/status";
 import {
+  runActionLabel,
+  stateOpDescription,
+} from "../components/workflow/runAction";
+import {
   PlanCounts,
   PlanResourceList,
   PlanSummaryBar,
@@ -81,6 +85,8 @@ const TERMINAL: RunStatus[] = ["succeeded", "failed", "partial"];
 function isReadOnlyAction(action: string): boolean {
   return action === "preview" || action === "drift";
 }
+
+type StateOperation = components["schemas"]["StateOperation"];
 
 // WorkflowRunView is the live DAG run view (route
 // /applications/:appId/runs/:runId). It renders the run's snapshot graph as a
@@ -292,8 +298,18 @@ export function WorkflowRunView() {
                 Workflow run
               </p>
               <h1 className="mt-0.5 text-xl font-bold capitalize tracking-tight">
-                {run.action}
+                {runActionLabel(run.action)}
               </h1>
+              {run.state_op && (
+                <p className="mt-1 text-sm text-neutral-600">
+                  <span className="text-neutral-500">
+                    {stateOpDescription(run.state_op)}
+                  </span>{" "}
+                  <code className="bg-neutral-100 px-1.5 py-0.5 font-mono text-xs text-neutral-900">
+                    {run.state_op.command}
+                  </code>
+                </p>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-3">
               {inFlight && (
@@ -374,6 +390,7 @@ export function WorkflowRunView() {
                 }
                 isPreview={isReadOnlyAction(run.action)}
                 isDrift={run.action === "drift"}
+                stateOp={run.state_op ?? null}
                 planRun={planSource}
                 canApprove={canApprove}
                 onDecided={load}
@@ -404,6 +421,7 @@ function ComponentRunPanel({
   liveStatus,
   isPreview,
   isDrift,
+  stateOp,
   planRun,
   canApprove,
   onDecided,
@@ -421,6 +439,9 @@ function ComponentRunPanel({
   isPreview: boolean;
   // A drift check specifically: the finding is drift, not a deploy diff.
   isDrift: boolean;
+  // The state operation of a state_op run: its gate shows the exact command
+  // the step will run, since there is no plan to review.
+  stateOp: StateOperation | null;
   // The upstream tofu plan step backing this apply step, when there is one. Its
   // logs are the review material for the approval gate, so the panel surfaces
   // them on a "Plan output" tab — leading while the step is parked.
@@ -630,8 +651,18 @@ function ComponentRunPanel({
                   <p className="mt-0.5 text-xs text-violet-800">
                     {planRun
                       ? "Review the plan output below, then approve to apply or reject to fail the run."
-                      : "Approve to run this step, or reject to fail the run."}
+                      : stateOp
+                        ? "Approving runs this command against the component's state (nothing is planned first):"
+                        : "Approve to run this step, or reject to fail the run."}
                   </p>
+                  {stateOp && (
+                    <code
+                      data-testid="state-op-command"
+                      className="mt-1.5 block w-fit bg-white px-2 py-1 font-mono text-xs text-neutral-900 ring-1 ring-violet-200"
+                    >
+                      {stateOp.command}
+                    </code>
+                  )}
                 </div>
                 {canApprove ? (
                   <div className="flex items-center gap-2">

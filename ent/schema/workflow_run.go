@@ -34,9 +34,10 @@ func (WorkflowRun) Fields() []ent.Field {
 		// one application for its lifetime.
 		field.UUID("organization_id", uuid.UUID{}).Immutable(),
 		field.UUID("application_id", uuid.UUID{}).Immutable(),
-		// What the run does across the whole workflow.
+		// What the run does across the whole workflow. state_op is a guarded
+		// state operation on one OpenTofu component (its arguments are in args).
 		field.Enum("action").
-			Values("deploy", "uninstall", "preview", "drift"),
+			Values("deploy", "uninstall", "preview", "drift", "state_op"),
 		// Run lifecycle: pending → running → succeeded / failed / partial. A run
 		// parks at awaiting_approval when a node hits an approval gate and waits for
 		// a human decision before resuming.
@@ -51,6 +52,10 @@ func (WorkflowRun) Fields() []ent.Field {
 		// run began. Text so ent stays decoupled from the Go snapshot type; the
 		// service marshals/unmarshals.
 		field.Text("graph").Optional(),
+		// Per-run arguments for actions that take them — today the JSON of a
+		// state_op run's operation + typed fields (tofu.StateOp). Text like graph
+		// so ent stays decoupled from the Go shape; empty for every other action.
+		field.Text("args").Optional(),
 		field.Time("created_at").Default(time.Now).Immutable(),
 		// When the run started executing (nil while pending).
 		field.Time("started_at").Optional().Nillable(),

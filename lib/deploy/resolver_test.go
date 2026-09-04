@@ -344,3 +344,73 @@ func TestResolve_DynamoLockTable_NoCredential(t *testing.T) {
 		t.Fatalf("Resolve: unexpected error %v", err)
 	}
 }
+
+// TestResolve_ExposeTFVars confirms the opt-in TF_VAR_ mapping: every
+// resolved variable is also exported under its TF_VAR_ name in the map its
+// sensitivity puts it in, an explicit TF_VAR_x (in either map) beats the copy
+// derived from x, already-prefixed names are not prefixed twice, the
+// credential-derived AWS_REGION is not mapped, and without the opt-in nothing
+// changes.
+func TestResolve_ExposeTFVars(t *testing.T) {
+	t.Parallel()
+
+	vars := fakeVars{
+		plain:  map[string]string{"region": "eu-west-1", "TF_VAR_already": "x", "count": "2"},
+		secret: map[string]string{"db_password": "hunter2", "TF_VAR_count": "explicit"},
+	}
+	creds := fakeCloudCreds{resolved: cloudcredentials.Resolved{
+		Provider: cloudcredential.ProviderAWS,
+		Config:   map[string]string{cloudcredentials.ConfigKeyAWSRegion: "us-east-1"},
+		Secrets: map[string]string{
+			cloudcredentials.CredKeyAWSAccessKeyID: "AKIAEXAMPLE",
+			cloudcredentials.CredKeyAWSSecretKey:   "s3cret",
+		},
+	}}
+	r := NewResolver(fakeConns{}, nil, nil, creds, vars)
+	clusterID := uuid.New()
+	in := RunInputs{
+		OrgID: uuid.New(), ApplicationID: uuid.New(), ComponentID: uuid.New(),
+		RunnerClusterID: clusterID, CloudCredentialID: uuid.New(), PullsChart: true,
+		ExposeTFVars: true,
+	}
+	out, err := r.Resolve(context.Background(), in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	wantEnv := map[string]string{
+		"region": "eu-west-1", "TF_VAR_region": "eu-west-1",
+		"TF_VAR_already": "x",
+		"count":          "2",
+		"AWS_REGION":     "us-east-1",
+	}
+	for k, v := range wantEnv {
+		if out.Env[k] != v {
+			t.Errorf("Env[%s] = %q, want %q", k, out.Env[k], v)
+		}
+	}
+	for _, absent := range []string{"TF_VAR_AWS_REGION", "TF_VAR_TF_VAR_already"} {
+		if _, ok := out.Env[absent]; ok {
+			t.Errorf("Env must not contain %s", absent)
+		}
+	}
+	if out.SecretEnv["db_password"] != "hunter2" || out.SecretEnv["TF_VAR_db_password"] != "hunter2" {
+		t.Errorf("sensitive variable must be exported under both names in SecretEnv: %v", out.SecretEnv)
+	}
+	// The explicit sensitive TF_VAR_count wins over the copy derived from the
+	// plain count, and stays sensitive.
+	if _, ok := out.Env["TF_VAR_count"]; ok {
+		t.Errorf("derived TF_VAR_count must not shadow the explicit sensitive one: %v", out.Env)
+	}
+	if out.SecretEnv["TF_VAR_count"] != "explicit" {
+		t.Errorf("SecretEnv[TF_VAR_count] = %q, want explicit", out.SecretEnv["TF_VAR_count"])
+	}
+
+	in.ExposeTFVars = false
+	out, err = r.Resolve(context.Background(), in)
+	if err != nil {
+		t.Fatalf("Resolve (no opt-in): %v", err)
+	}
+	if _, ok := out.Env["TF_VAR_region"]; ok {
+		t.Errorf("without the opt-in no TF_VAR_ copies must be made: %v", out.Env)
+	}
+}

@@ -292,7 +292,7 @@ func TestPlanTofuProvisionsHandover(t *testing.T) {
 	byID := map[uuid.UUID]GraphNode{planID: planNode, applyID: applyNode}
 	secret := tofuPlanArtifactSecret(runID, planID)
 
-	req, err := w.planTofu(context.Background(), app, planNode, ActionDeploy, "", runID, byID)
+	req, err := w.planTofu(context.Background(), app, planNode, ActionDeploy, "", runID, byID, nil)
 	if err != nil {
 		t.Fatalf("planTofu(plan): %v", err)
 	}
@@ -314,7 +314,7 @@ func TestPlanTofuProvisionsHandover(t *testing.T) {
 	// provision) and runs as the same ServiceAccount, so it reads exactly the
 	// Secret its plan node stored.
 	ensured = nil
-	req, err = w.planTofu(context.Background(), app, applyNode, ActionDeploy, "", runID, byID)
+	req, err = w.planTofu(context.Background(), app, applyNode, ActionDeploy, "", runID, byID, nil)
 	if err != nil {
 		t.Fatalf("planTofu(apply): %v", err)
 	}
@@ -328,7 +328,7 @@ func TestPlanTofuProvisionsHandover(t *testing.T) {
 	// A preview is read-only: no planfile, so no handover objects and no
 	// dedicated ServiceAccount (the pod needs no cluster access at all).
 	ensured = nil
-	req, err = w.planTofu(context.Background(), app, planNode, ActionPreview, "", runID, byID)
+	req, err = w.planTofu(context.Background(), app, planNode, ActionPreview, "", runID, byID, nil)
 	if err != nil {
 		t.Fatalf("planTofu(preview): %v", err)
 	}
@@ -375,7 +375,7 @@ func TestPlanTofuClusterAuth(t *testing.T) {
 			terraformConfigAuthClusterID: uuid.New().String(),
 		},
 	}
-	req, err := w.planTofu(context.Background(), app, withAuth, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: withAuth})
+	req, err := w.planTofu(context.Background(), app, withAuth, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: withAuth}, nil)
 	if err != nil {
 		t.Fatalf("planTofu(with auth): %v", err)
 	}
@@ -394,7 +394,7 @@ func TestPlanTofuClusterAuth(t *testing.T) {
 			terraformConfigBackend: tofu.BackendS3,
 		},
 	}
-	req, err = w.planTofu(context.Background(), app, withoutAuth, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: withoutAuth})
+	req, err = w.planTofu(context.Background(), app, withoutAuth, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: withoutAuth}, nil)
 	if err != nil {
 		t.Fatalf("planTofu(without auth): %v", err)
 	}
@@ -725,8 +725,54 @@ func TestPlanTofuHandoverFailure(t *testing.T) {
 			terraformConfigBackend: tofu.BackendS3,
 		},
 	}
-	_, err := w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: node})
+	_, err := w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: node}, nil)
 	if err == nil || !strings.Contains(err.Error(), "forbidden") {
 		t.Fatalf("expected the ensure failure to propagate, got %v", err)
+	}
+}
+
+// TestPlanTofuWorkspaceAndTFVars: the planner threads the component's
+// workspace into the script (selected right after init) and, with
+// expose_tf_vars on, asks the resolver to mirror the resolved variables as
+// TF_VAR_ inputs — plain into Env, sensitive into SecretEnv. Off by default.
+func TestPlanTofuWorkspaceAndTFVars(t *testing.T) {
+	t.Parallel()
+	runID, planID := uuid.New(), uuid.New()
+	app := &ent.Application{ID: uuid.New(), OrganizationID: uuid.New(), RunnerClusterID: uuid.New()}
+	w := &WorkflowRunWorker{
+		resolver:       deploy.NewResolver(tokenConns{}, nil, nil, nil, plannerVars{plain: map[string]string{"region": "eu-west-1"}, secret: map[string]string{"db_password": "x"}}),
+		ensureHandover: func(context.Context, k8s.Connection, string, string, map[string]string) error { return nil },
+	}
+	node := GraphNode{
+		ID: planID, ComponentID: planID, Name: "net", Type: TypeTerraform,
+		Config: map[string]string{
+			terraformConfigCommand:      terraformCommandPlan,
+			terraformConfigBackend:      tofu.BackendS3,
+			terraformConfigWorkspace:    "prod",
+			terraformConfigExposeTFVars: "true",
+		},
+	}
+	req, err := w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: node}, nil)
+	if err != nil {
+		t.Fatalf("planTofu: %v", err)
+	}
+	if !strings.Contains(req.Spec.Script, "tofu init -input=false -no-color\ntofu workspace select -or-create=true 'prod'\n") {
+		t.Errorf("script must select the workspace after init\n---\n%s", req.Spec.Script)
+	}
+	if req.Spec.Env["TF_VAR_region"] != "eu-west-1" || req.Spec.SecretEnv["TF_VAR_db_password"] != "x" {
+		t.Errorf("TF_VAR_ inputs missing: env=%v secret=%v", req.Spec.Env, req.Spec.SecretEnv)
+	}
+
+	delete(node.Config, terraformConfigWorkspace)
+	delete(node.Config, terraformConfigExposeTFVars)
+	req, err = w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: node}, nil)
+	if err != nil {
+		t.Fatalf("planTofu (defaults): %v", err)
+	}
+	if strings.Contains(req.Spec.Script, "workspace") {
+		t.Errorf("no workspace must emit no workspace line\n---\n%s", req.Spec.Script)
+	}
+	if _, ok := req.Spec.Env["TF_VAR_region"]; ok || req.Spec.Env["region"] != "eu-west-1" {
+		t.Errorf("TF_VAR_ mapping must be off by default: %v", req.Spec.Env)
 	}
 }

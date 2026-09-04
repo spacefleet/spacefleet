@@ -139,6 +139,14 @@ type RunInputs struct {
 	// PullsChart is false only for uninstall (which pulls nothing), so the chart
 	// credential and git token are skipped.
 	PullsChart bool
+	// ExposeTFVars, for a terraform component that opted in, additionally
+	// exports every resolved variable NAME as TF_VAR_NAME — the environment
+	// form OpenTofu reads a root-module input variable from — so the group /
+	// app / component variables become the module's inputs without a tfvars
+	// file. Sensitivity follows the variable (a sensitive one lands in
+	// SecretEnv under both names). Only variables are mapped, never the
+	// credential-derived keys (AWS_REGION) added afterwards.
+	ExposeTFVars bool
 }
 
 // Resolved is what the resolver computes: the runner connection, the target
@@ -219,6 +227,9 @@ func (r *Resolver) Resolve(ctx context.Context, in RunInputs) (Resolved, error) 
 		plain, secret, err := r.vars.ResolveEnv(ctx, in.OrgID, in.ApplicationID, in.ComponentID)
 		if err != nil {
 			return Resolved{}, err
+		}
+		if in.ExposeTFVars {
+			plain, secret = withTFVars(plain, secret), withTFVars(secret, plain)
 		}
 		if len(plain) > 0 {
 			out.Env = plain
@@ -317,6 +328,39 @@ func (r *Resolver) Resolve(ctx context.Context, in RunInputs) (Resolved, error) 
 		delete(out.SecretEnv, k)
 	}
 	return out, nil
+}
+
+// tfVarPrefix is the environment prefix OpenTofu reads root-module input
+// variables from (TF_VAR_<name>).
+const tfVarPrefix = "TF_VAR_"
+
+// withTFVars returns a copy of env with every entry NAME also present as
+// TF_VAR_NAME. A name already carrying the prefix is left alone (it is
+// already an input; prefixing it twice would be noise), and an explicit
+// TF_VAR_x variable — in this map or the other (plain vs secret) one — wins
+// over the copy derived from a plain x.
+func withTFVars(env, other map[string]string) map[string]string {
+	if len(env) == 0 {
+		return env
+	}
+	out := make(map[string]string, len(env)*2)
+	for k, v := range env {
+		out[k] = v
+	}
+	for k, v := range env {
+		if strings.HasPrefix(k, tfVarPrefix) {
+			continue
+		}
+		name := tfVarPrefix + k
+		if _, explicit := env[name]; explicit {
+			continue
+		}
+		if _, explicit := other[name]; explicit {
+			continue
+		}
+		out[name] = v
+	}
+	return out
 }
 
 // renderEnvFile builds a sourceable /bin/sh file with one `export K='V'` line

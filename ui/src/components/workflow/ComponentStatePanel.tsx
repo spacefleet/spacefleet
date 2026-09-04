@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "react-router";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Link, useNavigate } from "react-router";
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
 import { OutputsTable } from "./OutputsTable";
@@ -7,6 +7,7 @@ import { ResourcesTable } from "./ResourcesTable";
 
 type ComponentState = components["schemas"]["ComponentState"];
 type DriftStatus = components["schemas"]["DriftStatus"];
+type StateOperationKind = components["schemas"]["StateOperationKind"];
 
 // ComponentStatePanel is an OpenTofu component's persistent "what do I own"
 // view: the outputs and the managed-resource inventory its last successful
@@ -16,9 +17,13 @@ type DriftStatus = components["schemas"]["DriftStatus"];
 export function ComponentStatePanel({
   appId,
   componentId,
+  canEdit = false,
 }: {
   appId: string;
   componentId: string;
+  // Editor or above: shows the guarded state operations (each starts an
+  // approval-gated run). Viewers see the recorded state only.
+  canEdit?: boolean;
 }) {
   const [state, setState] = useState<ComponentState | null>(null);
   const [empty, setEmpty] = useState(false);
@@ -125,7 +130,146 @@ export function ComponentStatePanel({
           )}
         </>
       )}
+
+      {canEdit && <StateOperations appId={appId} componentId={componentId} />}
     </div>
+  );
+}
+
+// The fixed menu of guarded state operations, each with the fields it takes.
+const STATE_OPS: {
+  kind: StateOperationKind;
+  label: string;
+  hint: string;
+  fields: { name: "address" | "new_address" | "lock_id" | "import_id"; label: string; placeholder: string }[];
+}[] = [
+  {
+    kind: "rm",
+    label: "Stop managing a resource",
+    hint: "tofu state rm — forgets the resource in state. The real infrastructure is not destroyed; OpenTofu simply stops managing it.",
+    fields: [{ name: "address", label: "Resource address", placeholder: "aws_instance.web" }],
+  },
+  {
+    kind: "mv",
+    label: "Rename a resource",
+    hint: "tofu state mv — moves a resource to a new address in state, so a refactor (a rename, a move into a module) is not a destroy and create.",
+    fields: [
+      { name: "address", label: "Current address", placeholder: "aws_instance.web" },
+      { name: "new_address", label: "New address", placeholder: "module.web.aws_instance.this" },
+    ],
+  },
+  {
+    kind: "import",
+    label: "Import existing infrastructure",
+    hint: "tofu import — adopts a resource that already exists into state, under the given address. The module must already declare that address.",
+    fields: [
+      { name: "address", label: "Resource address", placeholder: "aws_s3_bucket.data" },
+      { name: "import_id", label: "Import id", placeholder: "the provider's id, e.g. a bucket name or an instance id" },
+    ],
+  },
+  {
+    kind: "force_unlock",
+    label: "Release a stuck state lock",
+    hint: "tofu force-unlock — releases a lock left behind by a run that did not finish. Only do this when you are sure no other run is still using the state.",
+    fields: [{ name: "lock_id", label: "Lock id", placeholder: "from the \"Error acquiring the state lock\" message" }],
+  },
+];
+
+// StateOperations is the editor-only "Operations" section of the panel: pick
+// one of the four guarded operations, fill in its typed fields, and start it.
+// The request opens a state_op run parked at its approval gate — nothing
+// touches state until someone reviews the exact command on the run and
+// approves it — so on success the user is taken straight to that run.
+function StateOperations({
+  appId,
+  componentId,
+}: {
+  appId: string;
+  componentId: string;
+}) {
+  const navigate = useNavigate();
+  const [kind, setKind] = useState<StateOperationKind>("rm");
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const op = STATE_OPS.find((o) => o.kind === kind) ?? STATE_OPS[0];
+  const complete = op.fields.every((f) => (values[f.name] ?? "").trim() !== "");
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    const body: Record<string, string> = { operation: kind };
+    for (const f of op.fields) body[f.name] = (values[f.name] ?? "").trim();
+    const { data, error } = await api.POST(
+      "/api/applications/{id}/components/{componentId}/state-ops",
+      {
+        params: { path: { id: appId, componentId } },
+        body: body as { operation: StateOperationKind },
+      },
+    );
+    setSubmitting(false);
+    if (error || !data) {
+      setError(error?.message ?? "Could not start the operation");
+      return;
+    }
+    navigate(`/applications/${appId}/runs/${data.id}`);
+  };
+
+  return (
+    <form onSubmit={(e) => void submit(e)} className="mt-6 border-t border-neutral-200 pt-4">
+      <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+        Operations
+      </h3>
+      <p className="mb-3 mt-1 text-xs text-neutral-500">
+        Guarded state operations. Each starts a run that waits for approval,
+        showing the exact command before it touches state, and refreshes the
+        recorded state afterwards.
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-xs text-neutral-600">
+          Operation
+          <select
+            aria-label="State operation"
+            value={kind}
+            onChange={(e) => {
+              setKind(e.target.value as StateOperationKind);
+              setValues({});
+              setError(null);
+            }}
+            className="border border-neutral-300 bg-white px-2 py-1.5 text-sm text-neutral-900"
+          >
+            {STATE_OPS.map((o) => (
+              <option key={o.kind} value={o.kind}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {op.fields.map((f) => (
+          <label key={f.name} className="flex min-w-[16rem] flex-1 flex-col gap-1 text-xs text-neutral-600">
+            {f.label}
+            <input
+              type="text"
+              aria-label={f.label}
+              value={values[f.name] ?? ""}
+              placeholder={f.placeholder}
+              onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
+              className="border border-neutral-300 bg-white px-2 py-1.5 font-mono text-sm text-neutral-900 placeholder:font-sans placeholder:text-neutral-400"
+            />
+          </label>
+        ))}
+        <button
+          type="submit"
+          disabled={!complete || submitting}
+          className="bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+        >
+          {submitting ? "Starting…" : "Start for approval"}
+        </button>
+      </div>
+      <p className="mt-2 text-xs text-neutral-500">{op.hint}</p>
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+    </form>
   );
 }
 

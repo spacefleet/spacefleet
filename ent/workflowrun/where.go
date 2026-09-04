@@ -81,6 +81,11 @@ func Graph(v string) predicate.WorkflowRun {
 	return predicate.WorkflowRun(sql.FieldEQ(FieldGraph, v))
 }
 
+// Args applies equality check predicate on the "args" field. It's identical to ArgsEQ.
+func Args(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldEQ(FieldArgs, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.WorkflowRun {
 	return predicate.WorkflowRun(sql.FieldEQ(FieldCreatedAt, v))
@@ -404,6 +409,81 @@ func GraphEqualFold(v string) predicate.WorkflowRun {
 // GraphContainsFold applies the ContainsFold predicate on the "graph" field.
 func GraphContainsFold(v string) predicate.WorkflowRun {
 	return predicate.WorkflowRun(sql.FieldContainsFold(FieldGraph, v))
+}
+
+// ArgsEQ applies the EQ predicate on the "args" field.
+func ArgsEQ(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldEQ(FieldArgs, v))
+}
+
+// ArgsNEQ applies the NEQ predicate on the "args" field.
+func ArgsNEQ(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldNEQ(FieldArgs, v))
+}
+
+// ArgsIn applies the In predicate on the "args" field.
+func ArgsIn(vs ...string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldIn(FieldArgs, vs...))
+}
+
+// ArgsNotIn applies the NotIn predicate on the "args" field.
+func ArgsNotIn(vs ...string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldNotIn(FieldArgs, vs...))
+}
+
+// ArgsGT applies the GT predicate on the "args" field.
+func ArgsGT(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldGT(FieldArgs, v))
+}
+
+// ArgsGTE applies the GTE predicate on the "args" field.
+func ArgsGTE(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldGTE(FieldArgs, v))
+}
+
+// ArgsLT applies the LT predicate on the "args" field.
+func ArgsLT(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldLT(FieldArgs, v))
+}
+
+// ArgsLTE applies the LTE predicate on the "args" field.
+func ArgsLTE(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldLTE(FieldArgs, v))
+}
+
+// ArgsContains applies the Contains predicate on the "args" field.
+func ArgsContains(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldContains(FieldArgs, v))
+}
+
+// ArgsHasPrefix applies the HasPrefix predicate on the "args" field.
+func ArgsHasPrefix(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldHasPrefix(FieldArgs, v))
+}
+
+// ArgsHasSuffix applies the HasSuffix predicate on the "args" field.
+func ArgsHasSuffix(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldHasSuffix(FieldArgs, v))
+}
+
+// ArgsIsNil applies the IsNil predicate on the "args" field.
+func ArgsIsNil() predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldIsNull(FieldArgs))
+}
+
+// ArgsNotNil applies the NotNil predicate on the "args" field.
+func ArgsNotNil() predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldNotNull(FieldArgs))
+}
+
+// ArgsEqualFold applies the EqualFold predicate on the "args" field.
+func ArgsEqualFold(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldEqualFold(FieldArgs, v))
+}
+
+// ArgsContainsFold applies the ContainsFold predicate on the "args" field.
+func ArgsContainsFold(v string) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldContainsFold(FieldArgs, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

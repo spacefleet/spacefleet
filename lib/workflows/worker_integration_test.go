@@ -611,3 +611,87 @@ func TestReaperSweepsAbandonedRun(t *testing.T) {
 		t.Fatalf("deleted = %v, want [%s]", deleted, want)
 	}
 }
+
+// TestWorkStateOpGatedThenRecordsState drives a state operation end to end
+// through the worker: the first attempt parks the single unit (and the run)
+// at the approval gate without submitting anything; after approval the
+// resume attempt runs the unit — its script is the operation, not a plan or
+// apply, running as the handover ServiceAccount — reads the refreshed outputs
+// + inventory back through the unit's own handover Secret, persists them on
+// the step under the authored component id, and the component-state lookup
+// then reports them as the latest state.
+func TestWorkStateOpGatedThenRecordsState(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	tf := addTerraformComponent(t, client, org.ID, app.ID, "infra")
+	run, err := svc.BeginStateOp(ctx, org.ID, app.ID, tf.ID, tofu.StateOp{Operation: tofu.StateOpRemove, Address: "aws_instance.web"})
+	if err != nil {
+		t.Fatalf("BeginStateOp: %v", err)
+	}
+	args := WorkflowRunArgs{WorkflowRunID: run.ID, OrgID: org.ID, ApplicationID: app.ID, Action: ActionStateOp}
+	secretName := tofuPlanArtifactSecret(run.ID, tf.ID)
+
+	var submitted []tekton.RunSpec
+	funcs := succeedingFuncs()
+	funcs.Submit = func(_ context.Context, _ k8s.Connection, _ string, spec tekton.RunSpec) (*tekton.RunStatus, error) {
+		submitted = append(submitted, spec)
+		return &tekton.RunStatus{Name: spec.Name + "-r1", Phase: "Running"}, nil
+	}
+	w := newTestWorker(client, funcs)
+	var reads []string
+	w.captureHandover = func(_ context.Context, _ k8s.Connection, _, name, key string) ([]byte, error) {
+		reads = append(reads, name+"#"+key)
+		if key == tofu.ResourcesKey {
+			return []byte(`[{"address":"aws_s3_bucket.data","mode":"managed","type":"aws_s3_bucket","name":"data","provider":"p","id":"acme-data"}]`), nil
+		}
+		return []byte(`{"bucket":{"sensitive":false,"type":"string","value":"acme-data"}}`), nil
+	}
+
+	// First attempt: parks at the gate, submits nothing.
+	if err := w.Work(ctx, workerJob(args, 1, 3)); err != nil {
+		t.Fatalf("Work (gated): %v", err)
+	}
+	if got := runStatus(t, client, run.ID); got != workflowrun.StatusAwaitingApproval {
+		t.Fatalf("run = %q, want awaiting_approval", got)
+	}
+	step := componentRunFor(t, client, run.ID, tf.ID)
+	if step.Status != componentrun.StatusAwaitingApproval || len(submitted) != 0 {
+		t.Fatalf("step = %q with %d submits, want awaiting_approval and none", step.Status, len(submitted))
+	}
+
+	// Approve, then the resume attempt runs the operation.
+	if _, err := svc.ApproveComponentRun(ctx, org.ID, app.ID, run.ID, step.ID, "ops@example.com", DecisionApprove); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if err := w.Work(ctx, workerJob(args, 1, 3)); err != nil {
+		t.Fatalf("Work (resumed): %v", err)
+	}
+	if got := runStatus(t, client, run.ID); got != workflowrun.StatusSucceeded {
+		t.Fatalf("run = %q, want succeeded", got)
+	}
+	if len(submitted) != 1 {
+		t.Fatalf("submits = %d, want 1", len(submitted))
+	}
+	spec := submitted[0]
+	if !strings.Contains(spec.Script, "tofu 'state' 'rm' 'aws_instance.web'\n") || strings.Contains(spec.Script, "tofu plan") || strings.Contains(spec.Script, "tofu apply") {
+		t.Errorf("script is not the state operation:\n%s", spec.Script)
+	}
+	if spec.ServiceAccountName != secretName || !strings.Contains(spec.Script, secretName) {
+		t.Errorf("unit must run as its handover ServiceAccount %q and store into that Secret (sa=%q)", secretName, spec.ServiceAccountName)
+	}
+	if want := []string{secretName + "#" + tofu.OutputsKey, secretName + "#" + tofu.ResourcesKey}; !reflect.DeepEqual(reads, want) {
+		t.Errorf("handover reads = %v, want %v", reads, want)
+	}
+	step = componentRunFor(t, client, run.ID, tf.ID)
+	if step.Status != componentrun.StatusSucceeded || step.ApprovedBy != "ops@example.com" || !strings.Contains(step.Resources, "aws_s3_bucket.data") || !strings.Contains(step.Outputs, "acme-data") {
+		t.Errorf("step = %+v, want succeeded with the refreshed outputs + inventory", step)
+	}
+	latest, err := svc.LatestComponentState(ctx, org.ID, app.ID, tf.ID)
+	if err != nil || latest.ID != step.ID {
+		t.Errorf("LatestComponentState = %v (err %v), want the state-op step %s", latest, err, step.ID)
+	}
+}

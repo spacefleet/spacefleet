@@ -14447,6 +14447,7 @@ type WorkflowRunMutation struct {
 	message             *string
 	job_id              *string
 	graph               *string
+	args                *string
 	created_at          *time.Time
 	started_at          *time.Time
 	finished_at         *time.Time
@@ -14856,6 +14857,55 @@ func (m *WorkflowRunMutation) ResetGraph() {
 	delete(m.clearedFields, workflowrun.FieldGraph)
 }
 
+// SetArgs sets the "args" field.
+func (m *WorkflowRunMutation) SetArgs(s string) {
+	m.args = &s
+}
+
+// Args returns the value of the "args" field in the mutation.
+func (m *WorkflowRunMutation) Args() (r string, exists bool) {
+	v := m.args
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldArgs returns the old "args" field's value of the WorkflowRun entity.
+// If the WorkflowRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkflowRunMutation) OldArgs(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldArgs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldArgs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldArgs: %w", err)
+	}
+	return oldValue.Args, nil
+}
+
+// ClearArgs clears the value of the "args" field.
+func (m *WorkflowRunMutation) ClearArgs() {
+	m.args = nil
+	m.clearedFields[workflowrun.FieldArgs] = struct{}{}
+}
+
+// ArgsCleared returns if the "args" field was cleared in this mutation.
+func (m *WorkflowRunMutation) ArgsCleared() bool {
+	_, ok := m.clearedFields[workflowrun.FieldArgs]
+	return ok
+}
+
+// ResetArgs resets all changes to the "args" field.
+func (m *WorkflowRunMutation) ResetArgs() {
+	m.args = nil
+	delete(m.clearedFields, workflowrun.FieldArgs)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *WorkflowRunMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -15114,7 +15164,7 @@ func (m *WorkflowRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorkflowRunMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.organization != nil {
 		fields = append(fields, workflowrun.FieldOrganizationID)
 	}
@@ -15135,6 +15185,9 @@ func (m *WorkflowRunMutation) Fields() []string {
 	}
 	if m.graph != nil {
 		fields = append(fields, workflowrun.FieldGraph)
+	}
+	if m.args != nil {
+		fields = append(fields, workflowrun.FieldArgs)
 	}
 	if m.created_at != nil {
 		fields = append(fields, workflowrun.FieldCreatedAt)
@@ -15170,6 +15223,8 @@ func (m *WorkflowRunMutation) Field(name string) (ent.Value, bool) {
 		return m.JobID()
 	case workflowrun.FieldGraph:
 		return m.Graph()
+	case workflowrun.FieldArgs:
+		return m.Args()
 	case workflowrun.FieldCreatedAt:
 		return m.CreatedAt()
 	case workflowrun.FieldStartedAt:
@@ -15201,6 +15256,8 @@ func (m *WorkflowRunMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldJobID(ctx)
 	case workflowrun.FieldGraph:
 		return m.OldGraph(ctx)
+	case workflowrun.FieldArgs:
+		return m.OldArgs(ctx)
 	case workflowrun.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case workflowrun.FieldStartedAt:
@@ -15266,6 +15323,13 @@ func (m *WorkflowRunMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetGraph(v)
+		return nil
+	case workflowrun.FieldArgs:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetArgs(v)
 		return nil
 	case workflowrun.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -15334,6 +15398,9 @@ func (m *WorkflowRunMutation) ClearedFields() []string {
 	if m.FieldCleared(workflowrun.FieldGraph) {
 		fields = append(fields, workflowrun.FieldGraph)
 	}
+	if m.FieldCleared(workflowrun.FieldArgs) {
+		fields = append(fields, workflowrun.FieldArgs)
+	}
 	if m.FieldCleared(workflowrun.FieldStartedAt) {
 		fields = append(fields, workflowrun.FieldStartedAt)
 	}
@@ -15362,6 +15429,9 @@ func (m *WorkflowRunMutation) ClearField(name string) error {
 		return nil
 	case workflowrun.FieldGraph:
 		m.ClearGraph()
+		return nil
+	case workflowrun.FieldArgs:
+		m.ClearArgs()
 		return nil
 	case workflowrun.FieldStartedAt:
 		m.ClearStartedAt()
@@ -15397,6 +15467,9 @@ func (m *WorkflowRunMutation) ResetField(name string) error {
 		return nil
 	case workflowrun.FieldGraph:
 		m.ResetGraph()
+		return nil
+	case workflowrun.FieldArgs:
+		m.ResetArgs()
 		return nil
 	case workflowrun.FieldCreatedAt:
 		m.ResetCreatedAt()

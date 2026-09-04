@@ -783,6 +783,43 @@ function TerraformConfig({
         onChange={(v) => setConfig("apply_flags", v)}
         disabled={disabled}
       />
+
+      {/* Inputs. The Variables feature already reaches the job as env; this
+          opt-in mirrors every resolved variable as TF_VAR_<name> so it
+          doubles as the module's input variables. Stored as
+          config.expose_tf_vars ("true"; "" when off). */}
+      <Field help="When on, every variable this component resolves (group, application, and component level) is also passed to the module as an input: a variable named region becomes var.region. Sensitive variables stay sensitive. Variables the module does not declare are ignored.">
+        <label className="flex items-center gap-2 text-sm text-neutral-700">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-black"
+            checked={config.expose_tf_vars === "true"}
+            onChange={(e) =>
+              setConfig("expose_tf_vars", e.target.checked ? "true" : "")
+            }
+            disabled={disabled}
+          />
+          Expose variables as OpenTofu inputs
+        </label>
+      </Field>
+
+      {/* Workspace. Selected (created on first use) after init for every
+          unit of the component, so one module can back several environments
+          as separate components sharing a backend. Stored as
+          config.workspace. */}
+      <Field
+        label="Workspace"
+        help="Optional — the OpenTofu workspace this component runs in, selected before every plan, apply, drift check, and state operation (created on first use). Leave empty for the default workspace. With the S3 backend a workspace's state lives under env:/<workspace>/ in the bucket."
+      >
+        <input
+          type="text"
+          className="w-full border border-neutral-300 px-3 py-2 font-mono text-sm"
+          placeholder="default"
+          value={config.workspace ?? ""}
+          onChange={(e) => setConfig("workspace", e.target.value)}
+          disabled={disabled}
+        />
+      </Field>
     </>
   );
 }

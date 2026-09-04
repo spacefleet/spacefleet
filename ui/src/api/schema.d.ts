@@ -905,6 +905,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{id}/components/{componentId}/state-ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a guarded state operation on an OpenTofu component
+         * @description Org-scoped, editor or above. Starts a `state_op` run for one OpenTofu
+         *     component: `force_unlock` (release a stuck state lock), `rm` (stop
+         *     managing a resource without destroying it), `mv` (rename a resource
+         *     in state), or `import` (adopt existing infrastructure into state).
+         *     Each is a fixed operation with typed fields — never a free-form
+         *     command line. The run is a single step that is **always** parked at
+         *     an approval gate first: the run detail shows the exact command that
+         *     will run (`state_op.command`), and an editor or above approves or
+         *     rejects it like any gated step. After the operation the component's
+         *     recorded state (outputs + resources) is refreshed. Requires the
+         *     background worker (503 otherwise). 400 for an invalid operation or a
+         *     component that is not an OpenTofu component; 409 while a run is
+         *     already in flight for the application.
+         */
+        post: operations["startStateOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{id}/variables": {
         parameters: {
             query?: never;
@@ -1025,8 +1057,9 @@ export interface paths {
         get: operations["listRuns"];
         put?: never;
         /**
-         * Start a workflow run (deploy, uninstall, or preview)
-         * @description Org-scoped, editor or above. Snapshots the current workflow graph,
+         * Start a workflow run (deploy, uninstall, preview, or drift)
+         * @description Org-scoped, editor or above. A `state_op` cannot be started here (400;
+         *     use the component's state-ops endpoint). Snapshots the current workflow graph,
          *     creates a run plus one component run per node, and enqueues the
          *     background job that executes it. Returns immediately (202); follow
          *     progress via the run stream. Requires the background worker (503
@@ -2408,10 +2441,12 @@ export interface components {
          *     check: every OpenTofu component runs a read-only refresh-only plan
          *     reporting what changed outside of OpenTofu since its last apply; Helm
          *     and Manifest components take no part (400 if the application has no
-         *     OpenTofu component).
+         *     OpenTofu component). `state_op` is a guarded state operation on one
+         *     OpenTofu component (see the component's state-ops endpoint; it cannot
+         *     be started through the run endpoint).
          * @enum {string}
          */
-        RunAction: "deploy" | "uninstall" | "preview" | "drift";
+        RunAction: "deploy" | "uninstall" | "preview" | "drift" | "state_op";
         /**
          * @description The run's lifecycle: pending → running → a terminal succeeded / failed /
          *     partial (partial = only continue-on-failure nodes failed). A run parked
@@ -2452,6 +2487,7 @@ export interface components {
              * @description When the run settled; absent until terminal.
              */
             finished_at?: string | null;
+            state_op?: components["schemas"]["StateOperation"];
         };
         RunList: {
             runs: components["schemas"]["WorkflowRun"][];
@@ -2622,6 +2658,43 @@ export interface components {
              *     — usually a string; null when the resource has none.
              */
             id?: unknown;
+        };
+        /**
+         * @description The fixed menu of guarded state operations: `force_unlock` releases a
+         *     stuck state lock (needs `lock_id`), `rm` stops managing a resource
+         *     without destroying it (needs `address`), `mv` renames a resource in
+         *     state (needs `address` and `new_address`), `import` adopts existing
+         *     infrastructure into state (needs `address` and `import_id`).
+         * @enum {string}
+         */
+        StateOperationKind: "force_unlock" | "rm" | "mv" | "import";
+        StateOperationRequest: {
+            operation: components["schemas"]["StateOperationKind"];
+            /** @description The resource address (rm, mv, import), e.g. `aws_instance.web`. */
+            address?: string;
+            /** @description The destination address of a move (mv). */
+            new_address?: string;
+            /** @description The lock id to release (force_unlock), from the lock error. */
+            lock_id?: string;
+            /** @description The provider-specific identifier to import (import). */
+            import_id?: string;
+        };
+        /**
+         * @description The operation a `state_op` run performs, as requested, plus the
+         *     exact command its single step runs (what an approver reviews).
+         */
+        StateOperation: {
+            operation: components["schemas"]["StateOperationKind"];
+            address?: string;
+            new_address?: string;
+            lock_id?: string;
+            import_id?: string;
+            /**
+             * @description The command the step runs after `tofu init`, e.g.
+             *     `tofu state rm aws_instance.web`. An import also carries the
+             *     component's `-var`/`-var-file` plan flags.
+             */
+            command: string;
         };
         /**
          * @description An OpenTofu (Terraform) component's last recorded state: the outputs
@@ -4059,6 +4132,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ComponentState"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    startStateOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                componentId: components["parameters"]["ComponentID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StateOperationRequest"];
+            };
+        };
+        responses: {
+            /** @description Run accepted; it parks at its approval gate */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRun"];
                 };
             };
             default: components["responses"]["Error"];

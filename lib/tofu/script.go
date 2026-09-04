@@ -91,6 +91,13 @@ const (
 const (
 	CommandPlan  = "plan"
 	CommandApply = "apply"
+	// CommandStateOp runs one guarded state operation (Apply.StateOp) —
+	// force-unlock / state rm / state mv / import — instead of a plan or
+	// apply. The unit is the whole run: it initialises the backend, runs the
+	// operation, then hands the refreshed outputs + resource inventory back
+	// through the handover Secret exactly as a deploy apply does, so the
+	// component's recorded state stays current.
+	CommandStateOp = "state_op"
 )
 
 // Actions a terraform run maps to (from the workflow run action). deploy =
@@ -105,6 +112,9 @@ const (
 	// (`tofu plan -refresh-only`) that reports what changed outside of OpenTofu
 	// since the last apply, without proposing configuration changes.
 	ActionDrift = "drift"
+	// ActionStateOp is a guarded state operation run (CommandStateOp): it
+	// mutates state (or its lock), never infrastructure, and is always gated.
+	ActionStateOp = "state_op"
 )
 
 // PlanfileName is the local filename the plan node saves its planfile to
@@ -221,6 +231,15 @@ type Apply struct {
 	InitFlags  []string
 	PlanFlags  []string
 	ApplyFlags []string
+	// StateOp is the operation a CommandStateOp unit runs. Ignored for every
+	// other command; a state_op unit without one fails closed.
+	StateOp *StateOp
+	// Workspace, when set, is the OpenTofu workspace every command runs in:
+	// the script selects it right after `tofu init` (creating it on first
+	// use), so plan, apply, drift, and state operations all address that
+	// workspace's state. Empty keeps the default workspace. The workflow
+	// validation restricts the name to a safe token.
+	Workspace string
 }
 
 // Script renders the /bin/sh script the terraform step runs. It clones the root
@@ -313,11 +332,49 @@ func Script(a Apply) string {
 	appendFlags(&b, a.InitFlags)
 	b.WriteString("\n")
 
+	// Workspace: select (or create on first use) before any command touches
+	// state, so every unit of the component — plan and apply, a drift check, a
+	// state operation — addresses the same workspace. The s3 backend keys a
+	// non-default workspace's state under env:/<workspace>/<key>.
+	if a.Workspace != "" {
+		fmt.Fprintf(&b, "tofu workspace select -or-create=true %s\n", shQuote(a.Workspace))
+	}
+
 	preview := a.Action == ActionPreview || a.Action == ActionDrift
 	drift := a.Action == ActionDrift
 	destroy := a.Action == ActionUninstall
 
 	switch {
+	case a.Command == CommandStateOp:
+		// A guarded state operation: the exact command the approver saw
+		// (StateOp.Command renders the same argv). Every field is shell-quoted
+		// as one token. The handover tooling is installed *before* the
+		// operation so a tooling failure fails the step before state is
+		// touched; afterwards the refreshed outputs + inventory go back
+		// through the handover Secret (best-effort, like a deploy apply) so
+		// the component's recorded state reflects the operation.
+		if a.StateOp == nil || a.StateOp.Validate() != nil {
+			b.WriteString("echo 'no valid state operation to run' >&2\nexit 1\n")
+			return b.String()
+		}
+		if a.PlanArtifactSecret == "" {
+			b.WriteString("echo 'no handover secret for the state operation' >&2\nexit 1\n")
+			return b.String()
+		}
+		b.WriteString(applyToolsInstall)
+		argv := a.StateOp.argv(ImportFlags(a.PlanFlags))
+		for i, t := range argv {
+			if i > 0 {
+				b.WriteString(" ")
+			}
+			if i == 0 {
+				b.WriteString(t) // the bare `tofu` binary
+				continue
+			}
+			b.WriteString(shQuote(t))
+		}
+		b.WriteString("\n")
+		b.WriteString(storeOutputs(a))
 	case a.Command == CommandApply && !preview:
 		// apply node: apply the EXACT planfile the plan node produced and the human
 		// reviewed, restored from the handover Secret — never a fresh re-plan. The

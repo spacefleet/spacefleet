@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -258,12 +259,33 @@ const (
 	terraformConfigInitFlags  = "init_flags"
 	terraformConfigPlanFlags  = "plan_flags"
 	terraformConfigApplyFlags = "apply_flags"
+	// terraformConfigWorkspace optionally names the OpenTofu workspace every
+	// unit of the component runs in (selected, or created on first use, right
+	// after init). Empty = the default workspace. Lets one module back several
+	// environments as separate components sharing a backend — the s3 backend
+	// keys a workspace's state under env:/<workspace>/<key>. Validated as a
+	// safe token (workspaceRe). Not a secret — not redacted.
+	terraformConfigWorkspace = "workspace"
+	// terraformConfigExposeTFVars ("true"/"false", default off) additionally
+	// exports every variable the component resolves (group / app / component
+	// levels merged) as TF_VAR_<name>, the environment form OpenTofu reads a
+	// root-module input variable from — so the Variables feature doubles as
+	// the module's inputs. See deploy.RunInputs.ExposeTFVars.
+	terraformConfigExposeTFVars = "expose_tf_vars"
 )
 
-// Terraform command values.
+// workspaceRe bounds a workspace name to what every backend accepts as a key
+// segment: letters, digits, '-', '_' and '.', at most 90 characters (the
+// name becomes part of the state object key).
+var workspaceRe = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,90}$`)
+
+// Terraform command values. state_op is the single unit of a guarded state
+// operation run (see Service.BeginStateOp); the operation itself lives on the
+// run row's args, not the node config.
 const (
-	terraformCommandPlan  = "plan"
-	terraformCommandApply = "apply"
+	terraformCommandPlan    = "plan"
+	terraformCommandApply   = "apply"
+	terraformCommandStateOp = "state_op"
 )
 
 // s3 backend_config keys the platform itself reads or writes — the rest of
@@ -360,6 +382,16 @@ func validateTerraformConfig(n ComponentInput) error {
 				return fmt.Errorf("%w: node %q (terraform) %s must be a JSON array of strings: %v", ErrInvalidConfig, n.Name, key, err)
 			}
 		}
+	}
+	// An optional workspace must be a safe token: it is shell-quoted into the
+	// script and becomes part of the backend's state key.
+	if ws := n.Config[terraformConfigWorkspace]; ws != "" && !workspaceRe.MatchString(ws) {
+		return fmt.Errorf("%w: node %q (terraform) %s must be 1-90 letters, digits, '-', '_' or '.'", ErrInvalidConfig, n.Name, terraformConfigWorkspace)
+	}
+	switch n.Config[terraformConfigExposeTFVars] {
+	case "", "true", "false":
+	default:
+		return fmt.Errorf("%w: node %q (terraform) %s must be \"true\" or \"false\"", ErrInvalidConfig, n.Name, terraformConfigExposeTFVars)
 	}
 	return nil
 }

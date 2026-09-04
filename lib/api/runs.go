@@ -310,6 +310,7 @@ func toAPIWorkflowRun(r *ent.WorkflowRun) WorkflowRun {
 		CreatedAt:     r.CreatedAt,
 		StartedAt:     r.StartedAt,
 		FinishedAt:    r.FinishedAt,
+		StateOp:       toAPIStateOperation(r),
 	}
 }
 
@@ -327,6 +328,7 @@ func toAPIWorkflowRunDetail(r *ent.WorkflowRun, steps []*ent.ComponentRun, canSe
 		CreatedAt:     b.CreatedAt,
 		StartedAt:     b.StartedAt,
 		FinishedAt:    b.FinishedAt,
+		StateOp:       b.StateOp,
 		ComponentRuns: make([]ComponentRun, len(steps)),
 	}
 	// requires_approval is a property of the run's snapshot node, not the step

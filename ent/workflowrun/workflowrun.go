@@ -30,6 +30,8 @@ const (
 	FieldJobID = "job_id"
 	// FieldGraph holds the string denoting the graph field in the database.
 	FieldGraph = "graph"
+	// FieldArgs holds the string denoting the args field in the database.
+	FieldArgs = "args"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldStartedAt holds the string denoting the started_at field in the database.
@@ -70,6 +72,7 @@ var Columns = []string{
 	FieldMessage,
 	FieldJobID,
 	FieldGraph,
+	FieldArgs,
 	FieldCreatedAt,
 	FieldStartedAt,
 	FieldFinishedAt,
@@ -106,6 +109,7 @@ const (
 	ActionUninstall Action = "uninstall"
 	ActionPreview   Action = "preview"
 	ActionDrift     Action = "drift"
+	ActionStateOp   Action = "state_op"
 )
 
 func (a Action) String() string {
@@ -115,7 +119,7 @@ func (a Action) String() string {
 // ActionValidator is a validator for the "action" field enum values. It is called by the builders before save.
 func ActionValidator(a Action) error {
 	switch a {
-	case ActionDeploy, ActionUninstall, ActionPreview, ActionDrift:
+	case ActionDeploy, ActionUninstall, ActionPreview, ActionDrift, ActionStateOp:
 		return nil
 	default:
 		return fmt.Errorf("workflowrun: invalid enum value for action field: %q", a)
@@ -193,6 +197,11 @@ func ByJobID(opts ...sql.OrderTermOption) OrderOption {
 // ByGraph orders the results by the graph field.
 func ByGraph(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGraph, opts...).ToFunc()
+}
+
+// ByArgs orders the results by the args field.
+func ByArgs(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldArgs, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

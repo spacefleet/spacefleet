@@ -705,3 +705,39 @@ func TestValidateTerraformConfig_UseLockfileNeedsNativeLocking(t *testing.T) {
 		}
 	}
 }
+
+// TestValidateTerraformConfig_WorkspaceAndTFVars: an optional workspace must
+// be a safe token (it is shell-quoted into the script and becomes part of
+// the state key), and expose_tf_vars must be a boolean string.
+func TestValidateTerraformConfig_WorkspaceAndTFVars(t *testing.T) {
+	t.Parallel()
+	node := func(extra map[string]string) ComponentInput {
+		cfg := map[string]string{
+			"repo_url": "https://github.com/org/infra.git", "path": ".",
+			terraformConfigBackend:       tofu.BackendS3,
+			terraformConfigBackendConfig: `{"bucket":"b","key":"k","region":"r"}`,
+		}
+		for k, v := range extra {
+			cfg[k] = v
+		}
+		return ComponentInput{ID: uuid.New(), Name: "infra", Type: TypeTerraform, Config: cfg}
+	}
+	for _, ws := range []string{"", "prod", "team-a_v1.2"} {
+		if err := validateTerraformConfig(node(map[string]string{terraformConfigWorkspace: ws})); err != nil {
+			t.Errorf("workspace %q: unexpected error %v", ws, err)
+		}
+	}
+	for _, ws := range []string{"pro d", "a/b", "$(x)", "env:/x", strings.Repeat("a", 91)} {
+		if err := validateTerraformConfig(node(map[string]string{terraformConfigWorkspace: ws})); !errors.Is(err, ErrInvalidConfig) {
+			t.Errorf("workspace %q: err = %v, want ErrInvalidConfig", ws, err)
+		}
+	}
+	for _, v := range []string{"", "true", "false"} {
+		if err := validateTerraformConfig(node(map[string]string{terraformConfigExposeTFVars: v})); err != nil {
+			t.Errorf("expose_tf_vars %q: unexpected error %v", v, err)
+		}
+	}
+	if err := validateTerraformConfig(node(map[string]string{terraformConfigExposeTFVars: "yes"})); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("expose_tf_vars yes: err = %v, want ErrInvalidConfig", err)
+	}
+}

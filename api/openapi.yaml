@@ -1097,6 +1097,43 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/applications/{id}/components/{componentId}/state-ops:
+    post:
+      summary: Start a guarded state operation on an OpenTofu component
+      description: |
+        Org-scoped, editor or above. Starts a `state_op` run for one OpenTofu
+        component: `force_unlock` (release a stuck state lock), `rm` (stop
+        managing a resource without destroying it), `mv` (rename a resource
+        in state), or `import` (adopt existing infrastructure into state).
+        Each is a fixed operation with typed fields — never a free-form
+        command line. The run is a single step that is **always** parked at
+        an approval gate first: the run detail shows the exact command that
+        will run (`state_op.command`), and an editor or above approves or
+        rejects it like any gated step. After the operation the component's
+        recorded state (outputs + resources) is refreshed. Requires the
+        background worker (503 otherwise). 400 for an invalid operation or a
+        component that is not an OpenTofu component; 409 while a run is
+        already in flight for the application.
+      operationId: startStateOperation
+      parameters:
+        - $ref: "#/components/parameters/ApplicationID"
+        - $ref: "#/components/parameters/ComponentID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StateOperationRequest"
+      responses:
+        "202":
+          description: Run accepted; it parks at its approval gate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowRun"
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/applications/{id}/variables:
     get:
       summary: List an application's app-level variables
@@ -1291,9 +1328,10 @@ paths:
         default:
           $ref: "#/components/responses/Error"
     post:
-      summary: Start a workflow run (deploy, uninstall, or preview)
+      summary: Start a workflow run (deploy, uninstall, preview, or drift)
       description: |
-        Org-scoped, editor or above. Snapshots the current workflow graph,
+        Org-scoped, editor or above. A `state_op` cannot be started here (400;
+        use the component's state-ops endpoint). Snapshots the current workflow graph,
         creates a run plus one component run per node, and enqueues the
         background job that executes it. Returns immediately (202); follow
         progress via the run stream. Requires the background worker (503
@@ -3344,8 +3382,10 @@ components:
         check: every OpenTofu component runs a read-only refresh-only plan
         reporting what changed outside of OpenTofu since its last apply; Helm
         and Manifest components take no part (400 if the application has no
-        OpenTofu component).
-      enum: [deploy, uninstall, preview, drift]
+        OpenTofu component). `state_op` is a guarded state operation on one
+        OpenTofu component (see the component's state-ops endpoint; it cannot
+        be started through the run endpoint).
+      enum: [deploy, uninstall, preview, drift, state_op]
 
     RunStatus:
       type: string
@@ -3401,6 +3441,8 @@ components:
           format: date-time
           nullable: true
           description: When the run settled; absent until terminal.
+        state_op:
+          $ref: "#/components/schemas/StateOperation"
 
     RunList:
       type: object
@@ -3619,6 +3661,59 @@ components:
             — usually a string; null when the resource has none.
           nullable: true
 
+    StateOperationKind:
+      type: string
+      description: |
+        The fixed menu of guarded state operations: `force_unlock` releases a
+        stuck state lock (needs `lock_id`), `rm` stops managing a resource
+        without destroying it (needs `address`), `mv` renames a resource in
+        state (needs `address` and `new_address`), `import` adopts existing
+        infrastructure into state (needs `address` and `import_id`).
+      enum: [force_unlock, rm, mv, import]
+
+    StateOperationRequest:
+      type: object
+      required: [operation]
+      properties:
+        operation:
+          $ref: "#/components/schemas/StateOperationKind"
+        address:
+          type: string
+          description: The resource address (rm, mv, import), e.g. `aws_instance.web`.
+        new_address:
+          type: string
+          description: The destination address of a move (mv).
+        lock_id:
+          type: string
+          description: The lock id to release (force_unlock), from the lock error.
+        import_id:
+          type: string
+          description: The provider-specific identifier to import (import).
+
+    StateOperation:
+      type: object
+      description: |
+        The operation a `state_op` run performs, as requested, plus the
+        exact command its single step runs (what an approver reviews).
+      required: [operation, command]
+      properties:
+        operation:
+          $ref: "#/components/schemas/StateOperationKind"
+        address:
+          type: string
+        new_address:
+          type: string
+        lock_id:
+          type: string
+        import_id:
+          type: string
+        command:
+          type: string
+          description: |
+            The command the step runs after `tofu init`, e.g.
+            `tofu state rm aws_instance.web`. An import also carries the
+            component's `-var`/`-var-file` plan flags.
+
     ComponentState:
       type: object
       description: |
@@ -3752,7 +3847,6 @@ components:
                 Absent for every other step.
               items:
                 $ref: "#/components/schemas/TofuResource"
-
     WorkflowRunDetail:
       allOf:
         - $ref: "#/components/schemas/WorkflowRun"

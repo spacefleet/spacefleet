@@ -100,6 +100,20 @@ func (_c *WorkflowRunCreate) SetNillableGraph(v *string) *WorkflowRunCreate {
 	return _c
 }
 
+// SetArgs sets the "args" field.
+func (_c *WorkflowRunCreate) SetArgs(v string) *WorkflowRunCreate {
+	_c.mutation.SetArgs(v)
+	return _c
+}
+
+// SetNillableArgs sets the "args" field if the given value is not nil.
+func (_c *WorkflowRunCreate) SetNillableArgs(v *string) *WorkflowRunCreate {
+	if v != nil {
+		_c.SetArgs(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *WorkflowRunCreate) SetCreatedAt(v time.Time) *WorkflowRunCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -325,6 +339,10 @@ func (_c *WorkflowRunCreate) createSpec() (*WorkflowRun, *sqlgraph.CreateSpec) {
 		_spec.SetField(workflowrun.FieldGraph, field.TypeString, value)
 		_node.Graph = value
 	}
+	if value, ok := _c.mutation.Args(); ok {
+		_spec.SetField(workflowrun.FieldArgs, field.TypeString, value)
+		_node.Args = value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(workflowrun.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -502,6 +520,24 @@ func (u *WorkflowRunUpsert) UpdateGraph() *WorkflowRunUpsert {
 // ClearGraph clears the value of the "graph" field.
 func (u *WorkflowRunUpsert) ClearGraph() *WorkflowRunUpsert {
 	u.SetNull(workflowrun.FieldGraph)
+	return u
+}
+
+// SetArgs sets the "args" field.
+func (u *WorkflowRunUpsert) SetArgs(v string) *WorkflowRunUpsert {
+	u.Set(workflowrun.FieldArgs, v)
+	return u
+}
+
+// UpdateArgs sets the "args" field to the value that was provided on create.
+func (u *WorkflowRunUpsert) UpdateArgs() *WorkflowRunUpsert {
+	u.SetExcluded(workflowrun.FieldArgs)
+	return u
+}
+
+// ClearArgs clears the value of the "args" field.
+func (u *WorkflowRunUpsert) ClearArgs() *WorkflowRunUpsert {
+	u.SetNull(workflowrun.FieldArgs)
 	return u
 }
 
@@ -698,6 +734,27 @@ func (u *WorkflowRunUpsertOne) UpdateGraph() *WorkflowRunUpsertOne {
 func (u *WorkflowRunUpsertOne) ClearGraph() *WorkflowRunUpsertOne {
 	return u.Update(func(s *WorkflowRunUpsert) {
 		s.ClearGraph()
+	})
+}
+
+// SetArgs sets the "args" field.
+func (u *WorkflowRunUpsertOne) SetArgs(v string) *WorkflowRunUpsertOne {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.SetArgs(v)
+	})
+}
+
+// UpdateArgs sets the "args" field to the value that was provided on create.
+func (u *WorkflowRunUpsertOne) UpdateArgs() *WorkflowRunUpsertOne {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.UpdateArgs()
+	})
+}
+
+// ClearArgs clears the value of the "args" field.
+func (u *WorkflowRunUpsertOne) ClearArgs() *WorkflowRunUpsertOne {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.ClearArgs()
 	})
 }
 
@@ -1069,6 +1126,27 @@ func (u *WorkflowRunUpsertBulk) UpdateGraph() *WorkflowRunUpsertBulk {
 func (u *WorkflowRunUpsertBulk) ClearGraph() *WorkflowRunUpsertBulk {
 	return u.Update(func(s *WorkflowRunUpsert) {
 		s.ClearGraph()
+	})
+}
+
+// SetArgs sets the "args" field.
+func (u *WorkflowRunUpsertBulk) SetArgs(v string) *WorkflowRunUpsertBulk {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.SetArgs(v)
+	})
+}
+
+// UpdateArgs sets the "args" field to the value that was provided on create.
+func (u *WorkflowRunUpsertBulk) UpdateArgs() *WorkflowRunUpsertBulk {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.UpdateArgs()
+	})
+}
+
+// ClearArgs clears the value of the "args" field.
+func (u *WorkflowRunUpsertBulk) ClearArgs() *WorkflowRunUpsertBulk {
+	return u.Update(func(s *WorkflowRunUpsert) {
+		s.ClearArgs()
 	})
 }
 

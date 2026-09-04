@@ -556,6 +556,44 @@ describe("WorkflowRunView", () => {
     expect(screen.getByText("changed")).toBeInTheDocument();
   });
 
+  it("shows a state operation's exact command at its approval gate", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    const stateOp = {
+      operation: "rm",
+      address: "aws_instance.web",
+      command: "tofu state rm aws_instance.web",
+    };
+    const opRun = {
+      ...runDetail,
+      action: "state_op",
+      status: "awaiting_approval",
+      finished_at: undefined,
+      state_op: stateOp,
+      graph: JSON.stringify({
+        nodes: [{ id: compA, name: "infra · state rm", type: "terraform", config: { command: "state_op" }, depends_on: [], requires_approval: true }],
+      }),
+      component_runs: [
+        { id: "cr-a", component_id: compA, name: "infra · state rm", type: "terraform", status: "awaiting_approval", requires_approval: true },
+      ],
+    };
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: opRun, error: undefined });
+      return Promise.resolve({
+        data: { id: "cr-a", name: "infra · state rm", type: "terraform", status: "awaiting_approval" },
+        error: undefined,
+      });
+    });
+    renderRunView();
+    expect(await screen.findByRole("heading", { name: "State operation" })).toBeInTheDocument();
+    expect(screen.getByText(/Stop managing aws_instance.web/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("infra · state rm"));
+    expect(await screen.findByText("Awaiting approval")).toBeInTheDocument();
+    expect(screen.getByTestId("state-op-command")).toHaveTextContent("tofu state rm aws_instance.web");
+    expect(screen.getByText(/Approving runs this command/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /approve/i })).toBeInTheDocument();
+  });
+
   // A settled deploy run for the tofu pair: both units succeeded, and the
   // apply unit captured the module's outputs. The detail mock parameterizes the
   // outputs so the masking tests can model an editor (value present) and a
