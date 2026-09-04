@@ -11948,23 +11948,25 @@ func (m *OrganizationMutation) ResetEdge(name string) error {
 // TektonInstallationMutation represents an operation that mutates the TektonInstallation nodes in the graph.
 type TektonInstallationMutation struct {
 	config
-	op                Op
-	typ               string
-	id                *uuid.UUID
-	enabled           *bool
-	status            *tektoninstallation.Status
-	installed_version *string
-	status_message    *string
-	job_id            *string
-	last_checked_at   *time.Time
-	created_at        *time.Time
-	updated_at        *time.Time
-	clearedFields     map[string]struct{}
-	cluster           *uuid.UUID
-	clearedcluster    bool
-	done              bool
-	oldValue          func(context.Context) (*TektonInstallation, error)
-	predicates        []predicate.TektonInstallation
+	op                         Op
+	typ                        string
+	id                         *uuid.UUID
+	enabled                    *bool
+	status                     *tektoninstallation.Status
+	installed_version          *string
+	status_message             *string
+	job_id                     *string
+	last_checked_at            *time.Time
+	plugin_cache_size          *string
+	plugin_cache_storage_class *string
+	created_at                 *time.Time
+	updated_at                 *time.Time
+	clearedFields              map[string]struct{}
+	cluster                    *uuid.UUID
+	clearedcluster             bool
+	done                       bool
+	oldValue                   func(context.Context) (*TektonInstallation, error)
+	predicates                 []predicate.TektonInstallation
 }
 
 var _ ent.Mutation = (*TektonInstallationMutation)(nil)
@@ -12375,6 +12377,104 @@ func (m *TektonInstallationMutation) ResetLastCheckedAt() {
 	delete(m.clearedFields, tektoninstallation.FieldLastCheckedAt)
 }
 
+// SetPluginCacheSize sets the "plugin_cache_size" field.
+func (m *TektonInstallationMutation) SetPluginCacheSize(s string) {
+	m.plugin_cache_size = &s
+}
+
+// PluginCacheSize returns the value of the "plugin_cache_size" field in the mutation.
+func (m *TektonInstallationMutation) PluginCacheSize() (r string, exists bool) {
+	v := m.plugin_cache_size
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPluginCacheSize returns the old "plugin_cache_size" field's value of the TektonInstallation entity.
+// If the TektonInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TektonInstallationMutation) OldPluginCacheSize(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPluginCacheSize is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPluginCacheSize requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPluginCacheSize: %w", err)
+	}
+	return oldValue.PluginCacheSize, nil
+}
+
+// ClearPluginCacheSize clears the value of the "plugin_cache_size" field.
+func (m *TektonInstallationMutation) ClearPluginCacheSize() {
+	m.plugin_cache_size = nil
+	m.clearedFields[tektoninstallation.FieldPluginCacheSize] = struct{}{}
+}
+
+// PluginCacheSizeCleared returns if the "plugin_cache_size" field was cleared in this mutation.
+func (m *TektonInstallationMutation) PluginCacheSizeCleared() bool {
+	_, ok := m.clearedFields[tektoninstallation.FieldPluginCacheSize]
+	return ok
+}
+
+// ResetPluginCacheSize resets all changes to the "plugin_cache_size" field.
+func (m *TektonInstallationMutation) ResetPluginCacheSize() {
+	m.plugin_cache_size = nil
+	delete(m.clearedFields, tektoninstallation.FieldPluginCacheSize)
+}
+
+// SetPluginCacheStorageClass sets the "plugin_cache_storage_class" field.
+func (m *TektonInstallationMutation) SetPluginCacheStorageClass(s string) {
+	m.plugin_cache_storage_class = &s
+}
+
+// PluginCacheStorageClass returns the value of the "plugin_cache_storage_class" field in the mutation.
+func (m *TektonInstallationMutation) PluginCacheStorageClass() (r string, exists bool) {
+	v := m.plugin_cache_storage_class
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPluginCacheStorageClass returns the old "plugin_cache_storage_class" field's value of the TektonInstallation entity.
+// If the TektonInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TektonInstallationMutation) OldPluginCacheStorageClass(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPluginCacheStorageClass is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPluginCacheStorageClass requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPluginCacheStorageClass: %w", err)
+	}
+	return oldValue.PluginCacheStorageClass, nil
+}
+
+// ClearPluginCacheStorageClass clears the value of the "plugin_cache_storage_class" field.
+func (m *TektonInstallationMutation) ClearPluginCacheStorageClass() {
+	m.plugin_cache_storage_class = nil
+	m.clearedFields[tektoninstallation.FieldPluginCacheStorageClass] = struct{}{}
+}
+
+// PluginCacheStorageClassCleared returns if the "plugin_cache_storage_class" field was cleared in this mutation.
+func (m *TektonInstallationMutation) PluginCacheStorageClassCleared() bool {
+	_, ok := m.clearedFields[tektoninstallation.FieldPluginCacheStorageClass]
+	return ok
+}
+
+// ResetPluginCacheStorageClass resets all changes to the "plugin_cache_storage_class" field.
+func (m *TektonInstallationMutation) ResetPluginCacheStorageClass() {
+	m.plugin_cache_storage_class = nil
+	delete(m.clearedFields, tektoninstallation.FieldPluginCacheStorageClass)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *TektonInstallationMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -12508,7 +12608,7 @@ func (m *TektonInstallationMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TektonInstallationMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 11)
 	if m.cluster != nil {
 		fields = append(fields, tektoninstallation.FieldClusterID)
 	}
@@ -12529,6 +12629,12 @@ func (m *TektonInstallationMutation) Fields() []string {
 	}
 	if m.last_checked_at != nil {
 		fields = append(fields, tektoninstallation.FieldLastCheckedAt)
+	}
+	if m.plugin_cache_size != nil {
+		fields = append(fields, tektoninstallation.FieldPluginCacheSize)
+	}
+	if m.plugin_cache_storage_class != nil {
+		fields = append(fields, tektoninstallation.FieldPluginCacheStorageClass)
 	}
 	if m.created_at != nil {
 		fields = append(fields, tektoninstallation.FieldCreatedAt)
@@ -12558,6 +12664,10 @@ func (m *TektonInstallationMutation) Field(name string) (ent.Value, bool) {
 		return m.JobID()
 	case tektoninstallation.FieldLastCheckedAt:
 		return m.LastCheckedAt()
+	case tektoninstallation.FieldPluginCacheSize:
+		return m.PluginCacheSize()
+	case tektoninstallation.FieldPluginCacheStorageClass:
+		return m.PluginCacheStorageClass()
 	case tektoninstallation.FieldCreatedAt:
 		return m.CreatedAt()
 	case tektoninstallation.FieldUpdatedAt:
@@ -12585,6 +12695,10 @@ func (m *TektonInstallationMutation) OldField(ctx context.Context, name string) 
 		return m.OldJobID(ctx)
 	case tektoninstallation.FieldLastCheckedAt:
 		return m.OldLastCheckedAt(ctx)
+	case tektoninstallation.FieldPluginCacheSize:
+		return m.OldPluginCacheSize(ctx)
+	case tektoninstallation.FieldPluginCacheStorageClass:
+		return m.OldPluginCacheStorageClass(ctx)
 	case tektoninstallation.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case tektoninstallation.FieldUpdatedAt:
@@ -12647,6 +12761,20 @@ func (m *TektonInstallationMutation) SetField(name string, value ent.Value) erro
 		}
 		m.SetLastCheckedAt(v)
 		return nil
+	case tektoninstallation.FieldPluginCacheSize:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPluginCacheSize(v)
+		return nil
+	case tektoninstallation.FieldPluginCacheStorageClass:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPluginCacheStorageClass(v)
+		return nil
 	case tektoninstallation.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -12703,6 +12831,12 @@ func (m *TektonInstallationMutation) ClearedFields() []string {
 	if m.FieldCleared(tektoninstallation.FieldLastCheckedAt) {
 		fields = append(fields, tektoninstallation.FieldLastCheckedAt)
 	}
+	if m.FieldCleared(tektoninstallation.FieldPluginCacheSize) {
+		fields = append(fields, tektoninstallation.FieldPluginCacheSize)
+	}
+	if m.FieldCleared(tektoninstallation.FieldPluginCacheStorageClass) {
+		fields = append(fields, tektoninstallation.FieldPluginCacheStorageClass)
+	}
 	return fields
 }
 
@@ -12728,6 +12862,12 @@ func (m *TektonInstallationMutation) ClearField(name string) error {
 		return nil
 	case tektoninstallation.FieldLastCheckedAt:
 		m.ClearLastCheckedAt()
+		return nil
+	case tektoninstallation.FieldPluginCacheSize:
+		m.ClearPluginCacheSize()
+		return nil
+	case tektoninstallation.FieldPluginCacheStorageClass:
+		m.ClearPluginCacheStorageClass()
 		return nil
 	}
 	return fmt.Errorf("unknown TektonInstallation nullable field %s", name)
@@ -12757,6 +12897,12 @@ func (m *TektonInstallationMutation) ResetField(name string) error {
 		return nil
 	case tektoninstallation.FieldLastCheckedAt:
 		m.ResetLastCheckedAt()
+		return nil
+	case tektoninstallation.FieldPluginCacheSize:
+		m.ResetPluginCacheSize()
+		return nil
+	case tektoninstallation.FieldPluginCacheStorageClass:
+		m.ResetPluginCacheStorageClass()
 		return nil
 	case tektoninstallation.FieldCreatedAt:
 		m.ResetCreatedAt()

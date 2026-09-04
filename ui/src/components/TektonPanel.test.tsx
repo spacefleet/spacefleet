@@ -6,7 +6,7 @@ import { api } from "../api/client";
 import { useObjectStream } from "../lib/useObjectStream";
 
 vi.mock("../api/client", () => ({
-  api: { GET: vi.fn(), POST: vi.fn() },
+  api: { GET: vi.fn(), POST: vi.fn(), PUT: vi.fn() },
   authToken: vi.fn(),
   currentOrgId: vi.fn(),
 }));
@@ -24,6 +24,7 @@ vi.mock("../lib/useObjectStream", () => ({
 const mockApi = api as unknown as {
   GET: ReturnType<typeof vi.fn>;
   POST: ReturnType<typeof vi.fn>;
+  PUT: ReturnType<typeof vi.fn>;
 };
 const mockStream = useObjectStream as unknown as ReturnType<typeof vi.fn>;
 
@@ -44,6 +45,7 @@ function status(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   mockApi.GET.mockReset();
   mockApi.POST.mockReset();
+  mockApi.PUT.mockReset();
   mockStream.mockReturnValue({ value: null, status: "connecting", error: null });
 });
 
@@ -299,5 +301,44 @@ describe("TektonPanel", () => {
     });
     render(<TektonPanel clusterId="c1" canEdit />);
     expect(await screen.findByText("Managed by Spacefleet")).toBeInTheDocument();
+  });
+
+  it("creates and removes the provider plugin cache", async () => {
+    const installed = status({ enabled: true, status: "installed", present: true, controller_ready: true, managed: true, installed_version: "v0.68.0" });
+    const withCache = { ...installed, plugin_cache: { size: "20Gi", storage_class: "nfs" } };
+    mockApi.GET.mockResolvedValue({ data: installed, error: undefined });
+    render(<TektonPanel clusterId="c1" canEdit />);
+
+    await screen.findByText("Provider plugin cache");
+    await userEvent.type(screen.getByLabelText("Plugin cache storage class"), "nfs");
+    // The save response carries the new cache; the follow-up reload does too.
+    mockApi.PUT.mockResolvedValueOnce({ data: withCache, error: undefined });
+    mockApi.GET.mockResolvedValue({ data: withCache, error: undefined });
+    await userEvent.click(screen.getByRole("button", { name: "Create cache" }));
+    expect(mockApi.PUT).toHaveBeenCalledWith("/api/clusters/{id}/tekton/plugin-cache", {
+      params: { path: { id: "c1" } },
+      body: { size: "20Gi", storage_class: "nfs" },
+    });
+    expect(await screen.findByText("20Gi")).toBeInTheDocument();
+    expect(screen.getByText("· nfs")).toBeInTheDocument();
+
+    mockApi.PUT.mockResolvedValueOnce({ data: installed, error: undefined });
+    mockApi.GET.mockResolvedValue({ data: installed, error: undefined });
+    await userEvent.click(screen.getByRole("button", { name: "Remove cache" }));
+    expect(mockApi.PUT).toHaveBeenLastCalledWith("/api/clusters/{id}/tekton/plugin-cache", {
+      params: { path: { id: "c1" } },
+      body: { size: "" },
+    });
+    expect(await screen.findByRole("button", { name: "Create cache" })).toBeInTheDocument();
+  });
+
+  it("shows the plugin cache read-only to viewers", async () => {
+    mockApi.GET.mockResolvedValue({
+      data: status({ enabled: true, status: "installed", present: true, controller_ready: true, plugin_cache: { size: "10Gi" } }),
+      error: undefined,
+    });
+    render(<TektonPanel clusterId="c1" canEdit={false} />);
+    expect(await screen.findByText("10Gi")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove cache" })).not.toBeInTheDocument();
   });
 });

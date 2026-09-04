@@ -119,15 +119,31 @@ differ.
 
 The component's state always lives where the component says — Spacefleet
 configures your module's backend at run time, overriding any backend block in
-your code. Point the **bucket**, **state key**, and **region** at an Amazon S3
-location (an existing state file there is adopted in place). Attach a **cloud
-credential** for the run to sign in with, or leave it on the runner's own
-instance role.
+your code. Pick one of the three backends and point it at the location (an
+existing state file there is adopted in place):
+
+| Backend | Settings |
+| --- | --- |
+| **Amazon S3** | bucket, state key, region; optionally a DynamoDB lock table and server-side encryption (SSE-S3 or a KMS key) |
+| **Google Cloud Storage** | bucket and a prefix (the folder the state lives under) |
+| **Azure Blob Storage** | storage account, container, and the state file's blob name; optionally the account's resource group |
+
+Attach a **cloud credential** of the matching cloud for the run to sign in
+with — the same credential serves both the state backend and your module's
+providers for that cloud (an AWS credential becomes the usual `AWS_*`
+variables, a Google Cloud service-account key becomes `GOOGLE_CREDENTIALS`,
+an Azure service principal becomes the `ARM_*` variables). Leave it empty to
+use the runner's own identity: an instance role, or a workload identity
+bound to the jobs namespace.
+
+Each component needs its own state key or prefix — or its own
+[workspace](#workspaces) on a shared one.
 
 ### State locking
 
 Locking prevents two runs (or a run and a colleague's laptop) from writing the
-same state at once and corrupting it.
+same state at once and corrupting it. Google Cloud Storage and Azure Blob
+Storage lock natively; nothing needs setting up. For Amazon S3:
 
 - **OpenTofu 1.10 and newer** — locking is automatic. State is locked in the
   state bucket itself during every plan and apply; there is nothing to set up
@@ -141,7 +157,7 @@ same state at once and corrupting it.
   `DeleteItem` on the table — plus `CreateTable` if you want it created for
   you. Leaving the field empty means no locking.
 
-Moving an existing state from DynamoDB locking to the automatic kind: pick
+Moving an existing S3 state from DynamoDB locking to the automatic kind: pick
 OpenTofu 1.10 or newer and keep the lock table named for as long as anything
 else (CI, laptops) still locks that state via DynamoDB — both locks are held
 together. Once nothing else uses the table, clear the field.

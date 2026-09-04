@@ -95,6 +95,10 @@ type RunSpec struct {
 	// so the step's in-pod kubectl can touch exactly its own planfile Secret —
 	// the namespace default SA has (and needs) no permissions at all.
 	ServiceAccountName string
+	// PluginCacheClaim, when set, mounts the named PersistentVolumeClaim (the
+	// runner cluster's OpenTofu provider plugin cache, see EnsurePluginCache)
+	// read-write at PluginCacheMountPath. Optional; only OpenTofu steps set it.
+	PluginCacheClaim string
 }
 
 // RunStatus is the storage-agnostic view of a TaskRun's state. Phase is derived
@@ -206,17 +210,33 @@ func buildTaskRun(namespace, secretName string, spec RunSpec) *unstructured.Unst
 	taskSpec := map[string]any{"steps": []any{step}}
 	generateName := spec.Name + "-"
 	// A volume mount is only needed for mounted Files; secret-backed env uses
-	// secretKeyRef and needs no mount.
+	// secretKeyRef and needs no mount. The plugin cache claim, when set, is a
+	// second, read-write mount.
+	var mounts, volumes []any
 	if len(spec.Files) > 0 {
-		step["volumeMounts"] = []any{map[string]any{
+		mounts = append(mounts, map[string]any{
 			"name":      credsVolumeName,
 			"mountPath": CredsMountPath,
 			"readOnly":  true,
-		}}
-		taskSpec["volumes"] = []any{map[string]any{
+		})
+		volumes = append(volumes, map[string]any{
 			"name":   credsVolumeName,
 			"secret": map[string]any{"secretName": secretName},
-		}}
+		})
+	}
+	if spec.PluginCacheClaim != "" {
+		mounts = append(mounts, map[string]any{
+			"name":      pluginCacheVolumeName,
+			"mountPath": PluginCacheMountPath,
+		})
+		volumes = append(volumes, map[string]any{
+			"name":                  pluginCacheVolumeName,
+			"persistentVolumeClaim": map[string]any{"claimName": spec.PluginCacheClaim},
+		})
+	}
+	if len(mounts) > 0 {
+		step["volumeMounts"] = mounts
+		taskSpec["volumes"] = volumes
 	}
 	metadata := map[string]any{
 		"generateName": generateName,

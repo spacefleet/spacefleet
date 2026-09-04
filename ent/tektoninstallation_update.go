@@ -136,6 +136,46 @@ func (_u *TektonInstallationUpdate) ClearLastCheckedAt() *TektonInstallationUpda
 	return _u
 }
 
+// SetPluginCacheSize sets the "plugin_cache_size" field.
+func (_u *TektonInstallationUpdate) SetPluginCacheSize(v string) *TektonInstallationUpdate {
+	_u.mutation.SetPluginCacheSize(v)
+	return _u
+}
+
+// SetNillablePluginCacheSize sets the "plugin_cache_size" field if the given value is not nil.
+func (_u *TektonInstallationUpdate) SetNillablePluginCacheSize(v *string) *TektonInstallationUpdate {
+	if v != nil {
+		_u.SetPluginCacheSize(*v)
+	}
+	return _u
+}
+
+// ClearPluginCacheSize clears the value of the "plugin_cache_size" field.
+func (_u *TektonInstallationUpdate) ClearPluginCacheSize() *TektonInstallationUpdate {
+	_u.mutation.ClearPluginCacheSize()
+	return _u
+}
+
+// SetPluginCacheStorageClass sets the "plugin_cache_storage_class" field.
+func (_u *TektonInstallationUpdate) SetPluginCacheStorageClass(v string) *TektonInstallationUpdate {
+	_u.mutation.SetPluginCacheStorageClass(v)
+	return _u
+}
+
+// SetNillablePluginCacheStorageClass sets the "plugin_cache_storage_class" field if the given value is not nil.
+func (_u *TektonInstallationUpdate) SetNillablePluginCacheStorageClass(v *string) *TektonInstallationUpdate {
+	if v != nil {
+		_u.SetPluginCacheStorageClass(*v)
+	}
+	return _u
+}
+
+// ClearPluginCacheStorageClass clears the value of the "plugin_cache_storage_class" field.
+func (_u *TektonInstallationUpdate) ClearPluginCacheStorageClass() *TektonInstallationUpdate {
+	_u.mutation.ClearPluginCacheStorageClass()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *TektonInstallationUpdate) SetUpdatedAt(v time.Time) *TektonInstallationUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -237,6 +277,18 @@ func (_u *TektonInstallationUpdate) sqlSave(ctx context.Context) (_node int, err
 	}
 	if _u.mutation.LastCheckedAtCleared() {
 		_spec.ClearField(tektoninstallation.FieldLastCheckedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.PluginCacheSize(); ok {
+		_spec.SetField(tektoninstallation.FieldPluginCacheSize, field.TypeString, value)
+	}
+	if _u.mutation.PluginCacheSizeCleared() {
+		_spec.ClearField(tektoninstallation.FieldPluginCacheSize, field.TypeString)
+	}
+	if value, ok := _u.mutation.PluginCacheStorageClass(); ok {
+		_spec.SetField(tektoninstallation.FieldPluginCacheStorageClass, field.TypeString, value)
+	}
+	if _u.mutation.PluginCacheStorageClassCleared() {
+		_spec.ClearField(tektoninstallation.FieldPluginCacheStorageClass, field.TypeString)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(tektoninstallation.FieldUpdatedAt, field.TypeTime, value)
@@ -366,6 +418,46 @@ func (_u *TektonInstallationUpdateOne) SetNillableLastCheckedAt(v *time.Time) *T
 // ClearLastCheckedAt clears the value of the "last_checked_at" field.
 func (_u *TektonInstallationUpdateOne) ClearLastCheckedAt() *TektonInstallationUpdateOne {
 	_u.mutation.ClearLastCheckedAt()
+	return _u
+}
+
+// SetPluginCacheSize sets the "plugin_cache_size" field.
+func (_u *TektonInstallationUpdateOne) SetPluginCacheSize(v string) *TektonInstallationUpdateOne {
+	_u.mutation.SetPluginCacheSize(v)
+	return _u
+}
+
+// SetNillablePluginCacheSize sets the "plugin_cache_size" field if the given value is not nil.
+func (_u *TektonInstallationUpdateOne) SetNillablePluginCacheSize(v *string) *TektonInstallationUpdateOne {
+	if v != nil {
+		_u.SetPluginCacheSize(*v)
+	}
+	return _u
+}
+
+// ClearPluginCacheSize clears the value of the "plugin_cache_size" field.
+func (_u *TektonInstallationUpdateOne) ClearPluginCacheSize() *TektonInstallationUpdateOne {
+	_u.mutation.ClearPluginCacheSize()
+	return _u
+}
+
+// SetPluginCacheStorageClass sets the "plugin_cache_storage_class" field.
+func (_u *TektonInstallationUpdateOne) SetPluginCacheStorageClass(v string) *TektonInstallationUpdateOne {
+	_u.mutation.SetPluginCacheStorageClass(v)
+	return _u
+}
+
+// SetNillablePluginCacheStorageClass sets the "plugin_cache_storage_class" field if the given value is not nil.
+func (_u *TektonInstallationUpdateOne) SetNillablePluginCacheStorageClass(v *string) *TektonInstallationUpdateOne {
+	if v != nil {
+		_u.SetPluginCacheStorageClass(*v)
+	}
+	return _u
+}
+
+// ClearPluginCacheStorageClass clears the value of the "plugin_cache_storage_class" field.
+func (_u *TektonInstallationUpdateOne) ClearPluginCacheStorageClass() *TektonInstallationUpdateOne {
+	_u.mutation.ClearPluginCacheStorageClass()
 	return _u
 }
 
@@ -500,6 +592,18 @@ func (_u *TektonInstallationUpdateOne) sqlSave(ctx context.Context) (_node *Tekt
 	}
 	if _u.mutation.LastCheckedAtCleared() {
 		_spec.ClearField(tektoninstallation.FieldLastCheckedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.PluginCacheSize(); ok {
+		_spec.SetField(tektoninstallation.FieldPluginCacheSize, field.TypeString, value)
+	}
+	if _u.mutation.PluginCacheSizeCleared() {
+		_spec.ClearField(tektoninstallation.FieldPluginCacheSize, field.TypeString)
+	}
+	if value, ok := _u.mutation.PluginCacheStorageClass(); ok {
+		_spec.SetField(tektoninstallation.FieldPluginCacheStorageClass, field.TypeString, value)
+	}
+	if _u.mutation.PluginCacheStorageClassCleared() {
+		_spec.ClearField(tektoninstallation.FieldPluginCacheStorageClass, field.TypeString)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(tektoninstallation.FieldUpdatedAt, field.TypeTime, value)

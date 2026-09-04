@@ -243,11 +243,12 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		ChartCredentialID:    uuid.Nil,
 		GitHubInstallationID: deref(node.GitHubInstallationID),
 		CloudCredentialID:    cloudCredentialID,
-		// When the backend names a DynamoDB lock table, the resolver ensures it
+		// When an s3 backend names a DynamoDB lock table, the resolver ensures it
 		// exists (creating it if needed) with the run's cloud credential — the
 		// table lives in the backend's region. Every command needs the ensure
-		// (plan, apply, and preview all acquire the state lock).
-		DynamoDBLockTable:  backendConfig[s3BackendKeyDynamoTable],
+		// (plan, apply, and preview all acquire the state lock). The gcs and
+		// azurerm backends lock natively, so nothing is ensured for them.
+		DynamoDBLockTable:  s3LockTable(node.Config[terraformConfigBackend], backendConfig),
 		DynamoDBLockRegion: backendConfig[s3BackendKeyRegion],
 		PullsChart:         pullsChart,
 		// Opt-in: the component's resolved variables double as the module's
@@ -277,6 +278,20 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		}
 	}
 
+	// The runner cluster's provider plugin cache, when it has one: mounted
+	// into the step and pointed at by TF_PLUGIN_CACHE_DIR so init links
+	// already-present providers instead of downloading them.
+	var pluginCacheClaim, pluginCacheDir string
+	if w.pluginCache != nil {
+		claim, err := w.pluginCache(ctx, app.RunnerClusterID)
+		if err != nil {
+			return tekton.RunRequest{}, fmt.Errorf("workflows: component %q: look up plugin cache: %w", node.Name, err)
+		}
+		if claim != "" {
+			pluginCacheClaim, pluginCacheDir = claim, tekton.PluginCacheMountPath
+		}
+	}
+
 	script := tofu.Script(tofu.Apply{
 		Command:            node.Config[terraformConfigCommand],
 		Action:             tofuAction,
@@ -295,6 +310,7 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		ApplyFlags:         applyFlags,
 		StateOp:            stateOp,
 		Workspace:          node.Config[terraformConfigWorkspace],
+		PluginCacheDir:     pluginCacheDir,
 	})
 
 	return tekton.RunRequest{
@@ -313,8 +329,18 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 			// preview) leaves the namespace default SA, which needs no
 			// permissions — the script then never touches the cluster.
 			ServiceAccountName: planArtifactSecret,
+			PluginCacheClaim:   pluginCacheClaim,
 		},
 	}, nil
+}
+
+// s3LockTable returns the DynamoDB lock table an s3 backend names, or "" for
+// any other backend (whose config could carry the key only by accident).
+func s3LockTable(backend string, cfg map[string]string) string {
+	if backend != tofu.BackendS3 {
+		return ""
+	}
+	return cfg[s3BackendKeyDynamoTable]
 }
 
 // withNativeLocking turns on the s3 backend's native lockfile locking

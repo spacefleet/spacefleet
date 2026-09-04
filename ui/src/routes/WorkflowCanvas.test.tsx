@@ -455,19 +455,19 @@ describe("WorkflowCanvas", () => {
     expect(JSON.parse(tf?.config.backend_config ?? "{}").encrypt).toBe("true");
   });
 
-  it("the cloud-credential picker lists only aws-provider credentials", async () => {
+  it("the cloud-credential picker lists only the backend's cloud (aws for s3)", async () => {
     defaultGets([tfPlan], [], [
       { id: "cc-aws", name: "prod-aws", provider: "aws", config: {} },
       { id: "cc-gcp", name: "prod-gcp", provider: "gcp", config: {} },
     ]);
     await openTerraformEditor();
 
-    const picker = selectWithOption(/use instance role/i);
+    const picker = selectWithOption(/use the runner's identity/i);
     const optionLabels = Array.from(picker.options).map((o) => o.textContent);
     expect(optionLabels).toContain("prod-aws");
     expect(optionLabels).not.toContain("prod-gcp");
-    // The instance-role default is always offered.
-    expect(optionLabels).toContain("(none — use instance role)");
+    // The runner's-own-identity default is always offered.
+    expect(optionLabels).toContain("(none — use the runner's identity)");
   });
 
   it("selecting a node and clicking Edit navigates to the node editor route", async () => {

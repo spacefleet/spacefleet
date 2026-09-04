@@ -3,6 +3,9 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { ComponentFields, type EditableComponent } from "./ComponentFields";
+import type { components } from "../../api/schema";
+
+type CloudCredential = components["schemas"]["CloudCredential"];
 
 function makeComponent(
   overrides: Partial<EditableComponent> = {},
@@ -30,11 +33,13 @@ function Harness({
   onComponent,
   upstreamOutputs,
   disabled,
+  cloudCredentials = [],
 }: {
   initial: EditableComponent;
   onComponent: (c: EditableComponent) => void;
   upstreamOutputs?: string[];
   disabled?: boolean;
+  cloudCredentials?: CloudCredential[];
 }) {
   const [component, setComponent] = useState(initial);
   return (
@@ -46,7 +51,7 @@ function Harness({
       }}
       clusters={[]}
       credentials={[]}
-      cloudCredentials={[]}
+      cloudCredentials={cloudCredentials}
       installations={[]}
       githubEnabled={false}
       upstreamOutputs={upstreamOutputs}
@@ -205,5 +210,57 @@ describe("terraform inputs and workspace", () => {
 
     await user.type(screen.getByPlaceholderText("default"), "prod");
     expect(latest!.config.workspace).toBe("prod");
+  });
+});
+
+describe("terraform state backends", () => {
+  const creds: CloudCredential[] = [
+    { id: "c-aws", name: "prod-aws", provider: "aws", config: {}, created_at: "", updated_at: "" },
+    { id: "c-gcp", name: "prod-gcp", provider: "gcp", config: {}, created_at: "", updated_at: "" },
+  ];
+
+  it("switches backends, clearing the old settings and offering matching credentials", async () => {
+    const user = userEvent.setup();
+    let latest: EditableComponent | null = null;
+    render(
+      <Harness
+        initial={makeComponent({
+          config: {
+            backend: "s3",
+            backend_config: JSON.stringify({ bucket: "b", key: "k", region: "r" }),
+            cloud_credential_id: "c-aws",
+          },
+        })}
+        onComponent={(c) => {
+          latest = c;
+        }}
+        cloudCredentials={creds}
+      />,
+    );
+    // S3: only the aws credential is offered.
+    const credSelect = screen.getByLabelText("Cloud credential");
+    expect(credSelect).toHaveTextContent("prod-aws");
+    expect(credSelect).not.toHaveTextContent("prod-gcp");
+
+    await user.selectOptions(screen.getByLabelText("State backend"), "gcs");
+    expect(latest!.config.backend).toBe("gcs");
+    expect(latest!.config.backend_config).toBe("");
+    expect(latest!.config.cloud_credential_id).toBe("");
+    expect(screen.getByLabelText("Cloud credential")).toHaveTextContent("prod-gcp");
+    expect(screen.queryByText("DynamoDB lock table")).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("GCS bucket"), "acme-state");
+    await user.type(screen.getByLabelText("GCS prefix"), "envs/prod");
+    expect(JSON.parse(latest!.config.backend_config)).toEqual({ bucket: "acme-state", prefix: "envs/prod" });
+
+    await user.selectOptions(screen.getByLabelText("State backend"), "azurerm");
+    await user.type(screen.getByLabelText("Storage account"), "acmestate");
+    await user.type(screen.getByLabelText("Container"), "tfstate");
+    await user.type(screen.getByLabelText("Azure state key"), "prod.tfstate");
+    expect(JSON.parse(latest!.config.backend_config)).toEqual({
+      storage_account_name: "acmestate",
+      container_name: "tfstate",
+      key: "prod.tfstate",
+    });
   });
 });

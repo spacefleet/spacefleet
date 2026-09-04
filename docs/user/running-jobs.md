@@ -49,6 +49,34 @@ installing.
 These actions only appear for a Tekton that Spacefleet installed. A Tekton you
 installed yourself is never modified — keeping it current is up to you.
 
+## Speed up OpenTofu runs with a provider cache
+
+Every OpenTofu run starts with `tofu init`, which downloads the module's
+providers — often hundreds of megabytes for the big cloud providers — into a
+fresh, throwaway workspace. A **provider plugin cache** keeps them on the
+cluster instead: a shared volume in the `spacefleet-jobs` namespace that every
+OpenTofu step on this runner mounts as its plugin cache, so a provider is
+downloaded once per cluster and linked into each run afterwards.
+
+Turn it on from the Jobs panel's **Engine** section, under **Provider plugin
+cache**: choose a size (`20Gi` is plenty for most stacks — a provider is kept
+once per version) and, if the cluster's default storage class cannot be shared
+between nodes, a storage class that supports **ReadWriteMany** (for example an
+NFS- or file-store-backed class). The volume is created right away; OpenTofu
+steps start using it on their next run. To change the size or class, remove
+the cache and set it up again — a claim cannot be resized or re-classed in
+place.
+
+Two things to know:
+
+- Steps on **every node** of the cluster mount the same volume, so the storage
+  class must allow that. With a class that only supports a single node, steps
+  scheduled elsewhere wait forever for the volume.
+- OpenTofu's plugin cache is not designed for two `init` commands writing the
+  same provider at the very same moment. In practice concurrent runs share a
+  cache fine once a provider is present; if you ever see a corrupted provider,
+  remove the cache and set it up again.
+
 ## Check readiness
 
 The Jobs panel includes a **Readiness** report showing whether the cluster's

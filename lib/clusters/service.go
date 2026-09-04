@@ -31,6 +31,12 @@ type Service struct {
 	// tekton.Detect (a real API-server call) and is overridden in tests so the
 	// upgrade/uninstall preconditions can be exercised without a live cluster.
 	detectTekton func(ctx context.Context, conn k8s.Connection) (*tekton.Presence, error)
+	// ensurePluginCacheFn / deletePluginCacheFn create and remove the OpenTofu
+	// provider plugin cache claim on a runner cluster; they default to the
+	// real tekton.EnsurePluginCache / DeletePluginCache and are overridden in
+	// tests so SetTektonPluginCache runs without a cluster.
+	ensurePluginCacheFn func(ctx context.Context, conn k8s.Connection, namespace, size, storageClass string) error
+	deletePluginCacheFn func(ctx context.Context, conn k8s.Connection, namespace string) error
 }
 
 func NewService(entClient *ent.Client, sealer *secrets.Sealer) *Service {

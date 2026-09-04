@@ -92,14 +92,24 @@ export function ComponentFields({
   upstreamOutputs = [],
   refContext = EMPTY_REF_CONTEXT,
 }: ComponentFieldsProps) {
-  function set<K extends keyof EditableComponent>(key: K, value: EditableComponent[K]) {
+  function set<K extends keyof EditableComponent>(
+    key: K,
+    value: EditableComponent[K],
+  ) {
     onChange({ ...component, [key]: value });
   }
   function setConfig(key: string, value: string) {
     onChange({ ...component, config: { ...component.config, [key]: value } });
   }
+  // setConfigs writes several keys in one change, for edits that must land
+  // together (each setConfig call spreads the *current* component, so two
+  // calls in a row would drop the first).
+  function setConfigs(entries: Record<string, string>) {
+    onChange({ ...component, config: { ...component.config, ...entries } });
+  }
 
-  const chartSource = (component.config.chart_source as ChartSource) || "http_repo";
+  const chartSource =
+    (component.config.chart_source as ChartSource) || "http_repo";
 
   // A repository can be picked when the GitHub App is configured and the org has
   // at least one installation; otherwise the user types the URL by hand.
@@ -173,6 +183,7 @@ export function ComponentFields({
         <TerraformConfig
           config={component.config}
           setConfig={setConfig}
+          setConfigs={setConfigs}
           repoUrlPicker={repoUrlPicker}
           cloudCredentials={cloudCredentials}
           clusters={clusters}
@@ -199,7 +210,9 @@ export function ComponentFields({
             <select
               className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
               value={component.chart_credential_id ?? ""}
-              onChange={(e) => set("chart_credential_id", e.target.value || null)}
+              onChange={(e) =>
+                set("chart_credential_id", e.target.value || null)
+              }
               disabled={disabled}
             >
               <option value="">None (public chart)</option>
@@ -220,7 +233,9 @@ export function ComponentFields({
           <select
             className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
             value={component.github_installation_id ?? ""}
-            onChange={(e) => set("github_installation_id", e.target.value || null)}
+            onChange={(e) =>
+              set("github_installation_id", e.target.value || null)
+            }
             disabled={disabled}
           >
             <option value="">None (public repository)</option>
@@ -348,7 +363,8 @@ function HelmConfig({
   upstreamOutputs: string[];
   refContext: RefContext;
 }) {
-  const source = CHART_SOURCES.find((s) => s.value === chartSource) ?? CHART_SOURCES[0];
+  const source =
+    CHART_SOURCES.find((s) => s.value === chartSource) ?? CHART_SOURCES[0];
   return (
     <>
       <Field label="Chart source">
@@ -370,9 +386,9 @@ function HelmConfig({
         <Field key={field.key} label={field.label} help={field.help}>
           {/* The git source's repository URL gets the picker; other sources
               (http_repo/oci) point at registries the picker doesn't enumerate. */}
-          {field.key === "repo_url" && chartSource === "git" && repoUrlPicker && (
-            <div className="mb-1.5">{repoUrlPicker}</div>
-          )}
+          {field.key === "repo_url" &&
+            chartSource === "git" &&
+            repoUrlPicker && <div className="mb-1.5">{repoUrlPicker}</div>}
           <input
             type="text"
             className="w-full border border-neutral-300 px-3 py-2 text-sm"
@@ -417,7 +433,9 @@ function HelmConfig({
         <OutputRefButtons
           names={upstreamOutputs}
           disabled={disabled}
-          onInsert={(snippet) => setConfig("values", (config.values ?? "") + snippet)}
+          onInsert={(snippet) =>
+            setConfig("values", (config.values ?? "") + snippet)
+          }
         />
       </Field>
 
@@ -497,6 +515,7 @@ function ManifestConfig({
 function TerraformConfig({
   config,
   setConfig,
+  setConfigs,
   repoUrlPicker,
   cloudCredentials,
   clusters,
@@ -504,11 +523,16 @@ function TerraformConfig({
 }: {
   config: Record<string, string>;
   setConfig: (key: string, value: string) => void;
+  setConfigs: (entries: Record<string, string>) => void;
   repoUrlPicker: ReactNode;
   cloudCredentials: CloudCredential[];
   clusters: Cluster[];
   disabled: boolean;
 }) {
+  // The backend and its settings. backend_config is one flat JSON object
+  // whose keys depend on the backend (s3: bucket/key/region/…; gcs:
+  // bucket/prefix; azurerm: storage_account_name/container_name/key/…).
+  const backend = config.backend || "s3";
   const s3 = parseBackendConfig(config.backend_config);
   const encrypt = s3.encrypt === "true";
 
@@ -519,8 +543,17 @@ function TerraformConfig({
   const tofuVersion = config.tofu_version || TOFU_DEFAULT_VERSION;
   const nativeLock = tofuNativeLock(config.tofu_version);
 
-  // Only aws credentials can be injected into the OpenTofu run for now.
-  const awsCredentials = cloudCredentials.filter((c) => c.provider === "aws");
+  // The credential must match the backend's cloud: the same credential signs
+  // the run in to the state backend and to the module's providers.
+  const backendProvider = BACKEND_PROVIDER[backend] ?? "aws";
+  const matchingCredentials = cloudCredentials.filter(
+    (c) => c.provider === backendProvider,
+  );
+  // Switching backends clears the settings (their keys differ) and the
+  // credential (a different cloud) — in one change, so none is lost.
+  function setBackend(next: string) {
+    setConfigs({ backend: next, backend_config: "", cloud_credential_id: "" });
+  }
 
   // setS3 updates one backend setting, dropping emptied keys so the stored
   // JSON holds only what's set ("" omits backend_config entirely on save).
@@ -612,27 +645,31 @@ function TerraformConfig({
         help="Where this component's OpenTofu state lives. Spacefleet configures your module to use it at init (overriding any backend block in code) — to adopt existing state, point it at the bucket and key your state is already in."
       >
         <select
+          aria-label="State backend"
           className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
-          value={config.backend || "s3"}
-          onChange={(e) => setConfig("backend", e.target.value)}
+          value={backend}
+          onChange={(e) => setBackend(e.target.value)}
           disabled={disabled}
         >
           <option value="s3">Amazon S3</option>
+          <option value="gcs">Google Cloud Storage</option>
+          <option value="azurerm">Azure Blob Storage</option>
         </select>
       </Field>
 
       <Field
         label="Cloud credential"
-        help="The AWS credential the run signs in with — used for the state bucket and your module's AWS providers. Leave as instance role to use the runner's own role."
+        help={`The ${PROVIDER_NAMES[backendProvider]} credential the run signs in with — used for the state backend and your module's ${PROVIDER_NAMES[backendProvider]} providers. Leave empty to use the runner's own identity (an instance role or workload identity).`}
       >
         <select
+          aria-label="Cloud credential"
           className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
           value={config.cloud_credential_id ?? ""}
           onChange={(e) => setConfig("cloud_credential_id", e.target.value)}
           disabled={disabled}
         >
-          <option value="">(none — use instance role)</option>
-          {awsCredentials.map((c) => (
+          <option value="">(none — use the runner's identity)</option>
+          {matchingCredentials.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
@@ -640,103 +677,201 @@ function TerraformConfig({
         </select>
       </Field>
 
-      <Field label="Bucket" help="The S3 bucket holding the state.">
-        <input
-          type="text"
-          className="w-full border border-neutral-300 px-3 py-2 text-sm"
-          placeholder="my-terraform-state"
-          value={s3.bucket ?? ""}
-          onChange={(e) => setS3("bucket", e.target.value)}
-          disabled={disabled}
-        />
-      </Field>
-      <Field
-        label="State key"
-        help="Object path of the state file in the bucket — must be unique per component."
-      >
-        <input
-          type="text"
-          className="w-full border border-neutral-300 px-3 py-2 text-sm"
-          placeholder="envs/prod/terraform.tfstate"
-          value={s3.key ?? ""}
-          onChange={(e) => setS3("key", e.target.value)}
-          disabled={disabled}
-        />
-      </Field>
-      <Field label="Region" help="AWS region of the bucket.">
-        <input
-          type="text"
-          className="w-full border border-neutral-300 px-3 py-2 text-sm"
-          placeholder="us-east-1"
-          value={s3.region ?? ""}
-          onChange={(e) => setS3("region", e.target.value)}
-          disabled={disabled}
-        />
-      </Field>
-      {nativeLock ? (
+      {backend === "gcs" && (
         <>
-          <div className="border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-600">
-            <span className="font-medium text-neutral-700">
-              State locking is automatic.
-            </span>{" "}
-            OpenTofu {tofuVersion} locks state in the bucket itself during
-            every plan and apply, so concurrent runs can't corrupt it — there's
-            nothing to set up.
-          </div>
           <Field
-            label="DynamoDB lock table"
-            help="Optional. Only needed while this state is also used outside Spacefleet with DynamoDB locking — both locks are held, so you can migrate off the table safely."
+            label="Bucket"
+            help="The Cloud Storage bucket holding the state."
           >
             <input
               type="text"
+              aria-label="GCS bucket"
               className="w-full border border-neutral-300 px-3 py-2 text-sm"
-              placeholder="(not needed)"
-              value={s3.dynamodb_table ?? ""}
-              onChange={(e) => setS3("dynamodb_table", e.target.value)}
+              placeholder="acme-terraform-state"
+              value={s3.bucket ?? ""}
+              onChange={(e) => setS3("bucket", e.target.value)}
+              disabled={disabled}
+            />
+          </Field>
+          <Field
+            label="Prefix"
+            help="Path prefix of the state within the bucket — must be unique per component. Locking is automatic (the bucket itself locks the state)."
+          >
+            <input
+              type="text"
+              aria-label="GCS prefix"
+              className="w-full border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="envs/prod"
+              value={s3.prefix ?? ""}
+              onChange={(e) => setS3("prefix", e.target.value)}
               disabled={disabled}
             />
           </Field>
         </>
-      ) : (
-        <Field
-          label="DynamoDB lock table"
-          help="Recommended. Locks state during plan and apply so concurrent runs can't corrupt it — Spacefleet creates the table if it doesn't exist (with a cloud credential attached; instance-role runs need an existing table). Or pick OpenTofu 1.10+ above for automatic locking with no table at all."
-        >
-          <input
-            type="text"
-            className="w-full border border-neutral-300 px-3 py-2 text-sm"
-            placeholder="(no locking)"
-            value={s3.dynamodb_table ?? ""}
-            onChange={(e) => setS3("dynamodb_table", e.target.value)}
-            disabled={disabled}
-          />
-        </Field>
       )}
 
-      <label className="flex items-center gap-2 text-sm text-neutral-700">
-        <input
-          type="checkbox"
-          className="h-4 w-4 accent-black"
-          checked={encrypt}
-          onChange={(e) => setEncrypt(e.target.checked)}
-          disabled={disabled}
-        />
-        Encrypt state at rest
-      </label>
-      {encrypt && (
-        <Field
-          label="KMS key"
-          help="Optional. KMS key ARN or ID for SSE-KMS; empty uses SSE-S3 (AES-256)."
-        >
-          <input
-            type="text"
-            className="w-full border border-neutral-300 px-3 py-2 text-sm"
-            placeholder="(SSE-S3)"
-            value={s3.kms_key_id ?? ""}
-            onChange={(e) => setS3("kms_key_id", e.target.value)}
-            disabled={disabled}
-          />
-        </Field>
+      {backend === "azurerm" && (
+        <>
+          <Field
+            label="Storage account"
+            help="The storage account holding the state."
+          >
+            <input
+              type="text"
+              aria-label="Storage account"
+              className="w-full border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="acmetfstate"
+              value={s3.storage_account_name ?? ""}
+              onChange={(e) => setS3("storage_account_name", e.target.value)}
+              disabled={disabled}
+            />
+          </Field>
+          <Field
+            label="Container"
+            help="The blob container within the storage account."
+          >
+            <input
+              type="text"
+              aria-label="Container"
+              className="w-full border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="tfstate"
+              value={s3.container_name ?? ""}
+              onChange={(e) => setS3("container_name", e.target.value)}
+              disabled={disabled}
+            />
+          </Field>
+          <Field
+            label="State key"
+            help="Blob name of the state file in the container — must be unique per component. Locking is automatic (a blob lease)."
+          >
+            <input
+              type="text"
+              aria-label="Azure state key"
+              className="w-full border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="prod.tfstate"
+              value={s3.key ?? ""}
+              onChange={(e) => setS3("key", e.target.value)}
+              disabled={disabled}
+            />
+          </Field>
+          <Field
+            label="Resource group"
+            help="Optional — the resource group of the storage account, when the credential needs it to look the account up."
+          >
+            <input
+              type="text"
+              aria-label="Resource group"
+              className="w-full border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="(optional)"
+              value={s3.resource_group_name ?? ""}
+              onChange={(e) => setS3("resource_group_name", e.target.value)}
+              disabled={disabled}
+            />
+          </Field>
+        </>
+      )}
+
+      {backend === "s3" && (
+        <>
+          <Field label="Bucket" help="The S3 bucket holding the state.">
+            <input
+              type="text"
+              className="w-full border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="my-terraform-state"
+              value={s3.bucket ?? ""}
+              onChange={(e) => setS3("bucket", e.target.value)}
+              disabled={disabled}
+            />
+          </Field>
+          <Field
+            label="State key"
+            help="Object path of the state file in the bucket — must be unique per component."
+          >
+            <input
+              type="text"
+              className="w-full border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="envs/prod/terraform.tfstate"
+              value={s3.key ?? ""}
+              onChange={(e) => setS3("key", e.target.value)}
+              disabled={disabled}
+            />
+          </Field>
+          <Field label="Region" help="AWS region of the bucket.">
+            <input
+              type="text"
+              className="w-full border border-neutral-300 px-3 py-2 text-sm"
+              placeholder="us-east-1"
+              value={s3.region ?? ""}
+              onChange={(e) => setS3("region", e.target.value)}
+              disabled={disabled}
+            />
+          </Field>
+          {nativeLock ? (
+            <>
+              <div className="border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-600">
+                <span className="font-medium text-neutral-700">
+                  State locking is automatic.
+                </span>{" "}
+                OpenTofu {tofuVersion} locks state in the bucket itself during
+                every plan and apply, so concurrent runs can't corrupt it —
+                there's nothing to set up.
+              </div>
+              <Field
+                label="DynamoDB lock table"
+                help="Optional. Only needed while this state is also used outside Spacefleet with DynamoDB locking — both locks are held, so you can migrate off the table safely."
+              >
+                <input
+                  type="text"
+                  className="w-full border border-neutral-300 px-3 py-2 text-sm"
+                  placeholder="(not needed)"
+                  value={s3.dynamodb_table ?? ""}
+                  onChange={(e) => setS3("dynamodb_table", e.target.value)}
+                  disabled={disabled}
+                />
+              </Field>
+            </>
+          ) : (
+            <Field
+              label="DynamoDB lock table"
+              help="Recommended. Locks state during plan and apply so concurrent runs can't corrupt it — Spacefleet creates the table if it doesn't exist (with a cloud credential attached; instance-role runs need an existing table). Or pick OpenTofu 1.10+ above for automatic locking with no table at all."
+            >
+              <input
+                type="text"
+                className="w-full border border-neutral-300 px-3 py-2 text-sm"
+                placeholder="(no locking)"
+                value={s3.dynamodb_table ?? ""}
+                onChange={(e) => setS3("dynamodb_table", e.target.value)}
+                disabled={disabled}
+              />
+            </Field>
+          )}
+
+          <label className="flex items-center gap-2 text-sm text-neutral-700">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-black"
+              checked={encrypt}
+              onChange={(e) => setEncrypt(e.target.checked)}
+              disabled={disabled}
+            />
+            Encrypt state at rest
+          </label>
+          {encrypt && (
+            <Field
+              label="KMS key"
+              help="Optional. KMS key ARN or ID for SSE-KMS; empty uses SSE-S3 (AES-256)."
+            >
+              <input
+                type="text"
+                className="w-full border border-neutral-300 px-3 py-2 text-sm"
+                placeholder="(SSE-S3)"
+                value={s3.kms_key_id ?? ""}
+                onChange={(e) => setS3("kms_key_id", e.target.value)}
+                disabled={disabled}
+              />
+            </Field>
+          )}
+        </>
       )}
 
       {/* Not a deploy target (terraform hides the target-cluster field): this
@@ -855,6 +990,21 @@ function OutputRefButtons({
     </p>
   );
 }
+
+// BACKEND_PROVIDER maps a state backend to the cloud-credential provider that
+// authenticates to it (the same credential also serves the module's providers
+// for that cloud).
+const BACKEND_PROVIDER: Record<string, CloudCredential["provider"]> = {
+  s3: "aws",
+  gcs: "gcp",
+  azurerm: "azure",
+};
+
+const PROVIDER_NAMES: Record<CloudCredential["provider"], string> = {
+  aws: "AWS",
+  gcp: "Google Cloud",
+  azure: "Azure",
+};
 
 // parseFlags defensively parses the JSON string-array a terraform node stores
 // under an {init,plan,apply}_flags key into a flat list of flag tokens. A
@@ -1012,7 +1162,9 @@ function ValuesSourcesEditor({
   }
   return (
     <div>
-      <p className="mb-1 text-sm font-medium text-neutral-700">Values from Git</p>
+      <p className="mb-1 text-sm font-medium text-neutral-700">
+        Values from Git
+      </p>
       <p className="mb-2 text-xs text-neutral-500">
         Optional value files pulled from Git, applied in order before the inline
         values above.

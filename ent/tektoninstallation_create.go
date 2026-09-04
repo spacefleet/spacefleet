@@ -115,6 +115,34 @@ func (_c *TektonInstallationCreate) SetNillableLastCheckedAt(v *time.Time) *Tekt
 	return _c
 }
 
+// SetPluginCacheSize sets the "plugin_cache_size" field.
+func (_c *TektonInstallationCreate) SetPluginCacheSize(v string) *TektonInstallationCreate {
+	_c.mutation.SetPluginCacheSize(v)
+	return _c
+}
+
+// SetNillablePluginCacheSize sets the "plugin_cache_size" field if the given value is not nil.
+func (_c *TektonInstallationCreate) SetNillablePluginCacheSize(v *string) *TektonInstallationCreate {
+	if v != nil {
+		_c.SetPluginCacheSize(*v)
+	}
+	return _c
+}
+
+// SetPluginCacheStorageClass sets the "plugin_cache_storage_class" field.
+func (_c *TektonInstallationCreate) SetPluginCacheStorageClass(v string) *TektonInstallationCreate {
+	_c.mutation.SetPluginCacheStorageClass(v)
+	return _c
+}
+
+// SetNillablePluginCacheStorageClass sets the "plugin_cache_storage_class" field if the given value is not nil.
+func (_c *TektonInstallationCreate) SetNillablePluginCacheStorageClass(v *string) *TektonInstallationCreate {
+	if v != nil {
+		_c.SetPluginCacheStorageClass(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *TektonInstallationCreate) SetCreatedAt(v time.Time) *TektonInstallationCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -304,6 +332,14 @@ func (_c *TektonInstallationCreate) createSpec() (*TektonInstallation, *sqlgraph
 		_spec.SetField(tektoninstallation.FieldLastCheckedAt, field.TypeTime, value)
 		_node.LastCheckedAt = &value
 	}
+	if value, ok := _c.mutation.PluginCacheSize(); ok {
+		_spec.SetField(tektoninstallation.FieldPluginCacheSize, field.TypeString, value)
+		_node.PluginCacheSize = value
+	}
+	if value, ok := _c.mutation.PluginCacheStorageClass(); ok {
+		_spec.SetField(tektoninstallation.FieldPluginCacheStorageClass, field.TypeString, value)
+		_node.PluginCacheStorageClass = value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(tektoninstallation.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -474,6 +510,42 @@ func (u *TektonInstallationUpsert) UpdateLastCheckedAt() *TektonInstallationUpse
 // ClearLastCheckedAt clears the value of the "last_checked_at" field.
 func (u *TektonInstallationUpsert) ClearLastCheckedAt() *TektonInstallationUpsert {
 	u.SetNull(tektoninstallation.FieldLastCheckedAt)
+	return u
+}
+
+// SetPluginCacheSize sets the "plugin_cache_size" field.
+func (u *TektonInstallationUpsert) SetPluginCacheSize(v string) *TektonInstallationUpsert {
+	u.Set(tektoninstallation.FieldPluginCacheSize, v)
+	return u
+}
+
+// UpdatePluginCacheSize sets the "plugin_cache_size" field to the value that was provided on create.
+func (u *TektonInstallationUpsert) UpdatePluginCacheSize() *TektonInstallationUpsert {
+	u.SetExcluded(tektoninstallation.FieldPluginCacheSize)
+	return u
+}
+
+// ClearPluginCacheSize clears the value of the "plugin_cache_size" field.
+func (u *TektonInstallationUpsert) ClearPluginCacheSize() *TektonInstallationUpsert {
+	u.SetNull(tektoninstallation.FieldPluginCacheSize)
+	return u
+}
+
+// SetPluginCacheStorageClass sets the "plugin_cache_storage_class" field.
+func (u *TektonInstallationUpsert) SetPluginCacheStorageClass(v string) *TektonInstallationUpsert {
+	u.Set(tektoninstallation.FieldPluginCacheStorageClass, v)
+	return u
+}
+
+// UpdatePluginCacheStorageClass sets the "plugin_cache_storage_class" field to the value that was provided on create.
+func (u *TektonInstallationUpsert) UpdatePluginCacheStorageClass() *TektonInstallationUpsert {
+	u.SetExcluded(tektoninstallation.FieldPluginCacheStorageClass)
+	return u
+}
+
+// ClearPluginCacheStorageClass clears the value of the "plugin_cache_storage_class" field.
+func (u *TektonInstallationUpsert) ClearPluginCacheStorageClass() *TektonInstallationUpsert {
+	u.SetNull(tektoninstallation.FieldPluginCacheStorageClass)
 	return u
 }
 
@@ -652,6 +724,48 @@ func (u *TektonInstallationUpsertOne) UpdateLastCheckedAt() *TektonInstallationU
 func (u *TektonInstallationUpsertOne) ClearLastCheckedAt() *TektonInstallationUpsertOne {
 	return u.Update(func(s *TektonInstallationUpsert) {
 		s.ClearLastCheckedAt()
+	})
+}
+
+// SetPluginCacheSize sets the "plugin_cache_size" field.
+func (u *TektonInstallationUpsertOne) SetPluginCacheSize(v string) *TektonInstallationUpsertOne {
+	return u.Update(func(s *TektonInstallationUpsert) {
+		s.SetPluginCacheSize(v)
+	})
+}
+
+// UpdatePluginCacheSize sets the "plugin_cache_size" field to the value that was provided on create.
+func (u *TektonInstallationUpsertOne) UpdatePluginCacheSize() *TektonInstallationUpsertOne {
+	return u.Update(func(s *TektonInstallationUpsert) {
+		s.UpdatePluginCacheSize()
+	})
+}
+
+// ClearPluginCacheSize clears the value of the "plugin_cache_size" field.
+func (u *TektonInstallationUpsertOne) ClearPluginCacheSize() *TektonInstallationUpsertOne {
+	return u.Update(func(s *TektonInstallationUpsert) {
+		s.ClearPluginCacheSize()
+	})
+}
+
+// SetPluginCacheStorageClass sets the "plugin_cache_storage_class" field.
+func (u *TektonInstallationUpsertOne) SetPluginCacheStorageClass(v string) *TektonInstallationUpsertOne {
+	return u.Update(func(s *TektonInstallationUpsert) {
+		s.SetPluginCacheStorageClass(v)
+	})
+}
+
+// UpdatePluginCacheStorageClass sets the "plugin_cache_storage_class" field to the value that was provided on create.
+func (u *TektonInstallationUpsertOne) UpdatePluginCacheStorageClass() *TektonInstallationUpsertOne {
+	return u.Update(func(s *TektonInstallationUpsert) {
+		s.UpdatePluginCacheStorageClass()
+	})
+}
+
+// ClearPluginCacheStorageClass clears the value of the "plugin_cache_storage_class" field.
+func (u *TektonInstallationUpsertOne) ClearPluginCacheStorageClass() *TektonInstallationUpsertOne {
+	return u.Update(func(s *TektonInstallationUpsert) {
+		s.ClearPluginCacheStorageClass()
 	})
 }
 
@@ -999,6 +1113,48 @@ func (u *TektonInstallationUpsertBulk) UpdateLastCheckedAt() *TektonInstallation
 func (u *TektonInstallationUpsertBulk) ClearLastCheckedAt() *TektonInstallationUpsertBulk {
 	return u.Update(func(s *TektonInstallationUpsert) {
 		s.ClearLastCheckedAt()
+	})
+}
+
+// SetPluginCacheSize sets the "plugin_cache_size" field.
+func (u *TektonInstallationUpsertBulk) SetPluginCacheSize(v string) *TektonInstallationUpsertBulk {
+	return u.Update(func(s *TektonInstallationUpsert) {
+		s.SetPluginCacheSize(v)
+	})
+}
+
+// UpdatePluginCacheSize sets the "plugin_cache_size" field to the value that was provided on create.
+func (u *TektonInstallationUpsertBulk) UpdatePluginCacheSize() *TektonInstallationUpsertBulk {
+	return u.Update(func(s *TektonInstallationUpsert) {
+		s.UpdatePluginCacheSize()
+	})
+}
+
+// ClearPluginCacheSize clears the value of the "plugin_cache_size" field.
+func (u *TektonInstallationUpsertBulk) ClearPluginCacheSize() *TektonInstallationUpsertBulk {
+	return u.Update(func(s *TektonInstallationUpsert) {
+		s.ClearPluginCacheSize()
+	})
+}
+
+// SetPluginCacheStorageClass sets the "plugin_cache_storage_class" field.
+func (u *TektonInstallationUpsertBulk) SetPluginCacheStorageClass(v string) *TektonInstallationUpsertBulk {
+	return u.Update(func(s *TektonInstallationUpsert) {
+		s.SetPluginCacheStorageClass(v)
+	})
+}
+
+// UpdatePluginCacheStorageClass sets the "plugin_cache_storage_class" field to the value that was provided on create.
+func (u *TektonInstallationUpsertBulk) UpdatePluginCacheStorageClass() *TektonInstallationUpsertBulk {
+	return u.Update(func(s *TektonInstallationUpsert) {
+		s.UpdatePluginCacheStorageClass()
+	})
+}
+
+// ClearPluginCacheStorageClass clears the value of the "plugin_cache_storage_class" field.
+func (u *TektonInstallationUpsertBulk) ClearPluginCacheStorageClass() *TektonInstallationUpsertBulk {
+	return u.Update(func(s *TektonInstallationUpsert) {
+		s.ClearPluginCacheStorageClass()
 	})
 }
 

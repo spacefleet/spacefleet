@@ -86,6 +86,16 @@ func LastCheckedAt(v time.Time) predicate.TektonInstallation {
 	return predicate.TektonInstallation(sql.FieldEQ(FieldLastCheckedAt, v))
 }
 
+// PluginCacheSize applies equality check predicate on the "plugin_cache_size" field. It's identical to PluginCacheSizeEQ.
+func PluginCacheSize(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldEQ(FieldPluginCacheSize, v))
+}
+
+// PluginCacheStorageClass applies equality check predicate on the "plugin_cache_storage_class" field. It's identical to PluginCacheStorageClassEQ.
+func PluginCacheStorageClass(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldEQ(FieldPluginCacheStorageClass, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.TektonInstallation {
 	return predicate.TektonInstallation(sql.FieldEQ(FieldCreatedAt, v))
@@ -419,6 +429,156 @@ func LastCheckedAtIsNil() predicate.TektonInstallation {
 // LastCheckedAtNotNil applies the NotNil predicate on the "last_checked_at" field.
 func LastCheckedAtNotNil() predicate.TektonInstallation {
 	return predicate.TektonInstallation(sql.FieldNotNull(FieldLastCheckedAt))
+}
+
+// PluginCacheSizeEQ applies the EQ predicate on the "plugin_cache_size" field.
+func PluginCacheSizeEQ(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldEQ(FieldPluginCacheSize, v))
+}
+
+// PluginCacheSizeNEQ applies the NEQ predicate on the "plugin_cache_size" field.
+func PluginCacheSizeNEQ(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldNEQ(FieldPluginCacheSize, v))
+}
+
+// PluginCacheSizeIn applies the In predicate on the "plugin_cache_size" field.
+func PluginCacheSizeIn(vs ...string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldIn(FieldPluginCacheSize, vs...))
+}
+
+// PluginCacheSizeNotIn applies the NotIn predicate on the "plugin_cache_size" field.
+func PluginCacheSizeNotIn(vs ...string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldNotIn(FieldPluginCacheSize, vs...))
+}
+
+// PluginCacheSizeGT applies the GT predicate on the "plugin_cache_size" field.
+func PluginCacheSizeGT(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldGT(FieldPluginCacheSize, v))
+}
+
+// PluginCacheSizeGTE applies the GTE predicate on the "plugin_cache_size" field.
+func PluginCacheSizeGTE(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldGTE(FieldPluginCacheSize, v))
+}
+
+// PluginCacheSizeLT applies the LT predicate on the "plugin_cache_size" field.
+func PluginCacheSizeLT(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldLT(FieldPluginCacheSize, v))
+}
+
+// PluginCacheSizeLTE applies the LTE predicate on the "plugin_cache_size" field.
+func PluginCacheSizeLTE(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldLTE(FieldPluginCacheSize, v))
+}
+
+// PluginCacheSizeContains applies the Contains predicate on the "plugin_cache_size" field.
+func PluginCacheSizeContains(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldContains(FieldPluginCacheSize, v))
+}
+
+// PluginCacheSizeHasPrefix applies the HasPrefix predicate on the "plugin_cache_size" field.
+func PluginCacheSizeHasPrefix(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldHasPrefix(FieldPluginCacheSize, v))
+}
+
+// PluginCacheSizeHasSuffix applies the HasSuffix predicate on the "plugin_cache_size" field.
+func PluginCacheSizeHasSuffix(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldHasSuffix(FieldPluginCacheSize, v))
+}
+
+// PluginCacheSizeIsNil applies the IsNil predicate on the "plugin_cache_size" field.
+func PluginCacheSizeIsNil() predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldIsNull(FieldPluginCacheSize))
+}
+
+// PluginCacheSizeNotNil applies the NotNil predicate on the "plugin_cache_size" field.
+func PluginCacheSizeNotNil() predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldNotNull(FieldPluginCacheSize))
+}
+
+// PluginCacheSizeEqualFold applies the EqualFold predicate on the "plugin_cache_size" field.
+func PluginCacheSizeEqualFold(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldEqualFold(FieldPluginCacheSize, v))
+}
+
+// PluginCacheSizeContainsFold applies the ContainsFold predicate on the "plugin_cache_size" field.
+func PluginCacheSizeContainsFold(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldContainsFold(FieldPluginCacheSize, v))
+}
+
+// PluginCacheStorageClassEQ applies the EQ predicate on the "plugin_cache_storage_class" field.
+func PluginCacheStorageClassEQ(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldEQ(FieldPluginCacheStorageClass, v))
+}
+
+// PluginCacheStorageClassNEQ applies the NEQ predicate on the "plugin_cache_storage_class" field.
+func PluginCacheStorageClassNEQ(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldNEQ(FieldPluginCacheStorageClass, v))
+}
+
+// PluginCacheStorageClassIn applies the In predicate on the "plugin_cache_storage_class" field.
+func PluginCacheStorageClassIn(vs ...string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldIn(FieldPluginCacheStorageClass, vs...))
+}
+
+// PluginCacheStorageClassNotIn applies the NotIn predicate on the "plugin_cache_storage_class" field.
+func PluginCacheStorageClassNotIn(vs ...string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldNotIn(FieldPluginCacheStorageClass, vs...))
+}
+
+// PluginCacheStorageClassGT applies the GT predicate on the "plugin_cache_storage_class" field.
+func PluginCacheStorageClassGT(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldGT(FieldPluginCacheStorageClass, v))
+}
+
+// PluginCacheStorageClassGTE applies the GTE predicate on the "plugin_cache_storage_class" field.
+func PluginCacheStorageClassGTE(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldGTE(FieldPluginCacheStorageClass, v))
+}
+
+// PluginCacheStorageClassLT applies the LT predicate on the "plugin_cache_storage_class" field.
+func PluginCacheStorageClassLT(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldLT(FieldPluginCacheStorageClass, v))
+}
+
+// PluginCacheStorageClassLTE applies the LTE predicate on the "plugin_cache_storage_class" field.
+func PluginCacheStorageClassLTE(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldLTE(FieldPluginCacheStorageClass, v))
+}
+
+// PluginCacheStorageClassContains applies the Contains predicate on the "plugin_cache_storage_class" field.
+func PluginCacheStorageClassContains(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldContains(FieldPluginCacheStorageClass, v))
+}
+
+// PluginCacheStorageClassHasPrefix applies the HasPrefix predicate on the "plugin_cache_storage_class" field.
+func PluginCacheStorageClassHasPrefix(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldHasPrefix(FieldPluginCacheStorageClass, v))
+}
+
+// PluginCacheStorageClassHasSuffix applies the HasSuffix predicate on the "plugin_cache_storage_class" field.
+func PluginCacheStorageClassHasSuffix(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldHasSuffix(FieldPluginCacheStorageClass, v))
+}
+
+// PluginCacheStorageClassIsNil applies the IsNil predicate on the "plugin_cache_storage_class" field.
+func PluginCacheStorageClassIsNil() predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldIsNull(FieldPluginCacheStorageClass))
+}
+
+// PluginCacheStorageClassNotNil applies the NotNil predicate on the "plugin_cache_storage_class" field.
+func PluginCacheStorageClassNotNil() predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldNotNull(FieldPluginCacheStorageClass))
+}
+
+// PluginCacheStorageClassEqualFold applies the EqualFold predicate on the "plugin_cache_storage_class" field.
+func PluginCacheStorageClassEqualFold(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldEqualFold(FieldPluginCacheStorageClass, v))
+}
+
+// PluginCacheStorageClassContainsFold applies the ContainsFold predicate on the "plugin_cache_storage_class" field.
+func PluginCacheStorageClassContainsFold(v string) predicate.TektonInstallation {
+	return predicate.TektonInstallation(sql.FieldContainsFold(FieldPluginCacheStorageClass, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

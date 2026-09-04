@@ -22,6 +22,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/spacefleet/spacefleet/ent/cloudcredential"
 	"github.com/spacefleet/spacefleet/lib/chartcredentials"
 	"github.com/spacefleet/spacefleet/lib/cloudauth"
 	"github.com/spacefleet/spacefleet/lib/cloudcredentials"
@@ -159,11 +160,11 @@ type Resolved struct {
 	HasCredential bool
 	HasGitToken   bool
 	// HasCloudAuth is set when a cloud credential was resolved and its env file
-	// injected (out.Files[tofu.AWSEnvFile]); the terraform script sources it.
+	// injected (out.Files[tofu.CloudEnvFile]); the terraform script sources it.
 	HasCloudAuth bool
 	// Env is non-secret environment the step exports (e.g. AWS_REGION and the
 	// non-sensitive variables). The planner threads it into RunSpec.Env. Secret
-	// credential keys NEVER go here — only into the mounted Files[tofu.AWSEnvFile].
+	// credential keys NEVER go here — only into the mounted Files[tofu.CloudEnvFile].
 	Env map[string]string
 	// SecretEnv is the sensitive variables (decrypted), injected into the step as
 	// env vars sourced from the per-run creds Secret (never inline in the TaskRun
@@ -276,15 +277,17 @@ func (r *Resolver) Resolve(ctx context.Context, in RunInputs) (Resolved, error) 
 	}
 
 	// Attach a cloud credential, when one is set (a terraform component): resolve
-	// (decrypt) it, materialize the AWS env (pre-assuming any role via
-	// STS), and write the secret keys into a sourceable env file as `export
-	// K='V'` lines. The keys (access/secret/token) land ONLY in the mounted file
-	// — never in out.Env, the script string, or the TaskRun manifest, exactly as
-	// the chart password and git token do. Only the non-secret region is routed
-	// to out.Env so the planner can put it on the pod env block. Unlike the
-	// chart-credential and git-token blocks above, this is NOT gated on PullsChart:
-	// a terraform uninstall (tofu destroy) still reads remote state and so still
-	// needs backend auth, so the credential is honored for every action.
+	// (decrypt) it and materialize the environment its provider's state backend
+	// and the module's providers read (cloudauth.Env — for AWS this pre-assumes
+	// any role via STS). The secret material lands ONLY in the mounted env file
+	// as `export K='V'` lines — never in out.Env, the script string, or the
+	// TaskRun manifest, exactly as the chart password and git token do; only
+	// the non-secret identifiers (AWS_REGION, GOOGLE_PROJECT, ARM_CLIENT_ID, …)
+	// are routed to out.Env so the planner can put them on the pod env block.
+	// Unlike the chart-credential and git-token blocks above, this is NOT gated
+	// on PullsChart: a terraform uninstall (tofu destroy) still reads remote
+	// state and so still needs backend auth, so the credential is honored for
+	// every action.
 	if in.CloudCredentialID != uuid.Nil {
 		if r.cloudCreds == nil {
 			return Resolved{}, fmt.Errorf("deploy: a cloud credential is referenced but the cloud-credentials service is not configured")
@@ -293,28 +296,28 @@ func (r *Resolver) Resolve(ctx context.Context, in RunInputs) (Resolved, error) 
 		if err != nil {
 			return Resolved{}, err
 		}
-		secretEnv, region, err := cloudauth.AWSEnv(ctx, resolved)
+		secretEnv, plainEnv, err := cloudauth.Env(ctx, resolved)
 		if err != nil {
 			return Resolved{}, err
 		}
-		out.Files[tofu.AWSEnvFile] = renderEnvFile(secretEnv)
-		if region != "" {
-			if out.Env == nil {
-				out.Env = map[string]string{}
-			}
-			out.Env["AWS_REGION"] = region
+		out.Files[tofu.CloudEnvFile] = renderEnvFile(secretEnv)
+		if len(plainEnv) > 0 && out.Env == nil {
+			out.Env = map[string]string{}
+		}
+		for k, v := range plainEnv {
+			out.Env[k] = v
 		}
 		out.HasCloudAuth = true
 
-		// First-party DynamoDB state locking: when the component names a lock
-		// table, make sure it exists before the step runs — created with the
-		// schema OpenTofu requires when missing — using the same materialized
-		// credential the step gets (no second STS round trip). Idempotent and
-		// cheap (one DescribeTable when the table exists), so it runs for both
-		// the plan and apply units. A definitely-missing table that cannot be
-		// created fails the run here, with a clearer error than a mid-step
-		// lock failure.
-		if in.DynamoDBLockTable != "" {
+		// First-party DynamoDB state locking (an s3-backend, AWS-credential
+		// concern): when the component names a lock table, make sure it exists
+		// before the step runs — created with the schema OpenTofu requires when
+		// missing — using the same materialized credential the step gets (no
+		// second STS round trip). Idempotent and cheap (one DescribeTable when
+		// the table exists), so it runs for both the plan and apply units. A
+		// definitely-missing table that cannot be created fails the run here,
+		// with a clearer error than a mid-step lock failure.
+		if in.DynamoDBLockTable != "" && resolved.Provider == cloudcredential.ProviderAWS {
 			if err := r.ensureLockTable(ctx, secretEnv, in.DynamoDBLockRegion, in.DynamoDBLockTable); err != nil {
 				return Resolved{}, err
 			}

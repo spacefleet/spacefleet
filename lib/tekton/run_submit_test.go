@@ -239,3 +239,36 @@ func TestBuildTaskRunTimeout(t *testing.T) {
 		t.Fatal("zero Timeout must leave spec.timeout unset")
 	}
 }
+
+// TestBuildTaskRunPluginCache: a plugin-cache claim is mounted read-write at
+// the cache path beside the creds volume, and is absent when unset.
+func TestBuildTaskRunPluginCache(t *testing.T) {
+	t.Parallel()
+	spec := RunSpec{Name: "tofu-infra", Image: "img", Script: "true", Files: map[string]string{"kubeconfig": "k"}, PluginCacheClaim: PluginCacheClaim}
+	tr := buildTaskRun("sf-jobs", "helm-creds-1", spec)
+	taskSpec := tr.Object["spec"].(map[string]any)["taskSpec"].(map[string]any)
+	volumes := taskSpec["volumes"].([]any)
+	mounts := taskSpec["steps"].([]any)[0].(map[string]any)["volumeMounts"].([]any)
+	if len(volumes) != 2 || len(mounts) != 2 {
+		t.Fatalf("volumes = %v mounts = %v, want creds + plugin cache", volumes, mounts)
+	}
+	vol := volumes[1].(map[string]any)
+	if vol["name"] != pluginCacheVolumeName || vol["persistentVolumeClaim"].(map[string]any)["claimName"] != PluginCacheClaim {
+		t.Errorf("plugin cache volume = %v", vol)
+	}
+	mount := mounts[1].(map[string]any)
+	if mount["mountPath"] != PluginCacheMountPath || mount["readOnly"] == true {
+		t.Errorf("plugin cache mount = %v, want read-write at %s", mount, PluginCacheMountPath)
+	}
+
+	// Without files, the cache is the only volume.
+	tr = buildTaskRun("sf-jobs", "", RunSpec{Name: "x", Image: "img", Script: "true", PluginCacheClaim: PluginCacheClaim})
+	taskSpec = tr.Object["spec"].(map[string]any)["taskSpec"].(map[string]any)
+	if len(taskSpec["volumes"].([]any)) != 1 {
+		t.Errorf("volumes = %v, want only the plugin cache", taskSpec["volumes"])
+	}
+	tr = buildTaskRun("sf-jobs", "", RunSpec{Name: "x", Image: "img", Script: "true"})
+	if _, ok := tr.Object["spec"].(map[string]any)["taskSpec"].(map[string]any)["volumes"]; ok {
+		t.Error("no files and no cache must add no volumes")
+	}
+}

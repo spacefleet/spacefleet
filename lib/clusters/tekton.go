@@ -120,6 +120,50 @@ func (s *Service) EnableTekton(ctx context.Context, orgID, id uuid.UUID) (*ent.T
 	return upd.Save(ctx)
 }
 
+// ErrInvalidPluginCache is returned by SetTektonPluginCache for a size that is
+// not a positive Kubernetes quantity. A handler maps it to 400.
+var ErrInvalidPluginCache = errors.New("clusters: plugin cache size must be a positive Kubernetes quantity such as 20Gi")
+
+// SetTektonPluginCache configures the OpenTofu provider plugin cache on a
+// runner cluster: with a non-empty size it ensures the cache claim exists in
+// the jobs namespace (created with that size from storageClass, or the
+// cluster default when empty) and records the settings; with an empty size
+// it deletes the claim and clears them. The cluster is touched first, so a
+// cluster that cannot be reached leaves the stored settings unchanged. An
+// existing claim is never resized or re-classed in place — remove the cache
+// and set it up again to change either.
+func (s *Service) SetTektonPluginCache(ctx context.Context, orgID, id uuid.UUID, size, storageClass string) (*ent.TektonInstallation, error) {
+	if size != "" && !tekton.ValidPluginCacheSize(size) {
+		return nil, ErrInvalidPluginCache
+	}
+	conn, err := s.ConnForTekton(ctx, orgID, id)
+	if err != nil {
+		return nil, err
+	}
+	ensure, remove := s.ensurePluginCacheFn, s.deletePluginCacheFn
+	if ensure == nil {
+		ensure = tekton.EnsurePluginCache
+	}
+	if remove == nil {
+		remove = tekton.DeletePluginCache
+	}
+	if size == "" {
+		if err := remove(ctx, conn, tekton.JobsNamespace); err != nil {
+			return nil, err
+		}
+	} else if err := ensure(ctx, conn, tekton.JobsNamespace, size, storageClass); err != nil {
+		return nil, err
+	}
+	row, err := s.ensureTektonRow(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if size == "" {
+		storageClass = ""
+	}
+	return row.Update().SetPluginCacheSize(size).SetPluginCacheStorageClass(storageClass).Save(ctx)
+}
+
 // DisableTekton stops designating a cluster as a job runner. It does not
 // uninstall Tekton (that is a separate, explicit action) — it only clears the
 // opt-in flag.

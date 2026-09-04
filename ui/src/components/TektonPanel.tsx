@@ -13,6 +13,7 @@ import { ClusterCapabilities } from "./ClusterCapabilities";
 import { useObjectStream } from "../lib/useObjectStream";
 
 type TektonStatus = components["schemas"]["TektonStatus"];
+type TektonPluginCache = components["schemas"]["TektonPluginCache"];
 type InstallStatus = TektonStatus["status"];
 
 // Statuses where an install/uninstall job is in flight — the install stream is
@@ -116,10 +117,9 @@ export function TektonPanel({
   async function onEnable() {
     setBusy(true);
     setActionError(null);
-    const { data, error } = await api.POST(
-      "/api/clusters/{id}/tekton/enable",
-      { params: { path: { id: clusterId } } },
-    );
+    const { data, error } = await api.POST("/api/clusters/{id}/tekton/enable", {
+      params: { path: { id: clusterId } },
+    });
     setBusy(false);
     if (!error && data) settle(data);
     else if (error)
@@ -196,9 +196,7 @@ export function TektonPanel({
       {/* Action errors render inline and leave the controls in place so the
           operator can read the message and retry — distinct from a load error,
           which blanks the panel. */}
-      {actionError && (
-        <p className="p-4 text-sm text-red-600">{actionError}</p>
-      )}
+      {actionError && <p className="p-4 text-sm text-red-600">{actionError}</p>}
 
       {/* Primary control: the single switch that turns this cluster into a job
           runner. Flipping it on installs Tekton if needed; off leaves the
@@ -247,10 +245,16 @@ export function TektonPanel({
               : "Controller not ready"}
             {/* The pinned version is the upgrade target Spacefleet manages — only
                 meaningful for a Spacefleet-managed install, not an existing one. */}
-            {!unmanaged && <>{" · "}Spacefleet installs {status.pinned_version}</>}
+            {!unmanaged && (
+              <>
+                {" · "}Spacefleet installs {status.pinned_version}
+              </>
+            )}
           </p>
           <p className="mt-1 text-xs text-neutral-400">
-            {unmanaged ? "Installed outside Spacefleet." : "Installed by Spacefleet."}
+            {unmanaged
+              ? "Installed outside Spacefleet."
+              : "Installed by Spacefleet."}
           </p>
           {updateAvailable && (
             <p className="mt-1 text-xs text-amber-700">
@@ -318,6 +322,18 @@ export function TektonPanel({
         </div>
       )}
 
+      {/* Provider plugin cache: a per-cluster volume OpenTofu steps share so
+          providers download once. Only meaningful once Tekton is present (the
+          claim lives in the jobs namespace the install creates). */}
+      {status.present && (
+        <PluginCacheSection
+          clusterId={clusterId}
+          cache={status.plugin_cache ?? null}
+          canEdit={canEdit}
+          onSaved={settle}
+        />
+      )}
+
       {showCapabilities && (
         <div className="p-4">
           <h3 className="pb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
@@ -355,7 +371,9 @@ function StatusLine({ status }: { status: TektonStatus }) {
   return (
     <div className="p-4">
       <div className={`flex items-center gap-2 ${tone}`}>
-        <Icon className={`h-5 w-5 shrink-0 ${inFlight ? "animate-spin" : ""}`} />
+        <Icon
+          className={`h-5 w-5 shrink-0 ${inFlight ? "animate-spin" : ""}`}
+        />
         <span className="text-sm font-medium">{headline}</span>
       </div>
       {status.status_message && (
@@ -428,5 +446,124 @@ function ProvenanceBadge({ managed }: { managed: boolean }) {
         </>
       )}
     </span>
+  );
+}
+
+// PluginCacheSection configures the OpenTofu provider plugin cache on the
+// runner: shows the current claim (size and class) with a remove action, or a
+// small form to create one. Saving calls the API, which creates or deletes the
+// claim on the cluster right away and returns the refreshed status.
+function PluginCacheSection({
+  clusterId,
+  cache,
+  canEdit,
+  onSaved,
+}: {
+  clusterId: string;
+  cache: TektonPluginCache | null;
+  canEdit: boolean;
+  onSaved: (status: TektonStatus) => void;
+}) {
+  const [size, setSize] = useState("20Gi");
+  const [storageClass, setStorageClass] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(next: { size: string; storage_class?: string }) {
+    setBusy(true);
+    setError(null);
+    const { data, error } = await api.PUT(
+      "/api/clusters/{id}/tekton/plugin-cache",
+      { params: { path: { id: clusterId } }, body: next },
+    );
+    setBusy(false);
+    if (error || !data) {
+      setError(error?.message ?? "Could not update the plugin cache");
+      return;
+    }
+    onSaved(data);
+  }
+
+  return (
+    <div className="p-4">
+      <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+        Provider plugin cache
+      </h3>
+      <p className="mt-1 text-xs text-neutral-500">
+        A shared volume OpenTofu steps on this cluster use as their provider
+        plugin cache, so a provider is downloaded once per cluster instead of
+        once per run.
+      </p>
+      {cache ? (
+        <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+          <span className="text-neutral-900">
+            <span className="font-medium">{cache.size}</span>
+            {cache.storage_class ? (
+              <span className="text-neutral-500"> · {cache.storage_class}</span>
+            ) : (
+              <span className="text-neutral-500"> · default storage class</span>
+            )}
+          </span>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => void save({ size: "" })}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Remove cache
+            </button>
+          )}
+        </div>
+      ) : canEdit ? (
+        <form
+          className="mt-2 flex flex-wrap items-end gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save({
+              size: size.trim(),
+              storage_class: storageClass.trim() || undefined,
+            });
+          }}
+        >
+          <label className="flex flex-col gap-1 text-xs text-neutral-600">
+            Size
+            <input
+              type="text"
+              aria-label="Plugin cache size"
+              value={size}
+              onChange={(e) => setSize(e.target.value)}
+              className="w-28 border border-neutral-300 px-2 py-1.5 font-mono text-sm text-neutral-900"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-neutral-600">
+            Storage class
+            <input
+              type="text"
+              aria-label="Plugin cache storage class"
+              value={storageClass}
+              placeholder="(cluster default)"
+              onChange={(e) => setStorageClass(e.target.value)}
+              className="w-48 border border-neutral-300 px-2 py-1.5 font-mono text-sm text-neutral-900 placeholder:font-sans"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={busy || size.trim() === ""}
+            className="bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+          >
+            {busy ? "Creating…" : "Create cache"}
+          </button>
+          <p className="basis-full text-xs text-neutral-500">
+            The storage class must support ReadWriteMany so steps on every node
+            can share the volume.
+          </p>
+        </form>
+      ) : (
+        <p className="mt-2 text-sm text-neutral-500">No cache configured.</p>
+      )}
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+    </div>
   );
 }

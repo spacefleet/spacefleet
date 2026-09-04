@@ -480,6 +480,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/clusters/{id}/tekton/plugin-cache": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Configure the OpenTofu provider plugin cache on a runner cluster
+         * @description Org-scoped, editor or above. Sets up (or removes) a shared provider
+         *     plugin cache for OpenTofu steps on this runner cluster: a
+         *     PersistentVolumeClaim in the jobs namespace, mounted into every OpenTofu
+         *     step as its plugin cache directory, so providers are downloaded once
+         *     per cluster rather than once per run. `size` is the claim's requested
+         *     storage (a Kubernetes quantity such as `20Gi`); an empty size removes
+         *     the cache (the claim is deleted). `storage_class` optionally names the
+         *     StorageClass; it must support ReadWriteMany for steps to schedule on
+         *     any node. The claim is created (or deleted) on the cluster right away;
+         *     a cluster that cannot be reached is a 502.
+         */
+        put: operations["setClusterTektonPluginCache"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/clusters/{id}/tekton/disable": {
         parameters: {
             query?: never;
@@ -1765,6 +1794,16 @@ export interface components {
          */
         TektonInstallStatus: "not_installed" | "installing" | "installed" | "upgrading" | "failed" | "uninstalling";
         /**
+         * @description The OpenTofu provider plugin cache on a runner cluster. Absent (or an
+         *     empty size) means no cache.
+         */
+        TektonPluginCache: {
+            /** @description Requested storage for the cache claim, a Kubernetes quantity (e.g. `20Gi`). Empty removes the cache. */
+            size: string;
+            /** @description The StorageClass of the claim; empty uses the cluster default. Must support ReadWriteMany. */
+            storage_class?: string;
+        };
+        /**
          * @description Whether a cluster is designated to run jobs (enabled) and the Tekton
          *     install lifecycle (status), reconciled with a live presence detection
          *     (present/controller_ready/detected_version). present and controller_ready
@@ -1819,6 +1858,7 @@ export interface components {
             update_available: boolean;
             /** Format: date-time */
             last_checked_at?: string | null;
+            plugin_cache?: components["schemas"]["TektonPluginCache"];
         };
         /** @description A minimal single-step job to run as a Tekton TaskRun. */
         TektonRunRequest: {
@@ -3502,6 +3542,33 @@ export interface operations {
         responses: {
             /** @description Enable accepted; install (if needed) is in progress */
             202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TektonStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setClusterTektonPluginCache: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ClusterID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TektonPluginCache"];
+            };
+        };
+        responses: {
+            /** @description The cluster's Tekton status with the cache settings */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

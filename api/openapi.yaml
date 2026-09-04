@@ -544,6 +544,39 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/clusters/{id}/tekton/plugin-cache:
+    put:
+      summary: Configure the OpenTofu provider plugin cache on a runner cluster
+      description: |
+        Org-scoped, editor or above. Sets up (or removes) a shared provider
+        plugin cache for OpenTofu steps on this runner cluster: a
+        PersistentVolumeClaim in the jobs namespace, mounted into every OpenTofu
+        step as its plugin cache directory, so providers are downloaded once
+        per cluster rather than once per run. `size` is the claim's requested
+        storage (a Kubernetes quantity such as `20Gi`); an empty size removes
+        the cache (the claim is deleted). `storage_class` optionally names the
+        StorageClass; it must support ReadWriteMany for steps to schedule on
+        any node. The claim is created (or deleted) on the cluster right away;
+        a cluster that cannot be reached is a 502.
+      operationId: setClusterTektonPluginCache
+      parameters:
+        - $ref: "#/components/parameters/ClusterID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TektonPluginCache"
+      responses:
+        "200":
+          description: The cluster's Tekton status with the cache settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TektonStatus"
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/clusters/{id}/tekton/disable:
     post:
       summary: Stop designating a cluster as a job runner
@@ -2398,6 +2431,20 @@ components:
           uninstalling,
         ]
 
+    TektonPluginCache:
+      type: object
+      description: |
+        The OpenTofu provider plugin cache on a runner cluster. Absent (or an
+        empty size) means no cache.
+      required: [size]
+      properties:
+        size:
+          type: string
+          description: Requested storage for the cache claim, a Kubernetes quantity (e.g. `20Gi`). Empty removes the cache.
+        storage_class:
+          type: string
+          description: The StorageClass of the claim; empty uses the cluster default. Must support ReadWriteMany.
+
     TektonStatus:
       type: object
       description: |
@@ -2476,6 +2523,8 @@ components:
           type: string
           format: date-time
           nullable: true
+        plugin_cache:
+          $ref: "#/components/schemas/TektonPluginCache"
 
     TektonRunRequest:
       type: object

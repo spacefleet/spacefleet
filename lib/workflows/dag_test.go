@@ -523,7 +523,7 @@ func TestValidateTerraformBackend(t *testing.T) {
 		t.Errorf("no backend: expected ErrInvalidConfig, got %v", err)
 	}
 	// Unsupported backend types (including the old kubernetes default) → rejected.
-	for _, backend := range []string{"kubernetes", "gcs", "pg"} {
+	for _, backend := range []string{"kubernetes", "azure", "pg"} {
 		n := tfNode(map[string]string{terraformConfigBackend: backend})
 		if err := validateDAG([]ComponentInput{n}); !errors.Is(err, ErrInvalidConfig) {
 			t.Errorf("backend=%q: expected ErrInvalidConfig, got %v", backend, err)
@@ -555,6 +555,37 @@ func TestValidateTerraformBackend(t *testing.T) {
 	extra := tfNode(map[string]string{terraformConfigBackendConfig: `{"bucket":"my-state","key":"prod/terraform.tfstate","region":"us-east-1","dynamodb_table":"tf-locks","encrypt":"true","kms_key_id":"arn:aws:kms:us-east-1:1:key/k"}`})
 	if err := validateDAG([]ComponentInput{extra}); err != nil {
 		t.Errorf("optional s3 settings: unexpected error %v", err)
+	}
+
+	// gcs and azurerm: each with its own required settings.
+	perBackend := map[string]map[string]string{
+		tofu.BackendGCS:   {"bucket": "acme-state", "prefix": "envs/prod"},
+		tofu.BackendAzure: {"storage_account_name": "acmestate", "container_name": "tfstate", "key": "prod.tfstate"},
+	}
+	for backend, full := range perBackend {
+		b, _ := json.Marshal(full)
+		ok := tfNode(map[string]string{terraformConfigBackend: backend, terraformConfigBackendConfig: string(b)})
+		if err := validateDAG([]ComponentInput{ok}); err != nil {
+			t.Errorf("%s backend with full config: unexpected error %v", backend, err)
+		}
+		for key := range full {
+			cfg := map[string]string{}
+			for k, v := range full {
+				cfg[k] = v
+			}
+			delete(cfg, key)
+			b, _ := json.Marshal(cfg)
+			n := tfNode(map[string]string{terraformConfigBackend: backend, terraformConfigBackendConfig: string(b)})
+			if err := validateDAG([]ComponentInput{n}); !errors.Is(err, ErrInvalidConfig) {
+				t.Errorf("%s config without %q: expected ErrInvalidConfig, got %v", backend, key, err)
+			}
+		}
+	}
+	// use_lockfile is an s3 setting; on another backend it simply passes
+	// through (no version gate).
+	gcsLock := tfNode(map[string]string{terraformConfigBackend: tofu.BackendGCS, terraformConfigBackendConfig: `{"bucket":"b","prefix":"p","use_lockfile":"true"}`, terraformConfigVersion: "1.9"})
+	if err := validateDAG([]ComponentInput{gcsLock}); err != nil {
+		t.Errorf("gcs with use_lockfile on 1.9: unexpected error %v", err)
 	}
 }
 

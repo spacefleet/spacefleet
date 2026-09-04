@@ -81,6 +81,10 @@ type WorkflowRunWorker struct {
 	// for the same reason as funcs.
 	ensureHandover func(ctx context.Context, conn k8s.Connection, namespace, name string, labels map[string]string) error
 	deleteHandover func(ctx context.Context, conn k8s.Connection, namespace, name string) error
+	// pluginCache reports the runner cluster's OpenTofu provider plugin cache
+	// claim ("" when none) — svc.PluginCacheClaim in production; a seam so
+	// planner unit tests run without a database (nil = no cache).
+	pluginCache func(ctx context.Context, clusterID uuid.UUID) (string, error)
 }
 
 // NewWorker builds the workflow run worker over the workflow service and the
@@ -93,6 +97,7 @@ func NewWorker(svc *Service, resolver *deploy.Resolver) *WorkflowRunWorker {
 	w.resolveOutputs = svc.ResolveComponentOutputs
 	w.ensureHandover = tekton.EnsureHandoverSecret
 	w.deleteHandover = tekton.DeleteHandoverSecret
+	w.pluginCache = svc.PluginCacheClaim
 	// A run the reaper settles had no live worker to sweep its planfile-handover
 	// Secrets; release them from here, the process that can reach the cluster.
 	svc.OnReaped(w.sweepReapedRun)

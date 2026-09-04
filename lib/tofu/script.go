@@ -52,7 +52,7 @@ import (
 // mounted under tekton.CredsMountPath. They match the helm/manifest renderer
 // names because the shared resolver (lib/deploy) assembles the same Files map: a
 // git-credentials line for a private github.com clone and, when a cloud
-// credential is attached, the AWS env file. A terraform component has no cluster
+// credential is attached, the cloud env file. A terraform component has no cluster
 // target, so no kubeconfig is injected. Kept as local constants so this package
 // does not import lib/helm for them (avoiding an import cycle and decoupling the
 // renderers).
@@ -63,13 +63,15 @@ const (
 	// from the mounted file at runtime and never lands in the script string, the
 	// clone's argv, the TaskRun manifest, or the workspace's .git/config.
 	GitCredentialsFile = "git-credentials"
-	// AWSEnvFile carries `export K='V'` lines for cloud (AWS) authentication —
-	// the s3 state backend and the module's AWS providers read it from the
-	// process env. When Apply.HasCloudAuth is set the script sources it
-	// (`. <mount>/aws.env`) before `tofu init`, so the credential values live only
-	// in the mounted file + the step's process env — never in the script string
-	// or the TaskRun manifest, exactly as the git-credentials file does.
-	AWSEnvFile = "aws.env"
+	// CloudEnvFile carries `export K='V'` lines for cloud authentication — the
+	// provider's secret material in the environment form its state backend
+	// and the module's providers read (AWS keys, the GCP service-account JSON
+	// as GOOGLE_CREDENTIALS, the Azure client secret; see cloudauth.Env). When
+	// Apply.HasCloudAuth is set the script sources it (`. <mount>/cloud.env`)
+	// before `tofu init`, so the credential values live only in the mounted
+	// file + the step's process env — never in the script string or the
+	// TaskRun manifest, exactly as the git-credentials file does.
+	CloudEnvFile = "cloud.env"
 	// KubeconfigFile carries the portable kubeconfig for the component's
 	// attached cluster authentication (auth_cluster_id) — a registered cluster
 	// the module's Kubernetes-backed providers (kubernetes/helm/kubectl)
@@ -158,12 +160,23 @@ const resourcesFilter = `[.values.root_module | recurse(.child_modules[]?) | .re
 // has no in-script delete (destroy keeps it — a destroy captures nothing).
 const OutputsKey = "outputs"
 
-// BackendS3 names the Amazon S3 state backend — the only supported backend
-// type today (the workflow validation enforces it; more types will join this
-// list). The backend is always managed by Spacefleet: the script writes a
-// backend_override.tf so the root module's state lands where the component
-// config says, regardless of any backend block the module ships with.
-const BackendS3 = "s3"
+// The supported state backends (the workflow validation enforces the set and
+// each one's required settings). The backend is always managed by Spacefleet:
+// the script writes a backend_override.tf so the root module's state lands
+// where the component config says, regardless of any backend block the module
+// ships with. Authentication comes from the attached cloud credential of the
+// matching provider (or the runner's own identity when none is attached).
+const (
+	// BackendS3 is Amazon S3 (bucket / key / region; optional dynamodb_table,
+	// encrypt, kms_key_id, use_lockfile).
+	BackendS3 = "s3"
+	// BackendGCS is Google Cloud Storage (bucket / prefix). Locking is native.
+	BackendGCS = "gcs"
+	// BackendAzure is Azure Blob Storage — OpenTofu's azurerm backend
+	// (storage_account_name / container_name / key; optional resource_group_name).
+	// Locking is native (blob leases).
+	BackendAzure = "azurerm"
+)
 
 // Apply is the inputs Script needs to render the terraform shell script.
 type Apply struct {
@@ -192,10 +205,10 @@ type Apply struct {
 	// GitCredentialsFile + a credential helper, set by the resolver when the
 	// component has a GitHub App installation attached.
 	HasGitToken bool
-	// HasCloudAuth, when set, sources the mounted AWSEnvFile (cloud/AWS
-	// credentials as `export K='V'` lines) before `tofu init` so the state
-	// backend and the module's providers authenticate from the process env. The
-	// values never appear in the script string or manifest.
+	// HasCloudAuth, when set, sources the mounted CloudEnvFile (the cloud
+	// credential's secret material as `export K='V'` lines) before `tofu init`
+	// so the state backend and the module's providers authenticate from the
+	// process env. The values never appear in the script string or manifest.
 	HasCloudAuth bool
 	// HasClusterAuth, when set, exports KUBE_CONFIG_PATH pointing at the
 	// mounted KubeconfigFile (the attached cluster authentication) before
@@ -240,6 +253,11 @@ type Apply struct {
 	// workspace's state. Empty keeps the default workspace. The workflow
 	// validation restricts the name to a safe token.
 	Workspace string
+	// PluginCacheDir, when set, is exported as TF_PLUGIN_CACHE_DIR before
+	// `tofu init`: the mounted per-runner-cluster provider plugin cache (see
+	// tekton.PluginCacheMountPath), so providers are downloaded once per
+	// cluster. Empty leaves OpenTofu downloading into the workspace.
+	PluginCacheDir string
 }
 
 // Script renders the /bin/sh script the terraform step runs. It clones the root
@@ -304,12 +322,12 @@ func Script(a Apply) string {
 	// provisioned, whose Role pins it to exactly that Secret — since the job
 	// already runs in the runner cluster.
 
-	// With cloud auth, source the mounted AWS env file so the credential values
+	// With cloud auth, source the mounted cloud env file so the credential values
 	// enter the process env before init — they live only in the mounted file +
 	// env, never in the script string or the TaskRun manifest. `. ` is the POSIX
 	// `source` builtin for /bin/sh.
 	if a.HasCloudAuth {
-		fmt.Fprintf(&b, ". %s\n", tekton.CredsMountPath+"/"+AWSEnvFile)
+		fmt.Fprintf(&b, ". %s\n", tekton.CredsMountPath+"/"+CloudEnvFile)
 	}
 
 	// With cluster auth, point the module's Kubernetes-backed providers at the
@@ -321,6 +339,12 @@ func Script(a Apply) string {
 	// in-cluster credentials (see the KubeconfigFile doc).
 	if a.HasClusterAuth {
 		fmt.Fprintf(&b, "export KUBE_CONFIG_PATH=%s\n", shQuote(tekton.CredsMountPath+"/"+KubeconfigFile))
+	}
+
+	// Provider plugin cache: point init at the mounted per-cluster cache so a
+	// provider already there is linked instead of downloaded again.
+	if a.PluginCacheDir != "" {
+		fmt.Fprintf(&b, "export TF_PLUGIN_CACHE_DIR=%s\n", shQuote(a.PluginCacheDir))
 	}
 
 	// Generate the backend override so the root module's state lands where we

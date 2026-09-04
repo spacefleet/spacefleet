@@ -30,6 +30,10 @@ const (
 	FieldJobID = "job_id"
 	// FieldLastCheckedAt holds the string denoting the last_checked_at field in the database.
 	FieldLastCheckedAt = "last_checked_at"
+	// FieldPluginCacheSize holds the string denoting the plugin_cache_size field in the database.
+	FieldPluginCacheSize = "plugin_cache_size"
+	// FieldPluginCacheStorageClass holds the string denoting the plugin_cache_storage_class field in the database.
+	FieldPluginCacheStorageClass = "plugin_cache_storage_class"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -57,6 +61,8 @@ var Columns = []string{
 	FieldStatusMessage,
 	FieldJobID,
 	FieldLastCheckedAt,
+	FieldPluginCacheSize,
+	FieldPluginCacheStorageClass,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -155,6 +161,16 @@ func ByJobID(opts ...sql.OrderTermOption) OrderOption {
 // ByLastCheckedAt orders the results by the last_checked_at field.
 func ByLastCheckedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastCheckedAt, opts...).ToFunc()
+}
+
+// ByPluginCacheSize orders the results by the plugin_cache_size field.
+func ByPluginCacheSize(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPluginCacheSize, opts...).ToFunc()
+}
+
+// ByPluginCacheStorageClass orders the results by the plugin_cache_storage_class field.
+func ByPluginCacheStorageClass(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPluginCacheStorageClass, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

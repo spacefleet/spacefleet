@@ -33,6 +33,10 @@ type TektonInstallation struct {
 	JobID string `json:"job_id,omitempty"`
 	// LastCheckedAt holds the value of the "last_checked_at" field.
 	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
+	// PluginCacheSize holds the value of the "plugin_cache_size" field.
+	PluginCacheSize string `json:"plugin_cache_size,omitempty"`
+	// PluginCacheStorageClass holds the value of the "plugin_cache_storage_class" field.
+	PluginCacheStorageClass string `json:"plugin_cache_storage_class,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -70,7 +74,7 @@ func (*TektonInstallation) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case tektoninstallation.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case tektoninstallation.FieldStatus, tektoninstallation.FieldInstalledVersion, tektoninstallation.FieldStatusMessage, tektoninstallation.FieldJobID:
+		case tektoninstallation.FieldStatus, tektoninstallation.FieldInstalledVersion, tektoninstallation.FieldStatusMessage, tektoninstallation.FieldJobID, tektoninstallation.FieldPluginCacheSize, tektoninstallation.FieldPluginCacheStorageClass:
 			values[i] = new(sql.NullString)
 		case tektoninstallation.FieldLastCheckedAt, tektoninstallation.FieldCreatedAt, tektoninstallation.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -139,6 +143,18 @@ func (_m *TektonInstallation) assignValues(columns []string, values []any) error
 			} else if value.Valid {
 				_m.LastCheckedAt = new(time.Time)
 				*_m.LastCheckedAt = value.Time
+			}
+		case tektoninstallation.FieldPluginCacheSize:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field plugin_cache_size", values[i])
+			} else if value.Valid {
+				_m.PluginCacheSize = value.String
+			}
+		case tektoninstallation.FieldPluginCacheStorageClass:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field plugin_cache_storage_class", values[i])
+			} else if value.Valid {
+				_m.PluginCacheStorageClass = value.String
 			}
 		case tektoninstallation.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -215,6 +231,12 @@ func (_m *TektonInstallation) String() string {
 		builder.WriteString("last_checked_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("plugin_cache_size=")
+	builder.WriteString(_m.PluginCacheSize)
+	builder.WriteString(", ")
+	builder.WriteString("plugin_cache_storage_class=")
+	builder.WriteString(_m.PluginCacheStorageClass)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

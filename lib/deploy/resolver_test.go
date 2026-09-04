@@ -170,9 +170,9 @@ func TestResolve_CloudCredential(t *testing.T) {
 		t.Error("HasCloudAuth = false, want true")
 	}
 
-	envFile := out.Files[tofu.AWSEnvFile]
+	envFile := out.Files[tofu.CloudEnvFile]
 	if envFile == "" {
-		t.Fatalf("Files[%q] is empty", tofu.AWSEnvFile)
+		t.Fatalf("Files[%q] is empty", tofu.CloudEnvFile)
 	}
 	if !strings.Contains(envFile, "export AWS_ACCESS_KEY_ID='AKIAEXAMPLE'\n") {
 		t.Errorf("env file missing access key line:\n%s", envFile)
@@ -240,8 +240,8 @@ func TestResolve_NoCloudCredential(t *testing.T) {
 	if out.HasCloudAuth {
 		t.Error("HasCloudAuth = true, want false")
 	}
-	if _, ok := out.Files[tofu.AWSEnvFile]; ok {
-		t.Errorf("Files[%q] present when no cloud credential set", tofu.AWSEnvFile)
+	if _, ok := out.Files[tofu.CloudEnvFile]; ok {
+		t.Errorf("Files[%q] present when no cloud credential set", tofu.CloudEnvFile)
 	}
 }
 
@@ -412,5 +412,44 @@ func TestResolve_ExposeTFVars(t *testing.T) {
 	}
 	if _, ok := out.Env["TF_VAR_region"]; ok {
 		t.Errorf("without the opt-in no TF_VAR_ copies must be made: %v", out.Env)
+	}
+}
+
+// TestResolve_GCPCredential: a gcp credential lands its service-account key
+// in the mounted cloud env file (never in Env), the project on the pod env,
+// and no DynamoDB lock-table ensure happens even when a table is named (that
+// is an s3 concern).
+func TestResolve_GCPCredential(t *testing.T) {
+	t.Parallel()
+	cloud := fakeCloudCreds{resolved: cloudcredentials.Resolved{
+		Provider: cloudcredential.ProviderGcp,
+		Config:   map[string]string{cloudcredentials.ConfigKeyGCPProject: "acme-prod"},
+		Secrets:  map[string]string{cloudcredentials.CredKeyGCPServiceKey: "{\"type\":\"service_account\",\n\"private_key\":\"it's secret\"}"},
+	}}
+	r := NewResolver(fakeConns{}, nil, nil, cloud, nil)
+	ensured := false
+	r.ensureLockTable = func(context.Context, map[string]string, string, string) error { ensured = true; return nil }
+	out, err := r.Resolve(context.Background(), RunInputs{
+		OrgID: uuid.New(), RunnerClusterID: uuid.New(), CloudCredentialID: uuid.New(), PullsChart: true,
+		DynamoDBLockTable: "tf-locks", DynamoDBLockRegion: "us-east-1",
+	})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if !out.HasCloudAuth {
+		t.Error("HasCloudAuth must be set")
+	}
+	envFile := out.Files[tofu.CloudEnvFile]
+	if !strings.Contains(envFile, "export GOOGLE_CREDENTIALS='{\"type\":\"service_account\",\n\"private_key\":\"it'\\''s secret\"}'\n") {
+		t.Errorf("cloud env file = %q", envFile)
+	}
+	if out.Env["GOOGLE_PROJECT"] != "acme-prod" || out.Env["CLOUDSDK_CORE_PROJECT"] != "acme-prod" {
+		t.Errorf("project must be on the pod env: %v", out.Env)
+	}
+	if _, ok := out.Env["GOOGLE_CREDENTIALS"]; ok {
+		t.Error("the service account key must never be on the pod env")
+	}
+	if ensured {
+		t.Error("a DynamoDB lock table must not be ensured for a gcp credential")
 	}
 }

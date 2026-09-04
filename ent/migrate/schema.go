@@ -549,6 +549,8 @@ var (
 		{Name: "status_message", Type: field.TypeString, Nullable: true},
 		{Name: "job_id", Type: field.TypeString, Nullable: true},
 		{Name: "last_checked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "plugin_cache_size", Type: field.TypeString, Nullable: true},
+		{Name: "plugin_cache_storage_class", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "cluster_id", Type: field.TypeUUID, Unique: true},
@@ -561,7 +563,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "tekton_installations_clusters_tekton",
-				Columns:    []*schema.Column{TektonInstallationsColumns[9]},
+				Columns:    []*schema.Column{TektonInstallationsColumns[11]},
 				RefColumns: []*schema.Column{ClustersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -570,7 +572,7 @@ var (
 			{
 				Name:    "tektoninstallation_cluster_id",
 				Unique:  true,
-				Columns: []*schema.Column{TektonInstallationsColumns[9]},
+				Columns: []*schema.Column{TektonInstallationsColumns[11]},
 			},
 		},
 	}

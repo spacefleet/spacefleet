@@ -331,8 +331,10 @@ func validateTerraformConfig(n ComponentInput) error {
 	// override into the module), so the component must name a supported backend
 	// type and supply its required settings — a broken or missing backend fails
 	// here, at write time, not mid-run in the worker.
-	if backend := n.Config[terraformConfigBackend]; backend != tofu.BackendS3 {
-		return fmt.Errorf("%w: node %q (terraform) %s must be %q (the only supported state backend)", ErrInvalidConfig, n.Name, terraformConfigBackend, tofu.BackendS3)
+	backend := n.Config[terraformConfigBackend]
+	required, ok := backendRequiredKeys[backend]
+	if !ok {
+		return fmt.Errorf("%w: node %q (terraform) %s must be one of %s", ErrInvalidConfig, n.Name, terraformConfigBackend, supportedBackends())
 	}
 	var backendCfg map[string]any
 	if raw := n.Config[terraformConfigBackendConfig]; raw != "" {
@@ -340,9 +342,9 @@ func validateTerraformConfig(n ComponentInput) error {
 			return fmt.Errorf("%w: node %q (terraform) %s must be a JSON object: %v", ErrInvalidConfig, n.Name, terraformConfigBackendConfig, err)
 		}
 	}
-	for _, key := range []string{"bucket", "key", s3BackendKeyRegion} {
+	for _, key := range required {
 		if s, _ := backendCfg[key].(string); s == "" {
-			return fmt.Errorf("%w: node %q (terraform) the s3 state backend requires %q in %s", ErrInvalidConfig, n.Name, key, terraformConfigBackendConfig)
+			return fmt.Errorf("%w: node %q (terraform) the %s state backend requires %q in %s", ErrInvalidConfig, n.Name, backend, key, terraformConfigBackendConfig)
 		}
 	}
 	// The OpenTofu line is optional (empty = the default line) but must be a
@@ -355,7 +357,7 @@ func validateTerraformConfig(n ComponentInput) error {
 	// use_lockfile is meaningful only on lines with native s3 locking — older
 	// lines fail `tofu init` on the unknown backend argument, so reject the
 	// combination here with an actionable message instead.
-	if _, set := backendCfg[s3BackendKeyLockfile]; set && !version.NativeS3Lock {
+	if _, set := backendCfg[s3BackendKeyLockfile]; set && backend == tofu.BackendS3 && !version.NativeS3Lock {
 		return fmt.Errorf("%w: node %q (terraform) %s requires OpenTofu 1.10 or newer (%s is %q)", ErrInvalidConfig, n.Name, s3BackendKeyLockfile, terraformConfigVersion, version.Minor)
 	}
 	// A cloud credential is optional — the runner may authenticate via an
@@ -394,6 +396,22 @@ func validateTerraformConfig(n ComponentInput) error {
 		return fmt.Errorf("%w: node %q (terraform) %s must be \"true\" or \"false\"", ErrInvalidConfig, n.Name, terraformConfigExposeTFVars)
 	}
 	return nil
+}
+
+// backendRequiredKeys lists, per supported state backend, the backend_config
+// settings a component must supply; everything else in the object passes
+// through to the rendered backend_override.tf verbatim (optional settings such
+// as s3's dynamodb_table/encrypt/kms_key_id or azurerm's resource_group_name).
+var backendRequiredKeys = map[string][]string{
+	tofu.BackendS3:    {"bucket", "key", s3BackendKeyRegion},
+	tofu.BackendGCS:   {"bucket", "prefix"},
+	tofu.BackendAzure: {"storage_account_name", "container_name", "key"},
+}
+
+// supportedBackends renders the supported backend names for the validation
+// error, in a stable order.
+func supportedBackends() string {
+	return strings.Join([]string{tofu.BackendS3, tofu.BackendGCS, tofu.BackendAzure}, ", ")
 }
 
 // supportedTofuVersions renders the supported OpenTofu lines for the

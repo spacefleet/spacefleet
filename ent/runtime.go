@@ -299,11 +299,11 @@ func init() {
 	// tektoninstallation.DefaultEnabled holds the default value on creation for the enabled field.
 	tektoninstallation.DefaultEnabled = tektoninstallationDescEnabled.Default.(bool)
 	// tektoninstallationDescCreatedAt is the schema descriptor for created_at field.
-	tektoninstallationDescCreatedAt := tektoninstallationFields[8].Descriptor()
+	tektoninstallationDescCreatedAt := tektoninstallationFields[10].Descriptor()
 	// tektoninstallation.DefaultCreatedAt holds the default value on creation for the created_at field.
 	tektoninstallation.DefaultCreatedAt = tektoninstallationDescCreatedAt.Default.(func() time.Time)
 	// tektoninstallationDescUpdatedAt is the schema descriptor for updated_at field.
-	tektoninstallationDescUpdatedAt := tektoninstallationFields[9].Descriptor()
+	tektoninstallationDescUpdatedAt := tektoninstallationFields[11].Descriptor()
 	// tektoninstallation.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	tektoninstallation.DefaultUpdatedAt = tektoninstallationDescUpdatedAt.Default.(func() time.Time)
 	// tektoninstallation.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

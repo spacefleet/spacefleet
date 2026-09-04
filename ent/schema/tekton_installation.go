@@ -51,6 +51,16 @@ func (TektonInstallation) Fields() []ent.Field {
 		field.String("job_id").Optional(),
 		// Timestamp of the most recent presence detection.
 		field.Time("last_checked_at").Optional().Nillable(),
+		// The OpenTofu provider plugin cache on this runner cluster: a
+		// PersistentVolumeClaim in the jobs namespace mounted into every
+		// OpenTofu step as TF_PLUGIN_CACHE_DIR, so providers download once per
+		// cluster rather than once per run. plugin_cache_size is the claim's
+		// requested storage (a Kubernetes quantity, e.g. "20Gi"); empty means
+		// no cache. plugin_cache_storage_class optionally names the
+		// StorageClass (empty = the cluster default). The claim asks for
+		// ReadWriteMany so steps on any node can share it.
+		field.String("plugin_cache_size").Optional(),
+		field.String("plugin_cache_storage_class").Optional(),
 		field.Time("created_at").Default(time.Now).Immutable(),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}

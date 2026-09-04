@@ -776,3 +776,44 @@ func TestPlanTofuWorkspaceAndTFVars(t *testing.T) {
 		t.Errorf("TF_VAR_ mapping must be off by default: %v", req.Spec.Env)
 	}
 }
+
+// TestPlanTofuPluginCache: when the runner cluster has a provider plugin
+// cache the unit mounts the claim and exports the cache dir; without one it
+// does neither.
+func TestPlanTofuPluginCache(t *testing.T) {
+	t.Parallel()
+	runID, planID := uuid.New(), uuid.New()
+	app := &ent.Application{ID: uuid.New(), OrganizationID: uuid.New(), RunnerClusterID: uuid.New()}
+	node := GraphNode{
+		ID: planID, ComponentID: planID, Name: "net", Type: TypeTerraform,
+		Config: map[string]string{terraformConfigCommand: terraformCommandPlan, terraformConfigBackend: tofu.BackendS3},
+	}
+	var asked uuid.UUID
+	w := &WorkflowRunWorker{
+		resolver:       deploy.NewResolver(tokenConns{}, nil, nil, nil, nil),
+		ensureHandover: func(context.Context, k8s.Connection, string, string, map[string]string) error { return nil },
+		pluginCache: func(_ context.Context, clusterID uuid.UUID) (string, error) {
+			asked = clusterID
+			return tekton.PluginCacheClaim, nil
+		},
+	}
+	req, err := w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: node}, nil)
+	if err != nil {
+		t.Fatalf("planTofu: %v", err)
+	}
+	if asked != app.RunnerClusterID {
+		t.Errorf("looked up cluster %s, want the runner %s", asked, app.RunnerClusterID)
+	}
+	if req.Spec.PluginCacheClaim != tekton.PluginCacheClaim || !strings.Contains(req.Spec.Script, "export TF_PLUGIN_CACHE_DIR='"+tekton.PluginCacheMountPath+"'\n") {
+		t.Errorf("claim = %q script:\n%s", req.Spec.PluginCacheClaim, req.Spec.Script)
+	}
+
+	w.pluginCache = func(context.Context, uuid.UUID) (string, error) { return "", nil }
+	req, err = w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: node}, nil)
+	if err != nil {
+		t.Fatalf("planTofu (no cache): %v", err)
+	}
+	if req.Spec.PluginCacheClaim != "" || strings.Contains(req.Spec.Script, "TF_PLUGIN_CACHE_DIR") {
+		t.Error("no cache must mount nothing and export nothing")
+	}
+}

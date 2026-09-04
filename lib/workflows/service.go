@@ -22,7 +22,9 @@ import (
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
 	"github.com/spacefleet/spacefleet/ent/componentgroup"
+	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/variable"
+	"github.com/spacefleet/spacefleet/lib/tekton"
 )
 
 // Service is a thin wrapper over the ent client.
@@ -335,4 +337,22 @@ func rollback(tx *ent.Tx, err error) error {
 		return fmt.Errorf("%w: rollback: %v", err, rerr)
 	}
 	return err
+}
+
+// PluginCacheClaim returns the name of the OpenTofu provider plugin cache
+// claim on a runner cluster when one is configured (tekton.PluginCacheClaim),
+// or "" when the cluster has no cache. The cluster is the application's
+// runner, already resolved org-scoped by the caller; the Tekton row is keyed
+// by cluster id alone.
+func (s *Service) PluginCacheClaim(ctx context.Context, clusterID uuid.UUID) (string, error) {
+	ok, err := s.ent.TektonInstallation.Query().
+		Where(tektoninstallation.ClusterID(clusterID), tektoninstallation.PluginCacheSizeNEQ("")).
+		Exist(ctx)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", nil
+	}
+	return tekton.PluginCacheClaim, nil
 }

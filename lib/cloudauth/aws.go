@@ -1,10 +1,10 @@
 // Package cloudauth turns a resolved cloud credential into the environment an
-// OpenTofu (Terraform) step needs so the s3 backend and the AWS provider both
-// authenticate as that credential. When the credential carries a role_arn it
-// pre-assumes the role via STS here, so the materialized short-lived session
-// keys — not a long-lived static key plus an in-process assume — are what the
-// step exports. v1 is AWS-only (the s3 backend), matching the storage backend
-// the OpenTofu feature ships.
+// OpenTofu (Terraform) step needs so its state backend and the module's
+// providers both authenticate as that credential — Env dispatches per
+// provider (aws / gcp / azure; see env.go). For AWS, when the credential
+// carries a role_arn it pre-assumes the role via STS here, so the
+// materialized short-lived session keys — not a long-lived static key plus an
+// in-process assume — are what the step exports.
 //
 // Security posture: the secret keys returned here are meant to be mounted into
 // the step's pod as a credentials file, never placed on the pod's env block —
@@ -61,7 +61,7 @@ func AWSEnv(ctx context.Context, r cloudcredentials.Resolved) (secret map[string
 // principal the run will.
 func awsCredentials(ctx context.Context, r cloudcredentials.Resolved) (accessKey, secretKey, sessionToken, region string, err error) {
 	if r.Provider != cloudcredential.ProviderAWS {
-		return "", "", "", "", fmt.Errorf("cloudauth: provider %q not supported for terraform backend auth (v1 is aws only)", r.Provider)
+		return "", "", "", "", fmt.Errorf("cloudauth: provider %q is not an aws credential", r.Provider)
 	}
 
 	accessKey = r.Secrets[cloudcredentials.CredKeyAWSAccessKeyID]

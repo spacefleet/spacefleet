@@ -398,9 +398,9 @@ func TestScriptCloudAuthSourcesEnvFile(t *testing.T) {
 		HasCloudAuth:       true,
 		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
-	const srcLine = ". /workspace/creds/aws.env"
+	const srcLine = ". /workspace/creds/cloud.env"
 	if !strings.Contains(s, srcLine) {
-		t.Errorf("cloud auth must source the aws env file\n---\n%s", s)
+		t.Errorf("cloud auth must source the cloud env file\n---\n%s", s)
 	}
 	// The source line must come before tofu init so the backend authenticates.
 	if i, j := strings.Index(s, srcLine), strings.Index(s, "tofu init"); i < 0 || j < 0 || i >= j {
@@ -419,7 +419,7 @@ func TestScriptNoCloudAuthNoEnvFile(t *testing.T) {
 		BackendConfig:      cfg,
 		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
-	if strings.Contains(s, "aws.env") {
+	if strings.Contains(s, "cloud.env") {
 		t.Errorf("no cloud auth must not source an env file\n---\n%s", s)
 	}
 }
@@ -740,5 +740,21 @@ func TestScriptWorkspace(t *testing.T) {
 	a.Command, a.Action, a.Workspace = CommandPlan, ActionDeploy, ""
 	if s := Script(a); strings.Contains(s, "workspace") {
 		t.Errorf("no workspace must emit no workspace line\n---\n%s", s)
+	}
+}
+
+// TestScriptPluginCache: the cache dir is exported before init (so init links
+// cached providers), quoted, and absent when unset.
+func TestScriptPluginCache(t *testing.T) {
+	t.Parallel()
+	a := Apply{Command: CommandPlan, Action: ActionPreview, RepoURL: "r", Path: "p", Backend: BackendS3, PluginCacheDir: "/plugins"}
+	s := Script(a)
+	i, j := strings.Index(s, "export TF_PLUGIN_CACHE_DIR='/plugins'\n"), strings.Index(s, "tofu init")
+	if i < 0 || j < 0 || i > j {
+		t.Errorf("cache dir must be exported before init\n---\n%s", s)
+	}
+	a.PluginCacheDir = ""
+	if strings.Contains(Script(a), "TF_PLUGIN_CACHE_DIR") {
+		t.Error("no cache dir must export nothing")
 	}
 }

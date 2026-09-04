@@ -91,6 +91,38 @@ func (s *Server) EnableClusterTekton(ctx context.Context, req EnableClusterTekto
 	return EnableClusterTekton202JSONResponse(toAPITektonStatus(row, nil)), nil
 }
 
+// SetClusterTektonPluginCache configures the OpenTofu provider plugin cache on
+// a runner cluster: creates the cache claim in the jobs namespace for a
+// non-empty size, deletes it for an empty one, and records the settings.
+// Editor or above. An invalid size is a 400; a cluster that cannot be reached
+// is classified like a node-list failure (502).
+func (s *Server) SetClusterTektonPluginCache(ctx context.Context, req SetClusterTektonPluginCacheRequestObject) (SetClusterTektonPluginCacheResponseObject, error) {
+	orgID, aerr, err := s.resolveClusterWrite(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[SetClusterTektonPluginCachedefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	if req.Body == nil {
+		return errResp[SetClusterTektonPluginCachedefaultJSONResponse](http.StatusBadRequest, "bad_request", "request body is required"), nil
+	}
+	size := strings.TrimSpace(req.Body.Size)
+	storageClass := strings.TrimSpace(derefStr(req.Body.StorageClass))
+	row, err := s.clusters.SetTektonPluginCache(ctx, orgID, req.Id, size, storageClass)
+	if err != nil {
+		switch {
+		case ent.IsNotFound(err):
+			return errResp[SetClusterTektonPluginCachedefaultJSONResponse](http.StatusNotFound, "not_found", "cluster not found"), nil
+		case errors.Is(err, clusters.ErrInvalidPluginCache):
+			return errResp[SetClusterTektonPluginCachedefaultJSONResponse](http.StatusBadRequest, "bad_request", err.Error()), nil
+		}
+		status, code, msg := nodesFetchError(err)
+		return errResp[SetClusterTektonPluginCachedefaultJSONResponse](status, code, msg), nil
+	}
+	return SetClusterTektonPluginCache200JSONResponse(toAPITektonStatus(row, nil)), nil
+}
+
 // DisableClusterTekton clears the job-runner flag (it does not uninstall
 // Tekton). Editor or above.
 func (s *Server) DisableClusterTekton(ctx context.Context, req DisableClusterTektonRequestObject) (DisableClusterTektonResponseObject, error) {
@@ -278,6 +310,9 @@ func toAPITektonStatus(row *ent.TektonInstallation, p *tekton.Presence) TektonSt
 		LastCheckedAt:    row.LastCheckedAt,
 		PinnedVersion:    tekton.PinnedVersion,
 		ExpectedRevision: tekton.ManifestRevision(),
+	}
+	if row.PluginCacheSize != "" {
+		out.PluginCache = &TektonPluginCache{Size: row.PluginCacheSize, StorageClass: optStr(row.PluginCacheStorageClass)}
 	}
 	if p != nil {
 		out.Present = p.Installed
