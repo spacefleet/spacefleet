@@ -211,7 +211,7 @@ export function RunsIndex() {
                     {clusterLabel(runnerClusterId(r), clusterNameById)}
                   </td>
                   <td className="px-4 py-3 capitalize text-neutral-600">
-                    {runActionLabel(r.action)}
+                    {runActionLabel(r.action, r.scope)}
                   </td>
                   <td className="px-4 py-3">
                     <RunStatusBadge status={r.status} />

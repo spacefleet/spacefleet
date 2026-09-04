@@ -298,6 +298,37 @@ operation counts as a run of the application: it appears in the run history,
 and it cannot start while another run is in progress (nor can a deploy start
 while one is waiting for approval).
 
+### Destroying one component and targeted runs
+
+A workflow's **Uninstall** removes everything. To take down just one OpenTofu
+component — or to plan and apply just that module without running the rest
+of the workflow — use **Destroy and targeted runs** on the component's
+**State** panel in the workflow builder (editor or above):
+
+- **Destroy this component** plans the destruction of every resource the
+  component manages and then **always waits for approval**, whatever the
+  component's own approval setting: the run shows the destroy plan, with
+  the resources about to go listed first, and an editor or admin approves
+  to destroy or rejects to keep everything. The button asks you to confirm
+  before the run starts.
+- **Deploy this component** plans and applies only this module. It keeps the
+  component's own approval gate and policy.
+
+Either run can be **targeted**: list resource addresses (one per line, e.g.
+`aws_instance.web` or `module.vpc.aws_subnet.private[0]`) and the plan is
+limited to those resources — the same as OpenTofu's `-target`. Only
+well-formed addresses are accepted; there is no way to pass other flags.
+Targeting is for exceptional situations (recovering from an error, working
+around a provider bug): a targeted apply leaves the rest of the module
+unreconciled, and OpenTofu will flag that in the plan. Follow it with a
+normal deploy when you can.
+
+A component-scoped run appears in the run history as a **Component deploy**
+or **Component destroy** naming the component and its targets. It counts as
+a run of the application: it cannot start while another run is in progress,
+and nothing else can start while it is running or waiting for approval.
+These runs are available for OpenTofu components only.
+
 ## Run the workflow
 
 The builder has three run actions. Each one runs the **whole** workflow,

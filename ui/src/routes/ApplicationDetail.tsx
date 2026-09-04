@@ -343,7 +343,7 @@ export function ApplicationDetail() {
               >
                 <span className="flex items-center gap-3">
                   <span className="capitalize text-neutral-700">
-                    {runActionLabel(displayRun.action)}
+                    {runActionLabel(displayRun.action, displayRun.scope)}
                   </span>
                   <RunStatusBadge status={displayRun.status} />
                 </span>

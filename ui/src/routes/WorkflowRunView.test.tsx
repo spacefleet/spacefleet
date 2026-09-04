@@ -594,6 +594,23 @@ describe("WorkflowRunView", () => {
     expect(screen.getByRole("button", { name: /approve/i })).toBeInTheDocument();
   });
 
+  it("labels a component-scoped run and says what it covers", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    const scopedRun = {
+      ...runDetail,
+      action: "uninstall",
+      scope: { component_id: compA, component_name: "infra", targets: ["aws_instance.web"] },
+    };
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: scopedRun, error: undefined });
+      return Promise.resolve({ data: { id: "cr-a", name: "a", type: "helm", status: "succeeded" }, error: undefined });
+    });
+    renderRunView();
+    expect(await screen.findByRole("heading", { name: "Component destroy" })).toBeInTheDocument();
+    expect(screen.getByText("Only infra, targeting aws_instance.web")).toBeInTheDocument();
+  });
+
   it("explains a gate's approval policy and tally", async () => {
     mockStream.mockReturnValue({ value: null, status: "live", error: null });
     const policyRun = {

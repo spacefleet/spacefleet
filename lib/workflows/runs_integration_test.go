@@ -815,6 +815,84 @@ func TestBeginStateOp(t *testing.T) {
 	}
 }
 
+// TestBeginComponentRun proves a component-scoped run opens the component's
+// plan + apply pair alone with its scope on the row: only for an OpenTofu
+// component of the org-scoped application, only for deploy/uninstall, only
+// with valid targets, only when nothing is in flight; a destroy is gated
+// regardless of the component's flag and its targets ride the plan flags.
+func TestBeginComponentRun(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	helmComp := addComponent(t, client, org.ID, app.ID, "api", nil)
+	tf := addComponent(t, client, org.ID, app.ID, "infra", map[string]string{
+		"repo_url": "https://example.com/infra.git", "path": ".",
+		terraformConfigBackend: "s3", terraformConfigBackendConfig: `{"bucket":"b","key":"k","region":"r"}`,
+		terraformConfigPlanFlags: `["-var=env=prod"]`,
+	})
+	if _, err := client.Component.UpdateOneID(tf.ID).SetType(TypeTerraform).SetDependsOn([]uuid.UUID{helmComp.ID}).Save(ctx); err != nil {
+		t.Fatalf("set terraform type: %v", err)
+	}
+	targets := []string{"aws_instance.web"}
+
+	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, helmComp.ID, ActionUninstall, nil); !errors.Is(err, ErrNotTofuComponent) {
+		t.Errorf("helm component: err = %v, want ErrNotTofuComponent", err)
+	}
+	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, uuid.New(), ActionUninstall, nil); !ent.IsNotFound(err) {
+		t.Errorf("unknown component: err = %v, want NotFound", err)
+	}
+	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, tf.ID, ActionPreview, nil); !errors.Is(err, ErrInvalidScopedAction) {
+		t.Errorf("preview: err = %v, want ErrInvalidScopedAction", err)
+	}
+	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, tf.ID, ActionDeploy, []string{"aws_instance"}); !errors.Is(err, tofu.ErrInvalidTarget) {
+		t.Errorf("bad target: err = %v, want ErrInvalidTarget", err)
+	}
+	other := newOrg(t, client, "Other")
+	if _, err := svc.BeginComponentRun(ctx, other.ID, app.ID, tf.ID, ActionUninstall, nil); !ent.IsNotFound(err) {
+		t.Errorf("cross-org: err = %v, want NotFound", err)
+	}
+
+	run, err := svc.BeginComponentRun(ctx, org.ID, app.ID, tf.ID, ActionUninstall, targets)
+	if err != nil {
+		t.Fatalf("BeginComponentRun: %v", err)
+	}
+	if run.Action != workflowrun.ActionUninstall || run.Status != workflowrun.StatusPending {
+		t.Errorf("run = %s/%s, want uninstall/pending", run.Action, run.Status)
+	}
+	scope, ok, err := ScopeOf(run)
+	if err != nil || !ok || scope.ComponentID != tf.ID || scope.ComponentName != "infra" || len(scope.Targets) != 1 || scope.Targets[0] != targets[0] {
+		t.Errorf("stored scope = %+v (ok=%v err=%v)", scope, ok, err)
+	}
+	_, steps, err := svc.GetRun(ctx, org.ID, app.ID, run.ID)
+	if err != nil {
+		t.Fatalf("GetRun: %v", err)
+	}
+	if len(steps) != 2 || steps[0].ComponentID != tf.ID || steps[1].ComponentID != deriveApplyID(tf.ID) {
+		t.Errorf("steps = %+v, want the plan + apply units of the component only", steps)
+	}
+	var snap GraphSnapshot
+	if err := json.Unmarshal([]byte(run.Graph), &snap); err != nil || len(snap.Nodes) != 2 {
+		t.Fatalf("snapshot = %s (err %v), want two nodes", run.Graph, err)
+	}
+	if got := snap.Nodes[0].Config[terraformConfigPlanFlags]; got != `["-var=env=prod","-target=aws_instance.web"]` {
+		t.Errorf("plan flags = %s", got)
+	}
+	if len(snap.Nodes[0].DependsOn) != 0 || !snap.Nodes[1].RequiresApproval {
+		t.Errorf("snapshot nodes = %+v, want no authored deps and a gated destroy apply", snap.Nodes)
+	}
+
+	// The pending run arms the in-flight gate for every kind of run.
+	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, tf.ID, ActionDeploy, nil); !errors.Is(err, ErrRunInFlight) {
+		t.Errorf("second scoped run: err = %v, want ErrRunInFlight", err)
+	}
+	if _, err := svc.BeginRun(ctx, org.ID, app.ID, ActionDeploy); !errors.Is(err, ErrRunInFlight) {
+		t.Errorf("deploy during scoped run: err = %v, want ErrRunInFlight", err)
+	}
+}
+
 // TestApprovalPolicy drives a gated step through a 2-of-2 policy with named
 // approvers and no self-approval: the starter is refused, an outsider is
 // refused, the first approval leaves the gate parked (no resume), a repeat

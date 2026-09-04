@@ -132,6 +132,141 @@ export function ComponentStatePanel({
       )}
 
       {canEdit && <StateOperations appId={appId} componentId={componentId} />}
+      {canEdit && <ScopedRuns appId={appId} componentId={componentId} />}
+    </div>
+  );
+}
+
+// parseTargets splits the targets field — one resource address per line, or
+// comma-separated — into the list the API validates.
+function parseTargets(raw: string): string[] {
+  return raw
+    .split(/[\s,]+/)
+    .map((t) => t.trim())
+    .filter((t) => t !== "");
+}
+
+// ScopedRuns is the editor-only "Destroy and targeted runs" section: a run
+// limited to this component alone — a deploy of just this module, or its
+// destruction — optionally narrowed to a fixed list of resource addresses
+// (each becomes a -target flag on the plan; never free-form flags). A
+// destroy asks for confirmation here and then always parks its apply for
+// approval, so the destroy plan is reviewed before anything goes. On
+// success the user is taken straight to the run.
+function ScopedRuns({
+  appId,
+  componentId,
+}: {
+  appId: string;
+  componentId: string;
+}) {
+  const navigate = useNavigate();
+  const [targetsRaw, setTargetsRaw] = useState("");
+  const [confirmDestroy, setConfirmDestroy] = useState(false);
+  const [submitting, setSubmitting] = useState<"deploy" | "uninstall" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const targets = parseTargets(targetsRaw);
+
+  const start = async (action: "deploy" | "uninstall") => {
+    setSubmitting(action);
+    setError(null);
+    const { data, error } = await api.POST(
+      "/api/applications/{id}/components/{componentId}/runs",
+      {
+        params: { path: { id: appId, componentId } },
+        body: targets.length > 0 ? { action, targets } : { action },
+      },
+    );
+    setSubmitting(null);
+    if (error || !data) {
+      setError(error?.message ?? "Could not start the run");
+      return;
+    }
+    navigate(`/applications/${appId}/runs/${data.id}`);
+  };
+
+  return (
+    <div className="mt-6 border-t border-neutral-200 pt-4">
+      <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+        Destroy and targeted runs
+      </h3>
+      <p className="mb-3 mt-1 text-xs text-neutral-500">
+        Run just this component, without the rest of the workflow. List
+        resource addresses to limit the run to those resources (each becomes
+        a <code className="font-mono">-target</code>); leave it empty to
+        cover the whole component.
+      </p>
+      <label className="flex flex-col gap-1 text-xs text-neutral-600">
+        Targets (optional, one per line)
+        <textarea
+          aria-label="Target addresses"
+          value={targetsRaw}
+          rows={2}
+          placeholder={"aws_instance.web\nmodule.vpc.aws_subnet.private[0]"}
+          onChange={(e) => {
+            setTargetsRaw(e.target.value);
+            setError(null);
+          }}
+          className="border border-neutral-300 bg-white px-2 py-1.5 font-mono text-sm text-neutral-900 placeholder:font-sans placeholder:text-neutral-400"
+        />
+      </label>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void start("deploy")}
+          disabled={submitting !== null}
+          className="bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+        >
+          {submitting === "deploy"
+            ? "Starting…"
+            : targets.length > 0
+              ? "Deploy targets"
+              : "Deploy this component"}
+        </button>
+        {!confirmDestroy && (
+          <button
+            type="button"
+            onClick={() => {
+              setConfirmDestroy(true);
+              setError(null);
+            }}
+            disabled={submitting !== null}
+            className="border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+          >
+            {targets.length > 0 ? "Destroy targets…" : "Destroy this component…"}
+          </button>
+        )}
+      </div>
+      {confirmDestroy && (
+        <div className="mt-3 border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+          <p>
+            {targets.length > 0
+              ? `This plans the destruction of ${targets.length} targeted resource${targets.length === 1 ? "" : "s"}.`
+              : "This plans the destruction of every resource this component manages."}{" "}
+            The destroy always waits for approval: review the plan on the run,
+            then approve to destroy or reject to keep everything.
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void start("uninstall")}
+              disabled={submitting !== null}
+              className="bg-red-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-800 disabled:opacity-50"
+            >
+              {submitting === "uninstall" ? "Starting…" : "Start destroy for approval"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmDestroy(false)}
+              disabled={submitting !== null}
+              className="px-3 py-1.5 text-sm text-neutral-700 hover:bg-white disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
     </div>
   );
 }

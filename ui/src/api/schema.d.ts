@@ -934,6 +934,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{id}/components/{componentId}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a run limited to one OpenTofu component (destroy, or targeted deploy)
+         * @description Org-scoped, editor or above. Starts a `deploy` or `uninstall` run
+         *     that covers only this OpenTofu component, optionally narrowed to a
+         *     fixed list of resource addresses (`targets`, rendered as `-target`
+         *     flags on the plan). `uninstall` is a per-component **destroy**: the
+         *     plan is a destroy plan and the apply is **always** parked for
+         *     approval, whatever the component's own setting, so the resources
+         *     about to go are reviewed first. `deploy` plans and applies just this
+         *     module (a targeted apply when `targets` is given) and keeps the
+         *     component's own approval gate. The run's `scope` names the component
+         *     and targets. Requires the background worker (503 otherwise). 400 for
+         *     another action, an invalid target address, or a component that is
+         *     not an OpenTofu component; 409 while a run is already in flight for
+         *     the application.
+         */
+        post: operations["startComponentRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{id}/components/{componentId}/state-ops": {
         parameters: {
             query?: never;
@@ -1079,7 +1111,8 @@ export interface paths {
         /**
          * List an application's workflow runs
          * @description Org-scoped. Returns the application's workflow runs newest-first — one
-         *     per deploy/uninstall/preview of the whole DAG — for a CI-like history.
+         *     per deploy/uninstall/preview of the whole DAG, plus component-scoped
+         *     runs and state operations — for a CI-like history.
          *     Component runs and the graph snapshot are not included here; fetch a
          *     single run for those.
          */
@@ -2514,7 +2547,9 @@ export interface components {
          *     and Manifest components take no part (400 if the application has no
          *     OpenTofu component). `state_op` is a guarded state operation on one
          *     OpenTofu component (see the component's state-ops endpoint; it cannot
-         *     be started through the run endpoint).
+         *     be started through the run endpoint). A `deploy` or `uninstall` with
+         *     a `scope` covers one OpenTofu component only (see the component's
+         *     runs endpoint).
          * @enum {string}
          */
         RunAction: "deploy" | "uninstall" | "preview" | "drift" | "state_op";
@@ -2564,6 +2599,7 @@ export interface components {
              */
             started_by?: string;
             state_op?: components["schemas"]["StateOperation"];
+            scope?: components["schemas"]["RunScope"];
         };
         RunList: {
             runs: components["schemas"]["WorkflowRun"][];
@@ -2745,6 +2781,33 @@ export interface components {
              *     — usually a string; null when the resource has none.
              */
             id?: unknown;
+        };
+        ScopedRunRequest: {
+            /**
+             * @description `uninstall` destroys the component (a gated destroy plan + apply);
+             *     `deploy` plans and applies just this component.
+             * @enum {string}
+             */
+            action: "deploy" | "uninstall";
+            /**
+             * @description Resource addresses to limit the run to, e.g. `aws_instance.web`
+             *     or `module.vpc.aws_subnet.private[0]` — each becomes a `-target`
+             *     flag on the plan. Omit to cover the whole component.
+             */
+            targets?: string[];
+        };
+        /**
+         * @description Present on a run limited to one OpenTofu component (see the
+         *     component's runs endpoint): the component and, when the run was
+         *     targeted, the resource addresses it was limited to. Absent on a
+         *     whole-workflow run.
+         */
+        RunScope: {
+            /** Format: uuid */
+            component_id: string;
+            /** @description The component's name when the run began. */
+            component_name: string;
+            targets?: string[];
         };
         /**
          * @description The fixed menu of guarded state operations: `force_unlock` releases a
@@ -4246,6 +4309,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ComponentState"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    startComponentRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                componentId: components["parameters"]["ComponentID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScopedRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Run accepted; the job is in progress */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRun"];
                 };
             };
             default: components["responses"]["Error"];
