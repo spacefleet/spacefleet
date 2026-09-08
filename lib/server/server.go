@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/riverqueue/river"
 	"github.com/spacefleet/spacefleet/lib/api"
 	"github.com/spacefleet/spacefleet/lib/applicationgroups"
 	"github.com/spacefleet/spacefleet/lib/applications"
 	"github.com/spacefleet/spacefleet/lib/auth"
+
 	"github.com/spacefleet/spacefleet/lib/chartcredentials"
 	"github.com/spacefleet/spacefleet/lib/cloudcredentials"
 	"github.com/spacefleet/spacefleet/lib/clusters"
@@ -21,6 +23,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/githubinstallations"
 	"github.com/spacefleet/spacefleet/lib/invitations"
 	"github.com/spacefleet/spacefleet/lib/k8s"
+	"github.com/spacefleet/spacefleet/lib/notifications"
 	"github.com/spacefleet/spacefleet/lib/organizations"
 	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/secrets"
@@ -71,6 +74,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 	applicationsSvc := applications.NewService(entClient)
 	applicationGroupsSvc := applicationgroups.NewService(entClient)
 	workflowsSvc := workflows.NewService(entClient)
+	workflowsSvc.SetExternalURL(cfg.ExternalURL)
 	// Pull-request previews report back to GitHub as check runs when the App
 	// is configured (the authenticator doubles as the check-run client).
 	if checks, ok := ghAuth.(workflows.CheckRunClient); ok {
@@ -108,6 +112,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 		GitHubInstallations: githubInstallsSvc,
 		Invites:             invitesSvc,
 		Workflows:           workflowsSvc,
+		Notifications:       notifications.NewService(entClient, sealer, enqueueVia(jobQueue)),
 		Variables:           variablesSvc,
 		AllowOrgCreation:    cfg.AllowOrgCreation,
 		ExternalURL:         cfg.ExternalURL,
@@ -193,4 +198,17 @@ func buildVerifier(cfg *config.Config) (auth.TokenVerifier, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	return auth.NewOIDCVerifier(ctx, cfg.OIDCIssuer, cfg.OIDCClientID, cfg.OIDCJWKSURL)
+}
+
+// enqueueVia adapts the queue client to the notifications service's enqueue
+// seam; nil when no queue is configured (a test notification then reports
+// that the worker is not configured).
+func enqueueVia(q *queue.Client) notifications.EnqueueFunc {
+	if q == nil {
+		return nil
+	}
+	return func(ctx context.Context, args river.JobArgs) error {
+		_, err := q.Insert(ctx, args)
+		return err
+	}
 }

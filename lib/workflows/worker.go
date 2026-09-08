@@ -313,6 +313,7 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 	// (already-terminal components short-circuit; the approved gate now launches).
 	if final == runSuspended {
 		_ = w.svc.MarkRun(ctx, a.OrgID, a.WorkflowRunID, "awaiting_approval", "awaiting manual approval")
+		w.svc.emitRunEvent(ctx, a.OrgID, a.WorkflowRunID, EventAwaitingApproval)
 		return nil
 	}
 
@@ -351,6 +352,14 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 	_ = w.svc.MarkRun(markCtx, a.OrgID, a.WorkflowRunID, final, "workflow "+final)
 	// A pull-request preview reports its outcome back to GitHub once settled.
 	w.svc.CompleteTriggerCheck(markCtx, a.OrgID, a.WorkflowRunID)
+	// Run events for the organization's notification channels: a failure,
+	// and — for a drift check — any drift it found.
+	if final == runFailed || final == runPartial {
+		w.svc.emitRunEvent(markCtx, a.OrgID, a.WorkflowRunID, EventRunFailed)
+	}
+	if a.Action == ActionDrift {
+		w.svc.emitRunEvent(markCtx, a.OrgID, a.WorkflowRunID, EventDriftDetected)
+	}
 
 	// Settle any component run the scheduler left non-terminal. The cases that bite:
 	// a gated node that parked at awaiting_approval on a branch while a parallel

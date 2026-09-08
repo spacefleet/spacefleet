@@ -92,7 +92,7 @@ type CheckRunClient interface {
 // the check when a run settles) call it.
 func (s *Service) SetGitHubChecks(client CheckRunClient, externalURL string) {
 	s.checks = client
-	s.externalURL = strings.TrimRight(externalURL, "/")
+	s.externalURL = trimSlash(externalURL)
 }
 
 // TriggeredRun is one run a webhook delivery started, for the handler's

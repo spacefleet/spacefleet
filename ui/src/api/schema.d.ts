@@ -1303,6 +1303,81 @@ export interface paths {
         patch: operations["updateChartCredential"];
         trace?: never;
     };
+    "/api/notification-channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the notification channels in the current organization
+         * @description Org-scoped. Where run notifications go — an email address, a Slack
+         *     incoming webhook, or a generic webhook — with the events each
+         *     receives. A webhook's URL is sealed at rest and never returned; only
+         *     its host is shown.
+         */
+        get: operations["listNotificationChannels"];
+        put?: never;
+        /**
+         * Add a notification channel
+         * @description Org-scoped, admin only. A webhook kind needs the encryption key
+         *     (SPACEFLEET_SECRET_KEY) to seal its URL. Names are unique within the
+         *     organization.
+         */
+        post: operations["createNotificationChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notification-channels/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a notification channel
+         * @description Org-scoped, admin only.
+         */
+        delete: operations["deleteNotificationChannel"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a notification channel
+         * @description Org-scoped, admin only. The kind is fixed at creation.
+         */
+        patch: operations["updateNotificationChannel"];
+        trace?: never;
+    };
+    "/api/notification-channels/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test notification to a channel
+         * @description Org-scoped, admin only. Enqueues a synthetic test message to the
+         *     channel so its destination can be confirmed. Requires the background
+         *     worker (503 otherwise).
+         */
+        post: operations["testNotificationChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cloud-credentials": {
         parameters: {
             query?: never;
@@ -2196,6 +2271,65 @@ export interface components {
          */
         CloudProvider: "aws" | "gcp" | "azure";
         /**
+         * @description How a channel delivers: `email` (needs SMTP configured on the
+         *     deployment), `slack` (a Slack incoming webhook URL), or `webhook`
+         *     (any URL, receiving a JSON body with an `X-Spacefleet-Event` header).
+         * @enum {string}
+         */
+        NotificationChannelKind: "email" | "slack" | "webhook";
+        /**
+         * @description The run events a channel can subscribe to: a run parked at an
+         *     approval gate, a run that failed (including a timed-out approval or
+         *     an abandoned run), or a drift check that found drift.
+         * @enum {string}
+         */
+        RunEventKind: "awaiting_approval" | "run_failed" | "drift_detected";
+        NotificationChannel: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            kind: components["schemas"]["NotificationChannelKind"];
+            /**
+             * @description The destination as shown: the email address, or a webhook's
+             *     host. A webhook's full URL is never returned.
+             */
+            address: string;
+            events: components["schemas"]["RunEventKind"][];
+            /**
+             * Format: uuid
+             * @description The one application the channel is limited to, or null for every application.
+             */
+            application_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        NotificationChannelCreateRequest: {
+            name: string;
+            kind: components["schemas"]["NotificationChannelKind"];
+            /** @description The email address, or the webhook URL (sealed at rest). */
+            target: string;
+            events: components["schemas"]["RunEventKind"][];
+            /**
+             * Format: uuid
+             * @description Limit the channel to one application; omit or null for every application.
+             */
+            application_id?: string | null;
+        };
+        /** @description All fields optional; the kind cannot change. */
+        NotificationChannelUpdateRequest: {
+            name?: string;
+            /** @description A new email address or webhook URL. */
+            target?: string;
+            events?: components["schemas"]["RunEventKind"][];
+            /**
+             * @description Set to an application id to limit the channel to it, or to an
+             *     empty string to cover every application. Omit to leave it as is.
+             */
+            application_id?: string;
+        };
+        /**
          * @description A named cloud-provider credential set (AWS, GCP, or Azure) for
          *     authenticating to a cloud — the foundation for cluster registration,
          *     private packages in workflows, etc. config holds non-secret identifiers
@@ -3075,6 +3209,7 @@ export interface components {
         ApplicationID: string;
         ApplicationGroupID: string;
         ChartCredentialID: string;
+        NotificationChannelID: string;
         CloudCredentialID: string;
         GitHubInstallationID: string;
         RunID: string;
@@ -4898,6 +5033,121 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ChartCredential"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listNotificationChannels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's notification channels */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationChannel"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createNotificationChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationChannelCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description The created channel */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationChannel"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteNotificationChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["NotificationChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateNotificationChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["NotificationChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationChannelUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated channel */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationChannel"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    testNotificationChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["NotificationChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Test notification accepted for delivery */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

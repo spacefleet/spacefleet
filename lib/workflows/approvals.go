@@ -205,6 +205,7 @@ func (s *Service) ReapExpiredApprovals(ctx context.Context) (int, error) {
 			continue
 		}
 		_, _ = s.SettleStuckComponentRuns(ctx, run.OrganizationID, run.ID, "skipped (approval timed out)")
+		s.emitRunEvent(ctx, run.OrganizationID, run.ID, EventRunFailed)
 		failed++
 		if s.reapHook != nil {
 			s.reapHook(ctx, run)

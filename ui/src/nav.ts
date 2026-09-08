@@ -79,6 +79,7 @@ export const navSections: NavSection[] = [
       { label: "Cloud Credentials", path: "/admin/cloud-credentials" },
       { label: "Private Charts", path: "/admin/private-charts" },
       { label: "GitHub", path: "/admin/github" },
+      { label: "Notifications", path: "/admin/notifications" },
     ],
   },
 ];

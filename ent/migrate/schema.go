@@ -531,6 +531,51 @@ var (
 			},
 		},
 	}
+	// NotificationChannelsColumns holds the columns for the "notification_channels" table.
+	NotificationChannelsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "kind", Type: field.TypeEnum, Enums: []string{"email", "slack", "webhook"}},
+		{Name: "address", Type: field.TypeString},
+		{Name: "encrypted_target", Type: field.TypeBytes, Nullable: true},
+		{Name: "events", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+		{Name: "application_id", Type: field.TypeUUID, Nullable: true},
+	}
+	// NotificationChannelsTable holds the schema information for the "notification_channels" table.
+	NotificationChannelsTable = &schema.Table{
+		Name:       "notification_channels",
+		Columns:    NotificationChannelsColumns,
+		PrimaryKey: []*schema.Column{NotificationChannelsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "notification_channels_organizations_organization",
+				Columns:    []*schema.Column{NotificationChannelsColumns[8]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "notification_channels_applications_application",
+				Columns:    []*schema.Column{NotificationChannelsColumns[9]},
+				RefColumns: []*schema.Column{ApplicationsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "notificationchannel_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{NotificationChannelsColumns[8]},
+			},
+			{
+				Name:    "notificationchannel_organization_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{NotificationChannelsColumns[8], NotificationChannelsColumns[1]},
+			},
+		},
+	}
 	// OrganizationsColumns holds the columns for the "organizations" table.
 	OrganizationsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -708,6 +753,7 @@ var (
 		GroupVariablesTable,
 		InvitationsTable,
 		MembershipsTable,
+		NotificationChannelsTable,
 		OrganizationsTable,
 		TektonInstallationsTable,
 		UsersTable,
@@ -742,6 +788,8 @@ func init() {
 	InvitationsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	MembershipsTable.ForeignKeys[0].RefTable = UsersTable
 	MembershipsTable.ForeignKeys[1].RefTable = OrganizationsTable
+	NotificationChannelsTable.ForeignKeys[0].RefTable = OrganizationsTable
+	NotificationChannelsTable.ForeignKeys[1].RefTable = ApplicationsTable
 	TektonInstallationsTable.ForeignKeys[0].RefTable = ClustersTable
 	VariablesTable.ForeignKeys[0].RefTable = OrganizationsTable
 	VariablesTable.ForeignKeys[1].RefTable = ApplicationsTable

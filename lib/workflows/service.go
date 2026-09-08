@@ -39,6 +39,8 @@ type Service struct {
 	// deployment's public base URL those checks link to. See SetGitHubChecks.
 	checks      CheckRunClient
 	externalURL string
+	// eventHook receives run events (see OnEvent); nil drops them.
+	eventHook func(context.Context, Event)
 }
 
 // NewService builds the workflow service over the ent client.

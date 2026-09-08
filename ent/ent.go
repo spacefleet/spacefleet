@@ -24,6 +24,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/groupvariable"
 	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
+	"github.com/spacefleet/spacefleet/ent/notificationchannel"
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/user"
@@ -89,23 +90,24 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			application.Table:        application.ValidColumn,
-			applicationgroup.Table:   applicationgroup.ValidColumn,
-			chartcredential.Table:    chartcredential.ValidColumn,
-			cloudcredential.Table:    cloudcredential.ValidColumn,
-			cluster.Table:            cluster.ValidColumn,
-			component.Table:          component.ValidColumn,
-			componentgroup.Table:     componentgroup.ValidColumn,
-			componentrun.Table:       componentrun.ValidColumn,
-			githubinstallation.Table: githubinstallation.ValidColumn,
-			groupvariable.Table:      groupvariable.ValidColumn,
-			invitation.Table:         invitation.ValidColumn,
-			membership.Table:         membership.ValidColumn,
-			organization.Table:       organization.ValidColumn,
-			tektoninstallation.Table: tektoninstallation.ValidColumn,
-			user.Table:               user.ValidColumn,
-			variable.Table:           variable.ValidColumn,
-			workflowrun.Table:        workflowrun.ValidColumn,
+			application.Table:         application.ValidColumn,
+			applicationgroup.Table:    applicationgroup.ValidColumn,
+			chartcredential.Table:     chartcredential.ValidColumn,
+			cloudcredential.Table:     cloudcredential.ValidColumn,
+			cluster.Table:             cluster.ValidColumn,
+			component.Table:           component.ValidColumn,
+			componentgroup.Table:      componentgroup.ValidColumn,
+			componentrun.Table:        componentrun.ValidColumn,
+			githubinstallation.Table:  githubinstallation.ValidColumn,
+			groupvariable.Table:       groupvariable.ValidColumn,
+			invitation.Table:          invitation.ValidColumn,
+			membership.Table:          membership.ValidColumn,
+			notificationchannel.Table: notificationchannel.ValidColumn,
+			organization.Table:        organization.ValidColumn,
+			tektoninstallation.Table:  tektoninstallation.ValidColumn,
+			user.Table:                user.ValidColumn,
+			variable.Table:            variable.ValidColumn,
+			workflowrun.Table:         workflowrun.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

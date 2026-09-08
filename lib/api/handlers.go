@@ -18,6 +18,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/email"
 	"github.com/spacefleet/spacefleet/lib/githubinstallations"
 	"github.com/spacefleet/spacefleet/lib/invitations"
+	"github.com/spacefleet/spacefleet/lib/notifications"
 	"github.com/spacefleet/spacefleet/lib/organizations"
 	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/users"
@@ -36,6 +37,7 @@ type Server struct {
 	githubInstallations *githubinstallations.Service
 	invites             *invitations.Service
 	workflows           *workflows.Service
+	notifications       *notifications.Service
 	variables           *variables.Service
 
 	// githubAppSlug is the operator's GitHub App URL slug, used to build the
@@ -84,6 +86,7 @@ type ServerDeps struct {
 	GitHubInstallations *githubinstallations.Service
 	Invites             *invitations.Service
 	Workflows           *workflows.Service
+	Notifications       *notifications.Service
 	Variables           *variables.Service
 	AllowOrgCreation    bool
 	ExternalURL         string
@@ -107,6 +110,7 @@ func NewServer(d ServerDeps) *Server {
 		githubInstallations: d.GitHubInstallations,
 		invites:             d.Invites,
 		workflows:           d.Workflows,
+		notifications:       d.Notifications,
 		variables:           d.Variables,
 		allowOrgCreation:    d.AllowOrgCreation,
 		externalURL:         d.ExternalURL,

@@ -7,8 +7,9 @@ tags: [email, smtp, helm, configuration, invitations, notifications]
 
 # Email
 
-Spacefleet can send outbound email over **SMTP** — today, organization
-**invitation** messages. Email is **optional**: when it isn't configured,
+Spacefleet can send outbound email over **SMTP** — organization
+**invitation** messages and run **notifications** (see the user guide's
+Notifications page). Email is **optional**: when it isn't configured,
 Spacefleet still works and every invitation still produces a copy-able link an
 admin can share by hand. Configuring SMTP simply lets Spacefleet deliver those
 links by email instead.

@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/riverqueue/river"
+
 	"github.com/spacefleet/spacefleet/lib/chartcredentials"
 	"github.com/spacefleet/spacefleet/lib/cloudcredentials"
 	"github.com/spacefleet/spacefleet/lib/clusters"
@@ -20,6 +22,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/githubapp"
 	"github.com/spacefleet/spacefleet/lib/githubinstallations"
 	"github.com/spacefleet/spacefleet/lib/k8s"
+	"github.com/spacefleet/spacefleet/lib/notifications"
 	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/secrets"
 	"github.com/spacefleet/spacefleet/lib/tekton"
@@ -110,6 +113,7 @@ func runWorker(_ []string) {
 	// minter, the cloud-credentials resolver (for a terraform run's cloud auth),
 	// and the variables resolver (the env injected into every component job).
 	workflowsSvc := workflows.NewService(entClient)
+	workflowsSvc.SetExternalURL(cfg.ExternalURL)
 	// Pull-request previews report back to GitHub as check runs when the App
 	// is configured (the authenticator doubles as the check-run client).
 	if checks, ok := ghAuth.(workflows.CheckRunClient); ok {
@@ -129,6 +133,10 @@ func runWorker(_ []string) {
 	queue.AddWorker(workers, &email.InviteEmailWorker{Sender: emailSender(cfg)})
 	queue.AddWorker(workers, &tekton.InstallWorker{Store: clustersSvc})
 	queue.AddWorker(workers, workflows.NewWorker(workflowsSvc, runResolver))
+	//   - notification_deliver: sends one run event to one notification channel
+	//     (email via the Sender, Slack/webhook over HTTP).
+	notificationsSvc := notifications.NewService(entClient, sealer, nil)
+	queue.AddWorker(workers, &notifications.DeliverWorker{Service: notificationsSvc, Sender: emailSender(cfg)})
 
 	client, err := queue.NewClient(rpool, queue.Config{
 		WorkerMode:  true,
@@ -139,6 +147,18 @@ func runWorker(_ []string) {
 	if err != nil {
 		log.Fatalf("worker: new client: %v", err)
 	}
+
+	// Run events (awaiting approval, failed, drift detected) fan out to the
+	// organization's notification channels as delivery jobs on this client.
+	notificationsSvc = notifications.NewService(entClient, sealer, func(ctx context.Context, args river.JobArgs) error {
+		_, err := client.Insert(ctx, args)
+		return err
+	})
+	workflowsSvc.OnEvent(func(ctx context.Context, ev workflows.Event) {
+		if err := notificationsSvc.Dispatch(ctx, ev); err != nil {
+			log.Printf("worker: notify %s for run %s: %v", ev.Kind, ev.RunID, err)
+		}
+	})
 
 	if err := client.Start(ctx); err != nil {
 		log.Fatalf("worker: start: %v", err)

@@ -28,6 +28,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/groupvariable"
 	"github.com/spacefleet/spacefleet/ent/invitation"
 	"github.com/spacefleet/spacefleet/ent/membership"
+	"github.com/spacefleet/spacefleet/ent/notificationchannel"
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/user"
@@ -64,6 +65,8 @@ type Client struct {
 	Invitation *InvitationClient
 	// Membership is the client for interacting with the Membership builders.
 	Membership *MembershipClient
+	// NotificationChannel is the client for interacting with the NotificationChannel builders.
+	NotificationChannel *NotificationChannelClient
 	// Organization is the client for interacting with the Organization builders.
 	Organization *OrganizationClient
 	// TektonInstallation is the client for interacting with the TektonInstallation builders.
@@ -97,6 +100,7 @@ func (c *Client) init() {
 	c.GroupVariable = NewGroupVariableClient(c.config)
 	c.Invitation = NewInvitationClient(c.config)
 	c.Membership = NewMembershipClient(c.config)
+	c.NotificationChannel = NewNotificationChannelClient(c.config)
 	c.Organization = NewOrganizationClient(c.config)
 	c.TektonInstallation = NewTektonInstallationClient(c.config)
 	c.User = NewUserClient(c.config)
@@ -192,25 +196,26 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:                ctx,
-		config:             cfg,
-		Application:        NewApplicationClient(cfg),
-		ApplicationGroup:   NewApplicationGroupClient(cfg),
-		ChartCredential:    NewChartCredentialClient(cfg),
-		CloudCredential:    NewCloudCredentialClient(cfg),
-		Cluster:            NewClusterClient(cfg),
-		Component:          NewComponentClient(cfg),
-		ComponentGroup:     NewComponentGroupClient(cfg),
-		ComponentRun:       NewComponentRunClient(cfg),
-		GitHubInstallation: NewGitHubInstallationClient(cfg),
-		GroupVariable:      NewGroupVariableClient(cfg),
-		Invitation:         NewInvitationClient(cfg),
-		Membership:         NewMembershipClient(cfg),
-		Organization:       NewOrganizationClient(cfg),
-		TektonInstallation: NewTektonInstallationClient(cfg),
-		User:               NewUserClient(cfg),
-		Variable:           NewVariableClient(cfg),
-		WorkflowRun:        NewWorkflowRunClient(cfg),
+		ctx:                 ctx,
+		config:              cfg,
+		Application:         NewApplicationClient(cfg),
+		ApplicationGroup:    NewApplicationGroupClient(cfg),
+		ChartCredential:     NewChartCredentialClient(cfg),
+		CloudCredential:     NewCloudCredentialClient(cfg),
+		Cluster:             NewClusterClient(cfg),
+		Component:           NewComponentClient(cfg),
+		ComponentGroup:      NewComponentGroupClient(cfg),
+		ComponentRun:        NewComponentRunClient(cfg),
+		GitHubInstallation:  NewGitHubInstallationClient(cfg),
+		GroupVariable:       NewGroupVariableClient(cfg),
+		Invitation:          NewInvitationClient(cfg),
+		Membership:          NewMembershipClient(cfg),
+		NotificationChannel: NewNotificationChannelClient(cfg),
+		Organization:        NewOrganizationClient(cfg),
+		TektonInstallation:  NewTektonInstallationClient(cfg),
+		User:                NewUserClient(cfg),
+		Variable:            NewVariableClient(cfg),
+		WorkflowRun:         NewWorkflowRunClient(cfg),
 	}, nil
 }
 
@@ -228,25 +233,26 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:                ctx,
-		config:             cfg,
-		Application:        NewApplicationClient(cfg),
-		ApplicationGroup:   NewApplicationGroupClient(cfg),
-		ChartCredential:    NewChartCredentialClient(cfg),
-		CloudCredential:    NewCloudCredentialClient(cfg),
-		Cluster:            NewClusterClient(cfg),
-		Component:          NewComponentClient(cfg),
-		ComponentGroup:     NewComponentGroupClient(cfg),
-		ComponentRun:       NewComponentRunClient(cfg),
-		GitHubInstallation: NewGitHubInstallationClient(cfg),
-		GroupVariable:      NewGroupVariableClient(cfg),
-		Invitation:         NewInvitationClient(cfg),
-		Membership:         NewMembershipClient(cfg),
-		Organization:       NewOrganizationClient(cfg),
-		TektonInstallation: NewTektonInstallationClient(cfg),
-		User:               NewUserClient(cfg),
-		Variable:           NewVariableClient(cfg),
-		WorkflowRun:        NewWorkflowRunClient(cfg),
+		ctx:                 ctx,
+		config:              cfg,
+		Application:         NewApplicationClient(cfg),
+		ApplicationGroup:    NewApplicationGroupClient(cfg),
+		ChartCredential:     NewChartCredentialClient(cfg),
+		CloudCredential:     NewCloudCredentialClient(cfg),
+		Cluster:             NewClusterClient(cfg),
+		Component:           NewComponentClient(cfg),
+		ComponentGroup:      NewComponentGroupClient(cfg),
+		ComponentRun:        NewComponentRunClient(cfg),
+		GitHubInstallation:  NewGitHubInstallationClient(cfg),
+		GroupVariable:       NewGroupVariableClient(cfg),
+		Invitation:          NewInvitationClient(cfg),
+		Membership:          NewMembershipClient(cfg),
+		NotificationChannel: NewNotificationChannelClient(cfg),
+		Organization:        NewOrganizationClient(cfg),
+		TektonInstallation:  NewTektonInstallationClient(cfg),
+		User:                NewUserClient(cfg),
+		Variable:            NewVariableClient(cfg),
+		WorkflowRun:         NewWorkflowRunClient(cfg),
 	}, nil
 }
 
@@ -278,8 +284,8 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Application, c.ApplicationGroup, c.ChartCredential, c.CloudCredential,
 		c.Cluster, c.Component, c.ComponentGroup, c.ComponentRun, c.GitHubInstallation,
-		c.GroupVariable, c.Invitation, c.Membership, c.Organization,
-		c.TektonInstallation, c.User, c.Variable, c.WorkflowRun,
+		c.GroupVariable, c.Invitation, c.Membership, c.NotificationChannel,
+		c.Organization, c.TektonInstallation, c.User, c.Variable, c.WorkflowRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -291,8 +297,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Application, c.ApplicationGroup, c.ChartCredential, c.CloudCredential,
 		c.Cluster, c.Component, c.ComponentGroup, c.ComponentRun, c.GitHubInstallation,
-		c.GroupVariable, c.Invitation, c.Membership, c.Organization,
-		c.TektonInstallation, c.User, c.Variable, c.WorkflowRun,
+		c.GroupVariable, c.Invitation, c.Membership, c.NotificationChannel,
+		c.Organization, c.TektonInstallation, c.User, c.Variable, c.WorkflowRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -325,6 +331,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Invitation.mutate(ctx, m)
 	case *MembershipMutation:
 		return c.Membership.mutate(ctx, m)
+	case *NotificationChannelMutation:
+		return c.NotificationChannel.mutate(ctx, m)
 	case *OrganizationMutation:
 		return c.Organization.mutate(ctx, m)
 	case *TektonInstallationMutation:
@@ -2304,6 +2312,171 @@ func (c *MembershipClient) mutate(ctx context.Context, m *MembershipMutation) (V
 	}
 }
 
+// NotificationChannelClient is a client for the NotificationChannel schema.
+type NotificationChannelClient struct {
+	config
+}
+
+// NewNotificationChannelClient returns a client for the NotificationChannel from the given config.
+func NewNotificationChannelClient(c config) *NotificationChannelClient {
+	return &NotificationChannelClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `notificationchannel.Hooks(f(g(h())))`.
+func (c *NotificationChannelClient) Use(hooks ...Hook) {
+	c.hooks.NotificationChannel = append(c.hooks.NotificationChannel, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `notificationchannel.Intercept(f(g(h())))`.
+func (c *NotificationChannelClient) Intercept(interceptors ...Interceptor) {
+	c.inters.NotificationChannel = append(c.inters.NotificationChannel, interceptors...)
+}
+
+// Create returns a builder for creating a NotificationChannel entity.
+func (c *NotificationChannelClient) Create() *NotificationChannelCreate {
+	mutation := newNotificationChannelMutation(c.config, OpCreate)
+	return &NotificationChannelCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of NotificationChannel entities.
+func (c *NotificationChannelClient) CreateBulk(builders ...*NotificationChannelCreate) *NotificationChannelCreateBulk {
+	return &NotificationChannelCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *NotificationChannelClient) MapCreateBulk(slice any, setFunc func(*NotificationChannelCreate, int)) *NotificationChannelCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &NotificationChannelCreateBulk{err: fmt.Errorf("calling to NotificationChannelClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*NotificationChannelCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &NotificationChannelCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for NotificationChannel.
+func (c *NotificationChannelClient) Update() *NotificationChannelUpdate {
+	mutation := newNotificationChannelMutation(c.config, OpUpdate)
+	return &NotificationChannelUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *NotificationChannelClient) UpdateOne(_m *NotificationChannel) *NotificationChannelUpdateOne {
+	mutation := newNotificationChannelMutation(c.config, OpUpdateOne, withNotificationChannel(_m))
+	return &NotificationChannelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *NotificationChannelClient) UpdateOneID(id uuid.UUID) *NotificationChannelUpdateOne {
+	mutation := newNotificationChannelMutation(c.config, OpUpdateOne, withNotificationChannelID(id))
+	return &NotificationChannelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for NotificationChannel.
+func (c *NotificationChannelClient) Delete() *NotificationChannelDelete {
+	mutation := newNotificationChannelMutation(c.config, OpDelete)
+	return &NotificationChannelDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *NotificationChannelClient) DeleteOne(_m *NotificationChannel) *NotificationChannelDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *NotificationChannelClient) DeleteOneID(id uuid.UUID) *NotificationChannelDeleteOne {
+	builder := c.Delete().Where(notificationchannel.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &NotificationChannelDeleteOne{builder}
+}
+
+// Query returns a query builder for NotificationChannel.
+func (c *NotificationChannelClient) Query() *NotificationChannelQuery {
+	return &NotificationChannelQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeNotificationChannel},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a NotificationChannel entity by its id.
+func (c *NotificationChannelClient) Get(ctx context.Context, id uuid.UUID) (*NotificationChannel, error) {
+	return c.Query().Where(notificationchannel.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *NotificationChannelClient) GetX(ctx context.Context, id uuid.UUID) *NotificationChannel {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryOrganization queries the organization edge of a NotificationChannel.
+func (c *NotificationChannelClient) QueryOrganization(_m *NotificationChannel) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(notificationchannel.Table, notificationchannel.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, notificationchannel.OrganizationTable, notificationchannel.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryApplication queries the application edge of a NotificationChannel.
+func (c *NotificationChannelClient) QueryApplication(_m *NotificationChannel) *ApplicationQuery {
+	query := (&ApplicationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(notificationchannel.Table, notificationchannel.FieldID, id),
+			sqlgraph.To(application.Table, application.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, notificationchannel.ApplicationTable, notificationchannel.ApplicationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *NotificationChannelClient) Hooks() []Hook {
+	return c.hooks.NotificationChannel
+}
+
+// Interceptors returns the client interceptors.
+func (c *NotificationChannelClient) Interceptors() []Interceptor {
+	return c.inters.NotificationChannel
+}
+
+func (c *NotificationChannelClient) mutate(ctx context.Context, m *NotificationChannelMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&NotificationChannelCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&NotificationChannelUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&NotificationChannelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&NotificationChannelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown NotificationChannel mutation op: %q", m.Op())
+	}
+}
+
 // OrganizationClient is a client for the Organization schema.
 type OrganizationClient struct {
 	config
@@ -3118,13 +3291,13 @@ type (
 	hooks struct {
 		Application, ApplicationGroup, ChartCredential, CloudCredential, Cluster,
 		Component, ComponentGroup, ComponentRun, GitHubInstallation, GroupVariable,
-		Invitation, Membership, Organization, TektonInstallation, User, Variable,
-		WorkflowRun []ent.Hook
+		Invitation, Membership, NotificationChannel, Organization, TektonInstallation,
+		User, Variable, WorkflowRun []ent.Hook
 	}
 	inters struct {
 		Application, ApplicationGroup, ChartCredential, CloudCredential, Cluster,
 		Component, ComponentGroup, ComponentRun, GitHubInstallation, GroupVariable,
-		Invitation, Membership, Organization, TektonInstallation, User, Variable,
-		WorkflowRun []ent.Interceptor
+		Invitation, Membership, NotificationChannel, Organization, TektonInstallation,
+		User, Variable, WorkflowRun []ent.Interceptor
 	}
 )

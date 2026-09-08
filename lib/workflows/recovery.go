@@ -181,6 +181,7 @@ func (s *Service) ReapStuckRuns(ctx context.Context, maxLifetime time.Duration, 
 		// The worker that owned this run is gone, so nothing else will release
 		// what it left on the runner cluster; let the worker process sweep it.
 		s.CompleteTriggerCheck(ctx, run.OrganizationID, run.ID)
+		s.emitRunEvent(ctx, run.OrganizationID, run.ID, EventRunFailed)
 		if s.reapHook != nil {
 			s.reapHook(ctx, run)
 		}

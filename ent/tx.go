@@ -36,6 +36,8 @@ type Tx struct {
 	Invitation *InvitationClient
 	// Membership is the client for interacting with the Membership builders.
 	Membership *MembershipClient
+	// NotificationChannel is the client for interacting with the NotificationChannel builders.
+	NotificationChannel *NotificationChannelClient
 	// Organization is the client for interacting with the Organization builders.
 	Organization *OrganizationClient
 	// TektonInstallation is the client for interacting with the TektonInstallation builders.
@@ -189,6 +191,7 @@ func (tx *Tx) init() {
 	tx.GroupVariable = NewGroupVariableClient(tx.config)
 	tx.Invitation = NewInvitationClient(tx.config)
 	tx.Membership = NewMembershipClient(tx.config)
+	tx.NotificationChannel = NewNotificationChannelClient(tx.config)
 	tx.Organization = NewOrganizationClient(tx.config)
 	tx.TektonInstallation = NewTektonInstallationClient(tx.config)
 	tx.User = NewUserClient(tx.config)

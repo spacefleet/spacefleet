@@ -1633,6 +1633,99 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/notification-channels:
+    get:
+      summary: List the notification channels in the current organization
+      description: |
+        Org-scoped. Where run notifications go — an email address, a Slack
+        incoming webhook, or a generic webhook — with the events each
+        receives. A webhook's URL is sealed at rest and never returned; only
+        its host is shown.
+      operationId: listNotificationChannels
+      responses:
+        "200":
+          description: The organization's notification channels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NotificationChannel"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Add a notification channel
+      description: |
+        Org-scoped, admin only. A webhook kind needs the encryption key
+        (SPACEFLEET_SECRET_KEY) to seal its URL. Names are unique within the
+        organization.
+      operationId: createNotificationChannel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationChannelCreateRequest"
+      responses:
+        "201":
+          description: The created channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationChannel"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/notification-channels/{id}:
+    patch:
+      summary: Update a notification channel
+      description: Org-scoped, admin only. The kind is fixed at creation.
+      operationId: updateNotificationChannel
+      parameters:
+        - $ref: "#/components/parameters/NotificationChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationChannelUpdateRequest"
+      responses:
+        "200":
+          description: The updated channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationChannel"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete a notification channel
+      description: Org-scoped, admin only.
+      operationId: deleteNotificationChannel
+      parameters:
+        - $ref: "#/components/parameters/NotificationChannelID"
+      responses:
+        "204":
+          description: Deleted
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/notification-channels/{id}/test:
+    post:
+      summary: Send a test notification to a channel
+      description: |
+        Org-scoped, admin only. Enqueues a synthetic test message to the
+        channel so its destination can be confirmed. Requires the background
+        worker (503 otherwise).
+      operationId: testNotificationChannel
+      parameters:
+        - $ref: "#/components/parameters/NotificationChannelID"
+      responses:
+        "202":
+          description: Test notification accepted for delivery
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/cloud-credentials:
     get:
       summary: List the cloud credentials in the current organization
@@ -3028,6 +3121,96 @@ components:
       description: The cloud the credential authenticates to.
       enum: [aws, gcp, azure]
 
+    NotificationChannelKind:
+      type: string
+      description: |
+        How a channel delivers: `email` (needs SMTP configured on the
+        deployment), `slack` (a Slack incoming webhook URL), or `webhook`
+        (any URL, receiving a JSON body with an `X-Spacefleet-Event` header).
+      enum: [email, slack, webhook]
+
+    RunEventKind:
+      type: string
+      description: |
+        The run events a channel can subscribe to: a run parked at an
+        approval gate, a run that failed (including a timed-out approval or
+        an abandoned run), or a drift check that found drift.
+      enum: [awaiting_approval, run_failed, drift_detected]
+
+    NotificationChannel:
+      type: object
+      required: [id, name, kind, address, events, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/NotificationChannelKind"
+        address:
+          type: string
+          description: |
+            The destination as shown: the email address, or a webhook's
+            host. A webhook's full URL is never returned.
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunEventKind"
+        application_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: The one application the channel is limited to, or null for every application.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    NotificationChannelCreateRequest:
+      type: object
+      required: [name, kind, target, events]
+      properties:
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/NotificationChannelKind"
+        target:
+          type: string
+          description: The email address, or the webhook URL (sealed at rest).
+        events:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/RunEventKind"
+        application_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Limit the channel to one application; omit or null for every application.
+
+    NotificationChannelUpdateRequest:
+      type: object
+      description: All fields optional; the kind cannot change.
+      properties:
+        name:
+          type: string
+        target:
+          type: string
+          description: A new email address or webhook URL.
+        events:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/RunEventKind"
+        application_id:
+          type: string
+          description: |
+            Set to an application id to limit the channel to it, or to an
+            empty string to cover every application. Omit to leave it as is.
+
     CloudCredential:
       type: object
       description: |
@@ -4217,6 +4400,13 @@ components:
         type: string
         format: uuid
 
+    NotificationChannelID:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
     CloudCredentialID:
       in: path
       name: id
