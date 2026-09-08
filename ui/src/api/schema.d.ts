@@ -1303,6 +1303,58 @@ export interface paths {
         patch: operations["updateChartCredential"];
         trace?: never;
     };
+    "/api/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the plan policies in the current organization
+         * @description Org-scoped. Rego policies evaluated against every OpenTofu plan of
+         *     the applications they cover, before the apply.
+         */
+        get: operations["listPolicies"];
+        put?: never;
+        /**
+         * Add a plan policy
+         * @description Org-scoped, admin only. The Rego must compile and declare
+         *     `package spacefleet` (400 otherwise, with the compiler's message).
+         *     Names are unique within the organization.
+         */
+        post: operations["createPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/policies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a plan policy */
+        get: operations["getPolicy"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a plan policy
+         * @description Org-scoped, admin only.
+         */
+        delete: operations["deletePolicy"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a plan policy
+         * @description Org-scoped, admin only.
+         */
+        patch: operations["updatePolicy"];
+        trace?: never;
+    };
     "/api/notification-channels": {
         parameters: {
             query?: never;
@@ -2271,6 +2323,76 @@ export interface components {
          */
         CloudProvider: "aws" | "gcp" | "azure";
         /**
+         * @description What a violation does: `block` fails the plan step so the apply
+         *     never runs (the run fails); `warn` records it for the approver and
+         *     lets the run proceed. A preview never fails on a policy — it records
+         *     the verdict.
+         * @enum {string}
+         */
+        PolicyEnforcement: "block" | "warn";
+        Policy: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description?: string;
+            /** @description The Rego source (package spacefleet, a `deny` rule). */
+            rego: string;
+            enforcement: components["schemas"]["PolicyEnforcement"];
+            enabled: boolean;
+            /**
+             * Format: uuid
+             * @description The one application the policy is limited to, or null for every application.
+             */
+            application_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        PolicyCreateRequest: {
+            name: string;
+            description?: string;
+            rego: string;
+            enforcement?: components["schemas"]["PolicyEnforcement"];
+            enabled?: boolean;
+            /** Format: uuid */
+            application_id?: string | null;
+        };
+        /** @description All fields optional. */
+        PolicyUpdateRequest: {
+            name?: string;
+            description?: string;
+            rego?: string;
+            enforcement?: components["schemas"]["PolicyEnforcement"];
+            enabled?: boolean;
+            /**
+             * @description Set to an application id to limit the policy to it, or to an
+             *     empty string to cover every application. Omit to leave it as is.
+             */
+            application_id?: string;
+        };
+        PolicyResult: {
+            policy_id: string;
+            policy_name: string;
+            enforcement: components["schemas"]["PolicyEnforcement"];
+            violations: string[];
+            /** @description Set when the policy could not be evaluated; a block policy that errors blocks. */
+            error?: string;
+        };
+        /**
+         * @description The policies evaluated against an OpenTofu plan step, recorded on the
+         *     step. blocked means a block policy was violated (or could not be
+         *     evaluated): on a deploy or uninstall the step failed and the apply
+         *     was skipped. warned means a warn policy was violated.
+         */
+        PolicyVerdict: {
+            /** Format: date-time */
+            evaluated_at: string;
+            results: components["schemas"]["PolicyResult"][];
+            blocked: boolean;
+            warned: boolean;
+        };
+        /**
          * @description How a channel delivers: `email` (needs SMTP configured on the
          *     deployment), `slack` (a Slack incoming webhook URL), or `webhook`
          *     (any URL, receiving a JSON body with an `X-Spacefleet-Event` header).
@@ -2828,6 +2950,7 @@ export interface components {
              *     N-of-M tally. Empty until someone approves.
              */
             approvals?: components["schemas"]["Approval"][];
+            policy?: components["schemas"]["PolicyVerdict"];
             /** @description Git commit SHA the chart was resolved to (git sources only). */
             chart_revision?: string;
             /** @description Git commit SHAs the values sources were resolved to. */
@@ -3209,6 +3332,7 @@ export interface components {
         ApplicationID: string;
         ApplicationGroupID: string;
         ChartCredentialID: string;
+        PolicyID: string;
         NotificationChannelID: string;
         CloudCredentialID: string;
         GitHubInstallationID: string;
@@ -5032,6 +5156,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChartCredential"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's policies */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Policy"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description The created policy */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Policy"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["PolicyID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The policy */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Policy"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deletePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["PolicyID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updatePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["PolicyID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated policy */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Policy"];
                 };
             };
             default: components["responses"]["Error"];

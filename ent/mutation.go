@@ -26,6 +26,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/notificationchannel"
 	"github.com/spacefleet/spacefleet/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/planpolicy"
 	"github.com/spacefleet/spacefleet/ent/predicate"
 	"github.com/spacefleet/spacefleet/ent/schema"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
@@ -57,6 +58,7 @@ const (
 	TypeMembership          = "Membership"
 	TypeNotificationChannel = "NotificationChannel"
 	TypeOrganization        = "Organization"
+	TypePlanPolicy          = "PlanPolicy"
 	TypeTektonInstallation  = "TektonInstallation"
 	TypeUser                = "User"
 	TypeVariable            = "Variable"
@@ -6837,6 +6839,7 @@ type ComponentRunMutation struct {
 	logs                *string
 	outputs             *string
 	resources           *string
+	policy              *string
 	approved_by         *string
 	approved_at         *time.Time
 	approvals           *string
@@ -7460,6 +7463,55 @@ func (m *ComponentRunMutation) ResetResources() {
 	delete(m.clearedFields, componentrun.FieldResources)
 }
 
+// SetPolicy sets the "policy" field.
+func (m *ComponentRunMutation) SetPolicy(s string) {
+	m.policy = &s
+}
+
+// Policy returns the value of the "policy" field in the mutation.
+func (m *ComponentRunMutation) Policy() (r string, exists bool) {
+	v := m.policy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPolicy returns the old "policy" field's value of the ComponentRun entity.
+// If the ComponentRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComponentRunMutation) OldPolicy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPolicy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPolicy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPolicy: %w", err)
+	}
+	return oldValue.Policy, nil
+}
+
+// ClearPolicy clears the value of the "policy" field.
+func (m *ComponentRunMutation) ClearPolicy() {
+	m.policy = nil
+	m.clearedFields[componentrun.FieldPolicy] = struct{}{}
+}
+
+// PolicyCleared returns if the "policy" field was cleared in this mutation.
+func (m *ComponentRunMutation) PolicyCleared() bool {
+	_, ok := m.clearedFields[componentrun.FieldPolicy]
+	return ok
+}
+
+// ResetPolicy resets all changes to the "policy" field.
+func (m *ComponentRunMutation) ResetPolicy() {
+	m.policy = nil
+	delete(m.clearedFields, componentrun.FieldPolicy)
+}
+
 // SetApprovedBy sets the "approved_by" field.
 func (m *ComponentRunMutation) SetApprovedBy(s string) {
 	m.approved_by = &s
@@ -7950,7 +8002,7 @@ func (m *ComponentRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ComponentRunMutation) Fields() []string {
-	fields := make([]string, 0, 20)
+	fields := make([]string, 0, 21)
 	if m.organization != nil {
 		fields = append(fields, componentrun.FieldOrganizationID)
 	}
@@ -7983,6 +8035,9 @@ func (m *ComponentRunMutation) Fields() []string {
 	}
 	if m.resources != nil {
 		fields = append(fields, componentrun.FieldResources)
+	}
+	if m.policy != nil {
+		fields = append(fields, componentrun.FieldPolicy)
 	}
 	if m.approved_by != nil {
 		fields = append(fields, componentrun.FieldApprovedBy)
@@ -8041,6 +8096,8 @@ func (m *ComponentRunMutation) Field(name string) (ent.Value, bool) {
 		return m.Outputs()
 	case componentrun.FieldResources:
 		return m.Resources()
+	case componentrun.FieldPolicy:
+		return m.Policy()
 	case componentrun.FieldApprovedBy:
 		return m.ApprovedBy()
 	case componentrun.FieldApprovedAt:
@@ -8090,6 +8147,8 @@ func (m *ComponentRunMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldOutputs(ctx)
 	case componentrun.FieldResources:
 		return m.OldResources(ctx)
+	case componentrun.FieldPolicy:
+		return m.OldPolicy(ctx)
 	case componentrun.FieldApprovedBy:
 		return m.OldApprovedBy(ctx)
 	case componentrun.FieldApprovedAt:
@@ -8193,6 +8252,13 @@ func (m *ComponentRunMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetResources(v)
+		return nil
+	case componentrun.FieldPolicy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPolicy(v)
 		return nil
 	case componentrun.FieldApprovedBy:
 		v, ok := value.(string)
@@ -8311,6 +8377,9 @@ func (m *ComponentRunMutation) ClearedFields() []string {
 	if m.FieldCleared(componentrun.FieldResources) {
 		fields = append(fields, componentrun.FieldResources)
 	}
+	if m.FieldCleared(componentrun.FieldPolicy) {
+		fields = append(fields, componentrun.FieldPolicy)
+	}
 	if m.FieldCleared(componentrun.FieldApprovedAt) {
 		fields = append(fields, componentrun.FieldApprovedAt)
 	}
@@ -8366,6 +8435,9 @@ func (m *ComponentRunMutation) ClearField(name string) error {
 		return nil
 	case componentrun.FieldResources:
 		m.ClearResources()
+		return nil
+	case componentrun.FieldPolicy:
+		m.ClearPolicy()
 		return nil
 	case componentrun.FieldApprovedAt:
 		m.ClearApprovedAt()
@@ -8425,6 +8497,9 @@ func (m *ComponentRunMutation) ResetField(name string) error {
 		return nil
 	case componentrun.FieldResources:
 		m.ResetResources()
+		return nil
+	case componentrun.FieldPolicy:
+		m.ResetPolicy()
 		return nil
 	case componentrun.FieldApprovedBy:
 		m.ResetApprovedBy()
@@ -13141,6 +13216,911 @@ func (m *OrganizationMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Organization edge %s", name)
+}
+
+// PlanPolicyMutation represents an operation that mutates the PlanPolicy nodes in the graph.
+type PlanPolicyMutation struct {
+	config
+	op                  Op
+	typ                 string
+	id                  *uuid.UUID
+	name                *string
+	description         *string
+	rego                *string
+	enforcement         *planpolicy.Enforcement
+	enabled             *bool
+	created_at          *time.Time
+	updated_at          *time.Time
+	clearedFields       map[string]struct{}
+	organization        *uuid.UUID
+	clearedorganization bool
+	application         *uuid.UUID
+	clearedapplication  bool
+	done                bool
+	oldValue            func(context.Context) (*PlanPolicy, error)
+	predicates          []predicate.PlanPolicy
+}
+
+var _ ent.Mutation = (*PlanPolicyMutation)(nil)
+
+// planpolicyOption allows management of the mutation configuration using functional options.
+type planpolicyOption func(*PlanPolicyMutation)
+
+// newPlanPolicyMutation creates new mutation for the PlanPolicy entity.
+func newPlanPolicyMutation(c config, op Op, opts ...planpolicyOption) *PlanPolicyMutation {
+	m := &PlanPolicyMutation{
+		config:        c,
+		op:            op,
+		typ:           TypePlanPolicy,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withPlanPolicyID sets the ID field of the mutation.
+func withPlanPolicyID(id uuid.UUID) planpolicyOption {
+	return func(m *PlanPolicyMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *PlanPolicy
+		)
+		m.oldValue = func(ctx context.Context) (*PlanPolicy, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().PlanPolicy.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withPlanPolicy sets the old PlanPolicy of the mutation.
+func withPlanPolicy(node *PlanPolicy) planpolicyOption {
+	return func(m *PlanPolicyMutation) {
+		m.oldValue = func(context.Context) (*PlanPolicy, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m PlanPolicyMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m PlanPolicyMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of PlanPolicy entities.
+func (m *PlanPolicyMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *PlanPolicyMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *PlanPolicyMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().PlanPolicy.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (m *PlanPolicyMutation) SetOrganizationID(u uuid.UUID) {
+	m.organization = &u
+}
+
+// OrganizationID returns the value of the "organization_id" field in the mutation.
+func (m *PlanPolicyMutation) OrganizationID() (r uuid.UUID, exists bool) {
+	v := m.organization
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrganizationID returns the old "organization_id" field's value of the PlanPolicy entity.
+// If the PlanPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlanPolicyMutation) OldOrganizationID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrganizationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrganizationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrganizationID: %w", err)
+	}
+	return oldValue.OrganizationID, nil
+}
+
+// ResetOrganizationID resets all changes to the "organization_id" field.
+func (m *PlanPolicyMutation) ResetOrganizationID() {
+	m.organization = nil
+}
+
+// SetName sets the "name" field.
+func (m *PlanPolicyMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *PlanPolicyMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the PlanPolicy entity.
+// If the PlanPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlanPolicyMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *PlanPolicyMutation) ResetName() {
+	m.name = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *PlanPolicyMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *PlanPolicyMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the PlanPolicy entity.
+// If the PlanPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlanPolicyMutation) OldDescription(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ClearDescription clears the value of the "description" field.
+func (m *PlanPolicyMutation) ClearDescription() {
+	m.description = nil
+	m.clearedFields[planpolicy.FieldDescription] = struct{}{}
+}
+
+// DescriptionCleared returns if the "description" field was cleared in this mutation.
+func (m *PlanPolicyMutation) DescriptionCleared() bool {
+	_, ok := m.clearedFields[planpolicy.FieldDescription]
+	return ok
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *PlanPolicyMutation) ResetDescription() {
+	m.description = nil
+	delete(m.clearedFields, planpolicy.FieldDescription)
+}
+
+// SetRego sets the "rego" field.
+func (m *PlanPolicyMutation) SetRego(s string) {
+	m.rego = &s
+}
+
+// Rego returns the value of the "rego" field in the mutation.
+func (m *PlanPolicyMutation) Rego() (r string, exists bool) {
+	v := m.rego
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRego returns the old "rego" field's value of the PlanPolicy entity.
+// If the PlanPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlanPolicyMutation) OldRego(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRego is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRego requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRego: %w", err)
+	}
+	return oldValue.Rego, nil
+}
+
+// ResetRego resets all changes to the "rego" field.
+func (m *PlanPolicyMutation) ResetRego() {
+	m.rego = nil
+}
+
+// SetEnforcement sets the "enforcement" field.
+func (m *PlanPolicyMutation) SetEnforcement(pl planpolicy.Enforcement) {
+	m.enforcement = &pl
+}
+
+// Enforcement returns the value of the "enforcement" field in the mutation.
+func (m *PlanPolicyMutation) Enforcement() (r planpolicy.Enforcement, exists bool) {
+	v := m.enforcement
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnforcement returns the old "enforcement" field's value of the PlanPolicy entity.
+// If the PlanPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlanPolicyMutation) OldEnforcement(ctx context.Context) (v planpolicy.Enforcement, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnforcement is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnforcement requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnforcement: %w", err)
+	}
+	return oldValue.Enforcement, nil
+}
+
+// ResetEnforcement resets all changes to the "enforcement" field.
+func (m *PlanPolicyMutation) ResetEnforcement() {
+	m.enforcement = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *PlanPolicyMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *PlanPolicyMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the PlanPolicy entity.
+// If the PlanPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlanPolicyMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *PlanPolicyMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetApplicationID sets the "application_id" field.
+func (m *PlanPolicyMutation) SetApplicationID(u uuid.UUID) {
+	m.application = &u
+}
+
+// ApplicationID returns the value of the "application_id" field in the mutation.
+func (m *PlanPolicyMutation) ApplicationID() (r uuid.UUID, exists bool) {
+	v := m.application
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldApplicationID returns the old "application_id" field's value of the PlanPolicy entity.
+// If the PlanPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlanPolicyMutation) OldApplicationID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldApplicationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldApplicationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldApplicationID: %w", err)
+	}
+	return oldValue.ApplicationID, nil
+}
+
+// ClearApplicationID clears the value of the "application_id" field.
+func (m *PlanPolicyMutation) ClearApplicationID() {
+	m.application = nil
+	m.clearedFields[planpolicy.FieldApplicationID] = struct{}{}
+}
+
+// ApplicationIDCleared returns if the "application_id" field was cleared in this mutation.
+func (m *PlanPolicyMutation) ApplicationIDCleared() bool {
+	_, ok := m.clearedFields[planpolicy.FieldApplicationID]
+	return ok
+}
+
+// ResetApplicationID resets all changes to the "application_id" field.
+func (m *PlanPolicyMutation) ResetApplicationID() {
+	m.application = nil
+	delete(m.clearedFields, planpolicy.FieldApplicationID)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *PlanPolicyMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *PlanPolicyMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the PlanPolicy entity.
+// If the PlanPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlanPolicyMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *PlanPolicyMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *PlanPolicyMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *PlanPolicyMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the PlanPolicy entity.
+// If the PlanPolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlanPolicyMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *PlanPolicyMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearOrganization clears the "organization" edge to the Organization entity.
+func (m *PlanPolicyMutation) ClearOrganization() {
+	m.clearedorganization = true
+	m.clearedFields[planpolicy.FieldOrganizationID] = struct{}{}
+}
+
+// OrganizationCleared reports if the "organization" edge to the Organization entity was cleared.
+func (m *PlanPolicyMutation) OrganizationCleared() bool {
+	return m.clearedorganization
+}
+
+// OrganizationIDs returns the "organization" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OrganizationID instead. It exists only for internal usage by the builders.
+func (m *PlanPolicyMutation) OrganizationIDs() (ids []uuid.UUID) {
+	if id := m.organization; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOrganization resets all changes to the "organization" edge.
+func (m *PlanPolicyMutation) ResetOrganization() {
+	m.organization = nil
+	m.clearedorganization = false
+}
+
+// ClearApplication clears the "application" edge to the Application entity.
+func (m *PlanPolicyMutation) ClearApplication() {
+	m.clearedapplication = true
+	m.clearedFields[planpolicy.FieldApplicationID] = struct{}{}
+}
+
+// ApplicationCleared reports if the "application" edge to the Application entity was cleared.
+func (m *PlanPolicyMutation) ApplicationCleared() bool {
+	return m.ApplicationIDCleared() || m.clearedapplication
+}
+
+// ApplicationIDs returns the "application" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ApplicationID instead. It exists only for internal usage by the builders.
+func (m *PlanPolicyMutation) ApplicationIDs() (ids []uuid.UUID) {
+	if id := m.application; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetApplication resets all changes to the "application" edge.
+func (m *PlanPolicyMutation) ResetApplication() {
+	m.application = nil
+	m.clearedapplication = false
+}
+
+// Where appends a list predicates to the PlanPolicyMutation builder.
+func (m *PlanPolicyMutation) Where(ps ...predicate.PlanPolicy) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the PlanPolicyMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *PlanPolicyMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.PlanPolicy, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *PlanPolicyMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *PlanPolicyMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (PlanPolicy).
+func (m *PlanPolicyMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *PlanPolicyMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.organization != nil {
+		fields = append(fields, planpolicy.FieldOrganizationID)
+	}
+	if m.name != nil {
+		fields = append(fields, planpolicy.FieldName)
+	}
+	if m.description != nil {
+		fields = append(fields, planpolicy.FieldDescription)
+	}
+	if m.rego != nil {
+		fields = append(fields, planpolicy.FieldRego)
+	}
+	if m.enforcement != nil {
+		fields = append(fields, planpolicy.FieldEnforcement)
+	}
+	if m.enabled != nil {
+		fields = append(fields, planpolicy.FieldEnabled)
+	}
+	if m.application != nil {
+		fields = append(fields, planpolicy.FieldApplicationID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, planpolicy.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, planpolicy.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *PlanPolicyMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case planpolicy.FieldOrganizationID:
+		return m.OrganizationID()
+	case planpolicy.FieldName:
+		return m.Name()
+	case planpolicy.FieldDescription:
+		return m.Description()
+	case planpolicy.FieldRego:
+		return m.Rego()
+	case planpolicy.FieldEnforcement:
+		return m.Enforcement()
+	case planpolicy.FieldEnabled:
+		return m.Enabled()
+	case planpolicy.FieldApplicationID:
+		return m.ApplicationID()
+	case planpolicy.FieldCreatedAt:
+		return m.CreatedAt()
+	case planpolicy.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *PlanPolicyMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case planpolicy.FieldOrganizationID:
+		return m.OldOrganizationID(ctx)
+	case planpolicy.FieldName:
+		return m.OldName(ctx)
+	case planpolicy.FieldDescription:
+		return m.OldDescription(ctx)
+	case planpolicy.FieldRego:
+		return m.OldRego(ctx)
+	case planpolicy.FieldEnforcement:
+		return m.OldEnforcement(ctx)
+	case planpolicy.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case planpolicy.FieldApplicationID:
+		return m.OldApplicationID(ctx)
+	case planpolicy.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case planpolicy.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown PlanPolicy field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PlanPolicyMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case planpolicy.FieldOrganizationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrganizationID(v)
+		return nil
+	case planpolicy.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case planpolicy.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case planpolicy.FieldRego:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRego(v)
+		return nil
+	case planpolicy.FieldEnforcement:
+		v, ok := value.(planpolicy.Enforcement)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnforcement(v)
+		return nil
+	case planpolicy.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case planpolicy.FieldApplicationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetApplicationID(v)
+		return nil
+	case planpolicy.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case planpolicy.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PlanPolicy field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *PlanPolicyMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *PlanPolicyMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PlanPolicyMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown PlanPolicy numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *PlanPolicyMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(planpolicy.FieldDescription) {
+		fields = append(fields, planpolicy.FieldDescription)
+	}
+	if m.FieldCleared(planpolicy.FieldApplicationID) {
+		fields = append(fields, planpolicy.FieldApplicationID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *PlanPolicyMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *PlanPolicyMutation) ClearField(name string) error {
+	switch name {
+	case planpolicy.FieldDescription:
+		m.ClearDescription()
+		return nil
+	case planpolicy.FieldApplicationID:
+		m.ClearApplicationID()
+		return nil
+	}
+	return fmt.Errorf("unknown PlanPolicy nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *PlanPolicyMutation) ResetField(name string) error {
+	switch name {
+	case planpolicy.FieldOrganizationID:
+		m.ResetOrganizationID()
+		return nil
+	case planpolicy.FieldName:
+		m.ResetName()
+		return nil
+	case planpolicy.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case planpolicy.FieldRego:
+		m.ResetRego()
+		return nil
+	case planpolicy.FieldEnforcement:
+		m.ResetEnforcement()
+		return nil
+	case planpolicy.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case planpolicy.FieldApplicationID:
+		m.ResetApplicationID()
+		return nil
+	case planpolicy.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case planpolicy.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown PlanPolicy field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *PlanPolicyMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.organization != nil {
+		edges = append(edges, planpolicy.EdgeOrganization)
+	}
+	if m.application != nil {
+		edges = append(edges, planpolicy.EdgeApplication)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *PlanPolicyMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case planpolicy.EdgeOrganization:
+		if id := m.organization; id != nil {
+			return []ent.Value{*id}
+		}
+	case planpolicy.EdgeApplication:
+		if id := m.application; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *PlanPolicyMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *PlanPolicyMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *PlanPolicyMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedorganization {
+		edges = append(edges, planpolicy.EdgeOrganization)
+	}
+	if m.clearedapplication {
+		edges = append(edges, planpolicy.EdgeApplication)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *PlanPolicyMutation) EdgeCleared(name string) bool {
+	switch name {
+	case planpolicy.EdgeOrganization:
+		return m.clearedorganization
+	case planpolicy.EdgeApplication:
+		return m.clearedapplication
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *PlanPolicyMutation) ClearEdge(name string) error {
+	switch name {
+	case planpolicy.EdgeOrganization:
+		m.ClearOrganization()
+		return nil
+	case planpolicy.EdgeApplication:
+		m.ClearApplication()
+		return nil
+	}
+	return fmt.Errorf("unknown PlanPolicy unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *PlanPolicyMutation) ResetEdge(name string) error {
+	switch name {
+	case planpolicy.EdgeOrganization:
+		m.ResetOrganization()
+		return nil
+	case planpolicy.EdgeApplication:
+		m.ResetApplication()
+		return nil
+	}
+	return fmt.Errorf("unknown PlanPolicy edge %s", name)
 }
 
 // TektonInstallationMutation represents an operation that mutates the TektonInstallation nodes in the graph.

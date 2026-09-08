@@ -69,6 +69,9 @@ func (ComponentRun) Fields() []ent.Field {
 		// reduced to one line per resource in the pod (see tofu.ResourcesFile),
 		// never the full state. Empty for every other step.
 		field.Text("resources").Optional(),
+		// The policy verdict (policy.Verdict JSON) recorded on an OpenTofu plan
+		// step after its policies were evaluated; empty for every other step.
+		field.Text("policy").Optional(),
 		// Who approved this step's approval gate, and when. Set when a human approves
 		// an awaiting_approval step; empty/nil otherwise.
 		field.String("approved_by").Default(""),

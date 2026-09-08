@@ -50,6 +50,7 @@ type ComponentRunDetail = components["schemas"]["ComponentRunDetail"];
 type ComponentType = components["schemas"]["ComponentType"];
 type ComponentRunStatus = components["schemas"]["ComponentRunStatus"];
 type RunStatus = components["schemas"]["RunStatus"];
+type PolicyVerdict = components["schemas"]["PolicyVerdict"];
 
 const nodeTypes = { run: RunNode };
 
@@ -736,6 +737,12 @@ function ComponentRunPanel({
             </div>
           )}
 
+          {/* The policy verdict recorded on an OpenTofu plan step (shown on the
+              step itself and at its apply's approval gate). */}
+          {(detail?.policy ?? planDetail?.policy) && (
+            <PolicyVerdictBox verdict={(detail?.policy ?? planDetail?.policy)!} />
+          )}
+
           {/* Preview runs get a Diff/Logs tab pair, a tofu apply step a
               Plan output(/Outputs)/Logs set, so each view spans the whole
               panel; other runs are logs-only with no tab chrome. */}
@@ -1008,5 +1015,39 @@ function ApprovalPolicyLine({
     <p data-testid="approval-policy" className="mt-1.5 text-xs text-violet-800">
       {parts.join(" · ")}
     </p>
+  );
+}
+
+// PolicyVerdictBox lists every policy evaluated against a plan: its
+// enforcement, and its violations or evaluation error. Blocked reads red,
+// warned amber, clean green.
+function PolicyVerdictBox({ verdict }: { verdict: PolicyVerdict }) {
+  const tone = verdict.blocked
+    ? "border-red-200 bg-red-50 text-red-900"
+    : verdict.warned
+      ? "border-amber-200 bg-amber-50 text-amber-900"
+      : "border-emerald-200 bg-emerald-50 text-emerald-900";
+  const title = verdict.blocked
+    ? "Blocked by policy"
+    : verdict.warned
+      ? "Policy warnings"
+      : "Policies passed";
+  return (
+    <div data-testid="policy-verdict" className={`border-b px-4 py-3 text-sm ${tone}`}>
+      <p className="font-medium">{title}</p>
+      <ul className="mt-1 flex flex-col gap-0.5 text-xs">
+        {verdict.results.map((r) => (
+          <li key={r.policy_id}>
+            <span className="font-medium">{r.policy_name}</span>{" "}
+            <span className="opacity-70">({r.enforcement})</span>
+            {r.error
+              ? ` — could not be evaluated: ${r.error}`
+              : r.violations.length === 0
+                ? " — passed"
+                : ` — ${r.violations.join("; ")}`}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

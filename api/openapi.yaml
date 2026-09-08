@@ -1633,6 +1633,95 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/policies:
+    get:
+      summary: List the plan policies in the current organization
+      description: |
+        Org-scoped. Rego policies evaluated against every OpenTofu plan of
+        the applications they cover, before the apply.
+      operationId: listPolicies
+      responses:
+        "200":
+          description: The organization's policies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Policy"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Add a plan policy
+      description: |
+        Org-scoped, admin only. The Rego must compile and declare
+        `package spacefleet` (400 otherwise, with the compiler's message).
+        Names are unique within the organization.
+      operationId: createPolicy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyCreateRequest"
+      responses:
+        "201":
+          description: The created policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/policies/{id}:
+    get:
+      summary: Get a plan policy
+      operationId: getPolicy
+      parameters:
+        - $ref: "#/components/parameters/PolicyID"
+      responses:
+        "200":
+          description: The policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      summary: Update a plan policy
+      description: Org-scoped, admin only.
+      operationId: updatePolicy
+      parameters:
+        - $ref: "#/components/parameters/PolicyID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyUpdateRequest"
+      responses:
+        "200":
+          description: The updated policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete a plan policy
+      description: Org-scoped, admin only.
+      operationId: deletePolicy
+      parameters:
+        - $ref: "#/components/parameters/PolicyID"
+      responses:
+        "204":
+          description: Deleted
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/notification-channels:
     get:
       summary: List the notification channels in the current organization
@@ -3121,6 +3210,123 @@ components:
       description: The cloud the credential authenticates to.
       enum: [aws, gcp, azure]
 
+    PolicyEnforcement:
+      type: string
+      description: |
+        What a violation does: `block` fails the plan step so the apply
+        never runs (the run fails); `warn` records it for the approver and
+        lets the run proceed. A preview never fails on a policy — it records
+        the verdict.
+      enum: [block, warn]
+
+    Policy:
+      type: object
+      required: [id, name, rego, enforcement, enabled, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        rego:
+          type: string
+          description: The Rego source (package spacefleet, a `deny` rule).
+        enforcement:
+          $ref: "#/components/schemas/PolicyEnforcement"
+        enabled:
+          type: boolean
+        application_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: The one application the policy is limited to, or null for every application.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PolicyCreateRequest:
+      type: object
+      required: [name, rego]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        rego:
+          type: string
+        enforcement:
+          $ref: "#/components/schemas/PolicyEnforcement"
+        enabled:
+          type: boolean
+        application_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    PolicyUpdateRequest:
+      type: object
+      description: All fields optional.
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        rego:
+          type: string
+        enforcement:
+          $ref: "#/components/schemas/PolicyEnforcement"
+        enabled:
+          type: boolean
+        application_id:
+          type: string
+          description: |
+            Set to an application id to limit the policy to it, or to an
+            empty string to cover every application. Omit to leave it as is.
+
+    PolicyResult:
+      type: object
+      required: [policy_id, policy_name, enforcement, violations]
+      properties:
+        policy_id:
+          type: string
+        policy_name:
+          type: string
+        enforcement:
+          $ref: "#/components/schemas/PolicyEnforcement"
+        violations:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
+          description: Set when the policy could not be evaluated; a block policy that errors blocks.
+
+    PolicyVerdict:
+      type: object
+      description: |
+        The policies evaluated against an OpenTofu plan step, recorded on the
+        step. blocked means a block policy was violated (or could not be
+        evaluated): on a deploy or uninstall the step failed and the apply
+        was skipped. warned means a warn policy was violated.
+      required: [evaluated_at, results, blocked, warned]
+      properties:
+        evaluated_at:
+          type: string
+          format: date-time
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/PolicyResult"
+        blocked:
+          type: boolean
+        warned:
+          type: boolean
+
     NotificationChannelKind:
       type: string
       description: |
@@ -3893,6 +4099,8 @@ components:
             N-of-M tally. Empty until someone approves.
           items:
             $ref: "#/components/schemas/Approval"
+        policy:
+          $ref: "#/components/schemas/PolicyVerdict"
         chart_revision:
           type: string
           description: Git commit SHA the chart was resolved to (git sources only).
@@ -4400,6 +4608,13 @@ components:
         type: string
         format: uuid
 
+    PolicyID:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
     NotificationChannelID:
       in: path
       name: id

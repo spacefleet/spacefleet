@@ -19,6 +19,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/githubinstallations"
 	"github.com/spacefleet/spacefleet/lib/notifications"
 	"github.com/spacefleet/spacefleet/lib/organizations"
+	"github.com/spacefleet/spacefleet/lib/policies"
 	"github.com/spacefleet/spacefleet/lib/secrets"
 	"github.com/spacefleet/spacefleet/lib/testsupport"
 	"github.com/spacefleet/spacefleet/lib/users"
@@ -96,6 +97,7 @@ func newHarness(t *testing.T, github githubinstallations.Authenticator) *harness
 		GitHubInstallations: githubinstallations.NewService(client, github),
 		Workflows:           workflows.NewService(client),
 		Notifications:       notifications.NewService(client, sealer, nil),
+		Policies:            policies.NewService(client),
 		SecretKey:           testSecretKey,
 		GitHubAppSlug:       "spacefleet-test",
 	}

@@ -338,6 +338,7 @@ var (
 		{Name: "logs", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "outputs", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "resources", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "policy", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "approved_by", Type: field.TypeString, Default: ""},
 		{Name: "approved_at", Type: field.TypeTime, Nullable: true},
 		{Name: "approvals", Type: field.TypeString, Nullable: true, Size: 2147483647},
@@ -358,13 +359,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "component_runs_organizations_organization",
-				Columns:    []*schema.Column{ComponentRunsColumns[19]},
+				Columns:    []*schema.Column{ComponentRunsColumns[20]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "component_runs_workflow_runs_workflow_run",
-				Columns:    []*schema.Column{ComponentRunsColumns[20]},
+				Columns:    []*schema.Column{ComponentRunsColumns[21]},
 				RefColumns: []*schema.Column{WorkflowRunsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -373,12 +374,12 @@ var (
 			{
 				Name:    "componentrun_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{ComponentRunsColumns[19]},
+				Columns: []*schema.Column{ComponentRunsColumns[20]},
 			},
 			{
 				Name:    "componentrun_workflow_run_id",
 				Unique:  false,
-				Columns: []*schema.Column{ComponentRunsColumns[20]},
+				Columns: []*schema.Column{ComponentRunsColumns[21]},
 			},
 		},
 	}
@@ -589,6 +590,51 @@ var (
 		Columns:    OrganizationsColumns,
 		PrimaryKey: []*schema.Column{OrganizationsColumns[0]},
 	}
+	// PoliciesColumns holds the columns for the "policies" table.
+	PoliciesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "description", Type: field.TypeString, Nullable: true},
+		{Name: "rego", Type: field.TypeString, Size: 2147483647},
+		{Name: "enforcement", Type: field.TypeEnum, Enums: []string{"block", "warn"}, Default: "block"},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+		{Name: "application_id", Type: field.TypeUUID, Nullable: true},
+	}
+	// PoliciesTable holds the schema information for the "policies" table.
+	PoliciesTable = &schema.Table{
+		Name:       "policies",
+		Columns:    PoliciesColumns,
+		PrimaryKey: []*schema.Column{PoliciesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "policies_organizations_organization",
+				Columns:    []*schema.Column{PoliciesColumns[8]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "policies_applications_application",
+				Columns:    []*schema.Column{PoliciesColumns[9]},
+				RefColumns: []*schema.Column{ApplicationsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "planpolicy_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{PoliciesColumns[8]},
+			},
+			{
+				Name:    "planpolicy_organization_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{PoliciesColumns[8], PoliciesColumns[1]},
+			},
+		},
+	}
 	// TektonInstallationsColumns holds the columns for the "tekton_installations" table.
 	TektonInstallationsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -755,6 +801,7 @@ var (
 		MembershipsTable,
 		NotificationChannelsTable,
 		OrganizationsTable,
+		PoliciesTable,
 		TektonInstallationsTable,
 		UsersTable,
 		VariablesTable,
@@ -790,6 +837,11 @@ func init() {
 	MembershipsTable.ForeignKeys[1].RefTable = OrganizationsTable
 	NotificationChannelsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	NotificationChannelsTable.ForeignKeys[1].RefTable = ApplicationsTable
+	PoliciesTable.ForeignKeys[0].RefTable = OrganizationsTable
+	PoliciesTable.ForeignKeys[1].RefTable = ApplicationsTable
+	PoliciesTable.Annotation = &entsql.Annotation{
+		Table: "policies",
+	}
 	TektonInstallationsTable.ForeignKeys[0].RefTable = ClustersTable
 	VariablesTable.ForeignKeys[0].RefTable = OrganizationsTable
 	VariablesTable.ForeignKeys[1].RefTable = ApplicationsTable

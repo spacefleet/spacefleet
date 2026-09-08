@@ -409,6 +409,7 @@ func toAPIComponentRun(cr *ent.ComponentRun, canSee bool) ComponentRun {
 		ChartRevision:  optStr(cr.ChartRevision),
 		ValuesRevision: optStr(cr.ValuesRevision),
 		Outputs:        toAPIComponentRunOutputs(cr.Outputs, canSee),
+		Policy:         toAPIPolicyVerdict(cr),
 		CreatedAt:      cr.CreatedAt,
 		StartedAt:      cr.StartedAt,
 		FinishedAt:     cr.FinishedAt,

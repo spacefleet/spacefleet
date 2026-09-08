@@ -80,6 +80,7 @@ export const navSections: NavSection[] = [
       { label: "Private Charts", path: "/admin/private-charts" },
       { label: "GitHub", path: "/admin/github" },
       { label: "Notifications", path: "/admin/notifications" },
+      { label: "Policies", path: "/admin/policies" },
     ],
   },
 ];

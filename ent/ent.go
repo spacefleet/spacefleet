@@ -26,6 +26,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/notificationchannel"
 	"github.com/spacefleet/spacefleet/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/planpolicy"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/user"
 	"github.com/spacefleet/spacefleet/ent/variable"
@@ -104,6 +105,7 @@ func checkColumn(t, c string) error {
 			membership.Table:          membership.ValidColumn,
 			notificationchannel.Table: notificationchannel.ValidColumn,
 			organization.Table:        organization.ValidColumn,
+			planpolicy.Table:          planpolicy.ValidColumn,
 			tektoninstallation.Table:  tektoninstallation.ValidColumn,
 			user.Table:                user.ValidColumn,
 			variable.Table:            variable.ValidColumn,

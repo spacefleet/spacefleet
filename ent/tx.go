@@ -40,6 +40,8 @@ type Tx struct {
 	NotificationChannel *NotificationChannelClient
 	// Organization is the client for interacting with the Organization builders.
 	Organization *OrganizationClient
+	// PlanPolicy is the client for interacting with the PlanPolicy builders.
+	PlanPolicy *PlanPolicyClient
 	// TektonInstallation is the client for interacting with the TektonInstallation builders.
 	TektonInstallation *TektonInstallationClient
 	// User is the client for interacting with the User builders.
@@ -193,6 +195,7 @@ func (tx *Tx) init() {
 	tx.Membership = NewMembershipClient(tx.config)
 	tx.NotificationChannel = NewNotificationChannelClient(tx.config)
 	tx.Organization = NewOrganizationClient(tx.config)
+	tx.PlanPolicy = NewPlanPolicyClient(tx.config)
 	tx.TektonInstallation = NewTektonInstallationClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 	tx.Variable = NewVariableClient(tx.config)

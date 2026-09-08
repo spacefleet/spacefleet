@@ -177,6 +177,18 @@ func (f OrganizationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrganizationMutation", m)
 }
 
+// The PlanPolicyFunc type is an adapter to allow the use of ordinary
+// function as PlanPolicy mutator.
+type PlanPolicyFunc func(context.Context, *ent.PlanPolicyMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PlanPolicyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PlanPolicyMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PlanPolicyMutation", m)
+}
+
 // The TektonInstallationFunc type is an adapter to allow the use of ordinary
 // function as TektonInstallation mutator.
 type TektonInstallationFunc func(context.Context, *ent.TektonInstallationMutation) (ent.Value, error)

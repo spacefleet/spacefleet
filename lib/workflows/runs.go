@@ -1047,6 +1047,22 @@ func (s *Service) SetComponentRunOutputs(ctx context.Context, orgID, componentRu
 	return nil
 }
 
+// SetComponentRunPolicy records the policy verdict (policy.Verdict JSON)
+// evaluated for an OpenTofu plan step. Org-scoped.
+func (s *Service) SetComponentRunPolicy(ctx context.Context, orgID, componentRunID uuid.UUID, verdict string) error {
+	affected, err := s.ent.ComponentRun.Update().
+		Where(componentrun.OrganizationID(orgID), componentrun.ID(componentRunID)).
+		SetPolicy(verdict).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return &ent.NotFoundError{}
+	}
+	return nil
+}
+
 // SetComponentRunLogs persists a component run's captured output and resolved
 // revisions (chart / values), written at terminal because the runner pod is then
 // garbage-collected. Each field is set only when non-empty so a partial update

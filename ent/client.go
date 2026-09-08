@@ -30,6 +30,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/notificationchannel"
 	"github.com/spacefleet/spacefleet/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/planpolicy"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/user"
 	"github.com/spacefleet/spacefleet/ent/variable"
@@ -69,6 +70,8 @@ type Client struct {
 	NotificationChannel *NotificationChannelClient
 	// Organization is the client for interacting with the Organization builders.
 	Organization *OrganizationClient
+	// PlanPolicy is the client for interacting with the PlanPolicy builders.
+	PlanPolicy *PlanPolicyClient
 	// TektonInstallation is the client for interacting with the TektonInstallation builders.
 	TektonInstallation *TektonInstallationClient
 	// User is the client for interacting with the User builders.
@@ -102,6 +105,7 @@ func (c *Client) init() {
 	c.Membership = NewMembershipClient(c.config)
 	c.NotificationChannel = NewNotificationChannelClient(c.config)
 	c.Organization = NewOrganizationClient(c.config)
+	c.PlanPolicy = NewPlanPolicyClient(c.config)
 	c.TektonInstallation = NewTektonInstallationClient(c.config)
 	c.User = NewUserClient(c.config)
 	c.Variable = NewVariableClient(c.config)
@@ -212,6 +216,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Membership:          NewMembershipClient(cfg),
 		NotificationChannel: NewNotificationChannelClient(cfg),
 		Organization:        NewOrganizationClient(cfg),
+		PlanPolicy:          NewPlanPolicyClient(cfg),
 		TektonInstallation:  NewTektonInstallationClient(cfg),
 		User:                NewUserClient(cfg),
 		Variable:            NewVariableClient(cfg),
@@ -249,6 +254,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Membership:          NewMembershipClient(cfg),
 		NotificationChannel: NewNotificationChannelClient(cfg),
 		Organization:        NewOrganizationClient(cfg),
+		PlanPolicy:          NewPlanPolicyClient(cfg),
 		TektonInstallation:  NewTektonInstallationClient(cfg),
 		User:                NewUserClient(cfg),
 		Variable:            NewVariableClient(cfg),
@@ -285,7 +291,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.Application, c.ApplicationGroup, c.ChartCredential, c.CloudCredential,
 		c.Cluster, c.Component, c.ComponentGroup, c.ComponentRun, c.GitHubInstallation,
 		c.GroupVariable, c.Invitation, c.Membership, c.NotificationChannel,
-		c.Organization, c.TektonInstallation, c.User, c.Variable, c.WorkflowRun,
+		c.Organization, c.PlanPolicy, c.TektonInstallation, c.User, c.Variable,
+		c.WorkflowRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -298,7 +305,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.Application, c.ApplicationGroup, c.ChartCredential, c.CloudCredential,
 		c.Cluster, c.Component, c.ComponentGroup, c.ComponentRun, c.GitHubInstallation,
 		c.GroupVariable, c.Invitation, c.Membership, c.NotificationChannel,
-		c.Organization, c.TektonInstallation, c.User, c.Variable, c.WorkflowRun,
+		c.Organization, c.PlanPolicy, c.TektonInstallation, c.User, c.Variable,
+		c.WorkflowRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -335,6 +343,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.NotificationChannel.mutate(ctx, m)
 	case *OrganizationMutation:
 		return c.Organization.mutate(ctx, m)
+	case *PlanPolicyMutation:
+		return c.PlanPolicy.mutate(ctx, m)
 	case *TektonInstallationMutation:
 		return c.TektonInstallation.mutate(ctx, m)
 	case *UserMutation:
@@ -2642,6 +2652,171 @@ func (c *OrganizationClient) mutate(ctx context.Context, m *OrganizationMutation
 	}
 }
 
+// PlanPolicyClient is a client for the PlanPolicy schema.
+type PlanPolicyClient struct {
+	config
+}
+
+// NewPlanPolicyClient returns a client for the PlanPolicy from the given config.
+func NewPlanPolicyClient(c config) *PlanPolicyClient {
+	return &PlanPolicyClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `planpolicy.Hooks(f(g(h())))`.
+func (c *PlanPolicyClient) Use(hooks ...Hook) {
+	c.hooks.PlanPolicy = append(c.hooks.PlanPolicy, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `planpolicy.Intercept(f(g(h())))`.
+func (c *PlanPolicyClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PlanPolicy = append(c.inters.PlanPolicy, interceptors...)
+}
+
+// Create returns a builder for creating a PlanPolicy entity.
+func (c *PlanPolicyClient) Create() *PlanPolicyCreate {
+	mutation := newPlanPolicyMutation(c.config, OpCreate)
+	return &PlanPolicyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PlanPolicy entities.
+func (c *PlanPolicyClient) CreateBulk(builders ...*PlanPolicyCreate) *PlanPolicyCreateBulk {
+	return &PlanPolicyCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PlanPolicyClient) MapCreateBulk(slice any, setFunc func(*PlanPolicyCreate, int)) *PlanPolicyCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PlanPolicyCreateBulk{err: fmt.Errorf("calling to PlanPolicyClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PlanPolicyCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PlanPolicyCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PlanPolicy.
+func (c *PlanPolicyClient) Update() *PlanPolicyUpdate {
+	mutation := newPlanPolicyMutation(c.config, OpUpdate)
+	return &PlanPolicyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PlanPolicyClient) UpdateOne(_m *PlanPolicy) *PlanPolicyUpdateOne {
+	mutation := newPlanPolicyMutation(c.config, OpUpdateOne, withPlanPolicy(_m))
+	return &PlanPolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PlanPolicyClient) UpdateOneID(id uuid.UUID) *PlanPolicyUpdateOne {
+	mutation := newPlanPolicyMutation(c.config, OpUpdateOne, withPlanPolicyID(id))
+	return &PlanPolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PlanPolicy.
+func (c *PlanPolicyClient) Delete() *PlanPolicyDelete {
+	mutation := newPlanPolicyMutation(c.config, OpDelete)
+	return &PlanPolicyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PlanPolicyClient) DeleteOne(_m *PlanPolicy) *PlanPolicyDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PlanPolicyClient) DeleteOneID(id uuid.UUID) *PlanPolicyDeleteOne {
+	builder := c.Delete().Where(planpolicy.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PlanPolicyDeleteOne{builder}
+}
+
+// Query returns a query builder for PlanPolicy.
+func (c *PlanPolicyClient) Query() *PlanPolicyQuery {
+	return &PlanPolicyQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePlanPolicy},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PlanPolicy entity by its id.
+func (c *PlanPolicyClient) Get(ctx context.Context, id uuid.UUID) (*PlanPolicy, error) {
+	return c.Query().Where(planpolicy.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PlanPolicyClient) GetX(ctx context.Context, id uuid.UUID) *PlanPolicy {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryOrganization queries the organization edge of a PlanPolicy.
+func (c *PlanPolicyClient) QueryOrganization(_m *PlanPolicy) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(planpolicy.Table, planpolicy.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, planpolicy.OrganizationTable, planpolicy.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryApplication queries the application edge of a PlanPolicy.
+func (c *PlanPolicyClient) QueryApplication(_m *PlanPolicy) *ApplicationQuery {
+	query := (&ApplicationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(planpolicy.Table, planpolicy.FieldID, id),
+			sqlgraph.To(application.Table, application.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, planpolicy.ApplicationTable, planpolicy.ApplicationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *PlanPolicyClient) Hooks() []Hook {
+	return c.hooks.PlanPolicy
+}
+
+// Interceptors returns the client interceptors.
+func (c *PlanPolicyClient) Interceptors() []Interceptor {
+	return c.inters.PlanPolicy
+}
+
+func (c *PlanPolicyClient) mutate(ctx context.Context, m *PlanPolicyMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PlanPolicyCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PlanPolicyUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PlanPolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PlanPolicyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PlanPolicy mutation op: %q", m.Op())
+	}
+}
+
 // TektonInstallationClient is a client for the TektonInstallation schema.
 type TektonInstallationClient struct {
 	config
@@ -3291,13 +3466,13 @@ type (
 	hooks struct {
 		Application, ApplicationGroup, ChartCredential, CloudCredential, Cluster,
 		Component, ComponentGroup, ComponentRun, GitHubInstallation, GroupVariable,
-		Invitation, Membership, NotificationChannel, Organization, TektonInstallation,
-		User, Variable, WorkflowRun []ent.Hook
+		Invitation, Membership, NotificationChannel, Organization, PlanPolicy,
+		TektonInstallation, User, Variable, WorkflowRun []ent.Hook
 	}
 	inters struct {
 		Application, ApplicationGroup, ChartCredential, CloudCredential, Cluster,
 		Component, ComponentGroup, ComponentRun, GitHubInstallation, GroupVariable,
-		Invitation, Membership, NotificationChannel, Organization, TektonInstallation,
-		User, Variable, WorkflowRun []ent.Interceptor
+		Invitation, Membership, NotificationChannel, Organization, PlanPolicy,
+		TektonInstallation, User, Variable, WorkflowRun []ent.Interceptor
 	}
 )

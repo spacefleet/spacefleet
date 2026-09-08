@@ -164,6 +164,20 @@ func (_c *ComponentRunCreate) SetNillableResources(v *string) *ComponentRunCreat
 	return _c
 }
 
+// SetPolicy sets the "policy" field.
+func (_c *ComponentRunCreate) SetPolicy(v string) *ComponentRunCreate {
+	_c.mutation.SetPolicy(v)
+	return _c
+}
+
+// SetNillablePolicy sets the "policy" field if the given value is not nil.
+func (_c *ComponentRunCreate) SetNillablePolicy(v *string) *ComponentRunCreate {
+	if v != nil {
+		_c.SetPolicy(*v)
+	}
+	return _c
+}
+
 // SetApprovedBy sets the "approved_by" field.
 func (_c *ComponentRunCreate) SetApprovedBy(v string) *ComponentRunCreate {
 	_c.mutation.SetApprovedBy(v)
@@ -474,6 +488,10 @@ func (_c *ComponentRunCreate) createSpec() (*ComponentRun, *sqlgraph.CreateSpec)
 		_spec.SetField(componentrun.FieldResources, field.TypeString, value)
 		_node.Resources = value
 	}
+	if value, ok := _c.mutation.Policy(); ok {
+		_spec.SetField(componentrun.FieldPolicy, field.TypeString, value)
+		_node.Policy = value
+	}
 	if value, ok := _c.mutation.ApprovedBy(); ok {
 		_spec.SetField(componentrun.FieldApprovedBy, field.TypeString, value)
 		_node.ApprovedBy = value
@@ -749,6 +767,24 @@ func (u *ComponentRunUpsert) UpdateResources() *ComponentRunUpsert {
 // ClearResources clears the value of the "resources" field.
 func (u *ComponentRunUpsert) ClearResources() *ComponentRunUpsert {
 	u.SetNull(componentrun.FieldResources)
+	return u
+}
+
+// SetPolicy sets the "policy" field.
+func (u *ComponentRunUpsert) SetPolicy(v string) *ComponentRunUpsert {
+	u.Set(componentrun.FieldPolicy, v)
+	return u
+}
+
+// UpdatePolicy sets the "policy" field to the value that was provided on create.
+func (u *ComponentRunUpsert) UpdatePolicy() *ComponentRunUpsert {
+	u.SetExcluded(componentrun.FieldPolicy)
+	return u
+}
+
+// ClearPolicy clears the value of the "policy" field.
+func (u *ComponentRunUpsert) ClearPolicy() *ComponentRunUpsert {
+	u.SetNull(componentrun.FieldPolicy)
 	return u
 }
 
@@ -1120,6 +1156,27 @@ func (u *ComponentRunUpsertOne) UpdateResources() *ComponentRunUpsertOne {
 func (u *ComponentRunUpsertOne) ClearResources() *ComponentRunUpsertOne {
 	return u.Update(func(s *ComponentRunUpsert) {
 		s.ClearResources()
+	})
+}
+
+// SetPolicy sets the "policy" field.
+func (u *ComponentRunUpsertOne) SetPolicy(v string) *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.SetPolicy(v)
+	})
+}
+
+// UpdatePolicy sets the "policy" field to the value that was provided on create.
+func (u *ComponentRunUpsertOne) UpdatePolicy() *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.UpdatePolicy()
+	})
+}
+
+// ClearPolicy clears the value of the "policy" field.
+func (u *ComponentRunUpsertOne) ClearPolicy() *ComponentRunUpsertOne {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.ClearPolicy()
 	})
 }
 
@@ -1680,6 +1737,27 @@ func (u *ComponentRunUpsertBulk) UpdateResources() *ComponentRunUpsertBulk {
 func (u *ComponentRunUpsertBulk) ClearResources() *ComponentRunUpsertBulk {
 	return u.Update(func(s *ComponentRunUpsert) {
 		s.ClearResources()
+	})
+}
+
+// SetPolicy sets the "policy" field.
+func (u *ComponentRunUpsertBulk) SetPolicy(v string) *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.SetPolicy(v)
+	})
+}
+
+// UpdatePolicy sets the "policy" field to the value that was provided on create.
+func (u *ComponentRunUpsertBulk) UpdatePolicy() *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.UpdatePolicy()
+	})
+}
+
+// ClearPolicy clears the value of the "policy" field.
+func (u *ComponentRunUpsertBulk) ClearPolicy() *ComponentRunUpsertBulk {
+	return u.Update(func(s *ComponentRunUpsert) {
+		s.ClearPolicy()
 	})
 }
 

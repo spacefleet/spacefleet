@@ -482,6 +482,15 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 		_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "failed", msg, runName)
 		return nodeResult{Status: statusFailed, Err: fmt.Errorf("workflows: component %q run %s failed: %s", node.Name, runName, msg)}
 	}
+	// The policy gate: a succeeded plan unit's parsed plan is checked against
+	// the organization's policies; a blocking violation on a deploy or
+	// uninstall fails the plan step here, so its apply is skipped.
+	if policyGateApplies(a.Action, node) {
+		if blocked, reason := w.evaluatePolicies(ctx, a, app, node, cr.ID, logs); blocked {
+			_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "failed", reason, runName)
+			return nodeResult{Status: statusFailed, Err: fmt.Errorf("workflows: component %q: %s", node.Name, reason)}
+		}
+	}
 	// A terraform apply unit that succeeded on a deploy run — or a state
 	// operation's unit — handed the module's `tofu output -json` and resource
 	// inventory back through its handover Secret: read and persist them before

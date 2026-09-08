@@ -629,6 +629,43 @@ describe("WorkflowRunView", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the policy verdict recorded on a plan step", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    const verdict = {
+      evaluated_at: "2026-09-08T00:00:00Z",
+      blocked: true,
+      warned: false,
+      results: [
+        { policy_id: "p1", policy_name: "no-db-deletes", enforcement: "block", violations: ["aws_db_instance.main would be destroyed"] },
+        { policy_id: "p2", policy_name: "cap", enforcement: "warn", violations: [] },
+      ],
+    };
+    const blockedRun = {
+      ...runDetail,
+      status: "failed",
+      graph: JSON.stringify({
+        nodes: [{ id: compA, name: "infra · plan", type: "terraform", config: { command: "plan" }, depends_on: [], requires_approval: false }],
+      }),
+      component_runs: [
+        { id: "cr-a", component_id: compA, name: "infra · plan", type: "terraform", status: "failed", policy: verdict },
+      ],
+    };
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: blockedRun, error: undefined });
+      return Promise.resolve({
+        data: { id: "cr-a", name: "infra · plan", type: "terraform", status: "failed", policy: verdict },
+        error: undefined,
+      });
+    });
+    renderRunView();
+    fireEvent.click(await screen.findByText("infra · plan"));
+    const box = await screen.findByTestId("policy-verdict");
+    expect(box).toHaveTextContent("Blocked by policy");
+    expect(box).toHaveTextContent("no-db-deletes (block) — aws_db_instance.main would be destroyed");
+    expect(box).toHaveTextContent("cap (warn) — passed");
+  });
+
   it("explains a gate's approval policy and tally", async () => {
     mockStream.mockReturnValue({ value: null, status: "live", error: null });
     const policyRun = {

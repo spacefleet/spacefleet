@@ -29,6 +29,7 @@ import { Members } from "./routes/Members";
 import { PrivateCharts } from "./routes/PrivateCharts";
 import { CloudCredentials } from "./routes/CloudCredentials";
 import { Notifications } from "./routes/Notifications";
+import { Policies } from "./routes/Policies";
 import { NamespaceDetail } from "./routes/NamespaceDetail";
 import { Namespaces } from "./routes/Namespaces";
 import { NodeDetail } from "./routes/NodeDetail";
@@ -53,6 +54,7 @@ const pageComponents: Record<string, ReactNode> = {
   "/admin/private-charts": <PrivateCharts />,
   "/admin/github": <GitHubInstallations />,
   "/admin/notifications": <Notifications />,
+  "/admin/policies": <Policies />,
 };
 
 export function App() {

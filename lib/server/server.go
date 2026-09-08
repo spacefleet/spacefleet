@@ -25,6 +25,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/k8s"
 	"github.com/spacefleet/spacefleet/lib/notifications"
 	"github.com/spacefleet/spacefleet/lib/organizations"
+	"github.com/spacefleet/spacefleet/lib/policies"
 	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/secrets"
 	"github.com/spacefleet/spacefleet/lib/users"
@@ -113,6 +114,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 		Invites:             invitesSvc,
 		Workflows:           workflowsSvc,
 		Notifications:       notifications.NewService(entClient, sealer, enqueueVia(jobQueue)),
+		Policies:            policies.NewService(entClient),
 		Variables:           variablesSvc,
 		AllowOrgCreation:    cfg.AllowOrgCreation,
 		ExternalURL:         cfg.ExternalURL,

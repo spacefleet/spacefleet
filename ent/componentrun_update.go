@@ -203,6 +203,26 @@ func (_u *ComponentRunUpdate) ClearResources() *ComponentRunUpdate {
 	return _u
 }
 
+// SetPolicy sets the "policy" field.
+func (_u *ComponentRunUpdate) SetPolicy(v string) *ComponentRunUpdate {
+	_u.mutation.SetPolicy(v)
+	return _u
+}
+
+// SetNillablePolicy sets the "policy" field if the given value is not nil.
+func (_u *ComponentRunUpdate) SetNillablePolicy(v *string) *ComponentRunUpdate {
+	if v != nil {
+		_u.SetPolicy(*v)
+	}
+	return _u
+}
+
+// ClearPolicy clears the value of the "policy" field.
+func (_u *ComponentRunUpdate) ClearPolicy() *ComponentRunUpdate {
+	_u.mutation.ClearPolicy()
+	return _u
+}
+
 // SetApprovedBy sets the "approved_by" field.
 func (_u *ComponentRunUpdate) SetApprovedBy(v string) *ComponentRunUpdate {
 	_u.mutation.SetApprovedBy(v)
@@ -463,6 +483,12 @@ func (_u *ComponentRunUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if _u.mutation.ResourcesCleared() {
 		_spec.ClearField(componentrun.FieldResources, field.TypeString)
 	}
+	if value, ok := _u.mutation.Policy(); ok {
+		_spec.SetField(componentrun.FieldPolicy, field.TypeString, value)
+	}
+	if _u.mutation.PolicyCleared() {
+		_spec.ClearField(componentrun.FieldPolicy, field.TypeString)
+	}
 	if value, ok := _u.mutation.ApprovedBy(); ok {
 		_spec.SetField(componentrun.FieldApprovedBy, field.TypeString, value)
 	}
@@ -696,6 +722,26 @@ func (_u *ComponentRunUpdateOne) SetNillableResources(v *string) *ComponentRunUp
 // ClearResources clears the value of the "resources" field.
 func (_u *ComponentRunUpdateOne) ClearResources() *ComponentRunUpdateOne {
 	_u.mutation.ClearResources()
+	return _u
+}
+
+// SetPolicy sets the "policy" field.
+func (_u *ComponentRunUpdateOne) SetPolicy(v string) *ComponentRunUpdateOne {
+	_u.mutation.SetPolicy(v)
+	return _u
+}
+
+// SetNillablePolicy sets the "policy" field if the given value is not nil.
+func (_u *ComponentRunUpdateOne) SetNillablePolicy(v *string) *ComponentRunUpdateOne {
+	if v != nil {
+		_u.SetPolicy(*v)
+	}
+	return _u
+}
+
+// ClearPolicy clears the value of the "policy" field.
+func (_u *ComponentRunUpdateOne) ClearPolicy() *ComponentRunUpdateOne {
+	_u.mutation.ClearPolicy()
 	return _u
 }
 
@@ -988,6 +1034,12 @@ func (_u *ComponentRunUpdateOne) sqlSave(ctx context.Context) (_node *ComponentR
 	}
 	if _u.mutation.ResourcesCleared() {
 		_spec.ClearField(componentrun.FieldResources, field.TypeString)
+	}
+	if value, ok := _u.mutation.Policy(); ok {
+		_spec.SetField(componentrun.FieldPolicy, field.TypeString, value)
+	}
+	if _u.mutation.PolicyCleared() {
+		_spec.ClearField(componentrun.FieldPolicy, field.TypeString)
 	}
 	if value, ok := _u.mutation.ApprovedBy(); ok {
 		_spec.SetField(componentrun.FieldApprovedBy, field.TypeString, value)

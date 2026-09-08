@@ -786,6 +786,81 @@ func ResourcesContainsFold(v string) predicate.ComponentRun {
 	return predicate.ComponentRun(sql.FieldContainsFold(FieldResources, v))
 }
 
+// PolicyEQ applies the EQ predicate on the "policy" field.
+func PolicyEQ(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldEQ(FieldPolicy, v))
+}
+
+// PolicyNEQ applies the NEQ predicate on the "policy" field.
+func PolicyNEQ(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldNEQ(FieldPolicy, v))
+}
+
+// PolicyIn applies the In predicate on the "policy" field.
+func PolicyIn(vs ...string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldIn(FieldPolicy, vs...))
+}
+
+// PolicyNotIn applies the NotIn predicate on the "policy" field.
+func PolicyNotIn(vs ...string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldNotIn(FieldPolicy, vs...))
+}
+
+// PolicyGT applies the GT predicate on the "policy" field.
+func PolicyGT(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldGT(FieldPolicy, v))
+}
+
+// PolicyGTE applies the GTE predicate on the "policy" field.
+func PolicyGTE(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldGTE(FieldPolicy, v))
+}
+
+// PolicyLT applies the LT predicate on the "policy" field.
+func PolicyLT(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldLT(FieldPolicy, v))
+}
+
+// PolicyLTE applies the LTE predicate on the "policy" field.
+func PolicyLTE(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldLTE(FieldPolicy, v))
+}
+
+// PolicyContains applies the Contains predicate on the "policy" field.
+func PolicyContains(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldContains(FieldPolicy, v))
+}
+
+// PolicyHasPrefix applies the HasPrefix predicate on the "policy" field.
+func PolicyHasPrefix(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldHasPrefix(FieldPolicy, v))
+}
+
+// PolicyHasSuffix applies the HasSuffix predicate on the "policy" field.
+func PolicyHasSuffix(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldHasSuffix(FieldPolicy, v))
+}
+
+// PolicyIsNil applies the IsNil predicate on the "policy" field.
+func PolicyIsNil() predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldIsNull(FieldPolicy))
+}
+
+// PolicyNotNil applies the NotNil predicate on the "policy" field.
+func PolicyNotNil() predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldNotNull(FieldPolicy))
+}
+
+// PolicyEqualFold applies the EqualFold predicate on the "policy" field.
+func PolicyEqualFold(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldEqualFold(FieldPolicy, v))
+}
+
+// PolicyContainsFold applies the ContainsFold predicate on the "policy" field.
+func PolicyContainsFold(v string) predicate.ComponentRun {
+	return predicate.ComponentRun(sql.FieldContainsFold(FieldPolicy, v))
+}
+
 // ApprovedByEQ applies the EQ predicate on the "approved_by" field.
 func ApprovedByEQ(v string) predicate.ComponentRun {
 	return predicate.ComponentRun(sql.FieldEQ(FieldApprovedBy, v))

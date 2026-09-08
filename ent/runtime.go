@@ -20,6 +20,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/notificationchannel"
 	"github.com/spacefleet/spacefleet/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/planpolicy"
 	"github.com/spacefleet/spacefleet/ent/schema"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/user"
@@ -200,15 +201,15 @@ func init() {
 	componentrunFields := schema.ComponentRun{}.Fields()
 	_ = componentrunFields
 	// componentrunDescApprovedBy is the schema descriptor for approved_by field.
-	componentrunDescApprovedBy := componentrunFields[12].Descriptor()
+	componentrunDescApprovedBy := componentrunFields[13].Descriptor()
 	// componentrun.DefaultApprovedBy holds the default value on creation for the approved_by field.
 	componentrun.DefaultApprovedBy = componentrunDescApprovedBy.Default.(string)
 	// componentrunDescCreatedAt is the schema descriptor for created_at field.
-	componentrunDescCreatedAt := componentrunFields[17].Descriptor()
+	componentrunDescCreatedAt := componentrunFields[18].Descriptor()
 	// componentrun.DefaultCreatedAt holds the default value on creation for the created_at field.
 	componentrun.DefaultCreatedAt = componentrunDescCreatedAt.Default.(func() time.Time)
 	// componentrunDescUpdatedAt is the schema descriptor for updated_at field.
-	componentrunDescUpdatedAt := componentrunFields[20].Descriptor()
+	componentrunDescUpdatedAt := componentrunFields[21].Descriptor()
 	// componentrun.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	componentrun.DefaultUpdatedAt = componentrunDescUpdatedAt.Default.(func() time.Time)
 	// componentrun.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -321,6 +322,30 @@ func init() {
 	organizationDescID := organizationFields[0].Descriptor()
 	// organization.DefaultID holds the default value on creation for the id field.
 	organization.DefaultID = organizationDescID.Default.(func() uuid.UUID)
+	planpolicyFields := schema.PlanPolicy{}.Fields()
+	_ = planpolicyFields
+	// planpolicyDescName is the schema descriptor for name field.
+	planpolicyDescName := planpolicyFields[2].Descriptor()
+	// planpolicy.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	planpolicy.NameValidator = planpolicyDescName.Validators[0].(func(string) error)
+	// planpolicyDescEnabled is the schema descriptor for enabled field.
+	planpolicyDescEnabled := planpolicyFields[6].Descriptor()
+	// planpolicy.DefaultEnabled holds the default value on creation for the enabled field.
+	planpolicy.DefaultEnabled = planpolicyDescEnabled.Default.(bool)
+	// planpolicyDescCreatedAt is the schema descriptor for created_at field.
+	planpolicyDescCreatedAt := planpolicyFields[8].Descriptor()
+	// planpolicy.DefaultCreatedAt holds the default value on creation for the created_at field.
+	planpolicy.DefaultCreatedAt = planpolicyDescCreatedAt.Default.(func() time.Time)
+	// planpolicyDescUpdatedAt is the schema descriptor for updated_at field.
+	planpolicyDescUpdatedAt := planpolicyFields[9].Descriptor()
+	// planpolicy.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	planpolicy.DefaultUpdatedAt = planpolicyDescUpdatedAt.Default.(func() time.Time)
+	// planpolicy.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	planpolicy.UpdateDefaultUpdatedAt = planpolicyDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// planpolicyDescID is the schema descriptor for id field.
+	planpolicyDescID := planpolicyFields[0].Descriptor()
+	// planpolicy.DefaultID holds the default value on creation for the id field.
+	planpolicy.DefaultID = planpolicyDescID.Default.(func() uuid.UUID)
 	tektoninstallationFields := schema.TektonInstallation{}.Fields()
 	_ = tektoninstallationFields
 	// tektoninstallationDescEnabled is the schema descriptor for enabled field.

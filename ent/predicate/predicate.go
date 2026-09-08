@@ -48,6 +48,9 @@ type NotificationChannel func(*sql.Selector)
 // Organization is the predicate function for organization builders.
 type Organization func(*sql.Selector)
 
+// PlanPolicy is the predicate function for planpolicy builders.
+type PlanPolicy func(*sql.Selector)
+
 // TektonInstallation is the predicate function for tektoninstallation builders.
 type TektonInstallation func(*sql.Selector)
 

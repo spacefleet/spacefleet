@@ -38,6 +38,8 @@ const (
 	FieldOutputs = "outputs"
 	// FieldResources holds the string denoting the resources field in the database.
 	FieldResources = "resources"
+	// FieldPolicy holds the string denoting the policy field in the database.
+	FieldPolicy = "policy"
 	// FieldApprovedBy holds the string denoting the approved_by field in the database.
 	FieldApprovedBy = "approved_by"
 	// FieldApprovedAt holds the string denoting the approved_at field in the database.
@@ -92,6 +94,7 @@ var Columns = []string{
 	FieldLogs,
 	FieldOutputs,
 	FieldResources,
+	FieldPolicy,
 	FieldApprovedBy,
 	FieldApprovedAt,
 	FieldApprovals,
@@ -217,6 +220,11 @@ func ByOutputs(opts ...sql.OrderTermOption) OrderOption {
 // ByResources orders the results by the resources field.
 func ByResources(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldResources, opts...).ToFunc()
+}
+
+// ByPolicy orders the results by the policy field.
+func ByPolicy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPolicy, opts...).ToFunc()
 }
 
 // ByApprovedBy orders the results by the approved_by field.
