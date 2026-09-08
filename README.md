@@ -1,22 +1,44 @@
 # Spacefleet
 
-A Go backend + React SPA that ship as a single binary. The Go program serves
-`/api/*` and the embedded Vite build from the same origin. A shared OpenAPI
-spec drives both the server stubs and the typed TypeScript client.
+Spacefleet is a self-hostable deployment platform for Kubernetes and cloud
+infrastructure. An **application** is a **workflow**: a graph of typed
+**components** — Helm charts, raw manifests, and OpenTofu (Terraform) root
+modules — that deploy in dependency order on a **runner cluster** you
+register. A **run** of that workflow (deploy, preview, uninstall, drift
+check) executes each component as a job on the runner, with approval gates,
+plan review, policy checks, drift detection, and a live log stream along the
+way. It is multi-tenant (users belong to organizations) and ships as a single
+Go binary that serves both the API and the embedded React SPA.
 
-This is a clean starting point: Go + Postgres (via [ent](https://entgo.io/)) +
-a React/Vite/Tailwind SPA, with an OpenAPI-driven contract. The domain is
-multi-tenant — users belong to **organizations**, and **Kubernetes cluster
-registration** is the worked example of a resource wired end-to-end (ent schema
-→ migration → API → UI). Authentication runs on [Dex](https://dexidp.io/)
-(OIDC), bootstrapped for local dev in Docker Compose.
+What it does today:
+
+- **Workflows** of Helm, manifest, and OpenTofu components with a visual
+  builder, groups, dependencies, and `${{ }}` interpolation between steps.
+- **OpenTofu, first class** — plan review with per-resource diffs, gated
+  applies, managed S3/GCS/Azure state backends, workspaces, `TF_VAR` inputs,
+  a provider plugin cache, captured outputs and resource inventory, drift
+  detection (on demand and scheduled), guarded state operations
+  (`force-unlock`, `state rm`/`mv`, `import`), per-component destroy and
+  targeted runs.
+- **Governance** — approval policies (named approvers, N-of-M, no
+  self-approval, timeouts), Rego plan policies that block or warn before an
+  apply, and notifications to email, Slack, or any webhook.
+- **GitHub** — private repositories through a GitHub App, push and
+  pull-request triggers, and plan results posted back as checks.
+- **Platform** — Kubernetes cluster registration (token, kubeconfig, EKS, GKE,
+  AKS, in-cluster), Tekton as the job runner, cloud credentials sealed at
+  rest, Dex (OIDC) authentication with SSO through connectors.
+
+The user and operator guides live in [`docs/`](docs/); the contributor guide
+is [CLAUDE.md](CLAUDE.md).
 
 ## Stack
 
-- **Backend**: Go, `net/http`, ent ORM over Postgres, [River](https://riverqueue.com/) for background jobs.
+- **Backend**: Go, `net/http`, ent ORM over Postgres, [River](https://riverqueue.com/) for background jobs, [OPA](https://www.openpolicyagent.org/) for plan policies.
+- **Runner**: [Tekton](https://tekton.dev/) on a registered Kubernetes cluster runs every component job (Helm, `kubectl`, `tofu`).
 - **Contract**: [`api/openapi.yaml`](api/openapi.yaml) → Go stubs (`oapi-codegen`) + TS types (`openapi-typescript`).
-- **Frontend**: Vite + React 18 + TypeScript, React Router v7, Tailwind v4, `openapi-fetch`.
-- **Processes**: `serve` (stateless HTTP API) and `worker` (River jobs). Default subcommand is `serve`.
+- **Frontend**: Vite + React 18 + TypeScript, React Router v7, Tailwind v4, React Flow for the workflow builder, `openapi-fetch`.
+- **Processes**: `serve` (stateless HTTP API) and `worker` (workflow runs, scheduled drift checks, notifications, Tekton installs, emails). Default subcommand is `serve`.
 
 ## Prerequisites
 
@@ -69,11 +91,17 @@ Vite proxies `/api/*` to the Go server, so the React code calls same-origin
 paths — no CORS. In production the single binary serves both the embedded SPA
 and `/api/*`.
 
-The `worker` process is optional until you register background jobs:
+**5. Run the worker** — it executes workflow runs, so nothing deploys
+without it:
 
 ```sh
 make worker
 ```
+
+To run a workflow you also need a **runner cluster**: register a Kubernetes
+cluster under Admin → Clusters and enable jobs (Tekton) on it — see
+[Running jobs in a cluster](docs/user/running-jobs.md). A local kind or k3d
+cluster registered by kubeconfig works for development.
 
 > **Auth.** Dex is always Spacefleet's identity provider — there's no external
 > or passthrough mode. The SPA logs in against Dex (Authorization Code + PKCE)
@@ -90,7 +118,7 @@ make worker
 
 1. Edit [`api/openapi.yaml`](api/openapi.yaml).
 2. `make gen` — regenerates the ent client, `lib/api/gen.go`, and `ui/src/api/schema.d.ts`.
-3. Implement new methods on `api.Server` in [`lib/api/handlers.go`](lib/api/handlers.go) (the build breaks until you do — that's the gate).
+3. Implement new methods on `api.Server` in [`lib/api/`](lib/api) — cross-cutting handlers in `handlers.go`, a file per resource otherwise (the build breaks until you do — that's the gate).
 4. Call it from the UI via the typed client:
 
    ```ts
@@ -147,13 +175,19 @@ connectors). Lint and render the chart locally with `make helm-lint` /
 `make helm-template`. The chart now has one subchart dependency (`dexidp/dex`),
 so `make helm-*` run `helm dependency build` for you.
 
-## How a resource is built
+## Documentation
 
-Kubernetes **cluster registration** is the worked example of an org-scoped
-resource wired through every layer — ent schema, SQL migration, OpenAPI
-contract, domain service, handler, and UI page. Copy its shape when adding a
-new resource; see the "How a resource is built" section of
-[CLAUDE.md](CLAUDE.md) for the step-by-step.
+- **Users** — [deploy workflows](docs/user/deploy-workflows.md) (components,
+  OpenTofu, runs, approvals, triggers), [running jobs in a cluster](docs/user/running-jobs.md),
+  [variable interpolation](docs/user/variable-interpolation.md),
+  [importing Helm releases](docs/user/importing-helm-releases.md),
+  [plan policies](docs/user/policies.md), [notifications](docs/user/notifications.md).
+- **Operators** — [install with Helm](docs/operator/install-with-helm.md),
+  [authentication](docs/operator/authentication.md), [database](docs/operator/database.md),
+  [secrets](docs/operator/secrets.md), [email](docs/operator/email.md),
+  [private Git repositories and the GitHub App](docs/operator/private-git-charts.md).
+- **Contributors** — [CLAUDE.md](CLAUDE.md) (architecture, conventions, how a
+  resource is built) and [TESTING.md](TESTING.md).
 
 ## License
 

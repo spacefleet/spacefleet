@@ -40,9 +40,7 @@ test("log in via Dex, set up an organization, land on Home, sign out", async ({
   // waitForURL resolves, so a bare isVisible() check here races and reports the
   // create-org form as absent, stranding the test on that screen.
   const orgNameField = page.getByPlaceholder("Organization name");
-  const orgSwitcher = page.getByRole("button", {
-    name: /Select organization|E2E Org/,
-  });
+  const orgSwitcher = page.getByTestId("org-switcher");
   await expect(orgNameField.or(orgSwitcher).first()).toBeVisible();
 
   // Fresh user: fill in the org and create it. (An existing-org user skips

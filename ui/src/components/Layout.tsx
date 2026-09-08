@@ -81,6 +81,7 @@ function OrgSwitcher() {
         className="flex items-center gap-1.5 px-2 py-1 text-sm font-medium text-white hover:bg-white/10"
         aria-haspopup="menu"
         aria-expanded={open}
+        data-testid="org-switcher"
       >
         <span className="max-w-[12rem] truncate">
           {currentOrg?.name ?? "Select organization"}

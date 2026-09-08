@@ -1,31 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
-
-// Log in through Dex and make sure the session is inside an organization,
-// mirroring the auth journey. Returns once the app chrome (org switcher) is up.
-async function loginIntoOrg(page: Page) {
-  await page.goto("/");
-  await page.waitForURL(/localhost:2424\/login/);
-  await page
-    .getByRole("button", { name: "Continue with Email and password" })
-    .click();
-
-  await page.waitForURL(/localhost:2424\/dex\/auth/);
-  await page.locator("#login").fill("admin@example.com");
-  await page.locator("#password").fill("password");
-  await page.locator("#submit-login").click();
-
-  await page.waitForURL(/localhost:2424\//);
-  const orgNameField = page.getByPlaceholder("Organization name");
-  const orgSwitcher = page.getByRole("button", {
-    name: /Select organization|E2E Org/,
-  });
-  await expect(orgNameField.or(orgSwitcher).first()).toBeVisible();
-  if (await orgNameField.isVisible()) {
-    await orgNameField.fill(`E2E Org ${Date.now()}`);
-    await page.getByRole("button", { name: "Create organization" }).click();
-  }
-  await expect(orgSwitcher).toBeVisible();
-}
+import { test, expect } from "@playwright/test";
+import { loginIntoOrg } from "./helpers";
 
 // The application-group (folder) lifecycle, driven through the UI: create a
 // group on All Apps, drill into it, rename it, then delete it. Apps aren't

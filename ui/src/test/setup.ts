@@ -43,3 +43,26 @@ if (!("DOMMatrixReadOnly" in globalThis)) {
   globalThis.DOMMatrixReadOnly =
     DOMMatrixStub as unknown as typeof DOMMatrixReadOnly;
 }
+
+// Node 26 exposes an experimental global `localStorage` getter that yields
+// undefined unless the process was started with --localstorage-file, and it
+// shadows jsdom's storage on the shared global. Install an in-memory Storage
+// so tests (and code using the bare `localStorage`) see a working store.
+if (!globalThis.localStorage) {
+  const store = new Map<string, string>();
+  const memoryStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, String(value)),
+    removeItem: (key: string) => void store.delete(key),
+    clear: () => store.clear(),
+    key: (index: number) => [...store.keys()][index] ?? null,
+    get length() {
+      return store.size;
+    },
+  };
+  Object.defineProperty(globalThis, "localStorage", {
+    value: memoryStorage,
+    configurable: true,
+    writable: true,
+  });
+}

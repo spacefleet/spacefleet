@@ -23,7 +23,7 @@ and weight effort toward the seams where bugs actually live.
 | **Go unit** | `go test` | nothing external | Pure / branchy logic: the OIDC verifier, `config.Load`, domain rules. Fast, no deps. |
 | **Go integration** | `go test -tags=integration` | real ephemeral Postgres | The bulk. Drive the full HTTP handler tree (or a service) against a real DB + migrations, with passthrough auth. |
 | **Frontend unit** | Vitest + RTL | jsdom | Client logic worth isolating: hooks, guards, form/state behavior. Not thin presentational components. |
-| **E2E** | Playwright | the running app + real Dex | A few critical journeys only — chiefly the auth flow. Expensive to maintain; keep it small. |
+| **E2E** | Playwright | the running app + real Dex | A few critical journeys only — auth, folders, and the admin CRUD pages. Expensive to maintain; keep it small. |
 
 Weight: most coverage in **Go integration**, a thin shell of **Go unit**, a
 handful of **frontend unit** tests where logic warrants, and a **small** E2E
@@ -86,15 +86,30 @@ env); setup in [ui/src/test/setup.ts](ui/src/test/setup.ts). Mock
 
 ## E2E (Playwright)
 
-One real-browser journey covering the **auth flow** — login via Dex → lands on
-Home (not NotFound) → an authenticated API call renders → sign out. This is the
-regression guard for cross-cutting bugs that unit/integration tests can't see
-(e.g. the post-login callback routing bug).
+A few real-browser journeys, each driving the UI against the real API:
 
-Requires the full stack: Postgres + **Dex** up, migrations applied.
+- **auth** — login via Dex → lands on Home (not NotFound) → an authenticated
+  API call renders → sign out. The regression guard for cross-cutting bugs
+  that unit/integration tests can't see (e.g. the post-login callback
+  routing bug).
+- **application-groups** — folder create / open / rename / delete.
+- **policies** — a plan policy refused by the Rego compiler, then one saved,
+  toggled, and deleted.
+- **notifications** — a notification channel added and deleted.
+
+Every spec logs in through the shared `loginIntoOrg` helper
+([ui/e2e/helpers.ts](ui/e2e/helpers.ts)), which creates an organization for
+a fresh user and otherwise accepts whichever organization the dev database
+already holds. Journeys that need a **runner cluster** (registering an
+application, building a workflow, starting a run) are deliberately not
+e2e-tested: they would need a Tekton-enabled cluster in CI, and the worker
+and planner are covered by the Go integration tests with a faked executor.
+
+Requires the full stack: Postgres + **Dex** up, migrations applied, and
+Playwright's browser installed once (`cd ui && npx playwright install chromium`).
 The Playwright config starts the Go API and Vite dev server (reusing them if
 already running), so locally you can just have `make dev` + `make ui-dev`
-going.
+going — but make sure a reused API is current; a stale build 404s new routes.
 
 ```sh
 make services-up && make migrate-up

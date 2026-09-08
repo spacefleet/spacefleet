@@ -1,16 +1,19 @@
 # CLAUDE.md
 
-Spacefleet is a Go backend + React SPA that ship as a single binary. The Go
-program serves `/api/*` and the embedded Vite build from the same origin in
-production. A shared OpenAPI spec drives both the server stubs and the
-TypeScript client.
+Spacefleet is a self-hostable deployment platform: a Go backend + React SPA
+that ship as a single binary. The Go program serves `/api/*` and the embedded
+Vite build from the same origin in production. A shared OpenAPI spec drives
+both the server stubs and the TypeScript client.
 
-The stack: Go + Postgres (ent) + a React/Vite/Tailwind SPA, with an
-OpenAPI-driven contract and Dex (OIDC) authentication. The domain is
-multi-tenant — users belong to **organizations** (via memberships) and most
-resources are scoped to an org; **Kubernetes cluster registration** is the
-first such resource and is the worked example for how a resource is built end
-to end (see [How a resource is built](#how-a-resource-is-built)). Tests span Go
+The stack: Go + Postgres (ent) + River (jobs) + OPA (plan policies) + a
+React/Vite/Tailwind SPA, with an OpenAPI-driven contract, Dex (OIDC)
+authentication, and Tekton on a registered Kubernetes cluster as the job
+runner. The domain is multi-tenant — users belong to **organizations** (via
+memberships) and every resource is scoped to an org. The product domain is
+**applications → components → workflow runs** (see [The domain](#the-domain)
+below); **Kubernetes cluster registration** is the simplest org-scoped
+resource and remains the worked example for how a resource is built end to
+end (see [How a resource is built](#how-a-resource-is-built)). Tests span Go
 unit/integration, frontend unit (Vitest), and browser e2e (Playwright) — see
 [TESTING.md](TESTING.md).
 
@@ -22,6 +25,59 @@ operator-specific assumptions out of the codebase.
 If a CLAUDE.custom.md file exists in the root of the project, read that first
 and then continue with the rest of this document.
 
+## The domain
+
+- **Application** ([ent/schema/application.go](ent/schema/application.go),
+  [lib/applications](lib/applications)) — the owner of a deploy workflow. It
+  carries only a name, a **runner cluster** (a Tekton-enabled registered
+  cluster where its jobs execute), an optional group (folder), and run
+  settings (drift schedule, push/PR triggers). Targeting lives on components.
+- **Component** ([ent/schema/component.go](ent/schema/component.go),
+  validated in [lib/workflows/dag.go](lib/workflows/dag.go)) — one typed step
+  of the workflow: `helm` (a chart from an HTTP repo, OCI, or git), `manifest`
+  (git-sourced Kubernetes manifests), or `terraform` (an OpenTofu root module
+  with a managed s3/gcs/azurerm backend). A flat `config` string map holds the
+  type-specific settings; `depends_on` and groups form the DAG; approval flags
+  and an approval policy gate the step. Component groups
+  ([lib/workflows/groups.go](lib/workflows/groups.go)) are a builder concept
+  the scheduler never sees.
+- **Workflow run** ([ent/schema/workflow_run.go](ent/schema/workflow_run.go),
+  [lib/workflows/runs.go](lib/workflows/runs.go)) — one execution of the DAG
+  with an action: `deploy`, `uninstall`, `preview` (dry run), `drift`
+  (refresh-only plans), or `state_op` (a guarded OpenTofu state operation).
+  A run **snapshots the graph** at start (`graph`), so edits never change an
+  in-flight run; per-run arguments live in `args` (a state op, or a
+  component-scoped `RunScope` with `-target`s) and `trigger` (the GitHub
+  event that started it). One **component run** per execution unit records
+  status, logs, the parsed plan, captured outputs/resources, approvals, and
+  the policy verdict. An OpenTofu component expands into a **plan unit** and
+  an **apply unit** (`expandExecutionNodes`); the planfile crosses between
+  them through a per-run Kubernetes Secret.
+- **The worker** ([lib/workflows/worker.go](lib/workflows/worker.go)) drives a
+  run: it plans each unit through [lib/deploy](lib/deploy) (resolving
+  cluster connections, credentials, GitHub tokens, cloud auth, variables),
+  submits it as a Tekton TaskRun on the runner via [lib/tekton](lib/tekton),
+  watches it to terminal, captures logs, and settles status through the pure
+  scheduler in [scheduler.go](lib/workflows/scheduler.go). Gates park the run
+  at `awaiting_approval`; the approve/reject handler enqueues a resume. The
+  OpenTofu plan gate ([policygate.go](lib/workflows/policygate.go)) evaluates
+  Rego policies ([lib/policy](lib/policy)) after a plan unit succeeds. Every
+  settle path emits run events ([events.go](lib/workflows/events.go)) that
+  [lib/notifications](lib/notifications) fans out.
+- **Scripts** — each component type renders a `/bin/sh` script the TaskRun
+  runs: [lib/helm](lib/helm), [lib/manifest](lib/manifest), and
+  [lib/tofu](lib/tofu) (plan/apply/destroy, drift, state ops, backend
+  override, workspace, the planfile handover). Secrets never appear in a
+  script: they are mounted as files from a per-run Secret.
+
+Cross-cutting features layered on that: variables and interpolation
+([lib/variables](lib/variables), [lib/interpolate](lib/interpolate)), GitHub
+App installations and webhooks ([lib/githubapp](lib/githubapp),
+[lib/githubinstallations](lib/githubinstallations),
+[lib/workflows/triggers.go](lib/workflows/triggers.go)), cloud and chart
+credentials sealed by [lib/secrets](lib/secrets), and the Helm-release import
+flow ([lib/helm/rollout.go](lib/helm/rollout.go), [lib/applications](lib/applications)).
+
 ## Architecture essentials
 
 - **Entrypoint**: [cmd/spacefleet/main.go](cmd/spacefleet/main.go) dispatches by subcommand — `serve` (HTTP API, the default), `worker` (River background jobs), `migrate` (SQL migrations).
@@ -30,9 +86,10 @@ and then continue with the rest of this document.
   1. Generated `/api/*` handlers behind the `RequireAuth` middleware.
   2. `/config.js` — emits `window.appConfig` with non-secret OIDC values.
   3. `/` → [ui/embed.go](ui/embed.go), the embedded SPA, with `index.html` fallback for client-side routing.
+- **Public routes**: `/api/health` and the GitHub webhook (`POST /api/webhooks/github`, authenticated by its HMAC signature) bypass the auth chain; everything else under `/api/*` requires a Dex ID token.
 - **Auth**: **Dex (OIDC), always bundled** — Spacefleet has no external-provider or passthrough mode; Dex is treated as an internal part of the platform, and SSO is done by configuring Dex's *connectors* (GitHub/Google/Okta/Entra/LDAP/SAML), not by pointing the app elsewhere. It sits behind a seam in [lib/auth](lib/auth): `RequireAuth` takes a `TokenVerifier`, and [server.go](lib/server/server.go) builds the OIDC verifier ([lib/auth/oidc.go](lib/auth/oidc.go)) that validates Dex-issued **ID tokens** (signature via JWKS, `iss`/`exp`/`aud`). It **fails closed** — `buildVerifier` errors (boot fails) when `OIDC_ISSUER` is unset, and `RequireAuth` rejects every protected request if handed a nil verifier; there is no allow-everyone fallback. Tests inject a fake verifier ([lib/testsupport](lib/testsupport)). `publicAPIPaths` lists the bypass paths (`/api/health`). The app **reverse-proxies Dex same-origin under `/dex`** (`DEX_UPSTREAM_URL`, see [routes.go](lib/server/routes.go)), so the browser only ever talks to the app — Dex is never exposed directly. In dev, Dex runs in Docker Compose, bootstrapped from [dev/dex/config.yaml](dev/dex/config.yaml). Operator-facing setup instructions (not code internals) live in [docs/operator/authentication.md](docs/operator/authentication.md) — see [End-user docs](#end-user-docs-docs).
 - **Tenancy**: a second middleware, `OrgContext` ([lib/auth/org.go](lib/auth/org.go)), lifts the SPA's `X-Organization-ID` header onto the request context. It does **no** authorization — org-scoped handlers resolve the org and check the caller's membership themselves (`Server.currentOrg`). Auth runs outermost, then org resolution.
-- **Frontend**: Vite + React 18 + TS, React Router v7, Tailwind v4. The typed API client is in [ui/src/api/client.ts](ui/src/api/client.ts). Login uses `react-oidc-context` (Authorization Code + PKCE, public client): `AuthProvider` is configured in [main.tsx](ui/src/main.tsx) from `window.appConfig`, `AuthGate` redirects unauthenticated users to Dex, and `ApiAuthBinder` feeds the ID token to the API client as the bearer token.
+- **Frontend**: Vite + React 18 + TS, React Router v7, Tailwind v4, React Flow for the workflow builder ([ui/src/components/workflow](ui/src/components/workflow)). Pages are generated from the nav config ([ui/src/nav.ts](ui/src/nav.ts)) and mapped to components in [App.tsx](ui/src/App.tsx). Live data (run status, logs, cluster resources) arrives over Server-Sent Events ([lib/api/stream.go](lib/api/stream.go), [ui/src/lib/useObjectStream.ts](ui/src/lib/useObjectStream.ts)). The typed API client is in [ui/src/api/client.ts](ui/src/api/client.ts). Login uses `react-oidc-context` (Authorization Code + PKCE, public client): `AuthProvider` is configured in [main.tsx](ui/src/main.tsx) from `window.appConfig`, `AuthGate` redirects unauthenticated users to Dex, and `ApiAuthBinder` feeds the ID token to the API client as the bearer token.
 
 ## The OpenAPI contract is the source of truth
 
@@ -57,10 +114,24 @@ Never edit `gen.go` or `schema.d.ts` by hand.
 ## Two processes: `serve` and `worker`
 
 `spacefleet serve` runs the stateless HTTP API (scale horizontally).
-`spacefleet worker` runs the River background-job worker — today it's
-scaffolding with an empty registry; register jobs in [lib/queue](lib/queue)
-and wire them in [cmd/spacefleet/worker.go](cmd/spacefleet/worker.go). Both
-read the same `.env`.
+`spacefleet worker` runs the River background-job worker plus a few loops.
+Both read the same `.env`; both build the domain services (the worker needs
+the sealer, the GitHub App, and the resolver to open credentials at run time
+— job args carry only ids, never secrets). The registry, wired in
+[cmd/spacefleet/worker.go](cmd/spacefleet/worker.go):
+
+| Job kind | Worker | Enqueued by |
+| --- | --- | --- |
+| `workflow_run` | `workflows.WorkflowRunWorker` — executes a run's DAG | the API (start run / approve), the webhook, the drift scheduler |
+| `notification_deliver` | `notifications.DeliverWorker` — one event to one channel | `notifications.Service.Dispatch` (worker) and the test-send endpoint |
+| `tekton-install` | `tekton.InstallWorker` — installs/uninstalls Tekton on a cluster | the API |
+| `invite_email` | `email.InviteEmailWorker` | the API |
+
+Loops in the worker process: the **reaper** (settles runs whose worker died),
+the **approval-timeout sweep**, and the **drift scheduler** (starts scheduled
+`drift` runs). Enqueueing from inside the worker goes through injected
+`EnqueueRunFunc`/`EnqueueFunc` seams so `lib/workflows` and
+`lib/notifications` never import River's client.
 
 ## Deployment (Helm + GHCR)
 
@@ -284,34 +355,59 @@ Conventions that hold across resources:
 ## Project layout
 
 ```
-spacefleet-app/
+spacefleet/
 ├── api/openapi.yaml         # shared contract (drives Go + TS)
 ├── cmd/spacefleet/          # main.go (subcommand dispatch) + serve.go + worker.go + migrate.go
 ├── db/migrations/           # hand-written SQL migrations
-├── deploy/charts/spacefleet # Helm chart (serve+worker+migrate, optional bundled PG) — published to GHCR as OCI on v* tags
+├── deploy/charts/spacefleet # Helm chart (serve+worker+migrate, bundled Dex, optional bundled PG) — published to GHCR as OCI on v* tags
 ├── dev/dex/config.yaml      # Dex (OIDC) bootstrap for local dev — static client + dev login
+├── docs/                    # end-user docs: operator/ (deploying) and user/ (using the app)
 ├── ent/                     # ent ORM: schema/ (hand-written) + generated client
 ├── lib/
-│   ├── api/                 # gen.go (generated) + handlers.go + per-resource handler files (clusters.go, …)
+│   ├── api/                 # gen.go (generated) + handlers.go + a handler file per resource + SSE streams + the GitHub webhook
+│   ├── applicationgroups/   # application folders
+│   ├── applications/        # applications (workflow owners) + the Helm-release import flow
 │   ├── auth/                # RequireAuth (fails closed) + OIDC verifier (oidc.go) + OrgContext (org.go)
-│   ├── clusters/            # cluster-registration domain service (worked-example resource)
+│   ├── chartcredentials/    # private Helm registry/repo credentials (sealed)
+│   ├── cloudauth/           # per-provider env for cloud credentials (AWS/GCP/Azure) in jobs
+│   ├── cloudcredentials/    # cloud-provider credential sets (sealed)
+│   ├── clusters/            # cluster registration + Tekton installation state + plugin cache
 │   ├── config/              # env loading
 │   ├── db/                  # Postgres + ent wiring
-│   ├── k8s/                 # Kubernetes connectivity probing (in-cluster, kubeconfig, token, eks/gke/aks)
+│   ├── deploy/              # the run-input resolver (connections, credentials, git tokens, cloud auth, variables)
+│   ├── email/               # SMTP sender + invitation email job
+│   ├── githubapp/           # GitHub App auth, installation tokens, webhooks, check runs
+│   ├── githubinstallations/ # an org's GitHub App installations
+│   ├── helm/                # Helm rollout script rendering + revision parsing
+│   ├── interpolate/         # the ${{ }} template parser
+│   ├── invitations/         # org invitations
+│   ├── k8s/                 # Kubernetes connectivity (in-cluster, kubeconfig, token, eks/gke/aks), capabilities, resource reads
+│   ├── manifest/            # kubectl apply/diff script rendering
 │   ├── migrate/             # SQL migration runner
+│   ├── notifications/       # notification channels, event dispatch, delivery job
 │   ├── organizations/       # organizations + memberships (tenancy)
-│   ├── queue/               # River wrapper (worker registry, migrations)
+│   ├── policies/            # plan policies (CRUD over lib/policy)
+│   ├── policy/              # the Rego/OPA plan-policy engine (pure)
+│   ├── queue/               # River wrapper (worker registry, migrations, client)
 │   ├── secrets/             # envelope encryption for credentials at rest (the Sealer)
-│   ├── server/              # http.Server, request logging, route mounting
-│   ├── testsupport/         # integration-test harness (isolated Postgres per test)
-│   └── users/               # user provisioning (EnsureUser from the OIDC subject)
+│   ├── server/              # http.Server, request logging, route mounting, service wiring
+│   ├── slug/                # DNS-label name validation
+│   ├── tekton/              # Tekton install, TaskRun submit/watch, handover Secrets, plugin cache
+│   ├── testsupport/         # integration-test harness (isolated Postgres per test) + fake verifier
+│   ├── tofu/                # OpenTofu script rendering, plan parsing, state ops, targets, versions
+│   ├── users/               # user provisioning (EnsureUser from the OIDC subject)
+│   ├── variables/           # org/group/app/component variables (sensitive ones sealed) + env resolution
+│   └── workflows/           # the workflow domain: DAG validation, runs, expansion, planner, worker, scheduler, approvals, drift, state ops, scoped runs, triggers, events, policy gate, reaper
 ├── ui/
 │   ├── embed.go             # //go:embed all:dist
-│   ├── e2e/                 # Playwright browser tests (auth journey)
+│   ├── e2e/                 # Playwright browser tests
 │   ├── playwright.config.ts # e2e config (starts/reuses API + Vite dev server)
 │   ├── src/api/             # generated schema + openapi-fetch client
-│   ├── src/components/      # auth/org gates (ApiAuthBinder, AuthGate, OrgGate), Layout, Sidebar (+ *.test.tsx)
-│   ├── src/routes/          # page-level components (Home, AuthCallback, CreateOrganization, per-resource pages)
+│   ├── src/components/      # auth/org gates, Layout, Sidebar, panels, workflow/ (builder, run nodes, plan views, state panel)
+│   ├── src/contexts/        # OrgContext (current org + role), WorkflowDraftContext
+│   ├── src/lib/             # appConfig, SSE hooks, formatting helpers
+│   ├── src/nav.ts           # the nav config routes are generated from
+│   ├── src/routes/          # page-level components (applications, workflow builder, run views, clusters, admin pages)
 │   ├── src/test/            # Vitest setup
 │   └── vite.config.ts       # dev server (:2424) /api + /config.js + /dex proxy; Vitest config
 ├── Makefile
