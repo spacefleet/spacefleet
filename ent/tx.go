@@ -42,6 +42,10 @@ type Tx struct {
 	PlanPolicy *PlanPolicyClient
 	// TektonInstallation is the client for interacting with the TektonInstallation builders.
 	TektonInstallation *TektonInstallationClient
+	// TofuState is the client for interacting with the TofuState builders.
+	TofuState *TofuStateClient
+	// TofuStateVersion is the client for interacting with the TofuStateVersion builders.
+	TofuStateVersion *TofuStateVersionClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// Variable is the client for interacting with the Variable builders.
@@ -196,6 +200,8 @@ func (tx *Tx) init() {
 	tx.Organization = NewOrganizationClient(tx.config)
 	tx.PlanPolicy = NewPlanPolicyClient(tx.config)
 	tx.TektonInstallation = NewTektonInstallationClient(tx.config)
+	tx.TofuState = NewTofuStateClient(tx.config)
+	tx.TofuStateVersion = NewTofuStateVersionClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 	tx.Variable = NewVariableClient(tx.config)
 	tx.WorkflowRun = NewWorkflowRunClient(tx.config)

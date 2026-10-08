@@ -36,6 +36,9 @@ What happens without it:
 - Registering anything that **carries** a credential (a cluster token or
   kubeconfig) **fails immediately** with a clear error telling you to set the
   key — Spacefleet will never fall back to storing a credential unencrypted.
+- [Managed OpenTofu state](managed-state.md) is unavailable: state is
+  encrypted with this key, so OpenTofu components must use a cloud state
+  backend instead.
 
 So if you intend to register clusters with credentials, set the key before you
 start.

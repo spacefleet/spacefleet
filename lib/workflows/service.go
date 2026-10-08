@@ -26,6 +26,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/variable"
 	"github.com/spacefleet/spacefleet/ent/workflowstage"
 	"github.com/spacefleet/spacefleet/lib/tekton"
+	"github.com/spacefleet/spacefleet/lib/tofu"
 )
 
 // Service is a thin wrapper over the ent client.
@@ -42,6 +43,17 @@ type Service struct {
 	externalURL string
 	// eventHook receives run events (see OnEvent); nil drops them.
 	eventHook func(context.Context, Event)
+	// managedState reports whether the Spacefleet state backend can be used
+	// (the deployment has a secret key). See SetManagedState.
+	managedState bool
+}
+
+// SetManagedState records whether managed OpenTofu state is available —
+// it needs SPACEFLEET_SECRET_KEY to seal state and sign runner tokens. When
+// it isn't, saving a workflow with a component on the spacefleet backend
+// fails with a clear message instead of failing every run later.
+func (s *Service) SetManagedState(enabled bool) {
+	s.managedState = enabled
 }
 
 // NewService builds the workflow service over the ent client.
@@ -119,6 +131,19 @@ func (s *Service) loadStages(ctx context.Context, orgID, appID uuid.UUID) ([]*en
 //
 // Returns the persisted workflow, reloaded outside the transaction.
 func (s *Service) ReplaceWorkflow(ctx context.Context, orgID, appID uuid.UUID, stages []StageInput) ([]*ent.WorkflowStage, error) {
+	return s.ReplaceWorkflowWith(ctx, orgID, appID, stages, ReplaceOptions{})
+}
+
+// ReplaceOptions adjusts a workflow save.
+type ReplaceOptions struct {
+	// AllowBackendChange lets an OpenTofu component that still manages
+	// resources move to a different state backend (see checkBackendChanges)
+	// — the caller confirmed that the next run starts from empty state.
+	AllowBackendChange bool
+}
+
+// ReplaceWorkflowWith is ReplaceWorkflow with options.
+func (s *Service) ReplaceWorkflowWith(ctx context.Context, orgID, appID uuid.UUID, stages []StageInput, opts ReplaceOptions) ([]*ent.WorkflowStage, error) {
 	app, err := s.getApp(ctx, orgID, appID)
 	if err != nil {
 		return nil, err
@@ -141,6 +166,18 @@ func (s *Service) ReplaceWorkflow(ctx context.Context, orgID, appID uuid.UUID, s
 	nodes := flattenStages(stages)
 	if err := s.validateComponentTargets(ctx, orgID, app, nodes); err != nil {
 		return nil, err
+	}
+	if !s.managedState {
+		for _, n := range nodes {
+			if n.Type == TypeTerraform && n.Config[terraformConfigBackend] == tofu.BackendSpacefleet {
+				return nil, fmt.Errorf("%w: node %q (terraform) the %s state backend needs SPACEFLEET_SECRET_KEY, which this Spacefleet does not have; ask the operator to set it, or use a cloud backend", ErrInvalidConfig, n.Name, tofu.BackendSpacefleet)
+			}
+		}
+	}
+	if !opts.AllowBackendChange {
+		if err := s.checkBackendChanges(ctx, orgID, appID, nodes); err != nil {
+			return nil, err
+		}
 	}
 
 	tx, err := s.ent.Tx(ctx)

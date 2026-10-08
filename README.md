@@ -130,6 +130,12 @@ install Tekton. A few things to know:
   `kubernetes.default.svc` instead of the host-side `127.0.0.1` address. Two
   separate kind clusters won't work as runner + target out of the box: a pod
   in one can't reach the other's `127.0.0.1` port.
+- **OpenTofu components on managed state call back to Spacefleet** from the
+  runner pod. `RUNNER_API_URL=http://host.docker.internal:8080` in `.env`
+  (it is in `.env.example`) points them at the Go backend on your machine —
+  not the Vite origin. That name resolves inside kind on Docker Desktop; on
+  Linux use the kind network's gateway IP instead
+  (`docker network inspect kind -f '{{(index .IPAM.Config 0).Gateway}}'`).
 - **`kind create cluster` switches kubectl's current context** to
   `kind-spacefleet`. Check `kubectl config current-context` before running
   anything against a real cluster afterwards.

@@ -72,10 +72,14 @@ func (s *Server) ReplaceApplicationWorkflow(ctx context.Context, req ReplaceAppl
 	for i, st := range req.Body.Stages {
 		stages[i] = toStageInput(st)
 	}
-	saved, err := s.workflows.ReplaceWorkflow(ctx, orgID, req.Id, stages)
+	opts := workflows.ReplaceOptions{AllowBackendChange: req.Body.AllowBackendChange != nil && *req.Body.AllowBackendChange}
+	saved, err := s.workflows.ReplaceWorkflowWith(ctx, orgID, req.Id, stages, opts)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return errResp[ReplaceApplicationWorkflowdefaultJSONResponse](http.StatusNotFound, "not_found", "application not found"), nil
+		}
+		if errors.Is(err, workflows.ErrBackendChange) {
+			return errResp[ReplaceApplicationWorkflowdefaultJSONResponse](http.StatusConflict, "backend_change", err.Error()), nil
 		}
 		if isWorkflowValidation(err) {
 			return errResp[ReplaceApplicationWorkflowdefaultJSONResponse](http.StatusBadRequest, "bad_request", err.Error()), nil

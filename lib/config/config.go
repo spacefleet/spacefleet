@@ -70,6 +70,27 @@ type Config struct {
 	// secret — never surface it to the browser via /config.js.
 	SecretKey string
 
+	// RunnerAPIURL is the base URL runner pods use to reach this Spacefleet —
+	// today only for managed OpenTofu state (the `http` backend the tofu step
+	// talks to). Defaults to ExternalURL; set it when pods reach the server
+	// at a different address than browsers do (a local kind cluster reaches
+	// the dev backend at http://host.docker.internal:8080, not the Vite
+	// origin). No trailing slash. Non-secret.
+	RunnerAPIURL string
+
+	// InClusterAPIURL, when set, is the in-cluster Service URL of this
+	// Spacefleet (the Helm chart sets it to
+	// http://<fullname>.<namespace>.svc.cluster.local:<port>). A runner
+	// registered with the in_cluster connection method runs in this same
+	// cluster, so its pods use this instead of RunnerAPIURL: no hairpin
+	// through the ingress and no ingress body-size limit on large states.
+	// Empty = every runner uses RunnerAPIURL. Non-secret.
+	InClusterAPIURL string
+
+	// TofuStateMaxBytes caps one managed OpenTofu state upload
+	// (TOFU_STATE_MAX_BYTES, default 64 MiB).
+	TofuStateMaxBytes int64
+
 	// WorkerConcurrency caps the number of background jobs the worker
 	// process runs in parallel. Default 4.
 	WorkerConcurrency int
@@ -185,19 +206,21 @@ func LoadDatabaseURL() (string, error) {
 
 func Load() (*Config, error) {
 	cfg := &Config{
-		Addr:           getenv("ADDR", ":8080"),
-		Env:            getenv("ENV", "development"),
-		DatabaseURL:    os.Getenv("DATABASE_URL"),
-		ExternalURL:    strings.TrimRight(os.Getenv("EXTERNAL_URL"), "/"),
-		OIDCIssuer:     os.Getenv("OIDC_ISSUER"),
-		OIDCClientID:   os.Getenv("OIDC_CLIENT_ID"),
-		OIDCJWKSURL:    os.Getenv("OIDC_JWKS_URL"),
-		DexUpstreamURL: os.Getenv("DEX_UPSTREAM_URL"),
-		SecretKey:      os.Getenv("SPACEFLEET_SECRET_KEY"),
-		SMTPHost:       os.Getenv("SMTP_HOST"),
-		SMTPUsername:   os.Getenv("SMTP_USERNAME"),
-		SMTPPassword:   os.Getenv("SMTP_PASSWORD"),
-		SMTPFrom:       os.Getenv("SMTP_FROM"),
+		Addr:            getenv("ADDR", ":8080"),
+		Env:             getenv("ENV", "development"),
+		DatabaseURL:     os.Getenv("DATABASE_URL"),
+		ExternalURL:     strings.TrimRight(os.Getenv("EXTERNAL_URL"), "/"),
+		OIDCIssuer:      os.Getenv("OIDC_ISSUER"),
+		OIDCClientID:    os.Getenv("OIDC_CLIENT_ID"),
+		OIDCJWKSURL:     os.Getenv("OIDC_JWKS_URL"),
+		DexUpstreamURL:  os.Getenv("DEX_UPSTREAM_URL"),
+		RunnerAPIURL:    strings.TrimRight(os.Getenv("RUNNER_API_URL"), "/"),
+		InClusterAPIURL: strings.TrimRight(os.Getenv("IN_CLUSTER_API_URL"), "/"),
+		SecretKey:       os.Getenv("SPACEFLEET_SECRET_KEY"),
+		SMTPHost:        os.Getenv("SMTP_HOST"),
+		SMTPUsername:    os.Getenv("SMTP_USERNAME"),
+		SMTPPassword:    os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:        os.Getenv("SMTP_FROM"),
 	}
 
 	// EXTERNAL_URL is mandatory — external links (e.g. invitations) must not
@@ -205,6 +228,16 @@ func Load() (*Config, error) {
 	if cfg.ExternalURL == "" {
 		return nil, fmt.Errorf("EXTERNAL_URL is required: it is the canonical public base URL used to build external links (e.g. https://spacefleet.example.com)")
 	}
+
+	// Runner pods reach the server at the public URL unless told otherwise.
+	if cfg.RunnerAPIURL == "" {
+		cfg.RunnerAPIURL = cfg.ExternalURL
+	}
+	maxState, err := parsePositiveInt("TOFU_STATE_MAX_BYTES", 64<<20)
+	if err != nil {
+		return nil, err
+	}
+	cfg.TofuStateMaxBytes = int64(maxState)
 
 	concurrency, err := parsePositiveInt("WORKER_CONCURRENCY", 4)
 	if err != nil {

@@ -17,6 +17,17 @@ the ConfigMap, the DATABASE_URL secret ref, and any extraEnv.
        links (and the OIDC issuer/redirect below). Required. */}}
 - name: EXTERNAL_URL
   value: {{ include "spacefleet.externalURL" . | quote }}
+{{- /* Where runner pods reach this Spacefleet (managed OpenTofu state):
+       remote runners use RUNNER_API_URL, in-cluster runners this release's
+       Service. */}}
+- name: RUNNER_API_URL
+  value: {{ include "spacefleet.runnerAPIURL" . | quote }}
+- name: IN_CLUSTER_API_URL
+  value: {{ include "spacefleet.inClusterAPIURL" . | quote }}
+{{- with .Values.config.tofuStateMaxBytes }}
+- name: TOFU_STATE_MAX_BYTES
+  value: {{ int64 . | quote }}
+{{- end }}
 {{- /* Spacefleet always authenticates against its bundled Dex; these are always set. */}}
 - name: OIDC_ISSUER
   value: {{ include "spacefleet.oidc.issuer" . | quote }}

@@ -66,3 +66,40 @@ func TestParseLockInfo(t *testing.T) {
 		}
 	}
 }
+
+// TestParseLockInfoManagedState: the lock error OpenTofu 1.12 prints for
+// Spacefleet-managed state (the `http` backend) — captured from a real run
+// against the state endpoints — names the holder's lock, which the 423 body
+// carries, so the stuck-lock flow works unchanged.
+func TestParseLockInfoManagedState(t *testing.T) {
+	t.Parallel()
+	logs := `Error: Error acquiring the state lock
+
+Error message: HTTP remote state already locked: ID=dead-lock-1234
+Lock Info:
+  ID:        dead-lock-1234
+  Path:      
+  Operation: OperationTypeApply
+  Who:       root@tofu-infra-abc12-pod
+  Version:   1.12.1
+  Created:   2026-10-08 20:00:00 +0000 UTC
+  Info:      
+
+
+OpenTofu acquires a state lock to protect the state from being written
+by multiple users at the same time. Please resolve the issue above and try
+again. For most commands, you can disable locking with the "-lock=false"
+flag, but this is not recommended.
+`
+	got := ParseLockInfo(logs)
+	want := LockInfo{
+		ID:        "dead-lock-1234",
+		Operation: "OperationTypeApply",
+		Who:       "root@tofu-infra-abc12-pod",
+		Version:   "1.12.1",
+		Created:   "2026-10-08 20:00:00 +0000 UTC",
+	}
+	if got == nil || *got != want {
+		t.Errorf("lock = %+v, want %+v", got, want)
+	}
+}

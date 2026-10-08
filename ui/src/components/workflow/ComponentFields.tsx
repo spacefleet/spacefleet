@@ -7,6 +7,7 @@ import {
   TOFU_VERSIONS,
   tofuNativeLock,
 } from "../../lib/tofuVersions";
+import { managedStateEnabled } from "../../lib/appConfig";
 import { RepositoryPicker } from "./RepositoryPicker";
 import { outputsRefSnippet } from "./outputsRefs";
 import { RefAutocompleteField } from "./RefAutocompleteField";
@@ -626,11 +627,11 @@ function ManifestConfig({
 // The state backend is always managed: Spacefleet writes a backend override
 // into the module at init, so state lands where this config says regardless of
 // any backend block in code (pointing the fields at existing state adopts it
-// in place). S3 is the only supported backend type today; its settings are
-// dedicated fields that serialize into the config.backend_config JSON object
-// the server validates and renders. backend_config gets the same redaction
-// treatment as helm inline values (see lib/api workflow secret keys), so
-// non-editors see blank fields.
+// in place). "spacefleet" keeps the state in Spacefleet itself and has no
+// settings; the cloud backends (s3, gcs, azurerm) have dedicated fields that
+// serialize into the config.backend_config JSON object the server validates
+// and renders. backend_config gets the same redaction treatment as helm inline
+// values (see lib/api workflow secret keys), so non-editors see blank fields.
 function TerraformConfig({
   config,
   setConfig,
@@ -662,12 +663,18 @@ function TerraformConfig({
   const tofuVersion = config.tofu_version || TOFU_DEFAULT_VERSION;
   const nativeLock = tofuNativeLock(config.tofu_version);
 
-  // The credential must match the backend's cloud: the same credential signs
-  // the run in to the state backend and to the module's providers.
+  // With a cloud backend the credential must match the backend's cloud: the
+  // same credential signs the run in to the state backend and to the module's
+  // providers. Managed state needs no credential, so any cloud's may serve
+  // the module's providers.
+  const managed = backend === "spacefleet";
   const backendProvider = BACKEND_PROVIDER[backend] ?? "aws";
-  const matchingCredentials = cloudCredentials.filter(
-    (c) => c.provider === backendProvider,
-  );
+  const matchingCredentials = managed
+    ? cloudCredentials
+    : cloudCredentials.filter((c) => c.provider === backendProvider);
+  // The managed option is offered when the server can keep state — or when
+  // this component already uses it, so the select never misreports.
+  const offerManaged = managed || managedStateEnabled();
   // Switching backends clears the settings (their keys differ) and the
   // credential (a different cloud) — in one change, so none is lost.
   function setBackend(next: string) {
@@ -761,7 +768,7 @@ function TerraformConfig({
 
       <Field
         label="State backend"
-        help="Where this component's OpenTofu state lives. Spacefleet configures your module to use it at init (overriding any backend block in code) — to adopt existing state, point it at the bucket and key your state is already in."
+        help="Where this component's OpenTofu state lives. Spacefleet configures your module to use it at init (overriding any backend block in code) — to adopt existing state in your cloud, point it at the bucket and key your state is already in."
       >
         <select
           aria-label="State backend"
@@ -770,15 +777,30 @@ function TerraformConfig({
           onChange={(e) => setBackend(e.target.value)}
           disabled={disabled}
         >
-          <option value="s3">Amazon S3</option>
-          <option value="gcs">Google Cloud Storage</option>
-          <option value="azurerm">Azure Blob Storage</option>
+          {offerManaged && (
+            <option value="spacefleet">Spacefleet (managed)</option>
+          )}
+          <optgroup label="Your cloud">
+            <option value="s3">Amazon S3</option>
+            <option value="gcs">Google Cloud Storage</option>
+            <option value="azurerm">Azure Blob Storage</option>
+          </optgroup>
         </select>
+        {managed && (
+          <p className="mt-1.5 text-xs text-neutral-500">
+            Spacefleet keeps this component's state — encrypted, with every
+            version kept — and locks it during runs. Nothing to set up.
+          </p>
+        )}
       </Field>
 
       <Field
         label="Cloud credential"
-        help={`The ${PROVIDER_NAMES[backendProvider]} credential the run signs in with — used for the state backend and your module's ${PROVIDER_NAMES[backendProvider]} providers. Leave empty to use the runner's own identity (an instance role or workload identity).`}
+        help={
+          managed
+            ? "Optional — a cloud credential for your module's providers. Managed state needs none. Leave empty to use the runner's own identity (an instance role or workload identity)."
+            : `The ${PROVIDER_NAMES[backendProvider]} credential the run signs in with — used for the state backend and your module's ${PROVIDER_NAMES[backendProvider]} providers. Leave empty to use the runner's own identity (an instance role or workload identity).`
+        }
       >
         <select
           aria-label="Cloud credential"
@@ -790,7 +812,7 @@ function TerraformConfig({
           <option value="">(none — use the runner's identity)</option>
           {matchingCredentials.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name}
+              {managed ? `${c.name} (${PROVIDER_NAMES[c.provider]})` : c.name}
             </option>
           ))}
         </select>
@@ -1100,7 +1122,11 @@ function TerraformConfig({
           config.workspace. */}
       <Field
         label="Workspace"
-        help="Optional — the OpenTofu workspace this component runs in, selected before every plan, apply, drift check, and state operation (created on first use). Leave empty for the default workspace. With the S3 backend a workspace's state lives under env:/<workspace>/ in the bucket."
+        help={
+          managed
+            ? "Optional — a separate state for this component, so one module can back several environments. Leave empty for the default. With managed state, terraform.workspace reads \"default\" inside the module."
+            : "Optional — the OpenTofu workspace this component runs in, selected before every plan, apply, drift check, and state operation (created on first use). Leave empty for the default workspace. With the S3 backend a workspace's state lives under env:/<workspace>/ in the bucket."
+        }
       >
         <input
           type="text"

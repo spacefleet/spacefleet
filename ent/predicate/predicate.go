@@ -51,6 +51,12 @@ type PlanPolicy func(*sql.Selector)
 // TektonInstallation is the predicate function for tektoninstallation builders.
 type TektonInstallation func(*sql.Selector)
 
+// TofuState is the predicate function for tofustate builders.
+type TofuState func(*sql.Selector)
+
+// TofuStateVersion is the predicate function for tofustateversion builders.
+type TofuStateVersion func(*sql.Selector)
+
 // User is the predicate function for user builders.
 type User func(*sql.Selector)
 

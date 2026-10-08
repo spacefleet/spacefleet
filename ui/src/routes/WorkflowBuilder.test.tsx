@@ -191,6 +191,53 @@ describe("WorkflowBuilder", () => {
     expect(await screen.findByText("every stage needs a name")).toBeInTheDocument();
   });
 
+  it("asks before moving OpenTofu state to another backend, then saves with the switch confirmed", async () => {
+    defaultGets(twoStages);
+    mockApi.PUT.mockResolvedValueOnce({
+      data: undefined,
+      error: {
+        code: "backend_change",
+        message: "state backend change for infra: the current state still lists resources",
+      },
+    });
+    renderWorkflow();
+    await screen.findByText("release");
+    await userEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Not saved — this moves existing OpenTofu state");
+    expect(alert).toHaveTextContent("state backend change for infra");
+    expect(mockApi.PUT.mock.calls[0][1].body).not.toHaveProperty("allow_backend_change");
+
+    await userEvent.click(within(alert).getByRole("button", { name: "Switch the backend anyway" }));
+    await waitFor(() => expect(mockApi.PUT).toHaveBeenCalledTimes(2));
+    expect(mockApi.PUT.mock.calls[1][1].body.allow_backend_change).toBe(true);
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("seeds a new OpenTofu component on managed state when the server offers it", async () => {
+    const original = window.appConfig;
+    window.appConfig = { ...original, managedStateEnabled: true };
+    try {
+      defaultGets([]);
+      renderWorkflow();
+      await screen.findByText("No components yet.");
+      await userEvent.click(
+        screen.getByRole("button", { name: "Add a component to Stage 1" }),
+      );
+      await userEvent.click(screen.getByRole("menuitem", { name: /opentofu/i }));
+      await screen.findByDisplayValue("opentofu");
+      expect(
+        (screen.getByLabelText("State backend") as HTMLSelectElement).value,
+      ).toBe("spacefleet");
+      await userEvent.click(screen.getByRole("button", { name: /save component/i }));
+      await waitForPut();
+      expect(lastPut()[0].components[0].config.backend).toBe("spacefleet");
+    } finally {
+      window.appConfig = original;
+    }
+  });
+
   it("offers no run controls — runs are started from the application page", async () => {
     defaultGets(twoStages);
     renderWorkflow();

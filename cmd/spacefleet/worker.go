@@ -26,6 +26,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/secrets"
 	"github.com/spacefleet/spacefleet/lib/tekton"
+	"github.com/spacefleet/spacefleet/lib/tofustate"
 	"github.com/spacefleet/spacefleet/lib/variables"
 	"github.com/spacefleet/spacefleet/lib/workflows"
 )
@@ -132,7 +133,20 @@ func runWorker(_ []string) {
 	workers := queue.NewWorkers()
 	queue.AddWorker(workers, &email.InviteEmailWorker{Sender: emailSender(cfg)})
 	queue.AddWorker(workers, &tekton.InstallWorker{Store: clustersSvc})
-	queue.AddWorker(workers, workflows.NewWorker(workflowsSvc, runResolver))
+	runsWorker := workflows.NewWorker(workflowsSvc, runResolver)
+	// Managed OpenTofu state: steps on the spacefleet backend get a per-step
+	// state token and the URL runner pods reach this Spacefleet at. Without a
+	// secret key there is no signer, and such a step fails with a clear error.
+	if signer, err := tofustate.NewSigner(cfg.SecretKey); err == nil {
+		runsWorker.SetManagedState(workflows.ManagedState{
+			Signer:       signer,
+			RunnerURL:    cfg.RunnerAPIURL,
+			InClusterURL: cfg.InClusterAPIURL,
+		})
+	} else if cfg.SecretKey != "" {
+		log.Fatalf("worker: build state token signer: %v", err)
+	}
+	queue.AddWorker(workers, runsWorker)
 	//   - notification_deliver: sends one run event to one notification channel
 	//     (email via the Sender, Slack/webhook over HTTP).
 	notificationsSvc := notifications.NewService(entClient, sealer, nil)

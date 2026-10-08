@@ -36,6 +36,45 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.EmailEnabled() {
 		t.Errorf("EmailEnabled = true, want false (no SMTP host/from)")
 	}
+	if cfg.RunnerAPIURL != "https://app.example.com" {
+		t.Errorf("RunnerAPIURL = %q, want EXTERNAL_URL", cfg.RunnerAPIURL)
+	}
+	if cfg.InClusterAPIURL != "" {
+		t.Errorf("InClusterAPIURL = %q, want empty", cfg.InClusterAPIURL)
+	}
+	if cfg.TofuStateMaxBytes != 64<<20 {
+		t.Errorf("TofuStateMaxBytes = %d, want 64 MiB", cfg.TofuStateMaxBytes)
+	}
+}
+
+// TestLoadRunnerURLs covers the runner-facing URLs: RUNNER_API_URL
+// overrides EXTERNAL_URL, IN_CLUSTER_API_URL is read as-is, and both lose a
+// trailing slash; a bad state size limit is rejected.
+func TestLoadRunnerURLs(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("EXTERNAL_URL", "https://app.example.com")
+	t.Setenv("RUNNER_API_URL", "http://host.docker.internal:8080/")
+	t.Setenv("IN_CLUSTER_API_URL", "http://spacefleet.spacefleet.svc.cluster.local:8080/")
+	t.Setenv("TOFU_STATE_MAX_BYTES", "1048576")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.RunnerAPIURL != "http://host.docker.internal:8080" {
+		t.Errorf("RunnerAPIURL = %q", cfg.RunnerAPIURL)
+	}
+	if cfg.InClusterAPIURL != "http://spacefleet.spacefleet.svc.cluster.local:8080" {
+		t.Errorf("InClusterAPIURL = %q", cfg.InClusterAPIURL)
+	}
+	if cfg.TofuStateMaxBytes != 1<<20 {
+		t.Errorf("TofuStateMaxBytes = %d", cfg.TofuStateMaxBytes)
+	}
+
+	t.Setenv("TOFU_STATE_MAX_BYTES", "0")
+	if _, err := Load(); err == nil {
+		t.Error("expected a zero TOFU_STATE_MAX_BYTES to be rejected")
+	}
 }
 
 // TestLoadRequiresExternalURL confirms Load fails closed without EXTERNAL_URL.
@@ -202,6 +241,9 @@ func clearEnv(t *testing.T) {
 		"SMTP_PASSWORD",
 		"SMTP_FROM",
 		"SMTP_STARTTLS",
+		"RUNNER_API_URL",
+		"IN_CLUSTER_API_URL",
+		"TOFU_STATE_MAX_BYTES",
 	}
 	for _, k := range keys {
 		t.Setenv(k, "")

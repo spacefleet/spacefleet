@@ -30,6 +30,10 @@ interface AppConfig {
   // for pulling charts from private Git repositories. Non-secret (the App's
   // private key never leaves the server).
   githubAppEnabled: boolean;
+  // Whether managed OpenTofu state is available (the server has the secret
+  // key it needs), so the editor offers the Spacefleet state backend and makes
+  // it the default for new OpenTofu components.
+  managedStateEnabled: boolean;
 }
 
 declare global {

@@ -876,7 +876,11 @@ export interface paths {
          *     output references only to OpenTofu components in an earlier stage) and
          *     atomically replaces the application's stages and components with it,
          *     keeping the order given. A validation failure returns 400 before any
-         *     write.
+         *     write. Moving an OpenTofu component whose recorded state still lists
+         *     resources to a different state backend returns 409 (code
+         *     `backend_change`) unless `allow_backend_change` is set: the new
+         *     backend starts empty, so the next run would plan to create
+         *     everything again.
          */
         put: operations["replaceApplicationWorkflow"];
         post?: never;
@@ -2902,6 +2906,12 @@ export interface components {
          */
         WorkflowReplaceRequest: {
             stages: components["schemas"]["WorkflowStageInput"][];
+            /**
+             * @description Confirms that OpenTofu components still managing resources may
+             *     move to a different state backend, starting from empty state.
+             *     Without it such a save is refused with 409 `backend_change`.
+             */
+            allow_backend_change?: boolean;
         };
         /**
          * @description What a workflow run does across the whole workflow. `drift` is a drift

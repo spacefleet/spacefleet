@@ -763,3 +763,37 @@ func TestValidateTerraformConfig_BackendSecrets(t *testing.T) {
 		}
 	}
 }
+
+// TestValidateTerraformConfig_ManagedState: the spacefleet backend needs no
+// settings and refuses any (Spacefleet owns them all), and refuses the two
+// workspace names a URL path treats specially.
+func TestValidateTerraformConfig_ManagedState(t *testing.T) {
+	t.Parallel()
+	managed := func(extra map[string]string) ComponentInput {
+		n := tfNode(extra)
+		n.Config[terraformConfigBackend] = tofu.BackendSpacefleet
+		delete(n.Config, terraformConfigBackendConfig)
+		for k, v := range extra {
+			n.Config[k] = v
+		}
+		return n
+	}
+	if err := validateOneStage([]ComponentInput{managed(nil)}); err != nil {
+		t.Errorf("managed state with no settings: %v", err)
+	}
+	if err := validateOneStage([]ComponentInput{managed(map[string]string{terraformConfigBackendConfig: "{}"})}); err != nil {
+		t.Errorf("managed state with an empty settings object: %v", err)
+	}
+	if err := validateOneStage([]ComponentInput{managed(map[string]string{terraformConfigWorkspace: "prod.eu"})}); err != nil {
+		t.Errorf("managed state with a workspace: %v", err)
+	}
+	for name, extra := range map[string]map[string]string{
+		"settings":       {terraformConfigBackendConfig: `{"address":"https://elsewhere"}`},
+		"workspace '.'":  {terraformConfigWorkspace: "."},
+		"workspace '..'": {terraformConfigWorkspace: ".."},
+	} {
+		if err := validateOneStage([]ComponentInput{managed(extra)}); !errors.Is(err, ErrInvalidConfig) {
+			t.Errorf("%s: err = %v, want ErrInvalidConfig", name, err)
+		}
+	}
+}

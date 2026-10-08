@@ -815,3 +815,86 @@ func TestScriptPluginCache(t *testing.T) {
 		t.Error("no cache dir must export nothing")
 	}
 }
+
+// TestScriptManagedStateGolden: the spacefleet backend renders OpenTofu's
+// `http` backend at the managed state address, with POST/DELETE lock
+// methods and no credentials anywhere in the script (they come from
+// TF_HTTP_USERNAME / TF_HTTP_PASSWORD in the step's env).
+func TestScriptManagedStateGolden(t *testing.T) {
+	t.Parallel()
+	addr := "https://sf.example.com/api/tofu/state/0b6f8b6e-6c47-4a6e-9d0b-1f4f7a3c2b10/default"
+	s := Script(Apply{
+		Command:      CommandPlan,
+		Action:       ActionDeploy,
+		RepoURL:      "https://github.com/acme/infra.git",
+		Path:         "envs/prod",
+		Backend:      BackendSpacefleet,
+		StateAddress: addr,
+	})
+	want := "#!/bin/sh\nset -e\n" +
+		"git clone --depth 1 'https://github.com/acme/infra.git' /src\n" +
+		"echo \"SPACEFLEET_CHART_REVISION=$(git -C /src rev-parse HEAD)\"\n" +
+		"cd '/src/envs/prod'\n" +
+		"cat > backend_override.tf <<'EOF'\n" +
+		"terraform {\n" +
+		"  backend \"http\" {\n" +
+		"    address        = \"" + addr + "\"\n" +
+		"    lock_address   = \"" + addr + "/lock\"\n" +
+		"    unlock_address = \"" + addr + "/lock\"\n" +
+		"    lock_method    = \"POST\"\n" +
+		"    unlock_method  = \"DELETE\"\n" +
+		"  }\n" +
+		"}\n" +
+		"EOF\n" +
+		"tofu init -input=false -no-color\n" +
+		"tofu plan -input=false -out=tfplan -no-color\n"
+	if s != want {
+		t.Errorf("rendered script changed\n got: %q\nwant: %q", s, want)
+	}
+	for _, banned := range []string{"username", "password", "TF_HTTP"} {
+		if strings.Contains(s, banned) {
+			t.Errorf("managed state script must not carry credentials (%q)\n---\n%s", banned, s)
+		}
+	}
+}
+
+// TestScriptManagedStateSkipsWorkspaceSelect: the `http` backend has no
+// workspaces, so the workspace lives in the address and the script never
+// runs `tofu workspace select` — for any command.
+func TestScriptManagedStateSkipsWorkspaceSelect(t *testing.T) {
+	t.Parallel()
+	base := Apply{
+		RepoURL: "r", Path: "p", Backend: BackendSpacefleet, Namespace: "sf-jobs",
+		StateAddress:       "http://sf/api/tofu/state/c/prod",
+		PlanArtifactSecret: "tfplan-run1-comp1", Workspace: "prod",
+	}
+	for name, mut := range map[string]func(a *Apply){
+		"plan":  func(a *Apply) { a.Command, a.Action = CommandPlan, ActionDeploy },
+		"apply": func(a *Apply) { a.Command, a.Action = CommandApply, ActionDeploy },
+		"drift": func(a *Apply) { a.Command, a.Action, a.PlanArtifactSecret = CommandPlan, ActionDrift, "" },
+		"state op": func(a *Apply) {
+			a.Command, a.Action = CommandStateOp, ActionStateOp
+			a.StateOp = &StateOp{Operation: StateOpForceUnlock, LockID: "abc"}
+		},
+	} {
+		a := base
+		mut(&a)
+		s := Script(a)
+		if strings.Contains(s, "workspace select") {
+			t.Errorf("%s: managed state must not select a workspace\n---\n%s", name, s)
+		}
+		if !strings.Contains(s, `backend "http"`) {
+			t.Errorf("%s: want the http backend\n---\n%s", name, s)
+		}
+	}
+}
+
+// TestScriptManagedStateWithoutAddressFailsClosed: a spacefleet backend
+// with no address stops before init instead of falling back to anything.
+func TestScriptManagedStateWithoutAddressFailsClosed(t *testing.T) {
+	t.Parallel()
+	s := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "p", Backend: BackendSpacefleet})
+	if strings.Contains(s, "tofu init") || !strings.Contains(s, "exit 1") {
+		t.Errorf("want a fail-closed script without init\n---\n%s", s)
+	}
+}

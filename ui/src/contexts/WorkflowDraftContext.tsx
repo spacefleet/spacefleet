@@ -13,7 +13,7 @@ import { api } from "../api/client";
 import { useOrg } from "./OrgContext";
 import { useApplicationName } from "../lib/useApplicationName";
 import type { components } from "../api/schema";
-import { githubAppEnabled } from "../lib/appConfig";
+import { githubAppEnabled, managedStateEnabled } from "../lib/appConfig";
 import { TOFU_SEED_VERSION } from "../lib/tofuVersions";
 import type { EditableComponent } from "../components/workflow/ComponentFields";
 
@@ -63,11 +63,16 @@ function seedComponent(id: string, type: ComponentType): EditableComponent {
     case "terraform":
       // New components run the newest supported OpenTofu line — which locks
       // state automatically (native s3 locking); only pre-existing components
-      // (no tofu_version) stay on the server's older default line.
+      // (no tofu_version) stay on the server's older default line. State
+      // defaults to Spacefleet's managed backend (nothing to set up) when the
+      // server can offer it, and to S3 otherwise.
       return {
         ...base,
         name: "opentofu",
-        config: { backend: "s3", tofu_version: TOFU_SEED_VERSION },
+        config: {
+          backend: managedStateEnabled() ? "spacefleet" : "s3",
+          tofu_version: TOFU_SEED_VERSION,
+        },
         requires_approval: true,
       };
     default:
@@ -158,6 +163,11 @@ interface WorkflowDraftValue {
   loading: boolean;
   error: string | null;
   saveError: string | null;
+  // Set (to the server's explanation) when the last save was refused because
+  // it moves an OpenTofu component that still manages resources to another
+  // state backend. Auto-save holds off until the author confirms the switch
+  // (confirmBackendChange) or edits the draft again.
+  backendChange: string | null;
   saving: boolean;
   saved: boolean;
   // Set when a just-saved component's staged variables couldn't be flushed to
@@ -205,6 +215,8 @@ interface WorkflowDraftValue {
   setStagedVars: (componentId: string, vars: Variable[]) => void;
 
   save: () => Promise<void>;
+  // Re-saves with the backend switch confirmed (see backendChange).
+  confirmBackendChange: () => Promise<void>;
 }
 
 const WorkflowDraftContext = createContext<WorkflowDraftValue | null>(null);
@@ -263,6 +275,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [backendChange, setBackendChange] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [varFlushError, setVarFlushError] = useState<string | null>(null);
@@ -278,6 +291,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     // A fresh edit clears a prior save error so auto-save gets another chance
     // (the effect holds off while an error is showing to avoid a retry storm).
     setSaveError(null);
+    setBackendChange(null);
   }, []);
 
   // Load the workflow. An application with no stages yet gets one empty local
@@ -631,16 +645,24 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     [stages, provisional],
   );
 
-  const save = useCallback(async () => {
+  const persist = useCallback(async (allowBackendChange: boolean) => {
     const rev = revision.current;
     setSaving(true);
     setSaveError(null);
+    setBackendChange(null);
     const payload = buildPayload();
     const { data, error } = await api.PUT("/api/applications/{id}/workflow", {
       params: { path: { id: appId } },
-      body: { stages: payload },
+      body: {
+        stages: payload,
+        ...(allowBackendChange ? { allow_backend_change: true } : {}),
+      },
     });
     setSaving(false);
+    if (error?.code === "backend_change") {
+      setBackendChange(error.message);
+      return;
+    }
     if (error || !data) {
       setSaveError(error?.message ?? "Could not save the workflow");
       return;
@@ -654,16 +676,18 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       new Set(payload.flatMap((st) => st.components.map((c) => c.id))),
     );
   }, [appId, buildPayload, flushStagedVars]);
+  const save = useCallback(() => persist(false), [persist]);
+  const confirmBackendChange = useCallback(() => persist(true), [persist]);
 
   // Auto-save: whenever the draft is dirty (and we can edit), schedule a debounced
   // save. `save`'s identity changes with every edit (it closes over the payload),
   // so this effect re-runs and resets the timer on each change — that's the
   // debounce. A save in flight (saving) or a clean draft (saved) short-circuits.
   useEffect(() => {
-    if (!canEdit || loading || saving || saved || error || saveError) return;
+    if (!canEdit || loading || saving || saved || error || saveError || backendChange) return;
     const t = setTimeout(() => void save(), 800);
     return () => clearTimeout(t);
-  }, [canEdit, loading, saving, saved, error, saveError, save]);
+  }, [canEdit, loading, saving, saved, error, saveError, backendChange, save]);
 
   const value = useMemo<WorkflowDraftValue>(
     () => ({
@@ -681,6 +705,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       saveError,
+      backendChange,
       saving,
       saved,
       varFlushError,
@@ -701,6 +726,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       getStagedVars,
       setStagedVars,
       save,
+      confirmBackendChange,
     }),
     [
       appId,
@@ -717,6 +743,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       saveError,
+      backendChange,
       saving,
       saved,
       varFlushError,
@@ -737,6 +764,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       getStagedVars,
       setStagedVars,
       save,
+      confirmBackendChange,
     ],
   );
 

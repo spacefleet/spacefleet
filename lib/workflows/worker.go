@@ -86,6 +86,9 @@ type WorkflowRunWorker struct {
 	// claim ("" when none) — svc.PluginCacheClaim in production; a seam so
 	// planner unit tests run without a database (nil = no cache).
 	pluginCache func(ctx context.Context, clusterID uuid.UUID) (string, error)
+	// managedState points OpenTofu steps on the spacefleet backend at managed
+	// state (see SetManagedState); the zero value leaves it unavailable.
+	managedState ManagedState
 }
 
 // NewWorker builds the workflow run worker over the workflow service and the
@@ -421,7 +424,7 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 
 	_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "running", "starting "+a.Action, "")
 
-	req, err := w.planComponent(ctx, app, node, a.Action, a.Force, cr.RunName, a.WorkflowRunID, byID, stateOp)
+	req, err := w.planComponent(ctx, app, node, a.Action, a.Force, cr.RunName, a.WorkflowRunID, cr.ID, byID, stateOp)
 	if err != nil {
 		_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "failed", err.Error(), "")
 		return nodeResult{Status: statusFailed, Err: err}

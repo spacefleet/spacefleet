@@ -114,7 +114,9 @@ exposing the deployment.
 
 ### 2. Use an external database
 
-For production, disable the bundled StatefulSet and point at a managed service.
+For production, disable the bundled StatefulSet and point at a managed service
+with backups and point-in-time recovery — Spacefleet keeps [managed OpenTofu
+state](managed-state.md) in this database, so losing it loses that state.
 The recommended approach keeps credentials out of your Helm values and release
 history by referencing an **existing Secret** you create yourself:
 
@@ -290,6 +292,8 @@ reach for most:
 | `config.allowOrgCreation` | `true` | whether signed-in users may create their own organization (`false` = invite-only) — see [Authentication](authentication.md#control-who-can-create-organizations) |
 | `config.smtp.host` / `config.smtp.from` | _(empty)_ | enable outbound email (invitations) — see [Email](email.md) |
 | `config.github.appId` / `config.github.slug` / `config.github.privateKey` | _(empty)_ | register a GitHub App to deploy charts from private Git repositories — see [Private Git charts](private-git-charts.md) |
+| `config.runnerAPIURL` | `config.externalURL` | where runner pods reach the app for managed OpenTofu state — see [Managed OpenTofu state](managed-state.md#connectivity) |
+| `config.tofuStateMaxBytes` | 64 MiB | largest managed OpenTofu state accepted in one upload — see [Managed OpenTofu state](managed-state.md#state-size-and-ingress-limits) |
 | `config.oidc.clientID` | `spacefleet` | OIDC client ID the app uses (keep in sync with `dex.clientID`) |
 | `config.secrets.envFrom` | `[]` | load secret env (e.g. `SPACEFLEET_SECRET_KEY`, `SMTP_PASSWORD`) from Secrets you manage — see [Secret configuration](secrets.md) |
 | `dex.storage` | `crd` | Dex storage backend — `crd` keeps state in-cluster |
@@ -385,5 +389,7 @@ the package is private you'll need to `helm registry login ghcr.io` first.
   secret settings (inline for a trial, or from a Secret you manage).
 - [Database configuration](database.md) — connection string, TLS modes, and
   managed-provider CA bundles.
+- [Managed OpenTofu state](managed-state.md) — runner connectivity, state size
+  limits, and backups for state Spacefleet keeps itself.
 - `helm show values oci://ghcr.io/spacefleet/charts/spacefleet --version X.Y.Z`
   — the complete, annotated list of every value the chart accepts.

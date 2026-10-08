@@ -60,6 +60,12 @@ func newTestHandler(deps ServerDeps) http.Handler {
 	mux.Handle("GET /api/applications/{id}/runs/{runId}/components/{componentRunId}/logs/stream", stream(srv.StreamComponentRunLogs))
 	mux.Handle("GET /api/runs/stream", stream(srv.StreamOrgRuns))
 
+	// Managed OpenTofu state: public, token-authenticated (as in routes.go).
+	mux.Handle("GET /api/tofu/state/{componentId}/{workspace}", http.HandlerFunc(srv.GetTofuState))
+	mux.Handle("POST /api/tofu/state/{componentId}/{workspace}", http.HandlerFunc(srv.PostTofuState))
+	mux.Handle("POST /api/tofu/state/{componentId}/{workspace}/lock", http.HandlerFunc(srv.LockTofuState))
+	mux.Handle("DELETE /api/tofu/state/{componentId}/{workspace}/lock", http.HandlerFunc(srv.UnlockTofuState))
+
 	return mux
 }
 

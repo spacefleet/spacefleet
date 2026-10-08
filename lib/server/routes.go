@@ -71,6 +71,18 @@ func registerRoutes(mux *http.ServeMux, cfg *config.Config, deps api.ServerDeps,
 	// user token — so it is mounted outside the auth chain. See lib/api/webhooks.go.
 	mux.Handle("POST /api/webhooks/github", http.HandlerFunc(srv.GitHubWebhook))
 
+	// Managed OpenTofu state: the server side of OpenTofu's `http` backend,
+	// called by runner pods. Public — each request is authenticated by the
+	// per-step state token sent as the basic-auth password, not by a user
+	// token — so it is mounted outside the auth chain. Lock and unlock use
+	// POST and DELETE rather than the backend's default LOCK/UNLOCK verbs,
+	// which some proxies and ingress controllers drop. See
+	// lib/api/tofustate.go.
+	mux.Handle("GET /api/tofu/state/{componentId}/{workspace}", http.HandlerFunc(srv.GetTofuState))
+	mux.Handle("POST /api/tofu/state/{componentId}/{workspace}", http.HandlerFunc(srv.PostTofuState))
+	mux.Handle("POST /api/tofu/state/{componentId}/{workspace}/lock", http.HandlerFunc(srv.LockTofuState))
+	mux.Handle("DELETE /api/tofu/state/{componentId}/{workspace}/lock", http.HandlerFunc(srv.UnlockTofuState))
+
 	// Public config exposed to the browser as `window.appConfig`. Only
 	// pre-approved, non-secret values go here — it ships to every client.
 	mux.HandleFunc("/config.js", appConfigHandler(cfg))
@@ -133,6 +145,11 @@ func appConfigHandler(cfg *config.Config) http.HandlerFunc {
 		// GitHub" affordance for pulling charts from private Git repositories.
 		// Non-secret (the App's private key never leaves the server).
 		"githubAppEnabled": cfg.GitHubAppEnabled(),
+		// Whether managed OpenTofu state is available (it needs the secret
+		// key to seal state and sign runner tokens), so the editor offers —
+		// and defaults to — the Spacefleet backend only when it works.
+		// Non-secret: a boolean, never the key.
+		"managedStateEnabled": cfg.SecretKey != "",
 	})
 	if err != nil {
 		panic(err)

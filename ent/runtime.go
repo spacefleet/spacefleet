@@ -22,6 +22,8 @@ import (
 	"github.com/spacefleet/spacefleet/ent/planpolicy"
 	"github.com/spacefleet/spacefleet/ent/schema"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
+	"github.com/spacefleet/spacefleet/ent/tofustate"
+	"github.com/spacefleet/spacefleet/ent/tofustateversion"
 	"github.com/spacefleet/spacefleet/ent/user"
 	"github.com/spacefleet/spacefleet/ent/variable"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
@@ -350,6 +352,52 @@ func init() {
 	tektoninstallationDescID := tektoninstallationFields[0].Descriptor()
 	// tektoninstallation.DefaultID holds the default value on creation for the id field.
 	tektoninstallation.DefaultID = tektoninstallationDescID.Default.(func() uuid.UUID)
+	tofustateFields := schema.TofuState{}.Fields()
+	_ = tofustateFields
+	// tofustateDescWorkspace is the schema descriptor for workspace field.
+	tofustateDescWorkspace := tofustateFields[4].Descriptor()
+	// tofustate.DefaultWorkspace holds the default value on creation for the workspace field.
+	tofustate.DefaultWorkspace = tofustateDescWorkspace.Default.(string)
+	// tofustateDescCurrentVersion is the schema descriptor for current_version field.
+	tofustateDescCurrentVersion := tofustateFields[5].Descriptor()
+	// tofustate.DefaultCurrentVersion holds the default value on creation for the current_version field.
+	tofustate.DefaultCurrentVersion = tofustateDescCurrentVersion.Default.(int)
+	// tofustateDescSerial is the schema descriptor for serial field.
+	tofustateDescSerial := tofustateFields[6].Descriptor()
+	// tofustate.DefaultSerial holds the default value on creation for the serial field.
+	tofustate.DefaultSerial = tofustateDescSerial.Default.(int64)
+	// tofustateDescLineage is the schema descriptor for lineage field.
+	tofustateDescLineage := tofustateFields[7].Descriptor()
+	// tofustate.DefaultLineage holds the default value on creation for the lineage field.
+	tofustate.DefaultLineage = tofustateDescLineage.Default.(string)
+	// tofustateDescCreatedAt is the schema descriptor for created_at field.
+	tofustateDescCreatedAt := tofustateFields[12].Descriptor()
+	// tofustate.DefaultCreatedAt holds the default value on creation for the created_at field.
+	tofustate.DefaultCreatedAt = tofustateDescCreatedAt.Default.(func() time.Time)
+	// tofustateDescUpdatedAt is the schema descriptor for updated_at field.
+	tofustateDescUpdatedAt := tofustateFields[13].Descriptor()
+	// tofustate.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	tofustate.DefaultUpdatedAt = tofustateDescUpdatedAt.Default.(func() time.Time)
+	// tofustate.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	tofustate.UpdateDefaultUpdatedAt = tofustateDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// tofustateDescID is the schema descriptor for id field.
+	tofustateDescID := tofustateFields[0].Descriptor()
+	// tofustate.DefaultID holds the default value on creation for the id field.
+	tofustate.DefaultID = tofustateDescID.Default.(func() uuid.UUID)
+	tofustateversionFields := schema.TofuStateVersion{}.Fields()
+	_ = tofustateversionFields
+	// tofustateversionDescCreatedBy is the schema descriptor for created_by field.
+	tofustateversionDescCreatedBy := tofustateversionFields[11].Descriptor()
+	// tofustateversion.DefaultCreatedBy holds the default value on creation for the created_by field.
+	tofustateversion.DefaultCreatedBy = tofustateversionDescCreatedBy.Default.(string)
+	// tofustateversionDescCreatedAt is the schema descriptor for created_at field.
+	tofustateversionDescCreatedAt := tofustateversionFields[12].Descriptor()
+	// tofustateversion.DefaultCreatedAt holds the default value on creation for the created_at field.
+	tofustateversion.DefaultCreatedAt = tofustateversionDescCreatedAt.Default.(func() time.Time)
+	// tofustateversionDescID is the schema descriptor for id field.
+	tofustateversionDescID := tofustateversionFields[0].Descriptor()
+	// tofustateversion.DefaultID holds the default value on creation for the id field.
+	tofustateversion.DefaultID = tofustateversionDescID.Default.(func() uuid.UUID)
 	userFields := schema.User{}.Fields()
 	_ = userFields
 	// userDescOidcSubject is the schema descriptor for oidc_subject field.

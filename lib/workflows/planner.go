@@ -5,15 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/lib/deploy"
 	"github.com/spacefleet/spacefleet/lib/helm"
+	"github.com/spacefleet/spacefleet/lib/k8s"
 	"github.com/spacefleet/spacefleet/lib/manifest"
 	"github.com/spacefleet/spacefleet/lib/tekton"
 	"github.com/spacefleet/spacefleet/lib/tofu"
+	"github.com/spacefleet/spacefleet/lib/tofustate"
 )
 
 // Component helm-config keys that live alongside the chart-source keys
@@ -44,7 +47,7 @@ const (
 //
 // stateOp is the operation of a state_op run (decoded from the run row by the
 // worker), nil for every other action; only a terraform unit reads it.
-func (w *WorkflowRunWorker) planComponent(ctx context.Context, app *ent.Application, node GraphNode, action string, force bool, existingRun string, runID uuid.UUID, byID map[uuid.UUID]GraphNode, stateOp *tofu.StateOp) (tekton.RunRequest, error) {
+func (w *WorkflowRunWorker) planComponent(ctx context.Context, app *ent.Application, node GraphNode, action string, force bool, existingRun string, runID, componentRunID uuid.UUID, byID map[uuid.UUID]GraphNode, stateOp *tofu.StateOp) (tekton.RunRequest, error) {
 	switch node.Type {
 	case TypeHelm:
 		// runID feeds the ${{ run.id }} interpolation context; byID resolves
@@ -57,8 +60,9 @@ func (w *WorkflowRunWorker) planComponent(ctx context.Context, app *ent.Applicat
 	case TypeTerraform:
 		// force is helm-only; a terraform plan/apply has no equivalent. runID + byID
 		// let planTofu derive the planfile-handover Secret and the shared backend
-		// state identity it shares with its plan node.
-		return w.planTofu(ctx, app, node, action, existingRun, runID, byID, stateOp)
+		// state identity it shares with its plan node; componentRunID is the step
+		// a managed-state token is minted for.
+		return w.planTofu(ctx, app, node, action, existingRun, runID, componentRunID, byID, stateOp)
 	default:
 		return tekton.RunRequest{}, fmt.Errorf("workflows: component %q has unsupported type %q for execution", node.Name, node.Type)
 	}
@@ -158,7 +162,11 @@ func (w *WorkflowRunWorker) planManifest(ctx context.Context, app *ent.Applicati
 // handover owner like a plan unit: the same Secret carries the refreshed
 // outputs + inventory back after the operation, so the state view stays
 // current. stateOp is that run's decoded operation.
-func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, node GraphNode, action, existingRun string, runID uuid.UUID, byID map[uuid.UUID]GraphNode, stateOp *tofu.StateOp) (tekton.RunRequest, error) {
+//
+// A component on managed state (tofu.BackendSpacefleet) gets the state
+// address and a token minted for this step (componentRunID) — see
+// managedStateAccess.
+func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, node GraphNode, action, existingRun string, runID, componentRunID uuid.UUID, byID map[uuid.UUID]GraphNode, stateOp *tofu.StateOp) (tekton.RunRequest, error) {
 	tofuAction, err := tofuActionFor(action)
 	if err != nil {
 		return tekton.RunRequest{}, err
@@ -259,6 +267,35 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		return tekton.RunRequest{}, err
 	}
 
+	// Managed state: the address the backend talks to and this step's token.
+	// The token rides in SecretEnv, so it comes from the per-run creds Secret
+	// and never appears in the script, the TaskRun spec, or the planfile; an
+	// apply unit authenticates with its own (write) token, minted only now
+	// that its approval gate has opened.
+	var stateAddress string
+	if node.Config[terraformConfigBackend] == tofu.BackendSpacefleet {
+		authored := node.ComponentID
+		if authored == uuid.Nil {
+			authored = planID
+		}
+		addr, token, err := w.managedStateAccess(app, node, action, authored, runID, componentRunID, resolved.RunnerConn.Method)
+		if err != nil {
+			return tekton.RunRequest{}, err
+		}
+		stateAddress = addr
+		if resolved.Env == nil {
+			resolved.Env = map[string]string{}
+		}
+		if resolved.SecretEnv == nil {
+			resolved.SecretEnv = map[string]string{}
+		}
+		// The two maps must stay disjoint (a variable of the same name loses).
+		delete(resolved.SecretEnv, stateEnvUsername)
+		delete(resolved.Env, stateEnvPassword)
+		resolved.Env[stateEnvUsername] = tofustate.Username
+		resolved.SecretEnv[stateEnvPassword] = token
+	}
+
 	// Provision the planfile handover for the pair before either node runs: the
 	// worker pre-creates the (empty) Secret plus the ServiceAccount/Role/
 	// RoleBinding that pin the step's pod to exactly that Secret — pre-creating
@@ -300,6 +337,7 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		Path:               node.Config[manifestConfigPath],
 		Backend:            node.Config[terraformConfigBackend],
 		BackendConfig:      backendConfig,
+		StateAddress:       stateAddress,
 		Namespace:          tekton.JobsNamespace,
 		HasGitToken:        resolved.HasGitToken,
 		HasCloudAuth:       resolved.HasCloudAuth,
@@ -333,6 +371,76 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 			PluginCacheClaim:   pluginCacheClaim,
 		},
 	}, nil
+}
+
+// The environment OpenTofu's `http` backend reads its basic-auth
+// credentials from. The password is the step's state token.
+const (
+	stateEnvUsername = "TF_HTTP_USERNAME"
+	stateEnvPassword = "TF_HTTP_PASSWORD"
+)
+
+// stateTokenMargin is how far a managed-state token outlives the step's
+// TaskRun timeout (workflowWatchTimeout), covering submit latency. The
+// liveness check (the step must still be running) is what really ends a
+// token's life; the expiry is the backstop.
+const stateTokenMargin = 10 * time.Minute
+
+// ManagedState is what the worker needs to point an OpenTofu step at
+// managed state: the token signer and the base URLs runner pods reach this
+// Spacefleet at. The zero value means managed state is unavailable; a step
+// on the spacefleet backend then fails with a clear error.
+type ManagedState struct {
+	Signer *tofustate.Signer
+	// RunnerURL is the base URL runner pods use (RUNNER_API_URL, which
+	// defaults to EXTERNAL_URL).
+	RunnerURL string
+	// InClusterURL, when set, is used instead of RunnerURL by a runner
+	// registered with the in_cluster method: it runs in Spacefleet's own
+	// cluster, so it reaches the Service directly.
+	InClusterURL string
+}
+
+// SetManagedState configures managed OpenTofu state for the steps this
+// worker plans.
+func (w *WorkflowRunWorker) SetManagedState(m ManagedState) {
+	w.managedState = m
+}
+
+// managedStateAccess returns the managed state address of an OpenTofu
+// component workspace and a token for this step. The token can write state
+// only on a unit that changes it — a deploy's or destroy's apply, a state
+// operation (the same units that record state, recordsTofuState); a plan,
+// preview, or drift unit runs module code with a token that can read and
+// lock but never write.
+func (w *WorkflowRunWorker) managedStateAccess(app *ent.Application, node GraphNode, action string, componentID, runID, componentRunID uuid.UUID, runner k8s.Method) (address, token string, err error) {
+	m := w.managedState
+	if m.Signer == nil || m.RunnerURL == "" {
+		return "", "", fmt.Errorf("workflows: component %q uses Spacefleet-managed state, but managed state is not configured on this worker (set SPACEFLEET_SECRET_KEY)", node.Name)
+	}
+	base := m.RunnerURL
+	if runner == k8s.MethodInCluster && m.InClusterURL != "" {
+		base = m.InClusterURL
+	}
+	scope := tofustate.ScopeRead
+	if recordsTofuState(action, node) {
+		scope = tofustate.ScopeWrite
+	}
+	workspace := tofustate.WorkspaceName(node.Config[terraformConfigWorkspace])
+	token, err = m.Signer.Sign(tofustate.Claims{
+		OrgID:          app.OrganizationID,
+		ApplicationID:  app.ID,
+		ComponentID:    componentID,
+		Workspace:      workspace,
+		WorkflowRunID:  runID,
+		ComponentRunID: componentRunID,
+		Scope:          scope,
+		Expiry:         time.Now().Add(workflowWatchTimeout + stateTokenMargin).Unix(),
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("workflows: component %q: mint state token: %w", node.Name, err)
+	}
+	return tofustate.Address(base, componentID, workspace), token, nil
 }
 
 // s3LockTable returns the DynamoDB lock table an s3 backend names, or "" for

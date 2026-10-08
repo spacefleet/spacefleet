@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { ComponentFields, type EditableComponent } from "./ComponentFields";
 import type { components } from "../../api/schema";
 
@@ -348,5 +348,64 @@ describe("terraform backend extras", () => {
     expect(JSON.parse(latest!.config.backend_config)).toEqual({ use_azuread_auth: "true" });
     await user.click(aad);
     expect(latest!.config.backend_config).toBe("");
+  });
+});
+
+describe("managed state backend", () => {
+  const creds: CloudCredential[] = [
+    { id: "c-aws", name: "prod-aws", provider: "aws", config: {}, created_at: "", updated_at: "" },
+    { id: "c-gcp", name: "prod-gcp", provider: "gcp", config: {}, created_at: "", updated_at: "" },
+  ];
+  const original = window.appConfig;
+  afterEach(() => {
+    window.appConfig = original;
+  });
+
+  it("is offered first when the server can keep state, takes no settings, and lets any cloud's credential serve the providers", async () => {
+    window.appConfig = { ...original, managedStateEnabled: true };
+    const user = userEvent.setup();
+    let latest: EditableComponent | null = null;
+    render(
+      <Harness
+        initial={makeComponent({
+          config: {
+            backend: "s3",
+            backend_config: JSON.stringify({ bucket: "b", key: "k", region: "r" }),
+            cloud_credential_id: "c-aws",
+          },
+        })}
+        onComponent={(c) => {
+          latest = c;
+        }}
+        cloudCredentials={creds}
+      />,
+    );
+    const select = screen.getByLabelText("State backend") as HTMLSelectElement;
+    expect(select.options[0].value).toBe("spacefleet");
+    expect(select.options[0].textContent).toBe("Spacefleet (managed)");
+    expect(screen.getByText("The S3 bucket holding the state.")).toBeInTheDocument();
+
+    await user.selectOptions(select, "spacefleet");
+    expect(latest!.config.backend).toBe("spacefleet");
+    expect(latest!.config.backend_config).toBe("");
+    expect(latest!.config.cloud_credential_id).toBe("");
+    expect(screen.queryByText("The S3 bucket holding the state.")).not.toBeInTheDocument();
+    expect(screen.getByText(/Spacefleet keeps this component's state/)).toBeInTheDocument();
+    const credSelect = screen.getByLabelText("Cloud credential");
+    expect(credSelect).toHaveTextContent("prod-aws (AWS)");
+    expect(credSelect).toHaveTextContent("prod-gcp (Google Cloud)");
+  });
+
+  it("is not offered when the server can't keep state, unless the component already uses it", () => {
+    window.appConfig = { ...original, managedStateEnabled: false };
+    const { unmount } = render(
+      <Harness initial={makeComponent({ config: { backend: "s3" } })} onComponent={() => {}} />,
+    );
+    const values = Array.from((screen.getByLabelText("State backend") as HTMLSelectElement).options).map((o) => o.value);
+    expect(values).not.toContain("spacefleet");
+    unmount();
+
+    render(<Harness initial={makeComponent({ config: { backend: "spacefleet" } })} onComponent={() => {}} />);
+    expect((screen.getByLabelText("State backend") as HTMLSelectElement).value).toBe("spacefleet");
   });
 });

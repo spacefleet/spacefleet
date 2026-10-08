@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/riverqueue/river"
+
+	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/lib/api"
 	"github.com/spacefleet/spacefleet/lib/applicationgroups"
 	"github.com/spacefleet/spacefleet/lib/applications"
@@ -28,6 +30,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/policies"
 	"github.com/spacefleet/spacefleet/lib/queue"
 	"github.com/spacefleet/spacefleet/lib/secrets"
+	"github.com/spacefleet/spacefleet/lib/tofustate"
 	"github.com/spacefleet/spacefleet/lib/users"
 	"github.com/spacefleet/spacefleet/lib/variables"
 	"github.com/spacefleet/spacefleet/lib/workflows"
@@ -76,6 +79,10 @@ func New(cfg *config.Config) (*http.Server, error) {
 	applicationGroupsSvc := applicationgroups.NewService(entClient)
 	workflowsSvc := workflows.NewService(entClient)
 	workflowsSvc.SetExternalURL(cfg.ExternalURL)
+	// Managed OpenTofu state needs the secret key (to seal state and sign
+	// the runner tokens); without one the backend is refused at save time.
+	tofuStateSvc := buildTofuState(entClient, sealer, cfg.SecretKey)
+	workflowsSvc.SetManagedState(tofuStateSvc.Enabled())
 	// Pull-request previews report back to GitHub as check runs when the App
 	// is configured (the authenticator doubles as the check-run client).
 	if checks, ok := ghAuth.(workflows.CheckRunClient); ok {
@@ -116,6 +123,8 @@ func New(cfg *config.Config) (*http.Server, error) {
 		Notifications:       notifications.NewService(entClient, sealer, enqueueVia(jobQueue)),
 		Policies:            policies.NewService(entClient),
 		Variables:           variablesSvc,
+		TofuState:           tofuStateSvc,
+		TofuStateMaxBytes:   cfg.TofuStateMaxBytes,
 		AllowOrgCreation:    cfg.AllowOrgCreation,
 		ExternalURL:         cfg.ExternalURL,
 		EmailEnabled:        cfg.EmailEnabled(),
@@ -200,6 +209,18 @@ func buildVerifier(cfg *config.Config) (auth.TokenVerifier, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	return auth.NewOIDCVerifier(ctx, cfg.OIDCIssuer, cfg.OIDCClientID, cfg.OIDCJWKSURL)
+}
+
+// buildTofuState builds the managed OpenTofu state service. Without a
+// secret key it is built disabled (no signer): the state routes answer 503
+// and the workflow save refuses the Spacefleet backend. A key that is set
+// but malformed already failed the sealer above.
+func buildTofuState(entClient *ent.Client, sealer *secrets.Sealer, secretKey string) *tofustate.Service {
+	signer, err := tofustate.NewSigner(secretKey)
+	if err != nil {
+		return tofustate.NewService(entClient, sealer, nil)
+	}
+	return tofustate.NewService(entClient, sealer, signer)
 }
 
 // enqueueVia adapts the queue client to the notifications service's enqueue

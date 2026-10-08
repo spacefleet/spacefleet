@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/manifest"
 	"github.com/spacefleet/spacefleet/lib/tekton"
 	"github.com/spacefleet/spacefleet/lib/tofu"
+	"github.com/spacefleet/spacefleet/lib/tofustate"
 )
 
 func TestHelmActionFor(t *testing.T) {
@@ -292,7 +294,7 @@ func TestPlanTofuProvisionsHandover(t *testing.T) {
 	byID := map[uuid.UUID]GraphNode{planID: planNode, applyID: applyNode}
 	secret := tofuPlanArtifactSecret(runID, planID)
 
-	req, err := w.planTofu(context.Background(), app, planNode, ActionDeploy, "", runID, byID, nil)
+	req, err := w.planTofu(context.Background(), app, planNode, ActionDeploy, "", runID, uuid.Nil, byID, nil)
 	if err != nil {
 		t.Fatalf("planTofu(plan): %v", err)
 	}
@@ -314,7 +316,7 @@ func TestPlanTofuProvisionsHandover(t *testing.T) {
 	// provision) and runs as the same ServiceAccount, so it reads exactly the
 	// Secret its plan node stored.
 	ensured = nil
-	req, err = w.planTofu(context.Background(), app, applyNode, ActionDeploy, "", runID, byID, nil)
+	req, err = w.planTofu(context.Background(), app, applyNode, ActionDeploy, "", runID, uuid.Nil, byID, nil)
 	if err != nil {
 		t.Fatalf("planTofu(apply): %v", err)
 	}
@@ -328,7 +330,7 @@ func TestPlanTofuProvisionsHandover(t *testing.T) {
 	// A preview is read-only: no planfile, so no handover objects and no
 	// dedicated ServiceAccount (the pod needs no cluster access at all).
 	ensured = nil
-	req, err = w.planTofu(context.Background(), app, planNode, ActionPreview, "", runID, byID, nil)
+	req, err = w.planTofu(context.Background(), app, planNode, ActionPreview, "", runID, uuid.Nil, byID, nil)
 	if err != nil {
 		t.Fatalf("planTofu(preview): %v", err)
 	}
@@ -375,7 +377,7 @@ func TestPlanTofuClusterAuth(t *testing.T) {
 			terraformConfigAuthClusterID: uuid.New().String(),
 		},
 	}
-	req, err := w.planTofu(context.Background(), app, withAuth, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: withAuth}, nil)
+	req, err := w.planTofu(context.Background(), app, withAuth, ActionDeploy, "", runID, uuid.Nil, map[uuid.UUID]GraphNode{planID: withAuth}, nil)
 	if err != nil {
 		t.Fatalf("planTofu(with auth): %v", err)
 	}
@@ -394,7 +396,7 @@ func TestPlanTofuClusterAuth(t *testing.T) {
 			terraformConfigBackend: tofu.BackendS3,
 		},
 	}
-	req, err = w.planTofu(context.Background(), app, withoutAuth, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: withoutAuth}, nil)
+	req, err = w.planTofu(context.Background(), app, withoutAuth, ActionDeploy, "", runID, uuid.Nil, map[uuid.UUID]GraphNode{planID: withoutAuth}, nil)
 	if err != nil {
 		t.Fatalf("planTofu(without auth): %v", err)
 	}
@@ -725,7 +727,7 @@ func TestPlanTofuHandoverFailure(t *testing.T) {
 			terraformConfigBackend: tofu.BackendS3,
 		},
 	}
-	_, err := w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: node}, nil)
+	_, err := w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, uuid.Nil, map[uuid.UUID]GraphNode{planID: node}, nil)
 	if err == nil || !strings.Contains(err.Error(), "forbidden") {
 		t.Fatalf("expected the ensure failure to propagate, got %v", err)
 	}
@@ -753,7 +755,7 @@ func TestPlanTofuWorkspaceAndTFVars(t *testing.T) {
 			terraformConfigTFVars:       `{"replicas": 3, "tags": {"team": "core"}}`,
 		},
 	}
-	req, err := w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: node}, nil)
+	req, err := w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, uuid.Nil, map[uuid.UUID]GraphNode{planID: node}, nil)
 	if err != nil {
 		t.Fatalf("planTofu: %v", err)
 	}
@@ -770,7 +772,7 @@ func TestPlanTofuWorkspaceAndTFVars(t *testing.T) {
 	delete(node.Config, terraformConfigWorkspace)
 	delete(node.Config, terraformConfigExposeTFVars)
 	delete(node.Config, terraformConfigTFVars)
-	req, err = w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: node}, nil)
+	req, err = w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, uuid.Nil, map[uuid.UUID]GraphNode{planID: node}, nil)
 	if err != nil {
 		t.Fatalf("planTofu (defaults): %v", err)
 	}
@@ -805,7 +807,7 @@ func TestPlanTofuPluginCache(t *testing.T) {
 			return tekton.PluginCacheClaim, nil
 		},
 	}
-	req, err := w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: node}, nil)
+	req, err := w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, uuid.Nil, map[uuid.UUID]GraphNode{planID: node}, nil)
 	if err != nil {
 		t.Fatalf("planTofu: %v", err)
 	}
@@ -817,11 +819,121 @@ func TestPlanTofuPluginCache(t *testing.T) {
 	}
 
 	w.pluginCache = func(context.Context, uuid.UUID) (string, error) { return "", nil }
-	req, err = w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: node}, nil)
+	req, err = w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, uuid.Nil, map[uuid.UUID]GraphNode{planID: node}, nil)
 	if err != nil {
 		t.Fatalf("planTofu (no cache): %v", err)
 	}
 	if req.Spec.PluginCacheClaim != "" || strings.Contains(req.Spec.Script, "TF_PLUGIN_CACHE_DIR") {
 		t.Error("no cache must mount nothing and export nothing")
+	}
+}
+
+// methodConns resolves every cluster to a connection of one method, so a
+// test can stand the runner up as in_cluster (never dialled).
+type methodConns struct{ method k8s.Method }
+
+func (m methodConns) ConnForTekton(context.Context, uuid.UUID, uuid.UUID) (k8s.Connection, error) {
+	return k8s.Connection{Method: m.method}, nil
+}
+
+// TestPlanTofuManagedState: a component on the spacefleet backend gets the
+// managed state address (workspace in the path, no `workspace select`) and
+// a per-step token as TF_HTTP_PASSWORD from the creds Secret — never in the
+// script or the plain env. The token can write only on a unit that changes
+// state (deploy apply, state operation); plan, preview, and drift units get
+// a read token. Every unit addresses the authored component's state. An
+// in_cluster runner uses the in-cluster URL.
+func TestPlanTofuManagedState(t *testing.T) {
+	t.Parallel()
+	signer, err := tofustate.NewSigner("nTs1wv/wXlYpVfBAmy1HibIFHUfD0utwKytCJAFwN/A=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID, planID, applyID := uuid.New(), uuid.New(), uuid.New()
+	app := &ent.Application{ID: uuid.New(), OrganizationID: uuid.New(), RunnerClusterID: uuid.New()}
+	newWorker := func(method k8s.Method) *WorkflowRunWorker {
+		w := &WorkflowRunWorker{
+			resolver:       deploy.NewResolver(methodConns{method}, nil, nil, nil, nil),
+			ensureHandover: func(context.Context, k8s.Connection, string, string, map[string]string) error { return nil },
+		}
+		w.SetManagedState(ManagedState{Signer: signer, RunnerURL: "https://sf.example.com", InClusterURL: "http://sf.sf.svc.cluster.local:8080"})
+		return w
+	}
+	cfg := func(command string) map[string]string {
+		return map[string]string{
+			terraformConfigCommand:   command,
+			terraformConfigBackend:   tofu.BackendSpacefleet,
+			terraformConfigWorkspace: "prod",
+		}
+	}
+	planNode := GraphNode{ID: planID, ComponentID: planID, Name: "net", Type: TypeTerraform, Config: cfg(terraformCommandPlan)}
+	applyNode := GraphNode{ID: applyID, ComponentID: planID, Name: "net", Type: TypeTerraform, DependsOn: []uuid.UUID{planID}, Config: cfg(terraformCommandApply)}
+	opNode := GraphNode{ID: planID, ComponentID: planID, Name: "net", Type: TypeTerraform, Config: cfg(terraformCommandStateOp)}
+	byID := map[uuid.UUID]GraphNode{planID: planNode, applyID: applyNode}
+	op := &tofu.StateOp{Operation: tofu.StateOpForceUnlock, LockID: "abc"}
+
+	cases := []struct {
+		name   string
+		node   GraphNode
+		action string
+		method k8s.Method
+		scope  string
+		base   string
+	}{
+		{"deploy plan", planNode, ActionDeploy, k8s.MethodToken, tofustate.ScopeRead, "https://sf.example.com"},
+		{"deploy apply", applyNode, ActionDeploy, k8s.MethodToken, tofustate.ScopeWrite, "https://sf.example.com"},
+		{"destroy apply", applyNode, ActionUninstall, k8s.MethodToken, tofustate.ScopeWrite, "https://sf.example.com"},
+		{"preview", planNode, ActionPreview, k8s.MethodToken, tofustate.ScopeRead, "https://sf.example.com"},
+		{"drift", planNode, ActionDrift, k8s.MethodToken, tofustate.ScopeRead, "https://sf.example.com"},
+		{"state op", opNode, ActionStateOp, k8s.MethodToken, tofustate.ScopeWrite, "https://sf.example.com"},
+		{"in-cluster runner", applyNode, ActionDeploy, k8s.MethodInCluster, tofustate.ScopeWrite, "http://sf.sf.svc.cluster.local:8080"},
+	}
+	for _, tc := range cases {
+		crID := uuid.New()
+		var stateOp *tofu.StateOp
+		if tc.action == ActionStateOp {
+			stateOp = op
+		}
+		req, err := newWorker(tc.method).planTofu(context.Background(), app, tc.node, tc.action, "", runID, crID, byID, stateOp)
+		if err != nil {
+			t.Fatalf("%s: planTofu: %v", tc.name, err)
+		}
+		token := req.Spec.SecretEnv[stateEnvPassword]
+		claims, err := signer.Verify(token, time.Now())
+		if err != nil {
+			t.Fatalf("%s: token does not verify: %v", tc.name, err)
+		}
+		want := tofustate.Claims{
+			OrgID: app.OrganizationID, ApplicationID: app.ID, ComponentID: planID, Workspace: "prod",
+			WorkflowRunID: runID, ComponentRunID: crID, Scope: tc.scope, Expiry: claims.Expiry,
+		}
+		if claims != want {
+			t.Errorf("%s: claims = %+v, want %+v", tc.name, claims, want)
+		}
+		if ttl := time.Until(time.Unix(claims.Expiry, 0)); ttl < workflowWatchTimeout || ttl > workflowWatchTimeout+stateTokenMargin+time.Minute {
+			t.Errorf("%s: token lives %s", tc.name, ttl)
+		}
+		if req.Spec.Env[stateEnvUsername] != tofustate.Username {
+			t.Errorf("%s: %s = %q", tc.name, stateEnvUsername, req.Spec.Env[stateEnvUsername])
+		}
+		if _, plain := req.Spec.Env[stateEnvPassword]; plain {
+			t.Errorf("%s: the token must not be plain env", tc.name)
+		}
+		addr := tc.base + "/api/tofu/state/" + planID.String() + "/prod"
+		if !strings.Contains(req.Spec.Script, `address        = "`+addr+`"`) {
+			t.Errorf("%s: script lacks address %s\n---\n%s", tc.name, addr, req.Spec.Script)
+		}
+		if strings.Contains(req.Spec.Script, token) || strings.Contains(req.Spec.Script, "workspace select") {
+			t.Errorf("%s: script carries the token or selects a workspace\n---\n%s", tc.name, req.Spec.Script)
+		}
+	}
+
+	// Without managed state configured, the step fails with an actionable error.
+	w := &WorkflowRunWorker{
+		resolver:       deploy.NewResolver(plannerConns{}, nil, nil, nil, nil),
+		ensureHandover: func(context.Context, k8s.Connection, string, string, map[string]string) error { return nil },
+	}
+	if _, err := w.planTofu(context.Background(), app, planNode, ActionDeploy, "", runID, uuid.New(), byID, nil); err == nil || !strings.Contains(err.Error(), "SPACEFLEET_SECRET_KEY") {
+		t.Errorf("unconfigured managed state: err = %v", err)
 	}
 }

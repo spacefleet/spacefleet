@@ -32,3 +32,11 @@ export function emailEnabled(): boolean {
 export function githubAppEnabled(): boolean {
   return window.appConfig?.githubAppEnabled === true;
 }
+
+// managedStateEnabled reports whether the server can keep OpenTofu state
+// itself (it has the secret key managed state needs). Defaults to false when
+// config is missing, so the editor offers — and defaults to — a cloud backend
+// rather than one every save would refuse.
+export function managedStateEnabled(): boolean {
+  return window.appConfig?.managedStateEnabled === true;
+}

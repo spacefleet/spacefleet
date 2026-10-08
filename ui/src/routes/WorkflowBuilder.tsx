@@ -48,6 +48,8 @@ export function WorkflowBuilder() {
     loading,
     error,
     saveError,
+    backendChange,
+    confirmBackendChange,
     varFlushError,
     saving,
     saved,
@@ -149,6 +151,32 @@ export function WorkflowBuilder() {
       </div>
 
       {saveError && <p className="pb-2 text-sm text-red-600">{saveError}</p>}
+      {backendChange && (
+        <div
+          role="alert"
+          className="mb-3 border border-amber-200 bg-amber-50 p-4"
+        >
+          <p className="text-sm font-medium text-amber-900">
+            Not saved — this moves existing OpenTofu state
+          </p>
+          <p className="mt-1 text-sm text-amber-800">
+            A component you changed still manages resources in its current
+            state backend. The new backend starts empty, so the next run would
+            plan to create everything again. Destroy the resources first (or
+            switch the backend back), unless you have already moved the state
+            yourself.
+          </p>
+          <p className="mt-1 text-xs text-amber-700">{backendChange}</p>
+          <button
+            type="button"
+            onClick={() => void confirmBackendChange()}
+            disabled={saving}
+            className="mt-3 border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+          >
+            Switch the backend anyway
+          </button>
+        </div>
+      )}
       {varFlushError && (
         <p className="pb-2 text-sm text-amber-700">{varFlushError}</p>
       )}

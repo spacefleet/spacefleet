@@ -31,7 +31,8 @@ the services onto it, then a **Verify** stage with a smoke test.
    - For a **Manifest** component, the Git repository, branch or tag, and the
      path to the manifests to apply.
    - For an **OpenTofu** component, the Git repository, branch or tag, and the
-     working path holding your OpenTofu files, plus the state backend — and,
+     working path holding your OpenTofu files, plus where its state lives
+     (Spacefleet keeps it unless you pick a cloud backend) — and,
      for code that creates Kubernetes resources, optional **cluster
      authentication** — see [OpenTofu components](#opentofu-components).
    - **Target cluster** and **target namespace** — where a Helm release is
@@ -147,12 +148,30 @@ at `env:/<workspace>/<state key>` in the bucket, while the default workspace
 bucket and key and still keep separate state, as long as their workspaces
 differ.
 
+With [Spacefleet-managed state](#state-backend), every component already has
+its own state, and a workspace gives it another, separate one. OpenTofu's own
+workspace feature isn't used there, so inside your module
+`terraform.workspace` always reads `default` — pass the environment name as
+an [input variable](#input-variables) if your code needs it.
+
 ### State backend
 
 The component's state always lives where the component says — Spacefleet
 configures your module's backend at run time, overriding any backend block in
-your code. Pick one of the three backends and point it at the location (an
-existing state file there is adopted in place):
+your code.
+
+**Spacefleet (managed)** is the default for new OpenTofu components: Spacefleet
+keeps the state itself. There is nothing to set up — no bucket, no state key,
+no cloud credential for the state, no lock table. The state is encrypted,
+every version of it is kept, and it is locked automatically during every plan
+and apply. Each component (and each [workspace](#workspaces) of it) has its
+own state. Removing a component from the workflow keeps its state, because it
+still describes infrastructure that exists; the state is deleted with the
+application. The option is available when your Spacefleet operator has set it
+up — see [Managed OpenTofu state](../operator/managed-state.md).
+
+Or keep the state in your own cloud: pick one of the three cloud backends and
+point it at the location (an existing state file there is adopted in place):
 
 | Backend | Settings |
 | --- | --- |
@@ -160,16 +179,25 @@ existing state file there is adopted in place):
 | **Google Cloud Storage** | bucket and a prefix (the folder the state lives under); optionally a Cloud KMS key to encrypt the state with |
 | **Azure Blob Storage** | storage account, container, and the state file's blob name; optionally the account's resource group, and whether to authenticate with the credential's Azure AD identity instead of the account keys |
 
-Attach a **cloud credential** of the matching cloud for the run to sign in
-with — the same credential serves both the state backend and your module's
-providers for that cloud (an AWS credential becomes the usual `AWS_*`
+With a cloud backend, attach a **cloud credential** of the matching cloud for
+the run to sign in with — the same credential serves both the state backend
+and your module's providers for that cloud (an AWS credential becomes the usual `AWS_*`
 variables, a Google Cloud service-account key becomes `GOOGLE_CREDENTIALS`,
 an Azure service principal becomes the `ARM_*` variables). Leave it empty to
 use the runner's own identity: an instance role, or a workload identity
 bound to the jobs namespace.
 
 Each component needs its own state key or prefix — or its own
-[workspace](#workspaces) on a shared one.
+[workspace](#workspaces) on a shared one. With managed state, a cloud
+credential is optional and of any cloud: it only signs your module's
+providers in.
+
+**Changing a component's backend** starts it on empty state in the new one —
+the state is not copied over, so the next run would plan to create everything
+again. When the component's latest recorded state still lists resources,
+Spacefleet doesn't save the change straight away: the workflow builder
+explains what will happen and asks you to confirm. Destroy the component's
+resources first, or move the state yourself before you confirm.
 
 Backend settings are configuration, not a place for secrets: they are part
 of the run and visible to anyone who can read it. A setting that is a
@@ -184,8 +212,9 @@ Key *names* such as an S3 or Cloud KMS key are fine in the settings.
 ### State locking
 
 Locking prevents two runs (or a run and a colleague's laptop) from writing the
-same state at once and corrupting it. Google Cloud Storage and Azure Blob
-Storage lock natively; nothing needs setting up. For Amazon S3:
+same state at once and corrupting it. Spacefleet-managed state, Google Cloud
+Storage, and Azure Blob Storage lock natively; nothing needs setting up. For
+Amazon S3:
 
 - **OpenTofu 1.10 and newer** — locking is automatic. State is locked in the
   state bucket itself during every plan and apply; there is nothing to set up

@@ -189,6 +189,30 @@ func (f TektonInstallationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TektonInstallationMutation", m)
 }
 
+// The TofuStateFunc type is an adapter to allow the use of ordinary
+// function as TofuState mutator.
+type TofuStateFunc func(context.Context, *ent.TofuStateMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TofuStateFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.TofuStateMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TofuStateMutation", m)
+}
+
+// The TofuStateVersionFunc type is an adapter to allow the use of ordinary
+// function as TofuStateVersion mutator.
+type TofuStateVersionFunc func(context.Context, *ent.TofuStateVersionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TofuStateVersionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.TofuStateVersionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TofuStateVersionMutation", m)
+}
+
 // The UserFunc type is an adapter to allow the use of ordinary
 // function as User mutator.
 type UserFunc func(context.Context, *ent.UserMutation) (ent.Value, error)

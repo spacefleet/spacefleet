@@ -108,6 +108,23 @@ port-forward trial). Any trailing slash is trimmed.
 {{- end -}}
 
 {{/*
+Base URL runner pods use to reach this Spacefleet (RUNNER_API_URL), for
+managed OpenTofu state. Defaults to the external URL.
+*/}}
+{{- define "spacefleet.runnerAPIURL" -}}
+{{- .Values.config.runnerAPIURL | default (include "spacefleet.externalURL" .) | trimSuffix "/" -}}
+{{- end -}}
+
+{{/*
+This release's in-cluster Service URL (IN_CLUSTER_API_URL). A runner
+registered in_cluster runs in this cluster, so its pods use this instead of
+the runner URL: no ingress hairpin and no ingress body-size limit.
+*/}}
+{{- define "spacefleet.inClusterAPIURL" -}}
+{{- printf "http://%s.%s.svc.cluster.local:%v" (include "spacefleet.fullname" .) .Release.Namespace .Values.service.port -}}
+{{- end -}}
+
+{{/*
 OIDC issuer (browser-facing). Spacefleet always bundles Dex and reverse-proxies
 it same-origin under /dex, so the issuer is the external base URL + /dex.
 */}}

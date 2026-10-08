@@ -171,3 +171,40 @@ func TestGitHubWebhookRouteIsPublic(t *testing.T) {
 		t.Fatalf("expected 503 from the unconfigured webhook, got %d", rec.Code)
 	}
 }
+
+// TestTofuStateRoutesArePublic confirms the managed OpenTofu state routes are
+// mounted outside the Dex auth chain (runner pods authenticate with a state
+// token, not a user token): with no bearer they reach the handler, which
+// reports 503 (managed state not configured here) rather than 401. A
+// LOCK-verb request is not routed at all — locks use POST/DELETE.
+func TestTofuStateRoutesArePublic(t *testing.T) {
+	path := "/api/tofu/state/0b6f8b6e-6c47-4a6e-9d0b-1f4f7a3c2b10/default"
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, path},
+		{http.MethodPost, path},
+		{http.MethodPost, path + "/lock"},
+		{http.MethodDelete, path + "/lock"},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader("{}"))
+		rec := httptest.NewRecorder()
+		handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Errorf("%s %s: expected 503 from the unconfigured state handler, got %d", tc.method, tc.path, rec.Code)
+		}
+	}
+}
+
+// TestAppConfigManagedState: /config.js says whether managed OpenTofu state
+// is available (a secret key is set) — the boolean only, never the key.
+func TestAppConfigManagedState(t *testing.T) {
+	for key, want := range map[string]string{"": `"managedStateEnabled":false`, "c2VjcmV0": `"managedStateEnabled":true`} {
+		rec := httptest.NewRecorder()
+		appConfigHandler(&config.Config{SecretKey: key, LoginMethods: []config.LoginMethod{}}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/config.js", nil))
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("key %q: want %s in %s", key, want, rec.Body.String())
+		}
+		if key != "" && strings.Contains(rec.Body.String(), key) {
+			t.Errorf("config.js leaks the secret key")
+		}
+	}
+}

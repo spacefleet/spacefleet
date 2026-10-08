@@ -189,6 +189,21 @@ const (
 	// (storage_account_name / container_name / key; optional resource_group_name).
 	// Locking is native (blob leases).
 	BackendAzure = "azurerm"
+	// BackendSpacefleet is Spacefleet's managed state: the script renders
+	// OpenTofu's `http` backend pointed at this Spacefleet (Apply.StateAddress),
+	// which keeps the state versioned and sealed in its own database. It has
+	// no settings of its own, and its credentials — a per-step token — come
+	// from TF_HTTP_USERNAME / TF_HTTP_PASSWORD in the step's environment, so
+	// they never appear in the script or the generated backend file.
+	BackendSpacefleet = "spacefleet"
+)
+
+// The `http` backend's lock and unlock methods for managed state. POST and
+// DELETE rather than the backend's default LOCK / UNLOCK verbs, which some
+// ingress controllers, WAFs, and proxies drop.
+const (
+	stateLockMethod   = "POST"
+	stateUnlockMethod = "DELETE"
 )
 
 // Apply is the inputs Script needs to render the terraform shell script.
@@ -204,13 +219,18 @@ type Apply struct {
 	GitRef string
 	// Path is the working directory within the repo holding the root module.
 	Path string
-	// Backend names the state backend (BackendS3 is the only supported value
-	// today; the workflow validation enforces it).
+	// Backend names the state backend (one of the Backend* constants; the
+	// workflow validation enforces it).
 	Backend string
 	// BackendConfig is the decoded backend settings (e.g. the s3
 	// bucket/key/region) rendered into backend_override.tf as `key = "value"`
 	// lines. Values are rendered verbatim as HCL strings.
 	BackendConfig map[string]string
+	// StateAddress is the managed state URL for BackendSpacefleet (the
+	// planner builds it from the URL runner pods reach Spacefleet at); its
+	// lock address is StateAddress + "/lock". Ignored for every other
+	// backend. Empty with BackendSpacefleet fails the step closed.
+	StateAddress string
 	// Namespace is the runner-cluster namespace the planfile-handover Secret is
 	// stored in (the same namespace the TaskRun runs in).
 	Namespace string
@@ -264,7 +284,9 @@ type Apply struct {
 	// the script selects it right after `tofu init` (creating it on first
 	// use), so plan, apply, drift, and state operations all address that
 	// workspace's state. Empty keeps the default workspace. The workflow
-	// validation restricts the name to a safe token.
+	// validation restricts the name to a safe token. BackendSpacefleet
+	// ignores it here: the `http` backend has no workspaces, so the planner
+	// puts the workspace into StateAddress instead.
 	Workspace string
 	// TFVars, when set, is a JSON object of typed root-module input variables
 	// (name → any JSON value) written into the module as TFVarsFile before
@@ -377,6 +399,14 @@ func Script(a Apply) string {
 		fmt.Fprintf(&b, "export TF_PLUGIN_CACHE_DIR=%s\n", shQuote(a.PluginCacheDir))
 	}
 
+	// Managed state needs the address the planner built; without one there
+	// is nowhere to keep state, so fail before init rather than let OpenTofu
+	// fall back to anything.
+	if a.Backend == BackendSpacefleet && a.StateAddress == "" {
+		b.WriteString("echo 'no managed state address for the spacefleet backend' >&2\nexit 1\n")
+		return b.String()
+	}
+
 	// Generate the backend override so the root module's state lands where we
 	// decide regardless of any backend block it ships with. backend_override.tf
 	// is read by tofu init alongside the module's own .tf files; an *_override.tf
@@ -389,8 +419,10 @@ func Script(a Apply) string {
 	// Workspace: select (or create on first use) before any command touches
 	// state, so every unit of the component — plan and apply, a drift check, a
 	// state operation — addresses the same workspace. The s3 backend keys a
-	// non-default workspace's state under env:/<workspace>/<key>.
-	if a.Workspace != "" {
+	// non-default workspace's state under env:/<workspace>/<key>. Managed
+	// state has no OpenTofu workspaces (the `http` backend doesn't support
+	// them): the workspace is part of its address instead.
+	if a.Workspace != "" && a.Backend != BackendSpacefleet {
 		fmt.Fprintf(&b, "tofu workspace select -or-create=true %s\n", shQuote(a.Workspace))
 	}
 
@@ -570,20 +602,34 @@ func tfvarsFile(raw string) string {
 // backendOverride renders the backend_override.tf the step writes before init.
 // It emits the named backend (a.Backend, e.g. s3) with the BackendConfig
 // key/values rendered as HCL strings, in sorted key order for a stable
-// (testable) output. The heredoc is single-quoted ('EOF') so nothing in the
+// (testable) output — or, for managed state, the `http` backend pointed at
+// StateAddress. The heredoc is single-quoted ('EOF') so nothing in the
 // body is shell-expanded.
 func backendOverride(a Apply) string {
 	var body strings.Builder
-	fmt.Fprintf(&body, "terraform {\n  backend %q {\n", a.Backend)
-	keys := make([]string, 0, len(a.BackendConfig))
-	for k := range a.BackendConfig {
-		keys = append(keys, k)
+	if a.Backend == BackendSpacefleet {
+		// Managed state is OpenTofu's `http` backend. Only addresses and
+		// methods are written: the credentials come from TF_HTTP_USERNAME /
+		// TF_HTTP_PASSWORD in the environment.
+		body.WriteString("terraform {\n  backend \"http\" {\n")
+		fmt.Fprintf(&body, "    address        = %q\n", a.StateAddress)
+		fmt.Fprintf(&body, "    lock_address   = %q\n", a.StateAddress+"/lock")
+		fmt.Fprintf(&body, "    unlock_address = %q\n", a.StateAddress+"/lock")
+		fmt.Fprintf(&body, "    lock_method    = %q\n", stateLockMethod)
+		fmt.Fprintf(&body, "    unlock_method  = %q\n", stateUnlockMethod)
+		body.WriteString("  }\n}\n")
+	} else {
+		fmt.Fprintf(&body, "terraform {\n  backend %q {\n", a.Backend)
+		keys := make([]string, 0, len(a.BackendConfig))
+		for k := range a.BackendConfig {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Fprintf(&body, "    %s = %q\n", k, a.BackendConfig[k])
+		}
+		body.WriteString("  }\n}\n")
 	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		fmt.Fprintf(&body, "    %s = %q\n", k, a.BackendConfig[k])
-	}
-	body.WriteString("  }\n}\n")
 
 	var b strings.Builder
 	b.WriteString("cat > backend_override.tf <<'EOF'\n")

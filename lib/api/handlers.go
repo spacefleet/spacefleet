@@ -22,6 +22,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/organizations"
 	"github.com/spacefleet/spacefleet/lib/policies"
 	"github.com/spacefleet/spacefleet/lib/queue"
+	"github.com/spacefleet/spacefleet/lib/tofustate"
 	"github.com/spacefleet/spacefleet/lib/users"
 	"github.com/spacefleet/spacefleet/lib/variables"
 	"github.com/spacefleet/spacefleet/lib/workflows"
@@ -41,6 +42,10 @@ type Server struct {
 	notifications       *notifications.Service
 	policies            *policies.Service
 	variables           *variables.Service
+	// tofuState serves managed OpenTofu state to runner pods (the public
+	// /api/tofu/state routes); tofuStateMaxBytes caps one state upload.
+	tofuState         *tofustate.Service
+	tofuStateMaxBytes int64
 
 	// githubAppSlug is the operator's GitHub App URL slug, used to build the
 	// install link returned by GetGitHubConnectUrl. secretKey signs the
@@ -91,6 +96,10 @@ type ServerDeps struct {
 	Notifications       *notifications.Service
 	Policies            *policies.Service
 	Variables           *variables.Service
+	TofuState           *tofustate.Service
+	// TofuStateMaxBytes caps one managed-state upload; 0 means
+	// DefaultTofuStateMaxBytes.
+	TofuStateMaxBytes   int64
 	AllowOrgCreation    bool
 	ExternalURL         string
 	EmailEnabled        bool
@@ -102,6 +111,10 @@ type ServerDeps struct {
 
 // NewServer builds the API server from its dependencies.
 func NewServer(d ServerDeps) *Server {
+	maxState := d.TofuStateMaxBytes
+	if maxState <= 0 {
+		maxState = DefaultTofuStateMaxBytes
+	}
 	return &Server{
 		users:               d.Users,
 		orgs:                d.Orgs,
@@ -116,6 +129,8 @@ func NewServer(d ServerDeps) *Server {
 		notifications:       d.Notifications,
 		policies:            d.Policies,
 		variables:           d.Variables,
+		tofuState:           d.TofuState,
+		tofuStateMaxBytes:   maxState,
 		allowOrgCreation:    d.AllowOrgCreation,
 		externalURL:         d.ExternalURL,
 		emailEnabled:        d.EmailEnabled,

@@ -632,6 +632,103 @@ var (
 			},
 		},
 	}
+	// TofuStatesColumns holds the columns for the "tofu_states" table.
+	TofuStatesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "component_id", Type: field.TypeUUID},
+		{Name: "workspace", Type: field.TypeString, Default: "default"},
+		{Name: "current_version", Type: field.TypeInt, Default: 0},
+		{Name: "serial", Type: field.TypeInt64, Default: 0},
+		{Name: "lineage", Type: field.TypeString, Default: ""},
+		{Name: "lock_id", Type: field.TypeString, Nullable: true},
+		{Name: "lock_info", Type: field.TypeJSON, Nullable: true},
+		{Name: "locked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "locked_by_component_run_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+		{Name: "application_id", Type: field.TypeUUID},
+	}
+	// TofuStatesTable holds the schema information for the "tofu_states" table.
+	TofuStatesTable = &schema.Table{
+		Name:       "tofu_states",
+		Columns:    TofuStatesColumns,
+		PrimaryKey: []*schema.Column{TofuStatesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "tofu_states_organizations_organization",
+				Columns:    []*schema.Column{TofuStatesColumns[12]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "tofu_states_applications_application",
+				Columns:    []*schema.Column{TofuStatesColumns[13]},
+				RefColumns: []*schema.Column{ApplicationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "tofustate_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{TofuStatesColumns[12]},
+			},
+			{
+				Name:    "tofustate_organization_id_application_id_component_id_workspace",
+				Unique:  true,
+				Columns: []*schema.Column{TofuStatesColumns[12], TofuStatesColumns[13], TofuStatesColumns[1], TofuStatesColumns[2]},
+			},
+		},
+	}
+	// TofuStateVersionsColumns holds the columns for the "tofu_state_versions" table.
+	TofuStateVersionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "version", Type: field.TypeInt},
+		{Name: "serial", Type: field.TypeInt64},
+		{Name: "lineage", Type: field.TypeString},
+		{Name: "sealed", Type: field.TypeBytes},
+		{Name: "size_bytes", Type: field.TypeInt64},
+		{Name: "md5", Type: field.TypeString},
+		{Name: "workflow_run_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "component_run_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "created_by", Type: field.TypeString, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "state_id", Type: field.TypeUUID},
+		{Name: "organization_id", Type: field.TypeUUID},
+	}
+	// TofuStateVersionsTable holds the schema information for the "tofu_state_versions" table.
+	TofuStateVersionsTable = &schema.Table{
+		Name:       "tofu_state_versions",
+		Columns:    TofuStateVersionsColumns,
+		PrimaryKey: []*schema.Column{TofuStateVersionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "tofu_state_versions_tofu_states_versions",
+				Columns:    []*schema.Column{TofuStateVersionsColumns[11]},
+				RefColumns: []*schema.Column{TofuStatesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "tofu_state_versions_organizations_organization",
+				Columns:    []*schema.Column{TofuStateVersionsColumns[12]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "tofustateversion_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{TofuStateVersionsColumns[12]},
+			},
+			{
+				Name:    "tofustateversion_state_id_version",
+				Unique:  true,
+				Columns: []*schema.Column{TofuStateVersionsColumns[11], TofuStateVersionsColumns[1]},
+			},
+		},
+	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -805,6 +902,8 @@ var (
 		OrganizationsTable,
 		PoliciesTable,
 		TektonInstallationsTable,
+		TofuStatesTable,
+		TofuStateVersionsTable,
 		UsersTable,
 		VariablesTable,
 		WorkflowRunsTable,
@@ -844,6 +943,10 @@ func init() {
 		Table: "policies",
 	}
 	TektonInstallationsTable.ForeignKeys[0].RefTable = ClustersTable
+	TofuStatesTable.ForeignKeys[0].RefTable = OrganizationsTable
+	TofuStatesTable.ForeignKeys[1].RefTable = ApplicationsTable
+	TofuStateVersionsTable.ForeignKeys[0].RefTable = TofuStatesTable
+	TofuStateVersionsTable.ForeignKeys[1].RefTable = OrganizationsTable
 	VariablesTable.ForeignKeys[0].RefTable = OrganizationsTable
 	VariablesTable.ForeignKeys[1].RefTable = ApplicationsTable
 	WorkflowRunsTable.ForeignKeys[0].RefTable = OrganizationsTable

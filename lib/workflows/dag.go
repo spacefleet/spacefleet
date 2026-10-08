@@ -155,7 +155,7 @@ const (
 	// terraformConfigBackend names the OpenTofu state backend Spacefleet
 	// configures (it writes a backend_override.tf into the module, so state
 	// lands where this config says regardless of any backend block in code).
-	// Required; tofu.BackendS3 is the only supported value today.
+	// Required; one of the tofu.Backend* values (see backendRequiredKeys).
 	terraformConfigBackend = "backend"
 	// terraformConfigBackendConfig is a JSON object of the backend's settings,
 	// rendered into the generated backend_override.tf. For s3: bucket, key, and
@@ -261,9 +261,10 @@ const (
 )
 
 // validateTerraformConfig checks a terraform node's config: a git repo_url + a
-// working path are required, the state backend must be a supported type (s3
-// only today), and backend_config must be a JSON object carrying that backend's
-// required settings (bucket/key/region for s3) — so a broken override is
+// working path are required, the state backend must be a supported type
+// (spacefleet, s3, gcs, azurerm), and backend_config must be a JSON object
+// carrying that backend's required settings (bucket/key/region for s3;
+// nothing at all for spacefleet) — so a broken override is
 // rejected at write time rather than failing mid-run in the worker. The
 // plan/apply command is NOT authored: an OpenTofu component is one node,
 // expanded into a plan unit + an apply unit at run time (see
@@ -294,6 +295,19 @@ func validateTerraformConfig(n ComponentInput) error {
 	if raw := n.Config[terraformConfigBackendConfig]; raw != "" {
 		if err := json.Unmarshal([]byte(raw), &backendCfg); err != nil {
 			return fmt.Errorf("%w: node %q (terraform) %s must be a JSON object: %v", ErrInvalidConfig, n.Name, terraformConfigBackendConfig, err)
+		}
+	}
+	// Managed state has no settings: Spacefleet owns the address, the lock,
+	// and the credentials, so anything in backend_config would be ignored at
+	// best — refuse it rather than let an author think it applies. Its
+	// workspace becomes a path segment of the state address, so the two
+	// names a path treats specially are refused too.
+	if backend == tofu.BackendSpacefleet {
+		if len(backendCfg) > 0 {
+			return fmt.Errorf("%w: node %q (terraform) the %s state backend takes no %s; Spacefleet manages every setting", ErrInvalidConfig, n.Name, backend, terraformConfigBackendConfig)
+		}
+		if ws := n.Config[terraformConfigWorkspace]; ws == "." || ws == ".." {
+			return fmt.Errorf("%w: node %q (terraform) %s %q is not allowed with the %s state backend", ErrInvalidConfig, n.Name, terraformConfigWorkspace, ws, backend)
 		}
 	}
 	for _, key := range required {
@@ -384,6 +398,8 @@ var backendRequiredKeys = map[string][]string{
 	tofu.BackendS3:    {"bucket", "key", s3BackendKeyRegion},
 	tofu.BackendGCS:   {"bucket", "prefix"},
 	tofu.BackendAzure: {"storage_account_name", "container_name", "key"},
+	// Managed state: no settings at all (validateTerraformConfig refuses any).
+	tofu.BackendSpacefleet: {},
 }
 
 // backendSecretKeys lists, per backend, the backend_config settings that are
@@ -415,7 +431,7 @@ var backendSecretKeys = map[string]map[string]string{
 // supportedBackends renders the supported backend names for the validation
 // error, in a stable order.
 func supportedBackends() string {
-	return strings.Join([]string{tofu.BackendS3, tofu.BackendGCS, tofu.BackendAzure}, ", ")
+	return strings.Join([]string{tofu.BackendSpacefleet, tofu.BackendS3, tofu.BackendGCS, tofu.BackendAzure}, ", ")
 }
 
 // supportedTofuVersions renders the supported OpenTofu lines for the

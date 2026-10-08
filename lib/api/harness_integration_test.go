@@ -22,6 +22,7 @@ import (
 	"github.com/spacefleet/spacefleet/lib/policies"
 	"github.com/spacefleet/spacefleet/lib/secrets"
 	"github.com/spacefleet/spacefleet/lib/testsupport"
+	"github.com/spacefleet/spacefleet/lib/tofustate"
 	"github.com/spacefleet/spacefleet/lib/users"
 	"github.com/spacefleet/spacefleet/lib/workflows"
 )
@@ -85,7 +86,12 @@ func newHarness(t *testing.T, github githubinstallations.Authenticator) *harness
 	if err != nil {
 		t.Fatalf("new sealer: %v", err)
 	}
+	signer, err := tofustate.NewSigner(testSecretKey)
+	if err != nil {
+		t.Fatalf("new state signer: %v", err)
+	}
 	deps := ServerDeps{
+		TofuState:    tofustate.NewService(client, sealer, signer),
 		Users:        users.NewService(client),
 		Orgs:         organizations.NewService(client),
 		Applications: applications.NewService(client),

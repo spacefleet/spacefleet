@@ -57,6 +57,19 @@ config:
   # only if this deployment must reach clusters on a private network. The
   # cloud-metadata endpoint (169.254.169.254) is always rejected regardless.
   allowPrivateClusterEndpoints: false
+  # -- Base URL runner pods use to reach this Spacefleet, with no trailing
+  # slash. Runner pods call back for managed OpenTofu state (the "Spacefleet
+  # (managed)" state backend). Empty = config.externalURL. Set it when runner
+  # clusters reach the app at a different address than browsers do. A runner
+  # registered with the in-cluster connection method (it runs in this same
+  # cluster) always uses this release's Service instead — no ingress hairpin
+  # and no ingress body-size limit.
+  runnerAPIURL: ""
+  # -- Largest OpenTofu state, in bytes, managed state accepts in one upload.
+  # Empty = 64 MiB. Ingress limits apply on top: ingress-nginx's default
+  # proxy-body-size is 1m, so a remote runner going through the ingress fails
+  # on state over 1 MB unless you raise it there.
+  tofuStateMaxBytes: ""
 
   # SMTP for outbound email (today: organization invitation emails). Optional —
   # leave host or from empty to disable email, in which case invitations still

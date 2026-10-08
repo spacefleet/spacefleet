@@ -31,6 +31,8 @@ import (
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/planpolicy"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
+	"github.com/spacefleet/spacefleet/ent/tofustate"
+	"github.com/spacefleet/spacefleet/ent/tofustateversion"
 	"github.com/spacefleet/spacefleet/ent/user"
 	"github.com/spacefleet/spacefleet/ent/variable"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
@@ -72,6 +74,10 @@ type Client struct {
 	PlanPolicy *PlanPolicyClient
 	// TektonInstallation is the client for interacting with the TektonInstallation builders.
 	TektonInstallation *TektonInstallationClient
+	// TofuState is the client for interacting with the TofuState builders.
+	TofuState *TofuStateClient
+	// TofuStateVersion is the client for interacting with the TofuStateVersion builders.
+	TofuStateVersion *TofuStateVersionClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// Variable is the client for interacting with the Variable builders.
@@ -106,6 +112,8 @@ func (c *Client) init() {
 	c.Organization = NewOrganizationClient(c.config)
 	c.PlanPolicy = NewPlanPolicyClient(c.config)
 	c.TektonInstallation = NewTektonInstallationClient(c.config)
+	c.TofuState = NewTofuStateClient(c.config)
+	c.TofuStateVersion = NewTofuStateVersionClient(c.config)
 	c.User = NewUserClient(c.config)
 	c.Variable = NewVariableClient(c.config)
 	c.WorkflowRun = NewWorkflowRunClient(c.config)
@@ -217,6 +225,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Organization:        NewOrganizationClient(cfg),
 		PlanPolicy:          NewPlanPolicyClient(cfg),
 		TektonInstallation:  NewTektonInstallationClient(cfg),
+		TofuState:           NewTofuStateClient(cfg),
+		TofuStateVersion:    NewTofuStateVersionClient(cfg),
 		User:                NewUserClient(cfg),
 		Variable:            NewVariableClient(cfg),
 		WorkflowRun:         NewWorkflowRunClient(cfg),
@@ -255,6 +265,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Organization:        NewOrganizationClient(cfg),
 		PlanPolicy:          NewPlanPolicyClient(cfg),
 		TektonInstallation:  NewTektonInstallationClient(cfg),
+		TofuState:           NewTofuStateClient(cfg),
+		TofuStateVersion:    NewTofuStateVersionClient(cfg),
 		User:                NewUserClient(cfg),
 		Variable:            NewVariableClient(cfg),
 		WorkflowRun:         NewWorkflowRunClient(cfg),
@@ -291,8 +303,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.Application, c.ApplicationGroup, c.ChartCredential, c.CloudCredential,
 		c.Cluster, c.Component, c.ComponentRun, c.GitHubInstallation, c.GroupVariable,
 		c.Invitation, c.Membership, c.NotificationChannel, c.Organization,
-		c.PlanPolicy, c.TektonInstallation, c.User, c.Variable, c.WorkflowRun,
-		c.WorkflowStage,
+		c.PlanPolicy, c.TektonInstallation, c.TofuState, c.TofuStateVersion, c.User,
+		c.Variable, c.WorkflowRun, c.WorkflowStage,
 	} {
 		n.Use(hooks...)
 	}
@@ -305,8 +317,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.Application, c.ApplicationGroup, c.ChartCredential, c.CloudCredential,
 		c.Cluster, c.Component, c.ComponentRun, c.GitHubInstallation, c.GroupVariable,
 		c.Invitation, c.Membership, c.NotificationChannel, c.Organization,
-		c.PlanPolicy, c.TektonInstallation, c.User, c.Variable, c.WorkflowRun,
-		c.WorkflowStage,
+		c.PlanPolicy, c.TektonInstallation, c.TofuState, c.TofuStateVersion, c.User,
+		c.Variable, c.WorkflowRun, c.WorkflowStage,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -345,6 +357,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.PlanPolicy.mutate(ctx, m)
 	case *TektonInstallationMutation:
 		return c.TektonInstallation.mutate(ctx, m)
+	case *TofuStateMutation:
+		return c.TofuState.mutate(ctx, m)
+	case *TofuStateVersionMutation:
+		return c.TofuStateVersion.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
 	case *VariableMutation:
@@ -2801,6 +2817,352 @@ func (c *TektonInstallationClient) mutate(ctx context.Context, m *TektonInstalla
 	}
 }
 
+// TofuStateClient is a client for the TofuState schema.
+type TofuStateClient struct {
+	config
+}
+
+// NewTofuStateClient returns a client for the TofuState from the given config.
+func NewTofuStateClient(c config) *TofuStateClient {
+	return &TofuStateClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `tofustate.Hooks(f(g(h())))`.
+func (c *TofuStateClient) Use(hooks ...Hook) {
+	c.hooks.TofuState = append(c.hooks.TofuState, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `tofustate.Intercept(f(g(h())))`.
+func (c *TofuStateClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TofuState = append(c.inters.TofuState, interceptors...)
+}
+
+// Create returns a builder for creating a TofuState entity.
+func (c *TofuStateClient) Create() *TofuStateCreate {
+	mutation := newTofuStateMutation(c.config, OpCreate)
+	return &TofuStateCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TofuState entities.
+func (c *TofuStateClient) CreateBulk(builders ...*TofuStateCreate) *TofuStateCreateBulk {
+	return &TofuStateCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TofuStateClient) MapCreateBulk(slice any, setFunc func(*TofuStateCreate, int)) *TofuStateCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TofuStateCreateBulk{err: fmt.Errorf("calling to TofuStateClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TofuStateCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TofuStateCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TofuState.
+func (c *TofuStateClient) Update() *TofuStateUpdate {
+	mutation := newTofuStateMutation(c.config, OpUpdate)
+	return &TofuStateUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TofuStateClient) UpdateOne(_m *TofuState) *TofuStateUpdateOne {
+	mutation := newTofuStateMutation(c.config, OpUpdateOne, withTofuState(_m))
+	return &TofuStateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TofuStateClient) UpdateOneID(id uuid.UUID) *TofuStateUpdateOne {
+	mutation := newTofuStateMutation(c.config, OpUpdateOne, withTofuStateID(id))
+	return &TofuStateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TofuState.
+func (c *TofuStateClient) Delete() *TofuStateDelete {
+	mutation := newTofuStateMutation(c.config, OpDelete)
+	return &TofuStateDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TofuStateClient) DeleteOne(_m *TofuState) *TofuStateDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TofuStateClient) DeleteOneID(id uuid.UUID) *TofuStateDeleteOne {
+	builder := c.Delete().Where(tofustate.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TofuStateDeleteOne{builder}
+}
+
+// Query returns a query builder for TofuState.
+func (c *TofuStateClient) Query() *TofuStateQuery {
+	return &TofuStateQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTofuState},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TofuState entity by its id.
+func (c *TofuStateClient) Get(ctx context.Context, id uuid.UUID) (*TofuState, error) {
+	return c.Query().Where(tofustate.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TofuStateClient) GetX(ctx context.Context, id uuid.UUID) *TofuState {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryOrganization queries the organization edge of a TofuState.
+func (c *TofuStateClient) QueryOrganization(_m *TofuState) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(tofustate.Table, tofustate.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, tofustate.OrganizationTable, tofustate.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryApplication queries the application edge of a TofuState.
+func (c *TofuStateClient) QueryApplication(_m *TofuState) *ApplicationQuery {
+	query := (&ApplicationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(tofustate.Table, tofustate.FieldID, id),
+			sqlgraph.To(application.Table, application.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, tofustate.ApplicationTable, tofustate.ApplicationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryVersions queries the versions edge of a TofuState.
+func (c *TofuStateClient) QueryVersions(_m *TofuState) *TofuStateVersionQuery {
+	query := (&TofuStateVersionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(tofustate.Table, tofustate.FieldID, id),
+			sqlgraph.To(tofustateversion.Table, tofustateversion.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, tofustate.VersionsTable, tofustate.VersionsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *TofuStateClient) Hooks() []Hook {
+	return c.hooks.TofuState
+}
+
+// Interceptors returns the client interceptors.
+func (c *TofuStateClient) Interceptors() []Interceptor {
+	return c.inters.TofuState
+}
+
+func (c *TofuStateClient) mutate(ctx context.Context, m *TofuStateMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TofuStateCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TofuStateUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TofuStateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TofuStateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown TofuState mutation op: %q", m.Op())
+	}
+}
+
+// TofuStateVersionClient is a client for the TofuStateVersion schema.
+type TofuStateVersionClient struct {
+	config
+}
+
+// NewTofuStateVersionClient returns a client for the TofuStateVersion from the given config.
+func NewTofuStateVersionClient(c config) *TofuStateVersionClient {
+	return &TofuStateVersionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `tofustateversion.Hooks(f(g(h())))`.
+func (c *TofuStateVersionClient) Use(hooks ...Hook) {
+	c.hooks.TofuStateVersion = append(c.hooks.TofuStateVersion, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `tofustateversion.Intercept(f(g(h())))`.
+func (c *TofuStateVersionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TofuStateVersion = append(c.inters.TofuStateVersion, interceptors...)
+}
+
+// Create returns a builder for creating a TofuStateVersion entity.
+func (c *TofuStateVersionClient) Create() *TofuStateVersionCreate {
+	mutation := newTofuStateVersionMutation(c.config, OpCreate)
+	return &TofuStateVersionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TofuStateVersion entities.
+func (c *TofuStateVersionClient) CreateBulk(builders ...*TofuStateVersionCreate) *TofuStateVersionCreateBulk {
+	return &TofuStateVersionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TofuStateVersionClient) MapCreateBulk(slice any, setFunc func(*TofuStateVersionCreate, int)) *TofuStateVersionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TofuStateVersionCreateBulk{err: fmt.Errorf("calling to TofuStateVersionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TofuStateVersionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TofuStateVersionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TofuStateVersion.
+func (c *TofuStateVersionClient) Update() *TofuStateVersionUpdate {
+	mutation := newTofuStateVersionMutation(c.config, OpUpdate)
+	return &TofuStateVersionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TofuStateVersionClient) UpdateOne(_m *TofuStateVersion) *TofuStateVersionUpdateOne {
+	mutation := newTofuStateVersionMutation(c.config, OpUpdateOne, withTofuStateVersion(_m))
+	return &TofuStateVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TofuStateVersionClient) UpdateOneID(id uuid.UUID) *TofuStateVersionUpdateOne {
+	mutation := newTofuStateVersionMutation(c.config, OpUpdateOne, withTofuStateVersionID(id))
+	return &TofuStateVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TofuStateVersion.
+func (c *TofuStateVersionClient) Delete() *TofuStateVersionDelete {
+	mutation := newTofuStateVersionMutation(c.config, OpDelete)
+	return &TofuStateVersionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TofuStateVersionClient) DeleteOne(_m *TofuStateVersion) *TofuStateVersionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TofuStateVersionClient) DeleteOneID(id uuid.UUID) *TofuStateVersionDeleteOne {
+	builder := c.Delete().Where(tofustateversion.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TofuStateVersionDeleteOne{builder}
+}
+
+// Query returns a query builder for TofuStateVersion.
+func (c *TofuStateVersionClient) Query() *TofuStateVersionQuery {
+	return &TofuStateVersionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTofuStateVersion},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TofuStateVersion entity by its id.
+func (c *TofuStateVersionClient) Get(ctx context.Context, id uuid.UUID) (*TofuStateVersion, error) {
+	return c.Query().Where(tofustateversion.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TofuStateVersionClient) GetX(ctx context.Context, id uuid.UUID) *TofuStateVersion {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryState queries the state edge of a TofuStateVersion.
+func (c *TofuStateVersionClient) QueryState(_m *TofuStateVersion) *TofuStateQuery {
+	query := (&TofuStateClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(tofustateversion.Table, tofustateversion.FieldID, id),
+			sqlgraph.To(tofustate.Table, tofustate.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, tofustateversion.StateTable, tofustateversion.StateColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryOrganization queries the organization edge of a TofuStateVersion.
+func (c *TofuStateVersionClient) QueryOrganization(_m *TofuStateVersion) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(tofustateversion.Table, tofustateversion.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, tofustateversion.OrganizationTable, tofustateversion.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *TofuStateVersionClient) Hooks() []Hook {
+	return c.hooks.TofuStateVersion
+}
+
+// Interceptors returns the client interceptors.
+func (c *TofuStateVersionClient) Interceptors() []Interceptor {
+	return c.inters.TofuStateVersion
+}
+
+func (c *TofuStateVersionClient) mutate(ctx context.Context, m *TofuStateVersionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TofuStateVersionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TofuStateVersionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TofuStateVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TofuStateVersionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown TofuStateVersion mutation op: %q", m.Op())
+	}
+}
+
 // UserClient is a client for the User schema.
 type UserClient struct {
 	config
@@ -3483,12 +3845,14 @@ type (
 		Application, ApplicationGroup, ChartCredential, CloudCredential, Cluster,
 		Component, ComponentRun, GitHubInstallation, GroupVariable, Invitation,
 		Membership, NotificationChannel, Organization, PlanPolicy, TektonInstallation,
-		User, Variable, WorkflowRun, WorkflowStage []ent.Hook
+		TofuState, TofuStateVersion, User, Variable, WorkflowRun,
+		WorkflowStage []ent.Hook
 	}
 	inters struct {
 		Application, ApplicationGroup, ChartCredential, CloudCredential, Cluster,
 		Component, ComponentRun, GitHubInstallation, GroupVariable, Invitation,
 		Membership, NotificationChannel, Organization, PlanPolicy, TektonInstallation,
-		User, Variable, WorkflowRun, WorkflowStage []ent.Interceptor
+		TofuState, TofuStateVersion, User, Variable, WorkflowRun,
+		WorkflowStage []ent.Interceptor
 	}
 )

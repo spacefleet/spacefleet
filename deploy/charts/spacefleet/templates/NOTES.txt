@@ -31,6 +31,19 @@ Authentication: bundled Dex at {{ $issuer }}
    (dex.connectors) and clear it.
 {{- end }}
 {{- end }}
+{{- if .Values.postgresql.enabled }}
+
+⚠  The bundled Postgres is for trials. Spacefleet keeps managed OpenTofu state
+   in its database, so losing the database loses that state. For production,
+   use an external database (externalDatabase) with backups and point-in-time
+   recovery.
+{{- end }}
+
+OpenTofu managed state: runner pods reach Spacefleet at
+   {{ include "spacefleet.runnerAPIURL" . }}
+   (runners registered in-cluster use {{ include "spacefleet.inClusterAPIURL" . }}).
+   Remote runner clusters must be able to reach that URL; set
+   config.runnerAPIURL if they reach the app at a different address.
 {{- if and .Values.postgresql.enabled (eq .Values.postgresql.auth.password "spacefleet") }}
 
 ⚠  The bundled Postgres is using the default password. Override

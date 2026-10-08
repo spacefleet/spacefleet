@@ -48,6 +48,7 @@ beforeEach(() => {
     allowOrgCreation: true,
     emailEnabled: false,
     githubAppEnabled: true,
+    managedStateEnabled: false,
   };
 });
 

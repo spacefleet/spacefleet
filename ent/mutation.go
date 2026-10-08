@@ -29,6 +29,8 @@ import (
 	"github.com/spacefleet/spacefleet/ent/predicate"
 	"github.com/spacefleet/spacefleet/ent/schema"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
+	"github.com/spacefleet/spacefleet/ent/tofustate"
+	"github.com/spacefleet/spacefleet/ent/tofustateversion"
 	"github.com/spacefleet/spacefleet/ent/user"
 	"github.com/spacefleet/spacefleet/ent/variable"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
@@ -59,6 +61,8 @@ const (
 	TypeOrganization        = "Organization"
 	TypePlanPolicy          = "PlanPolicy"
 	TypeTektonInstallation  = "TektonInstallation"
+	TypeTofuState           = "TofuState"
+	TypeTofuStateVersion    = "TofuStateVersion"
 	TypeUser                = "User"
 	TypeVariable            = "Variable"
 	TypeWorkflowRun         = "WorkflowRun"
@@ -14258,6 +14262,2488 @@ func (m *TektonInstallationMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown TektonInstallation edge %s", name)
+}
+
+// TofuStateMutation represents an operation that mutates the TofuState nodes in the graph.
+type TofuStateMutation struct {
+	config
+	op                         Op
+	typ                        string
+	id                         *uuid.UUID
+	component_id               *uuid.UUID
+	workspace                  *string
+	current_version            *int
+	addcurrent_version         *int
+	serial                     *int64
+	addserial                  *int64
+	lineage                    *string
+	lock_id                    *string
+	lock_info                  **schema.TofuLockInfo
+	locked_at                  *time.Time
+	locked_by_component_run_id *uuid.UUID
+	created_at                 *time.Time
+	updated_at                 *time.Time
+	clearedFields              map[string]struct{}
+	organization               *uuid.UUID
+	clearedorganization        bool
+	application                *uuid.UUID
+	clearedapplication         bool
+	versions                   map[uuid.UUID]struct{}
+	removedversions            map[uuid.UUID]struct{}
+	clearedversions            bool
+	done                       bool
+	oldValue                   func(context.Context) (*TofuState, error)
+	predicates                 []predicate.TofuState
+}
+
+var _ ent.Mutation = (*TofuStateMutation)(nil)
+
+// tofustateOption allows management of the mutation configuration using functional options.
+type tofustateOption func(*TofuStateMutation)
+
+// newTofuStateMutation creates new mutation for the TofuState entity.
+func newTofuStateMutation(c config, op Op, opts ...tofustateOption) *TofuStateMutation {
+	m := &TofuStateMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTofuState,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTofuStateID sets the ID field of the mutation.
+func withTofuStateID(id uuid.UUID) tofustateOption {
+	return func(m *TofuStateMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TofuState
+		)
+		m.oldValue = func(ctx context.Context) (*TofuState, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TofuState.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTofuState sets the old TofuState of the mutation.
+func withTofuState(node *TofuState) tofustateOption {
+	return func(m *TofuStateMutation) {
+		m.oldValue = func(context.Context) (*TofuState, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TofuStateMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TofuStateMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TofuState entities.
+func (m *TofuStateMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TofuStateMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TofuStateMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TofuState.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (m *TofuStateMutation) SetOrganizationID(u uuid.UUID) {
+	m.organization = &u
+}
+
+// OrganizationID returns the value of the "organization_id" field in the mutation.
+func (m *TofuStateMutation) OrganizationID() (r uuid.UUID, exists bool) {
+	v := m.organization
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrganizationID returns the old "organization_id" field's value of the TofuState entity.
+// If the TofuState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateMutation) OldOrganizationID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrganizationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrganizationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrganizationID: %w", err)
+	}
+	return oldValue.OrganizationID, nil
+}
+
+// ResetOrganizationID resets all changes to the "organization_id" field.
+func (m *TofuStateMutation) ResetOrganizationID() {
+	m.organization = nil
+}
+
+// SetApplicationID sets the "application_id" field.
+func (m *TofuStateMutation) SetApplicationID(u uuid.UUID) {
+	m.application = &u
+}
+
+// ApplicationID returns the value of the "application_id" field in the mutation.
+func (m *TofuStateMutation) ApplicationID() (r uuid.UUID, exists bool) {
+	v := m.application
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldApplicationID returns the old "application_id" field's value of the TofuState entity.
+// If the TofuState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateMutation) OldApplicationID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldApplicationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldApplicationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldApplicationID: %w", err)
+	}
+	return oldValue.ApplicationID, nil
+}
+
+// ResetApplicationID resets all changes to the "application_id" field.
+func (m *TofuStateMutation) ResetApplicationID() {
+	m.application = nil
+}
+
+// SetComponentID sets the "component_id" field.
+func (m *TofuStateMutation) SetComponentID(u uuid.UUID) {
+	m.component_id = &u
+}
+
+// ComponentID returns the value of the "component_id" field in the mutation.
+func (m *TofuStateMutation) ComponentID() (r uuid.UUID, exists bool) {
+	v := m.component_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldComponentID returns the old "component_id" field's value of the TofuState entity.
+// If the TofuState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateMutation) OldComponentID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldComponentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldComponentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldComponentID: %w", err)
+	}
+	return oldValue.ComponentID, nil
+}
+
+// ResetComponentID resets all changes to the "component_id" field.
+func (m *TofuStateMutation) ResetComponentID() {
+	m.component_id = nil
+}
+
+// SetWorkspace sets the "workspace" field.
+func (m *TofuStateMutation) SetWorkspace(s string) {
+	m.workspace = &s
+}
+
+// Workspace returns the value of the "workspace" field in the mutation.
+func (m *TofuStateMutation) Workspace() (r string, exists bool) {
+	v := m.workspace
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspace returns the old "workspace" field's value of the TofuState entity.
+// If the TofuState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateMutation) OldWorkspace(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspace is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspace requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspace: %w", err)
+	}
+	return oldValue.Workspace, nil
+}
+
+// ResetWorkspace resets all changes to the "workspace" field.
+func (m *TofuStateMutation) ResetWorkspace() {
+	m.workspace = nil
+}
+
+// SetCurrentVersion sets the "current_version" field.
+func (m *TofuStateMutation) SetCurrentVersion(i int) {
+	m.current_version = &i
+	m.addcurrent_version = nil
+}
+
+// CurrentVersion returns the value of the "current_version" field in the mutation.
+func (m *TofuStateMutation) CurrentVersion() (r int, exists bool) {
+	v := m.current_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCurrentVersion returns the old "current_version" field's value of the TofuState entity.
+// If the TofuState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateMutation) OldCurrentVersion(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCurrentVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCurrentVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCurrentVersion: %w", err)
+	}
+	return oldValue.CurrentVersion, nil
+}
+
+// AddCurrentVersion adds i to the "current_version" field.
+func (m *TofuStateMutation) AddCurrentVersion(i int) {
+	if m.addcurrent_version != nil {
+		*m.addcurrent_version += i
+	} else {
+		m.addcurrent_version = &i
+	}
+}
+
+// AddedCurrentVersion returns the value that was added to the "current_version" field in this mutation.
+func (m *TofuStateMutation) AddedCurrentVersion() (r int, exists bool) {
+	v := m.addcurrent_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCurrentVersion resets all changes to the "current_version" field.
+func (m *TofuStateMutation) ResetCurrentVersion() {
+	m.current_version = nil
+	m.addcurrent_version = nil
+}
+
+// SetSerial sets the "serial" field.
+func (m *TofuStateMutation) SetSerial(i int64) {
+	m.serial = &i
+	m.addserial = nil
+}
+
+// Serial returns the value of the "serial" field in the mutation.
+func (m *TofuStateMutation) Serial() (r int64, exists bool) {
+	v := m.serial
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSerial returns the old "serial" field's value of the TofuState entity.
+// If the TofuState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateMutation) OldSerial(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSerial is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSerial requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSerial: %w", err)
+	}
+	return oldValue.Serial, nil
+}
+
+// AddSerial adds i to the "serial" field.
+func (m *TofuStateMutation) AddSerial(i int64) {
+	if m.addserial != nil {
+		*m.addserial += i
+	} else {
+		m.addserial = &i
+	}
+}
+
+// AddedSerial returns the value that was added to the "serial" field in this mutation.
+func (m *TofuStateMutation) AddedSerial() (r int64, exists bool) {
+	v := m.addserial
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSerial resets all changes to the "serial" field.
+func (m *TofuStateMutation) ResetSerial() {
+	m.serial = nil
+	m.addserial = nil
+}
+
+// SetLineage sets the "lineage" field.
+func (m *TofuStateMutation) SetLineage(s string) {
+	m.lineage = &s
+}
+
+// Lineage returns the value of the "lineage" field in the mutation.
+func (m *TofuStateMutation) Lineage() (r string, exists bool) {
+	v := m.lineage
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLineage returns the old "lineage" field's value of the TofuState entity.
+// If the TofuState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateMutation) OldLineage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLineage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLineage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLineage: %w", err)
+	}
+	return oldValue.Lineage, nil
+}
+
+// ResetLineage resets all changes to the "lineage" field.
+func (m *TofuStateMutation) ResetLineage() {
+	m.lineage = nil
+}
+
+// SetLockID sets the "lock_id" field.
+func (m *TofuStateMutation) SetLockID(s string) {
+	m.lock_id = &s
+}
+
+// LockID returns the value of the "lock_id" field in the mutation.
+func (m *TofuStateMutation) LockID() (r string, exists bool) {
+	v := m.lock_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLockID returns the old "lock_id" field's value of the TofuState entity.
+// If the TofuState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateMutation) OldLockID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLockID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLockID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLockID: %w", err)
+	}
+	return oldValue.LockID, nil
+}
+
+// ClearLockID clears the value of the "lock_id" field.
+func (m *TofuStateMutation) ClearLockID() {
+	m.lock_id = nil
+	m.clearedFields[tofustate.FieldLockID] = struct{}{}
+}
+
+// LockIDCleared returns if the "lock_id" field was cleared in this mutation.
+func (m *TofuStateMutation) LockIDCleared() bool {
+	_, ok := m.clearedFields[tofustate.FieldLockID]
+	return ok
+}
+
+// ResetLockID resets all changes to the "lock_id" field.
+func (m *TofuStateMutation) ResetLockID() {
+	m.lock_id = nil
+	delete(m.clearedFields, tofustate.FieldLockID)
+}
+
+// SetLockInfo sets the "lock_info" field.
+func (m *TofuStateMutation) SetLockInfo(sli *schema.TofuLockInfo) {
+	m.lock_info = &sli
+}
+
+// LockInfo returns the value of the "lock_info" field in the mutation.
+func (m *TofuStateMutation) LockInfo() (r *schema.TofuLockInfo, exists bool) {
+	v := m.lock_info
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLockInfo returns the old "lock_info" field's value of the TofuState entity.
+// If the TofuState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateMutation) OldLockInfo(ctx context.Context) (v *schema.TofuLockInfo, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLockInfo is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLockInfo requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLockInfo: %w", err)
+	}
+	return oldValue.LockInfo, nil
+}
+
+// ClearLockInfo clears the value of the "lock_info" field.
+func (m *TofuStateMutation) ClearLockInfo() {
+	m.lock_info = nil
+	m.clearedFields[tofustate.FieldLockInfo] = struct{}{}
+}
+
+// LockInfoCleared returns if the "lock_info" field was cleared in this mutation.
+func (m *TofuStateMutation) LockInfoCleared() bool {
+	_, ok := m.clearedFields[tofustate.FieldLockInfo]
+	return ok
+}
+
+// ResetLockInfo resets all changes to the "lock_info" field.
+func (m *TofuStateMutation) ResetLockInfo() {
+	m.lock_info = nil
+	delete(m.clearedFields, tofustate.FieldLockInfo)
+}
+
+// SetLockedAt sets the "locked_at" field.
+func (m *TofuStateMutation) SetLockedAt(t time.Time) {
+	m.locked_at = &t
+}
+
+// LockedAt returns the value of the "locked_at" field in the mutation.
+func (m *TofuStateMutation) LockedAt() (r time.Time, exists bool) {
+	v := m.locked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLockedAt returns the old "locked_at" field's value of the TofuState entity.
+// If the TofuState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateMutation) OldLockedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLockedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLockedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLockedAt: %w", err)
+	}
+	return oldValue.LockedAt, nil
+}
+
+// ClearLockedAt clears the value of the "locked_at" field.
+func (m *TofuStateMutation) ClearLockedAt() {
+	m.locked_at = nil
+	m.clearedFields[tofustate.FieldLockedAt] = struct{}{}
+}
+
+// LockedAtCleared returns if the "locked_at" field was cleared in this mutation.
+func (m *TofuStateMutation) LockedAtCleared() bool {
+	_, ok := m.clearedFields[tofustate.FieldLockedAt]
+	return ok
+}
+
+// ResetLockedAt resets all changes to the "locked_at" field.
+func (m *TofuStateMutation) ResetLockedAt() {
+	m.locked_at = nil
+	delete(m.clearedFields, tofustate.FieldLockedAt)
+}
+
+// SetLockedByComponentRunID sets the "locked_by_component_run_id" field.
+func (m *TofuStateMutation) SetLockedByComponentRunID(u uuid.UUID) {
+	m.locked_by_component_run_id = &u
+}
+
+// LockedByComponentRunID returns the value of the "locked_by_component_run_id" field in the mutation.
+func (m *TofuStateMutation) LockedByComponentRunID() (r uuid.UUID, exists bool) {
+	v := m.locked_by_component_run_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLockedByComponentRunID returns the old "locked_by_component_run_id" field's value of the TofuState entity.
+// If the TofuState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateMutation) OldLockedByComponentRunID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLockedByComponentRunID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLockedByComponentRunID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLockedByComponentRunID: %w", err)
+	}
+	return oldValue.LockedByComponentRunID, nil
+}
+
+// ClearLockedByComponentRunID clears the value of the "locked_by_component_run_id" field.
+func (m *TofuStateMutation) ClearLockedByComponentRunID() {
+	m.locked_by_component_run_id = nil
+	m.clearedFields[tofustate.FieldLockedByComponentRunID] = struct{}{}
+}
+
+// LockedByComponentRunIDCleared returns if the "locked_by_component_run_id" field was cleared in this mutation.
+func (m *TofuStateMutation) LockedByComponentRunIDCleared() bool {
+	_, ok := m.clearedFields[tofustate.FieldLockedByComponentRunID]
+	return ok
+}
+
+// ResetLockedByComponentRunID resets all changes to the "locked_by_component_run_id" field.
+func (m *TofuStateMutation) ResetLockedByComponentRunID() {
+	m.locked_by_component_run_id = nil
+	delete(m.clearedFields, tofustate.FieldLockedByComponentRunID)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *TofuStateMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *TofuStateMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the TofuState entity.
+// If the TofuState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *TofuStateMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *TofuStateMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *TofuStateMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the TofuState entity.
+// If the TofuState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *TofuStateMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearOrganization clears the "organization" edge to the Organization entity.
+func (m *TofuStateMutation) ClearOrganization() {
+	m.clearedorganization = true
+	m.clearedFields[tofustate.FieldOrganizationID] = struct{}{}
+}
+
+// OrganizationCleared reports if the "organization" edge to the Organization entity was cleared.
+func (m *TofuStateMutation) OrganizationCleared() bool {
+	return m.clearedorganization
+}
+
+// OrganizationIDs returns the "organization" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OrganizationID instead. It exists only for internal usage by the builders.
+func (m *TofuStateMutation) OrganizationIDs() (ids []uuid.UUID) {
+	if id := m.organization; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOrganization resets all changes to the "organization" edge.
+func (m *TofuStateMutation) ResetOrganization() {
+	m.organization = nil
+	m.clearedorganization = false
+}
+
+// ClearApplication clears the "application" edge to the Application entity.
+func (m *TofuStateMutation) ClearApplication() {
+	m.clearedapplication = true
+	m.clearedFields[tofustate.FieldApplicationID] = struct{}{}
+}
+
+// ApplicationCleared reports if the "application" edge to the Application entity was cleared.
+func (m *TofuStateMutation) ApplicationCleared() bool {
+	return m.clearedapplication
+}
+
+// ApplicationIDs returns the "application" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ApplicationID instead. It exists only for internal usage by the builders.
+func (m *TofuStateMutation) ApplicationIDs() (ids []uuid.UUID) {
+	if id := m.application; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetApplication resets all changes to the "application" edge.
+func (m *TofuStateMutation) ResetApplication() {
+	m.application = nil
+	m.clearedapplication = false
+}
+
+// AddVersionIDs adds the "versions" edge to the TofuStateVersion entity by ids.
+func (m *TofuStateMutation) AddVersionIDs(ids ...uuid.UUID) {
+	if m.versions == nil {
+		m.versions = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.versions[ids[i]] = struct{}{}
+	}
+}
+
+// ClearVersions clears the "versions" edge to the TofuStateVersion entity.
+func (m *TofuStateMutation) ClearVersions() {
+	m.clearedversions = true
+}
+
+// VersionsCleared reports if the "versions" edge to the TofuStateVersion entity was cleared.
+func (m *TofuStateMutation) VersionsCleared() bool {
+	return m.clearedversions
+}
+
+// RemoveVersionIDs removes the "versions" edge to the TofuStateVersion entity by IDs.
+func (m *TofuStateMutation) RemoveVersionIDs(ids ...uuid.UUID) {
+	if m.removedversions == nil {
+		m.removedversions = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.versions, ids[i])
+		m.removedversions[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedVersions returns the removed IDs of the "versions" edge to the TofuStateVersion entity.
+func (m *TofuStateMutation) RemovedVersionsIDs() (ids []uuid.UUID) {
+	for id := range m.removedversions {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// VersionsIDs returns the "versions" edge IDs in the mutation.
+func (m *TofuStateMutation) VersionsIDs() (ids []uuid.UUID) {
+	for id := range m.versions {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetVersions resets all changes to the "versions" edge.
+func (m *TofuStateMutation) ResetVersions() {
+	m.versions = nil
+	m.clearedversions = false
+	m.removedversions = nil
+}
+
+// Where appends a list predicates to the TofuStateMutation builder.
+func (m *TofuStateMutation) Where(ps ...predicate.TofuState) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TofuStateMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TofuStateMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TofuState, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TofuStateMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TofuStateMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TofuState).
+func (m *TofuStateMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TofuStateMutation) Fields() []string {
+	fields := make([]string, 0, 13)
+	if m.organization != nil {
+		fields = append(fields, tofustate.FieldOrganizationID)
+	}
+	if m.application != nil {
+		fields = append(fields, tofustate.FieldApplicationID)
+	}
+	if m.component_id != nil {
+		fields = append(fields, tofustate.FieldComponentID)
+	}
+	if m.workspace != nil {
+		fields = append(fields, tofustate.FieldWorkspace)
+	}
+	if m.current_version != nil {
+		fields = append(fields, tofustate.FieldCurrentVersion)
+	}
+	if m.serial != nil {
+		fields = append(fields, tofustate.FieldSerial)
+	}
+	if m.lineage != nil {
+		fields = append(fields, tofustate.FieldLineage)
+	}
+	if m.lock_id != nil {
+		fields = append(fields, tofustate.FieldLockID)
+	}
+	if m.lock_info != nil {
+		fields = append(fields, tofustate.FieldLockInfo)
+	}
+	if m.locked_at != nil {
+		fields = append(fields, tofustate.FieldLockedAt)
+	}
+	if m.locked_by_component_run_id != nil {
+		fields = append(fields, tofustate.FieldLockedByComponentRunID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, tofustate.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, tofustate.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TofuStateMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case tofustate.FieldOrganizationID:
+		return m.OrganizationID()
+	case tofustate.FieldApplicationID:
+		return m.ApplicationID()
+	case tofustate.FieldComponentID:
+		return m.ComponentID()
+	case tofustate.FieldWorkspace:
+		return m.Workspace()
+	case tofustate.FieldCurrentVersion:
+		return m.CurrentVersion()
+	case tofustate.FieldSerial:
+		return m.Serial()
+	case tofustate.FieldLineage:
+		return m.Lineage()
+	case tofustate.FieldLockID:
+		return m.LockID()
+	case tofustate.FieldLockInfo:
+		return m.LockInfo()
+	case tofustate.FieldLockedAt:
+		return m.LockedAt()
+	case tofustate.FieldLockedByComponentRunID:
+		return m.LockedByComponentRunID()
+	case tofustate.FieldCreatedAt:
+		return m.CreatedAt()
+	case tofustate.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TofuStateMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case tofustate.FieldOrganizationID:
+		return m.OldOrganizationID(ctx)
+	case tofustate.FieldApplicationID:
+		return m.OldApplicationID(ctx)
+	case tofustate.FieldComponentID:
+		return m.OldComponentID(ctx)
+	case tofustate.FieldWorkspace:
+		return m.OldWorkspace(ctx)
+	case tofustate.FieldCurrentVersion:
+		return m.OldCurrentVersion(ctx)
+	case tofustate.FieldSerial:
+		return m.OldSerial(ctx)
+	case tofustate.FieldLineage:
+		return m.OldLineage(ctx)
+	case tofustate.FieldLockID:
+		return m.OldLockID(ctx)
+	case tofustate.FieldLockInfo:
+		return m.OldLockInfo(ctx)
+	case tofustate.FieldLockedAt:
+		return m.OldLockedAt(ctx)
+	case tofustate.FieldLockedByComponentRunID:
+		return m.OldLockedByComponentRunID(ctx)
+	case tofustate.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case tofustate.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TofuState field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TofuStateMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case tofustate.FieldOrganizationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrganizationID(v)
+		return nil
+	case tofustate.FieldApplicationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetApplicationID(v)
+		return nil
+	case tofustate.FieldComponentID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetComponentID(v)
+		return nil
+	case tofustate.FieldWorkspace:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspace(v)
+		return nil
+	case tofustate.FieldCurrentVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCurrentVersion(v)
+		return nil
+	case tofustate.FieldSerial:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSerial(v)
+		return nil
+	case tofustate.FieldLineage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLineage(v)
+		return nil
+	case tofustate.FieldLockID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLockID(v)
+		return nil
+	case tofustate.FieldLockInfo:
+		v, ok := value.(*schema.TofuLockInfo)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLockInfo(v)
+		return nil
+	case tofustate.FieldLockedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLockedAt(v)
+		return nil
+	case tofustate.FieldLockedByComponentRunID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLockedByComponentRunID(v)
+		return nil
+	case tofustate.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case tofustate.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TofuState field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TofuStateMutation) AddedFields() []string {
+	var fields []string
+	if m.addcurrent_version != nil {
+		fields = append(fields, tofustate.FieldCurrentVersion)
+	}
+	if m.addserial != nil {
+		fields = append(fields, tofustate.FieldSerial)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TofuStateMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case tofustate.FieldCurrentVersion:
+		return m.AddedCurrentVersion()
+	case tofustate.FieldSerial:
+		return m.AddedSerial()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TofuStateMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case tofustate.FieldCurrentVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCurrentVersion(v)
+		return nil
+	case tofustate.FieldSerial:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSerial(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TofuState numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TofuStateMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(tofustate.FieldLockID) {
+		fields = append(fields, tofustate.FieldLockID)
+	}
+	if m.FieldCleared(tofustate.FieldLockInfo) {
+		fields = append(fields, tofustate.FieldLockInfo)
+	}
+	if m.FieldCleared(tofustate.FieldLockedAt) {
+		fields = append(fields, tofustate.FieldLockedAt)
+	}
+	if m.FieldCleared(tofustate.FieldLockedByComponentRunID) {
+		fields = append(fields, tofustate.FieldLockedByComponentRunID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TofuStateMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TofuStateMutation) ClearField(name string) error {
+	switch name {
+	case tofustate.FieldLockID:
+		m.ClearLockID()
+		return nil
+	case tofustate.FieldLockInfo:
+		m.ClearLockInfo()
+		return nil
+	case tofustate.FieldLockedAt:
+		m.ClearLockedAt()
+		return nil
+	case tofustate.FieldLockedByComponentRunID:
+		m.ClearLockedByComponentRunID()
+		return nil
+	}
+	return fmt.Errorf("unknown TofuState nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TofuStateMutation) ResetField(name string) error {
+	switch name {
+	case tofustate.FieldOrganizationID:
+		m.ResetOrganizationID()
+		return nil
+	case tofustate.FieldApplicationID:
+		m.ResetApplicationID()
+		return nil
+	case tofustate.FieldComponentID:
+		m.ResetComponentID()
+		return nil
+	case tofustate.FieldWorkspace:
+		m.ResetWorkspace()
+		return nil
+	case tofustate.FieldCurrentVersion:
+		m.ResetCurrentVersion()
+		return nil
+	case tofustate.FieldSerial:
+		m.ResetSerial()
+		return nil
+	case tofustate.FieldLineage:
+		m.ResetLineage()
+		return nil
+	case tofustate.FieldLockID:
+		m.ResetLockID()
+		return nil
+	case tofustate.FieldLockInfo:
+		m.ResetLockInfo()
+		return nil
+	case tofustate.FieldLockedAt:
+		m.ResetLockedAt()
+		return nil
+	case tofustate.FieldLockedByComponentRunID:
+		m.ResetLockedByComponentRunID()
+		return nil
+	case tofustate.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case tofustate.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TofuState field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TofuStateMutation) AddedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.organization != nil {
+		edges = append(edges, tofustate.EdgeOrganization)
+	}
+	if m.application != nil {
+		edges = append(edges, tofustate.EdgeApplication)
+	}
+	if m.versions != nil {
+		edges = append(edges, tofustate.EdgeVersions)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TofuStateMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case tofustate.EdgeOrganization:
+		if id := m.organization; id != nil {
+			return []ent.Value{*id}
+		}
+	case tofustate.EdgeApplication:
+		if id := m.application; id != nil {
+			return []ent.Value{*id}
+		}
+	case tofustate.EdgeVersions:
+		ids := make([]ent.Value, 0, len(m.versions))
+		for id := range m.versions {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TofuStateMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.removedversions != nil {
+		edges = append(edges, tofustate.EdgeVersions)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TofuStateMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case tofustate.EdgeVersions:
+		ids := make([]ent.Value, 0, len(m.removedversions))
+		for id := range m.removedversions {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TofuStateMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.clearedorganization {
+		edges = append(edges, tofustate.EdgeOrganization)
+	}
+	if m.clearedapplication {
+		edges = append(edges, tofustate.EdgeApplication)
+	}
+	if m.clearedversions {
+		edges = append(edges, tofustate.EdgeVersions)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TofuStateMutation) EdgeCleared(name string) bool {
+	switch name {
+	case tofustate.EdgeOrganization:
+		return m.clearedorganization
+	case tofustate.EdgeApplication:
+		return m.clearedapplication
+	case tofustate.EdgeVersions:
+		return m.clearedversions
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TofuStateMutation) ClearEdge(name string) error {
+	switch name {
+	case tofustate.EdgeOrganization:
+		m.ClearOrganization()
+		return nil
+	case tofustate.EdgeApplication:
+		m.ClearApplication()
+		return nil
+	}
+	return fmt.Errorf("unknown TofuState unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TofuStateMutation) ResetEdge(name string) error {
+	switch name {
+	case tofustate.EdgeOrganization:
+		m.ResetOrganization()
+		return nil
+	case tofustate.EdgeApplication:
+		m.ResetApplication()
+		return nil
+	case tofustate.EdgeVersions:
+		m.ResetVersions()
+		return nil
+	}
+	return fmt.Errorf("unknown TofuState edge %s", name)
+}
+
+// TofuStateVersionMutation represents an operation that mutates the TofuStateVersion nodes in the graph.
+type TofuStateVersionMutation struct {
+	config
+	op                  Op
+	typ                 string
+	id                  *uuid.UUID
+	version             *int
+	addversion          *int
+	serial              *int64
+	addserial           *int64
+	lineage             *string
+	sealed              *[]byte
+	size_bytes          *int64
+	addsize_bytes       *int64
+	md5                 *string
+	workflow_run_id     *uuid.UUID
+	component_run_id    *uuid.UUID
+	created_by          *string
+	created_at          *time.Time
+	clearedFields       map[string]struct{}
+	state               *uuid.UUID
+	clearedstate        bool
+	organization        *uuid.UUID
+	clearedorganization bool
+	done                bool
+	oldValue            func(context.Context) (*TofuStateVersion, error)
+	predicates          []predicate.TofuStateVersion
+}
+
+var _ ent.Mutation = (*TofuStateVersionMutation)(nil)
+
+// tofustateversionOption allows management of the mutation configuration using functional options.
+type tofustateversionOption func(*TofuStateVersionMutation)
+
+// newTofuStateVersionMutation creates new mutation for the TofuStateVersion entity.
+func newTofuStateVersionMutation(c config, op Op, opts ...tofustateversionOption) *TofuStateVersionMutation {
+	m := &TofuStateVersionMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTofuStateVersion,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTofuStateVersionID sets the ID field of the mutation.
+func withTofuStateVersionID(id uuid.UUID) tofustateversionOption {
+	return func(m *TofuStateVersionMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TofuStateVersion
+		)
+		m.oldValue = func(ctx context.Context) (*TofuStateVersion, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TofuStateVersion.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTofuStateVersion sets the old TofuStateVersion of the mutation.
+func withTofuStateVersion(node *TofuStateVersion) tofustateversionOption {
+	return func(m *TofuStateVersionMutation) {
+		m.oldValue = func(context.Context) (*TofuStateVersion, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TofuStateVersionMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TofuStateVersionMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TofuStateVersion entities.
+func (m *TofuStateVersionMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TofuStateVersionMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TofuStateVersionMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TofuStateVersion.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetStateID sets the "state_id" field.
+func (m *TofuStateVersionMutation) SetStateID(u uuid.UUID) {
+	m.state = &u
+}
+
+// StateID returns the value of the "state_id" field in the mutation.
+func (m *TofuStateVersionMutation) StateID() (r uuid.UUID, exists bool) {
+	v := m.state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStateID returns the old "state_id" field's value of the TofuStateVersion entity.
+// If the TofuStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateVersionMutation) OldStateID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStateID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStateID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStateID: %w", err)
+	}
+	return oldValue.StateID, nil
+}
+
+// ResetStateID resets all changes to the "state_id" field.
+func (m *TofuStateVersionMutation) ResetStateID() {
+	m.state = nil
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (m *TofuStateVersionMutation) SetOrganizationID(u uuid.UUID) {
+	m.organization = &u
+}
+
+// OrganizationID returns the value of the "organization_id" field in the mutation.
+func (m *TofuStateVersionMutation) OrganizationID() (r uuid.UUID, exists bool) {
+	v := m.organization
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrganizationID returns the old "organization_id" field's value of the TofuStateVersion entity.
+// If the TofuStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateVersionMutation) OldOrganizationID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrganizationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrganizationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrganizationID: %w", err)
+	}
+	return oldValue.OrganizationID, nil
+}
+
+// ResetOrganizationID resets all changes to the "organization_id" field.
+func (m *TofuStateVersionMutation) ResetOrganizationID() {
+	m.organization = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *TofuStateVersionMutation) SetVersion(i int) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *TofuStateVersionMutation) Version() (r int, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the TofuStateVersion entity.
+// If the TofuStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateVersionMutation) OldVersion(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *TofuStateVersionMutation) AddVersion(i int) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *TofuStateVersionMutation) AddedVersion() (r int, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *TofuStateVersionMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
+}
+
+// SetSerial sets the "serial" field.
+func (m *TofuStateVersionMutation) SetSerial(i int64) {
+	m.serial = &i
+	m.addserial = nil
+}
+
+// Serial returns the value of the "serial" field in the mutation.
+func (m *TofuStateVersionMutation) Serial() (r int64, exists bool) {
+	v := m.serial
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSerial returns the old "serial" field's value of the TofuStateVersion entity.
+// If the TofuStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateVersionMutation) OldSerial(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSerial is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSerial requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSerial: %w", err)
+	}
+	return oldValue.Serial, nil
+}
+
+// AddSerial adds i to the "serial" field.
+func (m *TofuStateVersionMutation) AddSerial(i int64) {
+	if m.addserial != nil {
+		*m.addserial += i
+	} else {
+		m.addserial = &i
+	}
+}
+
+// AddedSerial returns the value that was added to the "serial" field in this mutation.
+func (m *TofuStateVersionMutation) AddedSerial() (r int64, exists bool) {
+	v := m.addserial
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSerial resets all changes to the "serial" field.
+func (m *TofuStateVersionMutation) ResetSerial() {
+	m.serial = nil
+	m.addserial = nil
+}
+
+// SetLineage sets the "lineage" field.
+func (m *TofuStateVersionMutation) SetLineage(s string) {
+	m.lineage = &s
+}
+
+// Lineage returns the value of the "lineage" field in the mutation.
+func (m *TofuStateVersionMutation) Lineage() (r string, exists bool) {
+	v := m.lineage
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLineage returns the old "lineage" field's value of the TofuStateVersion entity.
+// If the TofuStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateVersionMutation) OldLineage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLineage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLineage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLineage: %w", err)
+	}
+	return oldValue.Lineage, nil
+}
+
+// ResetLineage resets all changes to the "lineage" field.
+func (m *TofuStateVersionMutation) ResetLineage() {
+	m.lineage = nil
+}
+
+// SetSealed sets the "sealed" field.
+func (m *TofuStateVersionMutation) SetSealed(b []byte) {
+	m.sealed = &b
+}
+
+// Sealed returns the value of the "sealed" field in the mutation.
+func (m *TofuStateVersionMutation) Sealed() (r []byte, exists bool) {
+	v := m.sealed
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSealed returns the old "sealed" field's value of the TofuStateVersion entity.
+// If the TofuStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateVersionMutation) OldSealed(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSealed is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSealed requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSealed: %w", err)
+	}
+	return oldValue.Sealed, nil
+}
+
+// ResetSealed resets all changes to the "sealed" field.
+func (m *TofuStateVersionMutation) ResetSealed() {
+	m.sealed = nil
+}
+
+// SetSizeBytes sets the "size_bytes" field.
+func (m *TofuStateVersionMutation) SetSizeBytes(i int64) {
+	m.size_bytes = &i
+	m.addsize_bytes = nil
+}
+
+// SizeBytes returns the value of the "size_bytes" field in the mutation.
+func (m *TofuStateVersionMutation) SizeBytes() (r int64, exists bool) {
+	v := m.size_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSizeBytes returns the old "size_bytes" field's value of the TofuStateVersion entity.
+// If the TofuStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateVersionMutation) OldSizeBytes(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSizeBytes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSizeBytes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSizeBytes: %w", err)
+	}
+	return oldValue.SizeBytes, nil
+}
+
+// AddSizeBytes adds i to the "size_bytes" field.
+func (m *TofuStateVersionMutation) AddSizeBytes(i int64) {
+	if m.addsize_bytes != nil {
+		*m.addsize_bytes += i
+	} else {
+		m.addsize_bytes = &i
+	}
+}
+
+// AddedSizeBytes returns the value that was added to the "size_bytes" field in this mutation.
+func (m *TofuStateVersionMutation) AddedSizeBytes() (r int64, exists bool) {
+	v := m.addsize_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSizeBytes resets all changes to the "size_bytes" field.
+func (m *TofuStateVersionMutation) ResetSizeBytes() {
+	m.size_bytes = nil
+	m.addsize_bytes = nil
+}
+
+// SetMd5 sets the "md5" field.
+func (m *TofuStateVersionMutation) SetMd5(s string) {
+	m.md5 = &s
+}
+
+// Md5 returns the value of the "md5" field in the mutation.
+func (m *TofuStateVersionMutation) Md5() (r string, exists bool) {
+	v := m.md5
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMd5 returns the old "md5" field's value of the TofuStateVersion entity.
+// If the TofuStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateVersionMutation) OldMd5(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMd5 is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMd5 requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMd5: %w", err)
+	}
+	return oldValue.Md5, nil
+}
+
+// ResetMd5 resets all changes to the "md5" field.
+func (m *TofuStateVersionMutation) ResetMd5() {
+	m.md5 = nil
+}
+
+// SetWorkflowRunID sets the "workflow_run_id" field.
+func (m *TofuStateVersionMutation) SetWorkflowRunID(u uuid.UUID) {
+	m.workflow_run_id = &u
+}
+
+// WorkflowRunID returns the value of the "workflow_run_id" field in the mutation.
+func (m *TofuStateVersionMutation) WorkflowRunID() (r uuid.UUID, exists bool) {
+	v := m.workflow_run_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkflowRunID returns the old "workflow_run_id" field's value of the TofuStateVersion entity.
+// If the TofuStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateVersionMutation) OldWorkflowRunID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkflowRunID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkflowRunID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkflowRunID: %w", err)
+	}
+	return oldValue.WorkflowRunID, nil
+}
+
+// ClearWorkflowRunID clears the value of the "workflow_run_id" field.
+func (m *TofuStateVersionMutation) ClearWorkflowRunID() {
+	m.workflow_run_id = nil
+	m.clearedFields[tofustateversion.FieldWorkflowRunID] = struct{}{}
+}
+
+// WorkflowRunIDCleared returns if the "workflow_run_id" field was cleared in this mutation.
+func (m *TofuStateVersionMutation) WorkflowRunIDCleared() bool {
+	_, ok := m.clearedFields[tofustateversion.FieldWorkflowRunID]
+	return ok
+}
+
+// ResetWorkflowRunID resets all changes to the "workflow_run_id" field.
+func (m *TofuStateVersionMutation) ResetWorkflowRunID() {
+	m.workflow_run_id = nil
+	delete(m.clearedFields, tofustateversion.FieldWorkflowRunID)
+}
+
+// SetComponentRunID sets the "component_run_id" field.
+func (m *TofuStateVersionMutation) SetComponentRunID(u uuid.UUID) {
+	m.component_run_id = &u
+}
+
+// ComponentRunID returns the value of the "component_run_id" field in the mutation.
+func (m *TofuStateVersionMutation) ComponentRunID() (r uuid.UUID, exists bool) {
+	v := m.component_run_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldComponentRunID returns the old "component_run_id" field's value of the TofuStateVersion entity.
+// If the TofuStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateVersionMutation) OldComponentRunID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldComponentRunID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldComponentRunID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldComponentRunID: %w", err)
+	}
+	return oldValue.ComponentRunID, nil
+}
+
+// ClearComponentRunID clears the value of the "component_run_id" field.
+func (m *TofuStateVersionMutation) ClearComponentRunID() {
+	m.component_run_id = nil
+	m.clearedFields[tofustateversion.FieldComponentRunID] = struct{}{}
+}
+
+// ComponentRunIDCleared returns if the "component_run_id" field was cleared in this mutation.
+func (m *TofuStateVersionMutation) ComponentRunIDCleared() bool {
+	_, ok := m.clearedFields[tofustateversion.FieldComponentRunID]
+	return ok
+}
+
+// ResetComponentRunID resets all changes to the "component_run_id" field.
+func (m *TofuStateVersionMutation) ResetComponentRunID() {
+	m.component_run_id = nil
+	delete(m.clearedFields, tofustateversion.FieldComponentRunID)
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (m *TofuStateVersionMutation) SetCreatedBy(s string) {
+	m.created_by = &s
+}
+
+// CreatedBy returns the value of the "created_by" field in the mutation.
+func (m *TofuStateVersionMutation) CreatedBy() (r string, exists bool) {
+	v := m.created_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedBy returns the old "created_by" field's value of the TofuStateVersion entity.
+// If the TofuStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateVersionMutation) OldCreatedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedBy: %w", err)
+	}
+	return oldValue.CreatedBy, nil
+}
+
+// ResetCreatedBy resets all changes to the "created_by" field.
+func (m *TofuStateVersionMutation) ResetCreatedBy() {
+	m.created_by = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *TofuStateVersionMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *TofuStateVersionMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the TofuStateVersion entity.
+// If the TofuStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TofuStateVersionMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *TofuStateVersionMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearState clears the "state" edge to the TofuState entity.
+func (m *TofuStateVersionMutation) ClearState() {
+	m.clearedstate = true
+	m.clearedFields[tofustateversion.FieldStateID] = struct{}{}
+}
+
+// StateCleared reports if the "state" edge to the TofuState entity was cleared.
+func (m *TofuStateVersionMutation) StateCleared() bool {
+	return m.clearedstate
+}
+
+// StateIDs returns the "state" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// StateID instead. It exists only for internal usage by the builders.
+func (m *TofuStateVersionMutation) StateIDs() (ids []uuid.UUID) {
+	if id := m.state; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetState resets all changes to the "state" edge.
+func (m *TofuStateVersionMutation) ResetState() {
+	m.state = nil
+	m.clearedstate = false
+}
+
+// ClearOrganization clears the "organization" edge to the Organization entity.
+func (m *TofuStateVersionMutation) ClearOrganization() {
+	m.clearedorganization = true
+	m.clearedFields[tofustateversion.FieldOrganizationID] = struct{}{}
+}
+
+// OrganizationCleared reports if the "organization" edge to the Organization entity was cleared.
+func (m *TofuStateVersionMutation) OrganizationCleared() bool {
+	return m.clearedorganization
+}
+
+// OrganizationIDs returns the "organization" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OrganizationID instead. It exists only for internal usage by the builders.
+func (m *TofuStateVersionMutation) OrganizationIDs() (ids []uuid.UUID) {
+	if id := m.organization; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOrganization resets all changes to the "organization" edge.
+func (m *TofuStateVersionMutation) ResetOrganization() {
+	m.organization = nil
+	m.clearedorganization = false
+}
+
+// Where appends a list predicates to the TofuStateVersionMutation builder.
+func (m *TofuStateVersionMutation) Where(ps ...predicate.TofuStateVersion) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TofuStateVersionMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TofuStateVersionMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TofuStateVersion, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TofuStateVersionMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TofuStateVersionMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TofuStateVersion).
+func (m *TofuStateVersionMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TofuStateVersionMutation) Fields() []string {
+	fields := make([]string, 0, 12)
+	if m.state != nil {
+		fields = append(fields, tofustateversion.FieldStateID)
+	}
+	if m.organization != nil {
+		fields = append(fields, tofustateversion.FieldOrganizationID)
+	}
+	if m.version != nil {
+		fields = append(fields, tofustateversion.FieldVersion)
+	}
+	if m.serial != nil {
+		fields = append(fields, tofustateversion.FieldSerial)
+	}
+	if m.lineage != nil {
+		fields = append(fields, tofustateversion.FieldLineage)
+	}
+	if m.sealed != nil {
+		fields = append(fields, tofustateversion.FieldSealed)
+	}
+	if m.size_bytes != nil {
+		fields = append(fields, tofustateversion.FieldSizeBytes)
+	}
+	if m.md5 != nil {
+		fields = append(fields, tofustateversion.FieldMd5)
+	}
+	if m.workflow_run_id != nil {
+		fields = append(fields, tofustateversion.FieldWorkflowRunID)
+	}
+	if m.component_run_id != nil {
+		fields = append(fields, tofustateversion.FieldComponentRunID)
+	}
+	if m.created_by != nil {
+		fields = append(fields, tofustateversion.FieldCreatedBy)
+	}
+	if m.created_at != nil {
+		fields = append(fields, tofustateversion.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TofuStateVersionMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case tofustateversion.FieldStateID:
+		return m.StateID()
+	case tofustateversion.FieldOrganizationID:
+		return m.OrganizationID()
+	case tofustateversion.FieldVersion:
+		return m.Version()
+	case tofustateversion.FieldSerial:
+		return m.Serial()
+	case tofustateversion.FieldLineage:
+		return m.Lineage()
+	case tofustateversion.FieldSealed:
+		return m.Sealed()
+	case tofustateversion.FieldSizeBytes:
+		return m.SizeBytes()
+	case tofustateversion.FieldMd5:
+		return m.Md5()
+	case tofustateversion.FieldWorkflowRunID:
+		return m.WorkflowRunID()
+	case tofustateversion.FieldComponentRunID:
+		return m.ComponentRunID()
+	case tofustateversion.FieldCreatedBy:
+		return m.CreatedBy()
+	case tofustateversion.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TofuStateVersionMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case tofustateversion.FieldStateID:
+		return m.OldStateID(ctx)
+	case tofustateversion.FieldOrganizationID:
+		return m.OldOrganizationID(ctx)
+	case tofustateversion.FieldVersion:
+		return m.OldVersion(ctx)
+	case tofustateversion.FieldSerial:
+		return m.OldSerial(ctx)
+	case tofustateversion.FieldLineage:
+		return m.OldLineage(ctx)
+	case tofustateversion.FieldSealed:
+		return m.OldSealed(ctx)
+	case tofustateversion.FieldSizeBytes:
+		return m.OldSizeBytes(ctx)
+	case tofustateversion.FieldMd5:
+		return m.OldMd5(ctx)
+	case tofustateversion.FieldWorkflowRunID:
+		return m.OldWorkflowRunID(ctx)
+	case tofustateversion.FieldComponentRunID:
+		return m.OldComponentRunID(ctx)
+	case tofustateversion.FieldCreatedBy:
+		return m.OldCreatedBy(ctx)
+	case tofustateversion.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TofuStateVersion field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TofuStateVersionMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case tofustateversion.FieldStateID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStateID(v)
+		return nil
+	case tofustateversion.FieldOrganizationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrganizationID(v)
+		return nil
+	case tofustateversion.FieldVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case tofustateversion.FieldSerial:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSerial(v)
+		return nil
+	case tofustateversion.FieldLineage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLineage(v)
+		return nil
+	case tofustateversion.FieldSealed:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSealed(v)
+		return nil
+	case tofustateversion.FieldSizeBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSizeBytes(v)
+		return nil
+	case tofustateversion.FieldMd5:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMd5(v)
+		return nil
+	case tofustateversion.FieldWorkflowRunID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkflowRunID(v)
+		return nil
+	case tofustateversion.FieldComponentRunID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetComponentRunID(v)
+		return nil
+	case tofustateversion.FieldCreatedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedBy(v)
+		return nil
+	case tofustateversion.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TofuStateVersion field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TofuStateVersionMutation) AddedFields() []string {
+	var fields []string
+	if m.addversion != nil {
+		fields = append(fields, tofustateversion.FieldVersion)
+	}
+	if m.addserial != nil {
+		fields = append(fields, tofustateversion.FieldSerial)
+	}
+	if m.addsize_bytes != nil {
+		fields = append(fields, tofustateversion.FieldSizeBytes)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TofuStateVersionMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case tofustateversion.FieldVersion:
+		return m.AddedVersion()
+	case tofustateversion.FieldSerial:
+		return m.AddedSerial()
+	case tofustateversion.FieldSizeBytes:
+		return m.AddedSizeBytes()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TofuStateVersionMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case tofustateversion.FieldVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
+	case tofustateversion.FieldSerial:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSerial(v)
+		return nil
+	case tofustateversion.FieldSizeBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSizeBytes(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TofuStateVersion numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TofuStateVersionMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(tofustateversion.FieldWorkflowRunID) {
+		fields = append(fields, tofustateversion.FieldWorkflowRunID)
+	}
+	if m.FieldCleared(tofustateversion.FieldComponentRunID) {
+		fields = append(fields, tofustateversion.FieldComponentRunID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TofuStateVersionMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TofuStateVersionMutation) ClearField(name string) error {
+	switch name {
+	case tofustateversion.FieldWorkflowRunID:
+		m.ClearWorkflowRunID()
+		return nil
+	case tofustateversion.FieldComponentRunID:
+		m.ClearComponentRunID()
+		return nil
+	}
+	return fmt.Errorf("unknown TofuStateVersion nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TofuStateVersionMutation) ResetField(name string) error {
+	switch name {
+	case tofustateversion.FieldStateID:
+		m.ResetStateID()
+		return nil
+	case tofustateversion.FieldOrganizationID:
+		m.ResetOrganizationID()
+		return nil
+	case tofustateversion.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case tofustateversion.FieldSerial:
+		m.ResetSerial()
+		return nil
+	case tofustateversion.FieldLineage:
+		m.ResetLineage()
+		return nil
+	case tofustateversion.FieldSealed:
+		m.ResetSealed()
+		return nil
+	case tofustateversion.FieldSizeBytes:
+		m.ResetSizeBytes()
+		return nil
+	case tofustateversion.FieldMd5:
+		m.ResetMd5()
+		return nil
+	case tofustateversion.FieldWorkflowRunID:
+		m.ResetWorkflowRunID()
+		return nil
+	case tofustateversion.FieldComponentRunID:
+		m.ResetComponentRunID()
+		return nil
+	case tofustateversion.FieldCreatedBy:
+		m.ResetCreatedBy()
+		return nil
+	case tofustateversion.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TofuStateVersion field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TofuStateVersionMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.state != nil {
+		edges = append(edges, tofustateversion.EdgeState)
+	}
+	if m.organization != nil {
+		edges = append(edges, tofustateversion.EdgeOrganization)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TofuStateVersionMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case tofustateversion.EdgeState:
+		if id := m.state; id != nil {
+			return []ent.Value{*id}
+		}
+	case tofustateversion.EdgeOrganization:
+		if id := m.organization; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TofuStateVersionMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TofuStateVersionMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TofuStateVersionMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedstate {
+		edges = append(edges, tofustateversion.EdgeState)
+	}
+	if m.clearedorganization {
+		edges = append(edges, tofustateversion.EdgeOrganization)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TofuStateVersionMutation) EdgeCleared(name string) bool {
+	switch name {
+	case tofustateversion.EdgeState:
+		return m.clearedstate
+	case tofustateversion.EdgeOrganization:
+		return m.clearedorganization
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TofuStateVersionMutation) ClearEdge(name string) error {
+	switch name {
+	case tofustateversion.EdgeState:
+		m.ClearState()
+		return nil
+	case tofustateversion.EdgeOrganization:
+		m.ClearOrganization()
+		return nil
+	}
+	return fmt.Errorf("unknown TofuStateVersion unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TofuStateVersionMutation) ResetEdge(name string) error {
+	switch name {
+	case tofustateversion.EdgeState:
+		m.ResetState()
+		return nil
+	case tofustateversion.EdgeOrganization:
+		m.ResetOrganization()
+		return nil
+	}
+	return fmt.Errorf("unknown TofuStateVersion edge %s", name)
 }
 
 // UserMutation represents an operation that mutates the User nodes in the graph.
