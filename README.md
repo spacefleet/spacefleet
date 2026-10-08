@@ -101,8 +101,40 @@ make worker
 
 To run a workflow you also need a **runner cluster**: register a Kubernetes
 cluster under Admin → Clusters and set it up as a runner (Spacefleet installs
-Tekton on it) — see [Runner clusters](docs/user/running-jobs.md). A local kind
-or k3d cluster registered by kubeconfig works for development.
+Tekton on it) — see [Runner clusters](docs/user/running-jobs.md). For local development,
+a kind cluster is the simplest option (step 6).
+
+**6. (Optional) A local cluster with kind** — [kind](https://kind.sigs.k8s.io/)
+runs Kubernetes inside Docker, which you already have for step 2:
+
+```sh
+brew install kind      # or see the kind docs for other platforms
+kind create cluster --name spacefleet
+kind get kubeconfig --name spacefleet | pbcopy    # macOS; otherwise redirect to a file
+```
+
+Under **Admin → Clusters**, register it with the **Kubeconfig** connection
+method and paste that kubeconfig, then click **Set up as runner** and confirm to
+install Tekton. A few things to know:
+
+- **Paste the output of `kind get kubeconfig`, not your whole `~/.kube/config`.**
+  Spacefleet rejects any kubeconfig whose users authenticate through an `exec`
+  or `auth-provider` plugin (e.g. `aws eks get-token`, `gke-gcloud-auth-plugin`)
+  — it checks *every* user in the file, not just the current context. kind's
+  kubeconfig uses a static client certificate, so it's accepted.
+- **`ALLOW_PRIVATE_CLUSTER_ENDPOINTS=true` must be set** in `.env` (it is in
+  `.env.example`). kind's API server is at `https://127.0.0.1:<port>`, and
+  loopback/private endpoints are refused without it.
+- **Use the one kind cluster as both the runner and the deploy target.** When
+  runner and target are the same cluster, jobs reach its API server at
+  `kubernetes.default.svc` instead of the host-side `127.0.0.1` address. Two
+  separate kind clusters won't work as runner + target out of the box: a pod
+  in one can't reach the other's `127.0.0.1` port.
+- **`kind create cluster` switches kubectl's current context** to
+  `kind-spacefleet`. Check `kubectl config current-context` before running
+  anything against a real cluster afterwards.
+
+Reset with `kind delete cluster --name spacefleet` and create it again.
 
 > **Auth.** Dex is always Spacefleet's identity provider — there's no external
 > or passthrough mode. The SPA logs in against Dex (Authorization Code + PKCE)
