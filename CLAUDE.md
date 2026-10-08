@@ -10,7 +10,7 @@ React/Vite/Tailwind SPA, with an OpenAPI-driven contract, Dex (OIDC)
 authentication, and Tekton on a registered Kubernetes cluster as the job
 runner. The domain is multi-tenant — users belong to **organizations** (via
 memberships) and every resource is scoped to an org. The product domain is
-**applications → components → workflow runs** (see [The domain](#the-domain)
+**applications → stages → components → workflow runs** (see [The domain](#the-domain)
 below); **Kubernetes cluster registration** is the simplest org-scoped
 resource and remains the worked example for how a resource is built end to
 end (see [How a resource is built](#how-a-resource-is-built)). Tests span Go
@@ -32,27 +32,44 @@ and then continue with the rest of this document.
   carries only a name, a **runner cluster** (a Tekton-enabled registered
   cluster where its jobs execute), an optional group (folder), and run
   settings (drift schedule, push/PR triggers). Targeting lives on components.
+- **Stage** ([ent/schema/workflowstage.go](ent/schema/workflowstage.go),
+  [lib/workflows/stages.go](lib/workflows/stages.go)) — a workflow is an
+  ordered list of named stages (`ordinal`); a stage holds components that run
+  in parallel, and the next stage starts once every component of the previous
+  one has finished. Stage order is the **only** ordering — there are no
+  authored per-component dependencies, groups, or canvas positions. The
+  scheduler never sees a stage: at snapshot time `stageDependencies` desugars
+  stage order into step-level `depends_on` (each component waits on every
+  component of the previous non-empty stage). The workflow is saved whole
+  (`PUT …/workflow` with `stages[]`), and ids are client-provided so a
+  component's variables/state/history survive the delete-and-recreate.
 - **Component** ([ent/schema/component.go](ent/schema/component.go),
   validated in [lib/workflows/dag.go](lib/workflows/dag.go)) — one typed step
-  of the workflow: `helm` (a chart from an HTTP repo, OCI, or git), `manifest`
-  (git-sourced Kubernetes manifests), or `terraform` (an OpenTofu root module
-  with a managed s3/gcs/azurerm backend). A flat `config` string map holds the
-  type-specific settings; `depends_on` and groups form the DAG; approval flags
-  and an approval policy gate the step. Component groups
-  ([lib/workflows/groups.go](lib/workflows/groups.go)) are a builder concept
-  the scheduler never sees.
+  of the workflow, in one stage (`stage_id`, display `ordinal`): `helm` (a
+  chart from an HTTP repo, OCI, or git), `manifest` (git-sourced Kubernetes
+  manifests), or `terraform` (an OpenTofu root module with a managed
+  s3/gcs/azurerm backend). A flat `config` string map holds the type-specific
+  settings; approval flags and an approval policy gate the step. A
+  `${{ components.<name>.outputs.* }}` reference must name an OpenTofu
+  component in an earlier stage.
 - **Workflow run** ([ent/schema/workflow_run.go](ent/schema/workflow_run.go),
-  [lib/workflows/runs.go](lib/workflows/runs.go)) — one execution of the DAG
-  with an action: `deploy`, `uninstall`, `preview` (dry run), `drift`
+  [lib/workflows/runs.go](lib/workflows/runs.go)) — one execution of the
+  workflow with an action: `deploy`, `uninstall`, `preview` (dry run), `drift`
   (refresh-only plans), or `state_op` (a guarded OpenTofu state operation).
-  A run **snapshots the graph** at start (`graph`), so edits never change an
-  in-flight run; per-run arguments live in `args` (a state op, or a
+  A run **snapshots the graph** at start (`graph`: execution nodes with their
+  desugared `depends_on`, plus the stages they ran in), so edits never change
+  an in-flight run; per-run arguments live in `args` (a state op, or a
   component-scoped `RunScope` with `-target`s) and `trigger` (the GitHub
   event that started it). One **component run** per execution unit records
   status, logs, the parsed plan, captured outputs/resources, approvals, and
   the policy verdict. An OpenTofu component expands into a **plan unit** and
   an **apply unit** (`expandExecutionNodes`); the planfile crosses between
-  them through a per-run Kubernetes Secret.
+  them through a per-run Kubernetes Secret. Run responses carry a server-built
+  stage summary (`RunStages` in
+  [lib/workflows/runstages.go](lib/workflows/runstages.go)): steps folded
+  into components, components into stages, statuses combined. Runs from
+  before stages existed have no recorded stages, so their stages are derived
+  from the snapshot's `depends_on` by longest-path layering.
 - **The worker** ([lib/workflows/worker.go](lib/workflows/worker.go)) drives a
   run: it plans each unit through [lib/deploy](lib/deploy) (resolving
   cluster connections, credentials, GitHub tokens, cloud auth, variables),
@@ -89,7 +106,7 @@ flow ([lib/helm/rollout.go](lib/helm/rollout.go), [lib/applications](lib/applica
 - **Public routes**: `/api/health` and the GitHub webhook (`POST /api/webhooks/github`, authenticated by its HMAC signature) bypass the auth chain; everything else under `/api/*` requires a Dex ID token.
 - **Auth**: **Dex (OIDC), always bundled** — Spacefleet has no external-provider or passthrough mode; Dex is treated as an internal part of the platform, and SSO is done by configuring Dex's *connectors* (GitHub/Google/Okta/Entra/LDAP/SAML), not by pointing the app elsewhere. It sits behind a seam in [lib/auth](lib/auth): `RequireAuth` takes a `TokenVerifier`, and [server.go](lib/server/server.go) builds the OIDC verifier ([lib/auth/oidc.go](lib/auth/oidc.go)) that validates Dex-issued **ID tokens** (signature via JWKS, `iss`/`exp`/`aud`). It **fails closed** — `buildVerifier` errors (boot fails) when `OIDC_ISSUER` is unset, and `RequireAuth` rejects every protected request if handed a nil verifier; there is no allow-everyone fallback. Tests inject a fake verifier ([lib/testsupport](lib/testsupport)). `publicAPIPaths` lists the bypass paths (`/api/health`). The app **reverse-proxies Dex same-origin under `/dex`** (`DEX_UPSTREAM_URL`, see [routes.go](lib/server/routes.go)), so the browser only ever talks to the app — Dex is never exposed directly. In dev, Dex runs in Docker Compose, bootstrapped from [dev/dex/config.yaml](dev/dex/config.yaml). Operator-facing setup instructions (not code internals) live in [docs/operator/authentication.md](docs/operator/authentication.md) — see [End-user docs](#end-user-docs-docs).
 - **Tenancy**: a second middleware, `OrgContext` ([lib/auth/org.go](lib/auth/org.go)), lifts the SPA's `X-Organization-ID` header onto the request context. It does **no** authorization — org-scoped handlers resolve the org and check the caller's membership themselves (`Server.currentOrg`). Auth runs outermost, then org resolution.
-- **Frontend**: Vite + React 18 + TS, React Router v7, Tailwind v4, React Flow for the workflow builder ([ui/src/components/workflow](ui/src/components/workflow)). Pages are generated from the nav config ([ui/src/nav.ts](ui/src/nav.ts)) and mapped to components in [App.tsx](ui/src/App.tsx). Live data (run status, logs, cluster resources) arrives over Server-Sent Events ([lib/api/stream.go](lib/api/stream.go), [ui/src/lib/useObjectStream.ts](ui/src/lib/useObjectStream.ts)). The typed API client is in [ui/src/api/client.ts](ui/src/api/client.ts). Login uses `react-oidc-context` (Authorization Code + PKCE, public client): `AuthProvider` is configured in [main.tsx](ui/src/main.tsx) from `window.appConfig`, `AuthGate` redirects unauthenticated users to Dex, and `ApiAuthBinder` feeds the ID token to the API client as the bearer token.
+- **Frontend**: Vite + React 18 + TS, React Router v7, Tailwind v4, a stage-column workflow builder and a stage/step-rail run view ([ui/src/components/workflow](ui/src/components/workflow)). Pages are generated from the nav config ([ui/src/nav.ts](ui/src/nav.ts)) and mapped to components in [App.tsx](ui/src/App.tsx). Live data (run status, logs, cluster resources) arrives over Server-Sent Events ([lib/api/stream.go](lib/api/stream.go), [ui/src/lib/useObjectStream.ts](ui/src/lib/useObjectStream.ts)). The typed API client is in [ui/src/api/client.ts](ui/src/api/client.ts). Login uses `react-oidc-context` (Authorization Code + PKCE, public client): `AuthProvider` is configured in [main.tsx](ui/src/main.tsx) from `window.appConfig`, `AuthGate` redirects unauthenticated users to Dex, and `ApiAuthBinder` feeds the ID token to the API client as the bearer token.
 
 ## The OpenAPI contract is the source of truth
 
@@ -122,7 +139,7 @@ the sealer, the GitHub App, and the resolver to open credentials at run time
 
 | Job kind | Worker | Enqueued by |
 | --- | --- | --- |
-| `workflow_run` | `workflows.WorkflowRunWorker` — executes a run's DAG | the API (start run / approve), the webhook, the drift scheduler |
+| `workflow_run` | `workflows.WorkflowRunWorker` — executes a run's step DAG (stage order, desugared) | the API (start run / approve), the webhook, the drift scheduler |
 | `notification_deliver` | `notifications.DeliverWorker` — one event to one channel | `notifications.Service.Dispatch` (worker) and the test-send endpoint |
 | `tekton-install` | `tekton.InstallWorker` — installs/uninstalls Tekton on a cluster | the API |
 | `invite_email` | `email.InviteEmailWorker` | the API |
@@ -397,13 +414,13 @@ spacefleet/
 │   ├── tofu/                # OpenTofu script rendering, plan parsing, state ops, targets, versions
 │   ├── users/               # user provisioning (EnsureUser from the OIDC subject)
 │   ├── variables/           # org/group/app/component variables (sensitive ones sealed) + env resolution
-│   └── workflows/           # the workflow domain: DAG validation, runs, expansion, planner, worker, scheduler, approvals, drift, state ops, scoped runs, triggers, events, policy gate, reaper
+│   └── workflows/           # the workflow domain: stages + validation, runs (snapshot, stage summary), expansion, planner, worker, scheduler, approvals, drift, state ops, scoped runs, triggers, events, policy gate, reaper
 ├── ui/
 │   ├── embed.go             # //go:embed all:dist
 │   ├── e2e/                 # Playwright browser tests
 │   ├── playwright.config.ts # e2e config (starts/reuses API + Vite dev server)
 │   ├── src/api/             # generated schema + openapi-fetch client
-│   ├── src/components/      # auth/org gates, Layout, Sidebar, panels, workflow/ (builder, run nodes, plan views, state panel)
+│   ├── src/components/      # auth/org gates, Layout, Sidebar, panels, workflow/ (stage columns, stage bar, plan views, state panel)
 │   ├── src/contexts/        # OrgContext (current org + role), WorkflowDraftContext
 │   ├── src/lib/             # appConfig, SSE hooks, formatting helpers
 │   ├── src/nav.ts           # the nav config routes are generated from

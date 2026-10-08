@@ -78,7 +78,7 @@ describe("ApplicationForm import mode", () => {
     expect(screen.getByDisplayValue("cache")).toBeInTheDocument();
   });
 
-  it("adopts via POST /api/applications/import then opens the workflow canvas", async () => {
+  it("adopts via POST /api/applications/import then opens the workflow builder", async () => {
     mockApi.POST.mockResolvedValue({ data: { id: "app-9" }, error: undefined });
     renderImport();
     const user = userEvent.setup();

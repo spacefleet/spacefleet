@@ -22,7 +22,6 @@ import (
 	"github.com/spacefleet/spacefleet/ent/cloudcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
-	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/groupvariable"
@@ -35,6 +34,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/user"
 	"github.com/spacefleet/spacefleet/ent/variable"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
+	"github.com/spacefleet/spacefleet/ent/workflowstage"
 )
 
 // Client is the client that holds all ent builders.
@@ -54,8 +54,6 @@ type Client struct {
 	Cluster *ClusterClient
 	// Component is the client for interacting with the Component builders.
 	Component *ComponentClient
-	// ComponentGroup is the client for interacting with the ComponentGroup builders.
-	ComponentGroup *ComponentGroupClient
 	// ComponentRun is the client for interacting with the ComponentRun builders.
 	ComponentRun *ComponentRunClient
 	// GitHubInstallation is the client for interacting with the GitHubInstallation builders.
@@ -80,6 +78,8 @@ type Client struct {
 	Variable *VariableClient
 	// WorkflowRun is the client for interacting with the WorkflowRun builders.
 	WorkflowRun *WorkflowRunClient
+	// WorkflowStage is the client for interacting with the WorkflowStage builders.
+	WorkflowStage *WorkflowStageClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -97,7 +97,6 @@ func (c *Client) init() {
 	c.CloudCredential = NewCloudCredentialClient(c.config)
 	c.Cluster = NewClusterClient(c.config)
 	c.Component = NewComponentClient(c.config)
-	c.ComponentGroup = NewComponentGroupClient(c.config)
 	c.ComponentRun = NewComponentRunClient(c.config)
 	c.GitHubInstallation = NewGitHubInstallationClient(c.config)
 	c.GroupVariable = NewGroupVariableClient(c.config)
@@ -110,6 +109,7 @@ func (c *Client) init() {
 	c.User = NewUserClient(c.config)
 	c.Variable = NewVariableClient(c.config)
 	c.WorkflowRun = NewWorkflowRunClient(c.config)
+	c.WorkflowStage = NewWorkflowStageClient(c.config)
 }
 
 type (
@@ -208,7 +208,6 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		CloudCredential:     NewCloudCredentialClient(cfg),
 		Cluster:             NewClusterClient(cfg),
 		Component:           NewComponentClient(cfg),
-		ComponentGroup:      NewComponentGroupClient(cfg),
 		ComponentRun:        NewComponentRunClient(cfg),
 		GitHubInstallation:  NewGitHubInstallationClient(cfg),
 		GroupVariable:       NewGroupVariableClient(cfg),
@@ -221,6 +220,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		User:                NewUserClient(cfg),
 		Variable:            NewVariableClient(cfg),
 		WorkflowRun:         NewWorkflowRunClient(cfg),
+		WorkflowStage:       NewWorkflowStageClient(cfg),
 	}, nil
 }
 
@@ -246,7 +246,6 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		CloudCredential:     NewCloudCredentialClient(cfg),
 		Cluster:             NewClusterClient(cfg),
 		Component:           NewComponentClient(cfg),
-		ComponentGroup:      NewComponentGroupClient(cfg),
 		ComponentRun:        NewComponentRunClient(cfg),
 		GitHubInstallation:  NewGitHubInstallationClient(cfg),
 		GroupVariable:       NewGroupVariableClient(cfg),
@@ -259,6 +258,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		User:                NewUserClient(cfg),
 		Variable:            NewVariableClient(cfg),
 		WorkflowRun:         NewWorkflowRunClient(cfg),
+		WorkflowStage:       NewWorkflowStageClient(cfg),
 	}, nil
 }
 
@@ -289,10 +289,10 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Application, c.ApplicationGroup, c.ChartCredential, c.CloudCredential,
-		c.Cluster, c.Component, c.ComponentGroup, c.ComponentRun, c.GitHubInstallation,
-		c.GroupVariable, c.Invitation, c.Membership, c.NotificationChannel,
-		c.Organization, c.PlanPolicy, c.TektonInstallation, c.User, c.Variable,
-		c.WorkflowRun,
+		c.Cluster, c.Component, c.ComponentRun, c.GitHubInstallation, c.GroupVariable,
+		c.Invitation, c.Membership, c.NotificationChannel, c.Organization,
+		c.PlanPolicy, c.TektonInstallation, c.User, c.Variable, c.WorkflowRun,
+		c.WorkflowStage,
 	} {
 		n.Use(hooks...)
 	}
@@ -303,10 +303,10 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Application, c.ApplicationGroup, c.ChartCredential, c.CloudCredential,
-		c.Cluster, c.Component, c.ComponentGroup, c.ComponentRun, c.GitHubInstallation,
-		c.GroupVariable, c.Invitation, c.Membership, c.NotificationChannel,
-		c.Organization, c.PlanPolicy, c.TektonInstallation, c.User, c.Variable,
-		c.WorkflowRun,
+		c.Cluster, c.Component, c.ComponentRun, c.GitHubInstallation, c.GroupVariable,
+		c.Invitation, c.Membership, c.NotificationChannel, c.Organization,
+		c.PlanPolicy, c.TektonInstallation, c.User, c.Variable, c.WorkflowRun,
+		c.WorkflowStage,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -327,8 +327,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Cluster.mutate(ctx, m)
 	case *ComponentMutation:
 		return c.Component.mutate(ctx, m)
-	case *ComponentGroupMutation:
-		return c.ComponentGroup.mutate(ctx, m)
 	case *ComponentRunMutation:
 		return c.ComponentRun.mutate(ctx, m)
 	case *GitHubInstallationMutation:
@@ -353,6 +351,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Variable.mutate(ctx, m)
 	case *WorkflowRunMutation:
 		return c.WorkflowRun.mutate(ctx, m)
+	case *WorkflowStageMutation:
+		return c.WorkflowStage.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -1323,15 +1323,15 @@ func (c *ComponentClient) QueryGithubInstallation(_m *Component) *GitHubInstalla
 	return query
 }
 
-// QueryGroup queries the group edge of a Component.
-func (c *ComponentClient) QueryGroup(_m *Component) *ComponentGroupQuery {
-	query := (&ComponentGroupClient{config: c.config}).Query()
+// QueryStage queries the stage edge of a Component.
+func (c *ComponentClient) QueryStage(_m *Component) *WorkflowStageQuery {
+	query := (&WorkflowStageClient{config: c.config}).Query()
 	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
 		id := _m.ID
 		step := sqlgraph.NewStep(
 			sqlgraph.From(component.Table, component.FieldID, id),
-			sqlgraph.To(componentgroup.Table, componentgroup.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, component.GroupTable, component.GroupColumn),
+			sqlgraph.To(workflowstage.Table, workflowstage.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, component.StageTable, component.StageColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -1361,171 +1361,6 @@ func (c *ComponentClient) mutate(ctx context.Context, m *ComponentMutation) (Val
 		return (&ComponentDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Component mutation op: %q", m.Op())
-	}
-}
-
-// ComponentGroupClient is a client for the ComponentGroup schema.
-type ComponentGroupClient struct {
-	config
-}
-
-// NewComponentGroupClient returns a client for the ComponentGroup from the given config.
-func NewComponentGroupClient(c config) *ComponentGroupClient {
-	return &ComponentGroupClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `componentgroup.Hooks(f(g(h())))`.
-func (c *ComponentGroupClient) Use(hooks ...Hook) {
-	c.hooks.ComponentGroup = append(c.hooks.ComponentGroup, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `componentgroup.Intercept(f(g(h())))`.
-func (c *ComponentGroupClient) Intercept(interceptors ...Interceptor) {
-	c.inters.ComponentGroup = append(c.inters.ComponentGroup, interceptors...)
-}
-
-// Create returns a builder for creating a ComponentGroup entity.
-func (c *ComponentGroupClient) Create() *ComponentGroupCreate {
-	mutation := newComponentGroupMutation(c.config, OpCreate)
-	return &ComponentGroupCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of ComponentGroup entities.
-func (c *ComponentGroupClient) CreateBulk(builders ...*ComponentGroupCreate) *ComponentGroupCreateBulk {
-	return &ComponentGroupCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *ComponentGroupClient) MapCreateBulk(slice any, setFunc func(*ComponentGroupCreate, int)) *ComponentGroupCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &ComponentGroupCreateBulk{err: fmt.Errorf("calling to ComponentGroupClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*ComponentGroupCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &ComponentGroupCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for ComponentGroup.
-func (c *ComponentGroupClient) Update() *ComponentGroupUpdate {
-	mutation := newComponentGroupMutation(c.config, OpUpdate)
-	return &ComponentGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *ComponentGroupClient) UpdateOne(_m *ComponentGroup) *ComponentGroupUpdateOne {
-	mutation := newComponentGroupMutation(c.config, OpUpdateOne, withComponentGroup(_m))
-	return &ComponentGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *ComponentGroupClient) UpdateOneID(id uuid.UUID) *ComponentGroupUpdateOne {
-	mutation := newComponentGroupMutation(c.config, OpUpdateOne, withComponentGroupID(id))
-	return &ComponentGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for ComponentGroup.
-func (c *ComponentGroupClient) Delete() *ComponentGroupDelete {
-	mutation := newComponentGroupMutation(c.config, OpDelete)
-	return &ComponentGroupDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *ComponentGroupClient) DeleteOne(_m *ComponentGroup) *ComponentGroupDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *ComponentGroupClient) DeleteOneID(id uuid.UUID) *ComponentGroupDeleteOne {
-	builder := c.Delete().Where(componentgroup.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &ComponentGroupDeleteOne{builder}
-}
-
-// Query returns a query builder for ComponentGroup.
-func (c *ComponentGroupClient) Query() *ComponentGroupQuery {
-	return &ComponentGroupQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeComponentGroup},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a ComponentGroup entity by its id.
-func (c *ComponentGroupClient) Get(ctx context.Context, id uuid.UUID) (*ComponentGroup, error) {
-	return c.Query().Where(componentgroup.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *ComponentGroupClient) GetX(ctx context.Context, id uuid.UUID) *ComponentGroup {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// QueryOrganization queries the organization edge of a ComponentGroup.
-func (c *ComponentGroupClient) QueryOrganization(_m *ComponentGroup) *OrganizationQuery {
-	query := (&OrganizationClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(componentgroup.Table, componentgroup.FieldID, id),
-			sqlgraph.To(organization.Table, organization.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, componentgroup.OrganizationTable, componentgroup.OrganizationColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// QueryApplication queries the application edge of a ComponentGroup.
-func (c *ComponentGroupClient) QueryApplication(_m *ComponentGroup) *ApplicationQuery {
-	query := (&ApplicationClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(componentgroup.Table, componentgroup.FieldID, id),
-			sqlgraph.To(application.Table, application.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, componentgroup.ApplicationTable, componentgroup.ApplicationColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// Hooks returns the client hooks.
-func (c *ComponentGroupClient) Hooks() []Hook {
-	return c.hooks.ComponentGroup
-}
-
-// Interceptors returns the client interceptors.
-func (c *ComponentGroupClient) Interceptors() []Interceptor {
-	return c.inters.ComponentGroup
-}
-
-func (c *ComponentGroupClient) mutate(ctx context.Context, m *ComponentGroupMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&ComponentGroupCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&ComponentGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&ComponentGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&ComponentGroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown ComponentGroup mutation op: %q", m.Op())
 	}
 }
 
@@ -3461,18 +3296,199 @@ func (c *WorkflowRunClient) mutate(ctx context.Context, m *WorkflowRunMutation) 
 	}
 }
 
+// WorkflowStageClient is a client for the WorkflowStage schema.
+type WorkflowStageClient struct {
+	config
+}
+
+// NewWorkflowStageClient returns a client for the WorkflowStage from the given config.
+func NewWorkflowStageClient(c config) *WorkflowStageClient {
+	return &WorkflowStageClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `workflowstage.Hooks(f(g(h())))`.
+func (c *WorkflowStageClient) Use(hooks ...Hook) {
+	c.hooks.WorkflowStage = append(c.hooks.WorkflowStage, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `workflowstage.Intercept(f(g(h())))`.
+func (c *WorkflowStageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.WorkflowStage = append(c.inters.WorkflowStage, interceptors...)
+}
+
+// Create returns a builder for creating a WorkflowStage entity.
+func (c *WorkflowStageClient) Create() *WorkflowStageCreate {
+	mutation := newWorkflowStageMutation(c.config, OpCreate)
+	return &WorkflowStageCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of WorkflowStage entities.
+func (c *WorkflowStageClient) CreateBulk(builders ...*WorkflowStageCreate) *WorkflowStageCreateBulk {
+	return &WorkflowStageCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *WorkflowStageClient) MapCreateBulk(slice any, setFunc func(*WorkflowStageCreate, int)) *WorkflowStageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &WorkflowStageCreateBulk{err: fmt.Errorf("calling to WorkflowStageClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*WorkflowStageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &WorkflowStageCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for WorkflowStage.
+func (c *WorkflowStageClient) Update() *WorkflowStageUpdate {
+	mutation := newWorkflowStageMutation(c.config, OpUpdate)
+	return &WorkflowStageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *WorkflowStageClient) UpdateOne(_m *WorkflowStage) *WorkflowStageUpdateOne {
+	mutation := newWorkflowStageMutation(c.config, OpUpdateOne, withWorkflowStage(_m))
+	return &WorkflowStageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *WorkflowStageClient) UpdateOneID(id uuid.UUID) *WorkflowStageUpdateOne {
+	mutation := newWorkflowStageMutation(c.config, OpUpdateOne, withWorkflowStageID(id))
+	return &WorkflowStageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for WorkflowStage.
+func (c *WorkflowStageClient) Delete() *WorkflowStageDelete {
+	mutation := newWorkflowStageMutation(c.config, OpDelete)
+	return &WorkflowStageDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *WorkflowStageClient) DeleteOne(_m *WorkflowStage) *WorkflowStageDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *WorkflowStageClient) DeleteOneID(id uuid.UUID) *WorkflowStageDeleteOne {
+	builder := c.Delete().Where(workflowstage.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &WorkflowStageDeleteOne{builder}
+}
+
+// Query returns a query builder for WorkflowStage.
+func (c *WorkflowStageClient) Query() *WorkflowStageQuery {
+	return &WorkflowStageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeWorkflowStage},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a WorkflowStage entity by its id.
+func (c *WorkflowStageClient) Get(ctx context.Context, id uuid.UUID) (*WorkflowStage, error) {
+	return c.Query().Where(workflowstage.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *WorkflowStageClient) GetX(ctx context.Context, id uuid.UUID) *WorkflowStage {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryOrganization queries the organization edge of a WorkflowStage.
+func (c *WorkflowStageClient) QueryOrganization(_m *WorkflowStage) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(workflowstage.Table, workflowstage.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, workflowstage.OrganizationTable, workflowstage.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryApplication queries the application edge of a WorkflowStage.
+func (c *WorkflowStageClient) QueryApplication(_m *WorkflowStage) *ApplicationQuery {
+	query := (&ApplicationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(workflowstage.Table, workflowstage.FieldID, id),
+			sqlgraph.To(application.Table, application.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, workflowstage.ApplicationTable, workflowstage.ApplicationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryComponents queries the components edge of a WorkflowStage.
+func (c *WorkflowStageClient) QueryComponents(_m *WorkflowStage) *ComponentQuery {
+	query := (&ComponentClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(workflowstage.Table, workflowstage.FieldID, id),
+			sqlgraph.To(component.Table, component.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, workflowstage.ComponentsTable, workflowstage.ComponentsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *WorkflowStageClient) Hooks() []Hook {
+	return c.hooks.WorkflowStage
+}
+
+// Interceptors returns the client interceptors.
+func (c *WorkflowStageClient) Interceptors() []Interceptor {
+	return c.inters.WorkflowStage
+}
+
+func (c *WorkflowStageClient) mutate(ctx context.Context, m *WorkflowStageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&WorkflowStageCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&WorkflowStageUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&WorkflowStageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&WorkflowStageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown WorkflowStage mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
 		Application, ApplicationGroup, ChartCredential, CloudCredential, Cluster,
-		Component, ComponentGroup, ComponentRun, GitHubInstallation, GroupVariable,
-		Invitation, Membership, NotificationChannel, Organization, PlanPolicy,
-		TektonInstallation, User, Variable, WorkflowRun []ent.Hook
+		Component, ComponentRun, GitHubInstallation, GroupVariable, Invitation,
+		Membership, NotificationChannel, Organization, PlanPolicy, TektonInstallation,
+		User, Variable, WorkflowRun, WorkflowStage []ent.Hook
 	}
 	inters struct {
 		Application, ApplicationGroup, ChartCredential, CloudCredential, Cluster,
-		Component, ComponentGroup, ComponentRun, GitHubInstallation, GroupVariable,
-		Invitation, Membership, NotificationChannel, Organization, PlanPolicy,
-		TektonInstallation, User, Variable, WorkflowRun []ent.Interceptor
+		Component, ComponentRun, GitHubInstallation, GroupVariable, Invitation,
+		Membership, NotificationChannel, Organization, PlanPolicy, TektonInstallation,
+		User, Variable, WorkflowRun, WorkflowStage []ent.Interceptor
 	}
 )

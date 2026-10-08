@@ -8,9 +8,8 @@ afterEach(() => {
   cleanup();
 });
 
-// jsdom lacks ResizeObserver / matchMedia / DOMMatrix, which React Flow uses to
-// measure the canvas. Stub them so the workflow canvas renders in tests (we test
-// our wiring, not React Flow's layout).
+// jsdom lacks ResizeObserver / matchMedia; stub them so components that
+// measure or query media render in tests (we test our wiring, not layout).
 if (!("ResizeObserver" in globalThis)) {
   class ResizeObserverStub {
     observe() {}
@@ -32,16 +31,6 @@ if (typeof window !== "undefined" && !window.matchMedia) {
     removeEventListener: () => {},
     dispatchEvent: () => false,
   })) as unknown as typeof window.matchMedia;
-}
-
-if (!("DOMMatrixReadOnly" in globalThis)) {
-  class DOMMatrixStub {
-    m22 = 1;
-    constructor() {}
-  }
-  // React Flow reads transforms via DOMMatrixReadOnly when measuring.
-  globalThis.DOMMatrixReadOnly =
-    DOMMatrixStub as unknown as typeof DOMMatrixReadOnly;
 }
 
 // Node 26 exposes an experimental global `localStorage` getter that yields

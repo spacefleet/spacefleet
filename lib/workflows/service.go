@@ -1,8 +1,8 @@
 // Package workflows holds the application deploy-workflow use cases: an
-// application owns a DAG of typed Components (helm release, manifest apply, …),
-// and a run of that workflow is a WorkflowRun with one ComponentRun per node. This
-// package owns the component CRUD, the write-time DAG validation, and (in later
-// phases) the run snapshot + status marking the worker drives through.
+// application owns ordered stages of typed Components (helm release, manifest
+// apply, OpenTofu module), and a run of that workflow is a WorkflowRun with one
+// ComponentRun per execution step. This package owns the workflow CRUD, the
+// write-time validation, the run snapshot, and the execution the worker drives.
 //
 // It is a thin wrapper over the ent client. Like every org-scoped resource, every
 // query is scoped by organization id — that scoping, not a handler's membership
@@ -14,6 +14,7 @@ package workflows
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -21,9 +22,9 @@ import (
 	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
-	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/tektoninstallation"
 	"github.com/spacefleet/spacefleet/ent/variable"
+	"github.com/spacefleet/spacefleet/ent/workflowstage"
 	"github.com/spacefleet/spacefleet/lib/tekton"
 )
 
@@ -57,16 +58,17 @@ func (s *Service) OnReaped(fn func(context.Context, *ent.WorkflowRun)) {
 	s.reapHook = fn
 }
 
-// ComponentInput is one node of a proposed workflow, as supplied by the canvas.
-// ID is client-provided (the canvas assigns a stable uuid per node) so depends_on
-// can reference sibling nodes across an edit and so identity survives a replace.
-// Config is the type-specific, non-secret param map, validated per type.
+// ComponentInput is one component of a proposed workflow, as supplied by the
+// builder. ID is client-provided (the builder assigns a stable uuid per
+// component) so identity — and with it the component's variables, recorded
+// state, and run history — survives a replace. Config is the type-specific,
+// non-secret param map, validated per type. The stage it runs in is the
+// StageInput holding it.
 type ComponentInput struct {
 	ID                uuid.UUID
 	Name              string
 	Type              string
 	Config            map[string]string
-	DependsOn         []uuid.UUID
 	ContinueOnFailure bool
 	RequiresApproval  bool
 	// ApprovalPolicy applies at the node's approval gate; the zero value is
@@ -77,96 +79,112 @@ type ComponentInput struct {
 	TargetNamespace      string
 	ChartCredentialID    *uuid.UUID
 	GitHubInstallationID *uuid.UUID
-	Position             map[string]float64
-	// GroupID is the explicit group container this component is a member of, or
-	// nil when ungrouped. Members of a group run in parallel and a node depending
-	// on the group waits for all of them.
-	GroupID *uuid.UUID
 }
 
-// ListComponents returns an application's workflow nodes, scoped to the
-// organization. It first confirms the application belongs to the org (so a caller
-// can't read another org's components by id); a missing application surfaces as
-// ent's NotFoundError.
-func (s *Service) ListComponents(ctx context.Context, orgID, appID uuid.UUID) ([]*ent.Component, error) {
+// GetWorkflow returns an application's workflow — its stages in run order, each
+// with its components (Edges.Components) in display order — scoped to the
+// organization. It first confirms the application belongs to the org (so a
+// caller can't read another org's workflow by id); a missing application
+// surfaces as ent's NotFoundError.
+func (s *Service) GetWorkflow(ctx context.Context, orgID, appID uuid.UUID) ([]*ent.WorkflowStage, error) {
 	if _, err := s.getApp(ctx, orgID, appID); err != nil {
 		return nil, err
 	}
-	return s.ent.Component.Query().
-		Where(component.OrganizationID(orgID), component.ApplicationID(appID)).
-		Order(ent.Asc(component.FieldCreatedAt)).
+	return s.loadStages(ctx, orgID, appID)
+}
+
+// loadStages is the unguarded org-scoped workflow query, shared by GetWorkflow
+// (which adds the application-membership check), ReplaceWorkflow, and the run
+// snapshot (which already confirmed the app). Components are filtered by the
+// org too, so the eager load can't cross the tenancy boundary.
+func (s *Service) loadStages(ctx context.Context, orgID, appID uuid.UUID) ([]*ent.WorkflowStage, error) {
+	return s.ent.WorkflowStage.Query().
+		Where(workflowstage.OrganizationID(orgID), workflowstage.ApplicationID(appID)).
+		Order(ent.Asc(workflowstage.FieldOrdinal)).
+		WithComponents(func(q *ent.ComponentQuery) {
+			q.Where(component.OrganizationID(orgID)).
+				Order(ent.Asc(component.FieldOrdinal), ent.Asc(component.FieldCreatedAt))
+		}).
 		All(ctx)
 }
 
-// ReplaceWorkflow validates the proposed authored graph (components + explicit
-// group containers) and atomically replaces the application's workflow with it:
-// in one transaction it deletes the app's existing groups and components and
-// recreates them, preserving each input's client-provided id (so depends_on
-// edges, group_id refs, and canvas identity are stable across an edit). Groups
-// are deleted/recreated before components because components carry a group_id FK
-// to component_groups. A validation failure (see validateWorkflow) is returned
-// before any write. The application must belong to the organization.
+// ReplaceWorkflow validates the proposed workflow (stages, each with its
+// components) and atomically replaces the application's workflow with it: in
+// one transaction it deletes the app's existing components and stages and
+// recreates them, preserving each input's client-provided id (so a component's
+// variables, state, and history stay attached across an edit) and recording
+// the given order as each stage's and component's ordinal. A validation
+// failure (see validateWorkflow) is returned before any write. The application
+// must belong to the organization.
 //
-// Returns the persisted components and groups (created-order), reloaded outside
-// the transaction.
-func (s *Service) ReplaceWorkflow(ctx context.Context, orgID, appID uuid.UUID, nodes []ComponentInput, groups []GroupInput) ([]*ent.Component, []*ent.ComponentGroup, error) {
+// Returns the persisted workflow, reloaded outside the transaction.
+func (s *Service) ReplaceWorkflow(ctx context.Context, orgID, appID uuid.UUID, stages []StageInput) ([]*ent.WorkflowStage, error) {
 	app, err := s.getApp(ctx, orgID, appID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	// Normalise each node's approval policy (trim/lowercase/dedupe the
-	// approvers, bound the counts) before the DAG validation, so what is
-	// persisted is canonical and a bad policy is a 400 like any config error.
-	for i := range nodes {
-		p, err := normalizeApprovalPolicy(nodes[i])
-		if err != nil {
-			return nil, nil, err
+	// Normalise each component's approval policy (trim/lowercase/dedupe the
+	// approvers, bound the counts) before the validation, so what is persisted
+	// is canonical and a bad policy is a 400 like any config error.
+	for i := range stages {
+		for j := range stages[i].Components {
+			p, err := normalizeApprovalPolicy(stages[i].Components[j])
+			if err != nil {
+				return nil, err
+			}
+			stages[i].Components[j].ApprovalPolicy = p
 		}
-		nodes[i].ApprovalPolicy = p
 	}
-	if err := validateWorkflow(nodes, groups); err != nil {
-		return nil, nil, err
+	if err := validateWorkflow(stages); err != nil {
+		return nil, err
 	}
+	nodes := flattenStages(stages)
 	if err := s.validateComponentTargets(ctx, orgID, app, nodes); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	tx, err := s.ent.Tx(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	// Delete components first (they FK group_id → component_groups), then groups.
+	// Delete components first (they FK stage_id → workflow_stages), then stages.
 	if _, err := tx.Component.Delete().
 		Where(component.OrganizationID(orgID), component.ApplicationID(appID)).
 		Exec(ctx); err != nil {
-		return nil, nil, rollback(tx, err)
+		return nil, rollback(tx, err)
 	}
-	if _, err := tx.ComponentGroup.Delete().
-		Where(componentgroup.OrganizationID(orgID), componentgroup.ApplicationID(appID)).
+	if _, err := tx.WorkflowStage.Delete().
+		Where(workflowstage.OrganizationID(orgID), workflowstage.ApplicationID(appID)).
 		Exec(ctx); err != nil {
-		return nil, nil, rollback(tx, err)
+		return nil, rollback(tx, err)
 	}
 
-	// Recreate groups before components, since a component's group_id references a
-	// group row.
-	for _, g := range groups {
-		if err := s.createGroup(ctx, tx, orgID, appID, g); err != nil {
-			return nil, nil, rollback(tx, err)
+	// Recreate each stage before its components, since a component's stage_id
+	// references a stage row.
+	for i, st := range stages {
+		if err := tx.WorkflowStage.Create().
+			SetID(st.ID).
+			SetOrganizationID(orgID).
+			SetApplicationID(appID).
+			SetName(strings.TrimSpace(st.Name)).
+			SetOrdinal(i).
+			Exec(ctx); err != nil {
+			return nil, rollback(tx, err)
 		}
-	}
-	for _, n := range nodes {
-		if err := s.createComponent(ctx, tx, orgID, appID, n); err != nil {
-			return nil, nil, rollback(tx, err)
+		for j, n := range st.Components {
+			if err := s.createComponent(ctx, tx, orgID, appID, st.ID, j, n); err != nil {
+				return nil, rollback(tx, err)
+			}
 		}
 	}
 
 	// Reconcile component-scoped variables: drop those whose component is no
 	// longer in the workflow. Component variables aren't FK'd to components (the
 	// components are deleted + recreated above with stable ids), so a variable
-	// whose component_id is absent from the new node set belongs to a removed
-	// component and must be cleaned up. Components that persist keep their id, so
-	// their variables survive untouched.
+	// whose component_id is absent from the new component set belongs to a
+	// removed component and must be cleaned up. Components that persist keep
+	// their id, so their variables survive untouched.
 	del := tx.Variable.Delete().Where(
 		variable.OrganizationID(orgID),
 		variable.ApplicationID(appID),
@@ -180,78 +198,35 @@ func (s *Service) ReplaceWorkflow(ctx context.Context, orgID, appID uuid.UUID, n
 		del = del.Where(variable.ComponentIDNotIn(keep...))
 	}
 	if _, err := del.Exec(ctx); err != nil {
-		return nil, nil, rollback(tx, err)
+		return nil, rollback(tx, err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, nil, err
-	}
-	// Reload outside the transaction so callers see the persisted rows in order.
-	comps, err := s.ent.Component.Query().
-		Where(component.OrganizationID(orgID), component.ApplicationID(appID)).
-		Order(ent.Asc(component.FieldCreatedAt)).
-		All(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	grps, err := s.listGroups(ctx, orgID, appID)
-	if err != nil {
-		return nil, nil, err
-	}
-	return comps, grps, nil
-}
-
-// ListGroups returns an application's group containers, scoped to the
-// organization. It first confirms the application belongs to the org; a missing
-// application surfaces as ent's NotFoundError.
-func (s *Service) ListGroups(ctx context.Context, orgID, appID uuid.UUID) ([]*ent.ComponentGroup, error) {
-	if _, err := s.getApp(ctx, orgID, appID); err != nil {
 		return nil, err
 	}
-	return s.listGroups(ctx, orgID, appID)
+	// Reload outside the transaction so callers see the persisted rows in order.
+	return s.loadStages(ctx, orgID, appID)
 }
 
-// listGroups is the unguarded org-scoped query, shared by ListGroups (which adds
-// the application-membership check) and ReplaceWorkflow (which already confirmed
-// the app).
-func (s *Service) listGroups(ctx context.Context, orgID, appID uuid.UUID) ([]*ent.ComponentGroup, error) {
-	return s.ent.ComponentGroup.Query().
-		Where(componentgroup.OrganizationID(orgID), componentgroup.ApplicationID(appID)).
-		Order(ent.Asc(componentgroup.FieldCreatedAt)).
-		All(ctx)
-}
-
-// createGroup persists one validated group container within the replace
-// transaction, keeping its client-provided id.
-func (s *Service) createGroup(ctx context.Context, tx *ent.Tx, orgID, appID uuid.UUID, g GroupInput) error {
-	return tx.ComponentGroup.Create().
-		SetID(g.ID).
-		SetOrganizationID(orgID).
-		SetApplicationID(appID).
-		SetName(g.Name).
-		SetDependsOn(nonNilIDs(g.DependsOn)).
-		SetPosition(nonNilFloatMap(g.Position)).
-		SetSize(nonNilFloatMap(g.Size)).
-		Exec(ctx)
-}
-
-// createComponent persists one validated node within the replace transaction,
-// keeping its client-provided id. Optional FK fields (target cluster, credential,
-// installation) are set only when present and non-zero, mirroring lib/applications.
-func (s *Service) createComponent(ctx context.Context, tx *ent.Tx, orgID, appID uuid.UUID, n ComponentInput) error {
+// createComponent persists one validated component within the replace
+// transaction, keeping its client-provided id and placing it in its stage at
+// the given display ordinal. Optional FK fields (target cluster, credential,
+// installation) are set only when present and non-zero, mirroring
+// lib/applications.
+func (s *Service) createComponent(ctx context.Context, tx *ent.Tx, orgID, appID, stageID uuid.UUID, ordinal int, n ComponentInput) error {
 	create := tx.Component.Create().
 		SetID(n.ID).
 		SetOrganizationID(orgID).
 		SetApplicationID(appID).
+		SetStageID(stageID).
+		SetOrdinal(ordinal).
 		SetName(n.Name).
 		SetType(component.Type(n.Type)).
 		SetConfig(nonNilStringMap(n.Config)).
-		SetDependsOn(nonNilIDs(n.DependsOn)).
 		SetContinueOnFailure(n.ContinueOnFailure).
 		SetRequiresApproval(n.RequiresApproval).
 		SetApprovalPolicy(n.ApprovalPolicy).
-		SetTargetNamespace(n.TargetNamespace).
-		SetPosition(nonNilFloatMap(n.Position))
+		SetTargetNamespace(n.TargetNamespace)
 	if n.TargetClusterID != nil && *n.TargetClusterID != uuid.Nil {
 		create.SetTargetClusterID(*n.TargetClusterID)
 	}
@@ -260,9 +235,6 @@ func (s *Service) createComponent(ctx context.Context, tx *ent.Tx, orgID, appID 
 	}
 	if n.GitHubInstallationID != nil && *n.GitHubInstallationID != uuid.Nil {
 		create.SetGithubInstallationID(*n.GitHubInstallationID)
-	}
-	if n.GroupID != nil && *n.GroupID != uuid.Nil {
-		create.SetGroupID(*n.GroupID)
 	}
 	return create.Exec(ctx)
 }
@@ -282,7 +254,7 @@ func (s *Service) getApp(ctx context.Context, orgID, appID uuid.UUID) (*ent.Appl
 // cluster (an in-cluster API server is only reachable from a pod in that same
 // cluster — the rule that used to live on the application). Terraform nodes
 // carry no target (validateConfig already enforces that) and are skipped. The
-// pure DAG validation has already guaranteed each helm/manifest node names a
+// pure workflow validation has already guaranteed each helm/manifest node names a
 // target cluster, so a missing one here means it isn't in the org. Failures wrap
 // ErrInvalidTarget, which a handler maps to 400.
 func (s *Service) validateComponentTargets(ctx context.Context, orgID uuid.UUID, app *ent.Application, nodes []ComponentInput) error {
@@ -331,14 +303,6 @@ func (s *Service) validateComponentTargets(ctx context.Context, orgID uuid.UUID,
 func nonNilStringMap(m map[string]string) map[string]string {
 	if m == nil {
 		return map[string]string{}
-	}
-	return m
-}
-
-// nonNilFloatMap guards against a nil map reaching the JSON column.
-func nonNilFloatMap(m map[string]float64) map[string]float64 {
-	if m == nil {
-		return map[string]float64{}
 	}
 	return m
 }

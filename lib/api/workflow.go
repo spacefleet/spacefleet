@@ -33,8 +33,9 @@ func (s *Server) resolveWorkflowWrite(ctx context.Context) (uuid.UUID, *apiError
 	return s.resolveAppWrite(ctx)
 }
 
-// GetApplicationWorkflow returns the application's workflow components. Read
-// access (viewer or above); secret-bearing config is redacted below editor.
+// GetApplicationWorkflow returns the application's workflow: its stages in run
+// order, each with its components. Read access (viewer or above);
+// secret-bearing config is redacted below editor.
 func (s *Server) GetApplicationWorkflow(ctx context.Context, req GetApplicationWorkflowRequestObject) (GetApplicationWorkflowResponseObject, error) {
 	orgID, canSeeSecrets, aerr, err := s.resolveWorkflowRead(ctx)
 	if err != nil {
@@ -43,26 +44,19 @@ func (s *Server) GetApplicationWorkflow(ctx context.Context, req GetApplicationW
 	if aerr != nil {
 		return errResp[GetApplicationWorkflowdefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
 	}
-	comps, err := s.workflows.ListComponents(ctx, orgID, req.Id)
+	stages, err := s.workflows.GetWorkflow(ctx, orgID, req.Id)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return errResp[GetApplicationWorkflowdefaultJSONResponse](http.StatusNotFound, "not_found", "application not found"), nil
 		}
 		return nil, err
 	}
-	groups, err := s.workflows.ListGroups(ctx, orgID, req.Id)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return errResp[GetApplicationWorkflowdefaultJSONResponse](http.StatusNotFound, "not_found", "application not found"), nil
-		}
-		return nil, err
-	}
-	return GetApplicationWorkflow200JSONResponse(toAPIWorkflow(comps, groups, canSeeSecrets)), nil
+	return GetApplicationWorkflow200JSONResponse(toAPIWorkflow(stages, canSeeSecrets)), nil
 }
 
-// ReplaceApplicationWorkflow validates the proposed DAG and atomically replaces
-// the application's components with it. Editor or above; a DAG/config validation
-// failure is a 400.
+// ReplaceApplicationWorkflow validates the proposed workflow and atomically
+// replaces the application's stages and components with it. Editor or above; a
+// validation failure is a 400.
 func (s *Server) ReplaceApplicationWorkflow(ctx context.Context, req ReplaceApplicationWorkflowRequestObject) (ReplaceApplicationWorkflowResponseObject, error) {
 	orgID, aerr, err := s.resolveWorkflowWrite(ctx)
 	if err != nil {
@@ -74,18 +68,11 @@ func (s *Server) ReplaceApplicationWorkflow(ctx context.Context, req ReplaceAppl
 	if req.Body == nil {
 		return errResp[ReplaceApplicationWorkflowdefaultJSONResponse](http.StatusBadRequest, "bad_request", "request body is required"), nil
 	}
-	nodes := make([]workflows.ComponentInput, len(req.Body.Components))
-	for i, c := range req.Body.Components {
-		nodes[i] = toComponentInput(c)
+	stages := make([]workflows.StageInput, len(req.Body.Stages))
+	for i, st := range req.Body.Stages {
+		stages[i] = toStageInput(st)
 	}
-	var groups []workflows.GroupInput
-	if req.Body.Groups != nil {
-		groups = make([]workflows.GroupInput, len(*req.Body.Groups))
-		for i, g := range *req.Body.Groups {
-			groups[i] = toGroupInput(g)
-		}
-	}
-	comps, grps, err := s.workflows.ReplaceWorkflow(ctx, orgID, req.Id, nodes, groups)
+	saved, err := s.workflows.ReplaceWorkflow(ctx, orgID, req.Id, stages)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return errResp[ReplaceApplicationWorkflowdefaultJSONResponse](http.StatusNotFound, "not_found", "application not found"), nil
@@ -96,22 +83,19 @@ func (s *Server) ReplaceApplicationWorkflow(ctx context.Context, req ReplaceAppl
 		return nil, err
 	}
 	// The writer is editor-or-above, so the round-tripped components are returned
-	// unredacted (canSee=true), keeping the canvas edit form populated.
-	return ReplaceApplicationWorkflow200JSONResponse(toAPIWorkflow(comps, grps, true)), nil
+	// unredacted (canSee=true), keeping the builder's edit form populated.
+	return ReplaceApplicationWorkflow200JSONResponse(toAPIWorkflow(saved, true)), nil
 }
 
-// isWorkflowValidation reports whether err is one of the DAG/config validation
-// sentinels (or the invalid-action sentinel) the service returns, which a
-// handler maps to 400.
+// isWorkflowValidation reports whether err is one of the workflow/config
+// validation sentinels (or the invalid-action sentinel) the service returns,
+// which a handler maps to 400.
 func isWorkflowValidation(err error) bool {
 	return errors.Is(err, workflows.ErrDuplicateID) ||
 		errors.Is(err, workflows.ErrMissingID) ||
-		errors.Is(err, workflows.ErrUnknownDependency) ||
-		errors.Is(err, workflows.ErrSelfDependency) ||
-		errors.Is(err, workflows.ErrCycle) ||
+		errors.Is(err, workflows.ErrInvalidStage) ||
 		errors.Is(err, workflows.ErrInvalidConfig) ||
 		errors.Is(err, workflows.ErrInvalidTarget) ||
-		errors.Is(err, workflows.ErrUnknownGroup) ||
 		errors.Is(err, workflows.ErrInvalidAction)
 }
 
@@ -123,9 +107,24 @@ func isWorkflowValidation(err error) bool {
 //     keys, azurerm secrets, a pg backend conn_str password, etc.
 var secretConfigKeys = []string{"values", "backend_config"}
 
+// toStageInput maps an API WorkflowStageInput to the service input, keeping the
+// order of its components.
+func toStageInput(st WorkflowStageInput) workflows.StageInput {
+	in := workflows.StageInput{
+		ID:         st.Id,
+		Name:       strings.TrimSpace(st.Name),
+		Components: make([]workflows.ComponentInput, len(st.Components)),
+	}
+	for i, c := range st.Components {
+		in.Components[i] = toComponentInput(c)
+	}
+	return in
+}
+
 // toComponentInput maps an API ComponentInput to the service input. Optional
-// fields default to their zero value; the canvas sends a stable client-provided
-// id so depends_on edges survive the replace.
+// fields default to their zero value; the builder sends a stable
+// client-provided id so the component's variables and history survive the
+// replace.
 func toComponentInput(c ComponentInput) workflows.ComponentInput {
 	in := workflows.ComponentInput{
 		ID:                   c.Id,
@@ -139,62 +138,21 @@ func toComponentInput(c ComponentInput) workflows.ComponentInput {
 		TargetNamespace:      strings.TrimSpace(deref(c.TargetNamespace)),
 		ChartCredentialID:    c.ChartCredentialId,
 		GitHubInstallationID: c.GithubInstallationId,
-		Position:             float32MapToFloat64(c.Position),
-		GroupID:              c.GroupId,
-	}
-	if c.DependsOn != nil {
-		in.DependsOn = *c.DependsOn
 	}
 	return in
 }
 
-// toGroupInput maps an API ComponentGroupInput to the service input. The canvas
-// sends a stable client-provided id so component group_id refs and depends_on
-// edges survive the replace.
-func toGroupInput(g ComponentGroupInput) workflows.GroupInput {
-	in := workflows.GroupInput{
-		ID:       g.Id,
-		Name:     strings.TrimSpace(g.Name),
-		Position: float32MapToFloat64(g.Position),
-		Size:     float32MapToFloat64(g.Size),
-	}
-	if g.DependsOn != nil {
-		in.DependsOn = *g.DependsOn
-	}
-	return in
-}
-
-// toAPIWorkflow maps the application's component and group rows to the API
-// workflow, redacting secret-bearing config for callers below editor
-// (canSee=false).
-func toAPIWorkflow(comps []*ent.Component, groups []*ent.ComponentGroup, canSee bool) Workflow {
-	out := Workflow{
-		Components: make([]Component, len(comps)),
-		Groups:     make([]ComponentGroup, len(groups)),
-	}
-	for i, c := range comps {
-		out.Components[i] = toAPIComponent(c, canSee)
-	}
-	for i, g := range groups {
-		out.Groups[i] = toAPIGroup(g)
-	}
-	return out
-}
-
-// toAPIGroup maps one group row to the API type.
-func toAPIGroup(g *ent.ComponentGroup) ComponentGroup {
-	out := ComponentGroup{
-		Id:        g.ID,
-		Name:      g.Name,
-		DependsOn: nonNilUUIDs(g.DependsOn),
-	}
-	if len(g.Position) > 0 {
-		pos := float64MapToFloat32(g.Position)
-		out.Position = &pos
-	}
-	if len(g.Size) > 0 {
-		size := float64MapToFloat32(g.Size)
-		out.Size = &size
+// toAPIWorkflow maps the application's stages (with their components eager
+// loaded) to the API workflow, redacting secret-bearing config for callers
+// below editor (canSee=false).
+func toAPIWorkflow(stages []*ent.WorkflowStage, canSee bool) Workflow {
+	out := Workflow{Stages: make([]WorkflowStage, len(stages))}
+	for i, st := range stages {
+		comps := make([]Component, len(st.Edges.Components))
+		for j, c := range st.Edges.Components {
+			comps[j] = toAPIComponent(c, canSee)
+		}
+		out.Stages[i] = WorkflowStage{Id: st.ID, Name: st.Name, Components: comps}
 	}
 	return out
 }
@@ -208,7 +166,6 @@ func toAPIComponent(c *ent.Component, canSee bool) Component {
 		Name:              c.Name,
 		Type:              ComponentType(c.Type),
 		Config:            redactConfig(c.Config, canSee),
-		DependsOn:         nonNilUUIDs(c.DependsOn),
 		ContinueOnFailure: c.ContinueOnFailure,
 		RequiresApproval:  &c.RequiresApproval,
 		ApprovalPolicy:    toAPIApprovalPolicy(c.ApprovalPolicy),
@@ -228,14 +185,6 @@ func toAPIComponent(c *ent.Component, canSee bool) Component {
 	if c.GithubInstallationID != uuid.Nil {
 		id := c.GithubInstallationID
 		out.GithubInstallationId = &id
-	}
-	if len(c.Position) > 0 {
-		pos := float64MapToFloat32(c.Position)
-		out.Position = &pos
-	}
-	if c.GroupID != uuid.Nil {
-		id := c.GroupID
-		out.GroupId = &id
 	}
 	return out
 }
@@ -262,38 +211,6 @@ func derefMap(p *map[string]string) map[string]string {
 		return nil
 	}
 	return *p
-}
-
-// nonNilUUIDs returns the slice or an empty (non-nil) slice, so the required
-// `depends_on` array serializes as [] rather than null.
-func nonNilUUIDs(in []uuid.UUID) []uuid.UUID {
-	if in == nil {
-		return []uuid.UUID{}
-	}
-	return in
-}
-
-// float32MapToFloat64 converts the API position map (float32) to the storage
-// shape (float64). Nil stays nil.
-func float32MapToFloat64(in *map[string]float32) map[string]float64 {
-	if in == nil {
-		return nil
-	}
-	out := make(map[string]float64, len(*in))
-	for k, v := range *in {
-		out[k] = float64(v)
-	}
-	return out
-}
-
-// float64MapToFloat32 converts the stored position map (float64) to the API
-// shape (float32).
-func float64MapToFloat32(in map[string]float64) map[string]float32 {
-	out := make(map[string]float32, len(in))
-	for k, v := range in {
-		out[k] = float32(v)
-	}
-	return out
 }
 
 // toApprovalPolicy maps the API policy (all fields optional) to the service

@@ -861,19 +861,22 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get an application's deploy workflow (its component graph)
-         * @description Org-scoped. Returns the application's workflow as the list of its
-         *     components (the DAG nodes; edges are each node's depends_on). Secret-
-         *     bearing component config (the Helm `values` override) is redacted for
-         *     callers below editor.
+         * Get an application's deploy workflow (its stages and components)
+         * @description Org-scoped. Returns the application's workflow as its ordered stages,
+         *     each holding its ordered components. Stages run in order; the
+         *     components within a stage run in parallel. Secret-bearing component
+         *     config (the Helm `values` override) is redacted for callers below
+         *     editor.
          */
         get: operations["getApplicationWorkflow"];
         /**
          * Replace an application's deploy workflow
-         * @description Org-scoped, editor or above. Validates the proposed DAG (distinct
-         *     non-zero ids, dependencies exist, no self-dependency, acyclic, per-type
-         *     config valid) and atomically replaces the application's components with
-         *     it. A validation failure returns 400 before any write.
+         * @description Org-scoped, editor or above. Validates the proposed workflow (distinct
+         *     non-zero ids, non-empty stage names, per-type config valid,
+         *     output references only to OpenTofu components in an earlier stage) and
+         *     atomically replaces the application's stages and components with it,
+         *     keeping the order given. A validation failure returns 400 before any
+         *     write.
          */
         put: operations["replaceApplicationWorkflow"];
         post?: never;
@@ -1111,7 +1114,7 @@ export interface paths {
         /**
          * List an application's workflow runs
          * @description Org-scoped. Returns the application's workflow runs newest-first — one
-         *     per deploy/uninstall/preview of the whole DAG, plus component-scoped
+         *     per deploy/uninstall/preview of the whole workflow, plus component-scoped
          *     runs and state operations — for a CI-like history.
          *     Component runs and the graph snapshot are not included here; fetch a
          *     single run for those.
@@ -2161,7 +2164,7 @@ export interface components {
             azure_client_secret?: string;
         };
         /**
-         * @description A deployable workload that owns a deploy workflow (a DAG of components).
+         * @description A deployable workload that owns a deploy workflow (stages of components).
          *     The application holds only the workflow-owner fields; all chart-specific
          *     config and targeting (cluster + namespace) live on its components, and
          *     run/sync state lives on its runs.
@@ -2702,9 +2705,10 @@ export interface components {
          */
         ComponentType: "helm" | "manifest" | "terraform";
         /**
-         * @description One node of an application's deploy workflow (a DAG step). Edges are
-         *     expressed by each node's depends_on. The secret-bearing config (the Helm
-         *     `values` override) is redacted for callers below editor.
+         * @description One component of an application's deploy workflow: a typed step that
+         *     runs within its stage, in parallel with the stage's other components.
+         *     The secret-bearing config (the Helm `values` override) is redacted for
+         *     callers below editor.
          */
         Component: {
             /** Format: uuid */
@@ -2754,11 +2758,9 @@ export interface components {
             config: {
                 [key: string]: string;
             };
-            /** @description Ids of sibling components this node waits on. */
-            depends_on: string[];
             /**
-             * @description When true, a failure of this node does not skip its dependents or
-             *     fail the run (the run settles "partial" instead).
+             * @description When true, a failure of this component does not skip the later
+             *     stages or fail the run (the run settles "partial" instead).
              */
             continue_on_failure: boolean;
             /**
@@ -2791,17 +2793,6 @@ export interface components {
              * @description Optional GitHub App installation for a private git source.
              */
             github_installation_id?: string | null;
-            /** @description Canvas coordinates {x, y} for the workflow builder UI. */
-            position?: {
-                [key: string]: number;
-            };
-            /**
-             * Format: uuid
-             * @description Id of the explicit group container this component is a parallel
-             *     member of, or null when ungrouped. A node that depends on a group
-             *     waits for all of its members.
-             */
-            group_id?: string | null;
         };
         /**
          * @description The policy applied at a component's approval gate (requires_approval).
@@ -2833,9 +2824,9 @@ export interface components {
             timeout_minutes?: number;
         };
         /**
-         * @description One proposed workflow node, supplied by the canvas. id is client-provided
-         *     (a stable uuid per node) so depends_on edges and canvas identity survive a
-         *     replace.
+         * @description One proposed workflow component, supplied by the builder. id is
+         *     client-provided (a stable uuid per component) so the component's
+         *     variables, state, and run history stay attached across a replace.
          */
         ComponentInput: {
             /** Format: uuid */
@@ -2852,11 +2843,10 @@ export interface components {
             config?: {
                 [key: string]: string;
             };
-            depends_on?: string[];
             continue_on_failure?: boolean;
             /**
-             * @description When true, the run parks at this node until a human approves it
-             *     (status awaiting_approval). Defaults to false.
+             * @description When true, the run parks at this component until a human approves
+             *     it (status awaiting_approval). Defaults to false.
              */
             requires_approval?: boolean;
             approval_policy?: components["schemas"]["ApprovalPolicy"];
@@ -2875,73 +2865,46 @@ export interface components {
             chart_credential_id?: string | null;
             /** Format: uuid */
             github_installation_id?: string | null;
-            position?: {
-                [key: string]: number;
-            };
-            /** Format: uuid */
-            group_id?: string | null;
         };
         /**
-         * @description An explicit group container in an application's deploy workflow — a named
-         *     box holding components that run in parallel. A node that depends on the
-         *     group waits for all of its members (all-must-complete); a group's
-         *     depends_on makes every member wait on those refs. Groups are a builder
-         *     concept that desugar into component-level depends_on; the scheduler never
-         *     sees a group.
+         * @description One stage of an application's workflow: a named, ordered set of
+         *     components that run in parallel. Stages run in order — a stage starts
+         *     once every component of the previous stage has finished, and a failure
+         *     (without continue_on_failure) skips every later stage.
          */
-        ComponentGroup: {
+        WorkflowStage: {
             /** Format: uuid */
             id: string;
             name: string;
-            /**
-             * @description Ids of the components/groups the whole group waits on (entries may
-             *     reference a component or a sibling group).
-             */
-            depends_on: string[];
-            /** @description Canvas coordinates {x, y} for the workflow builder UI. */
-            position?: {
-                [key: string]: number;
-            };
-            /** @description Canvas dimensions {w, h} for the workflow builder UI. */
-            size?: {
-                [key: string]: number;
-            };
+            components: components["schemas"]["Component"][];
         };
         /**
-         * @description One proposed group container, supplied by the canvas. id is
-         *     client-provided (a stable uuid per group) so component group_id refs and
-         *     depends_on edges survive a replace.
+         * @description One proposed stage, supplied by the builder. id is client-provided (a
+         *     stable uuid per stage). A stage may be empty.
          */
-        ComponentGroupInput: {
+        WorkflowStageInput: {
             /** Format: uuid */
             id: string;
+            /** @description The stage's display name. */
             name: string;
-            depends_on?: string[];
-            position?: {
-                [key: string]: number;
-            };
-            size?: {
-                [key: string]: number;
-            };
+            components: components["schemas"]["ComponentInput"][];
         };
         /**
-         * @description An application's deploy workflow — its components plus any explicit group
-         *     containers.
+         * @description An application's deploy workflow — its stages, in run order, each with
+         *     its components.
          */
         Workflow: {
-            components: components["schemas"]["Component"][];
-            groups: components["schemas"]["ComponentGroup"][];
+            stages: components["schemas"]["WorkflowStage"][];
         };
         /**
-         * @description The full set of components and group containers to replace the workflow
-         *     with.
+         * @description The full workflow to replace the current one with: every stage, in run
+         *     order, each with its components in display order.
          */
         WorkflowReplaceRequest: {
-            components: components["schemas"]["ComponentInput"][];
-            groups?: components["schemas"]["ComponentGroupInput"][];
+            stages: components["schemas"]["WorkflowStageInput"][];
         };
         /**
-         * @description What a workflow run does across the whole DAG. `drift` is a drift
+         * @description What a workflow run does across the whole workflow. `drift` is a drift
          *     check: every OpenTofu component runs a read-only refresh-only plan
          *     reporting what changed outside of OpenTofu since its last apply; Helm
          *     and Manifest components take no part (400 if the application has no
@@ -3001,6 +2964,41 @@ export interface components {
             state_op?: components["schemas"]["StateOperation"];
             scope?: components["schemas"]["RunScope"];
             trigger?: components["schemas"]["RunTrigger"];
+            /**
+             * @description The run's stages in order, each with its components and their
+             *     combined status — the at-a-glance shape of the run. Present on the
+             *     run list, the run detail, and their streams. A run started before
+             *     workflows had stages gets stages derived from its recorded
+             *     dependencies (named "Stage 1", "Stage 2", …).
+             */
+            stages?: components["schemas"]["RunStage"][];
+        };
+        /** @description One stage of a run, with the combined status of its components. */
+        RunStage: {
+            name: string;
+            status: components["schemas"]["ComponentRunStatus"];
+            components: components["schemas"]["RunStageComponent"][];
+        };
+        /**
+         * @description One component within a run's stage. An OpenTofu component runs as two
+         *     steps (plan, then apply — or just a plan on a read-only run), so it
+         *     lists both step ids; every other component has one. status combines
+         *     the steps: failed if any failed, then awaiting approval, then running,
+         *     succeeded once every step succeeded.
+         */
+        RunStageComponent: {
+            /**
+             * Format: uuid
+             * @description The authored component's id (it may since have been deleted).
+             */
+            component_id: string;
+            /** @description The component's name as it ran. */
+            name: string;
+            /** @description The component's type as it ran. */
+            type: string;
+            status: components["schemas"]["ComponentRunStatus"];
+            /** @description The ids of this component's steps (component runs), in run order. */
+            component_run_ids: string[];
         };
         RunList: {
             runs: components["schemas"]["WorkflowRun"][];
@@ -3408,9 +3406,10 @@ export interface components {
         WorkflowRunDetail: components["schemas"]["WorkflowRun"] & {
             component_runs: components["schemas"]["ComponentRun"][];
             /**
-             * @description JSON snapshot of the workflow graph (nodes + edges + config) as it
-             *     was when the run began. Secret-bearing config is redacted for
-             *     callers below editor.
+             * @description JSON snapshot of the workflow (stages, plus each execution step
+             *     with its config and the steps it waits on) as it was when the
+             *     run began. Secret-bearing config is redacted for callers below
+             *     editor.
              */
             graph?: string;
         };
@@ -4676,7 +4675,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The application's workflow components */
+            /** @description The application's workflow */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4703,7 +4702,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The replaced workflow components */
+            /** @description The replaced workflow */
             200: {
                 headers: {
                     [name: string]: unknown;

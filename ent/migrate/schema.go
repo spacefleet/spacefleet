@@ -211,12 +211,11 @@ var (
 		{Name: "name", Type: field.TypeString},
 		{Name: "type", Type: field.TypeEnum, Enums: []string{"helm", "manifest", "terraform"}, Default: "helm"},
 		{Name: "config", Type: field.TypeJSON, Nullable: true},
-		{Name: "depends_on", Type: field.TypeJSON, Nullable: true},
+		{Name: "ordinal", Type: field.TypeInt, Default: 0},
 		{Name: "continue_on_failure", Type: field.TypeBool, Default: false},
 		{Name: "requires_approval", Type: field.TypeBool, Default: false},
 		{Name: "approval_policy", Type: field.TypeJSON, Nullable: true},
 		{Name: "target_namespace", Type: field.TypeString, Nullable: true},
-		{Name: "position", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "organization_id", Type: field.TypeUUID},
@@ -224,7 +223,7 @@ var (
 		{Name: "target_cluster_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "chart_credential_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "github_installation_id", Type: field.TypeUUID, Nullable: true},
-		{Name: "group_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "stage_id", Type: field.TypeUUID},
 	}
 	// ComponentsTable holds the schema information for the "components" table.
 	ComponentsTable = &schema.Table{
@@ -234,95 +233,56 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "components_organizations_organization",
-				Columns:    []*schema.Column{ComponentsColumns[12]},
+				Columns:    []*schema.Column{ComponentsColumns[11]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "components_applications_application",
-				Columns:    []*schema.Column{ComponentsColumns[13]},
+				Columns:    []*schema.Column{ComponentsColumns[12]},
 				RefColumns: []*schema.Column{ApplicationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "components_clusters_target_cluster",
-				Columns:    []*schema.Column{ComponentsColumns[14]},
+				Columns:    []*schema.Column{ComponentsColumns[13]},
 				RefColumns: []*schema.Column{ClustersColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "components_chart_credentials_chart_credential",
-				Columns:    []*schema.Column{ComponentsColumns[15]},
+				Columns:    []*schema.Column{ComponentsColumns[14]},
 				RefColumns: []*schema.Column{ChartCredentialsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "components_github_installations_github_installation",
-				Columns:    []*schema.Column{ComponentsColumns[16]},
+				Columns:    []*schema.Column{ComponentsColumns[15]},
 				RefColumns: []*schema.Column{GithubInstallationsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
-				Symbol:     "components_component_groups_group",
-				Columns:    []*schema.Column{ComponentsColumns[17]},
-				RefColumns: []*schema.Column{ComponentGroupsColumns[0]},
-				OnDelete:   schema.SetNull,
+				Symbol:     "components_workflow_stages_stage",
+				Columns:    []*schema.Column{ComponentsColumns[16]},
+				RefColumns: []*schema.Column{WorkflowStagesColumns[0]},
+				OnDelete:   schema.NoAction,
 			},
 		},
 		Indexes: []*schema.Index{
 			{
 				Name:    "component_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{ComponentsColumns[12]},
+				Columns: []*schema.Column{ComponentsColumns[11]},
 			},
 			{
 				Name:    "component_application_id",
 				Unique:  false,
-				Columns: []*schema.Column{ComponentsColumns[13]},
-			},
-		},
-	}
-	// ComponentGroupsColumns holds the columns for the "component_groups" table.
-	ComponentGroupsColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeUUID},
-		{Name: "name", Type: field.TypeString},
-		{Name: "depends_on", Type: field.TypeJSON, Nullable: true},
-		{Name: "position", Type: field.TypeJSON, Nullable: true},
-		{Name: "size", Type: field.TypeJSON, Nullable: true},
-		{Name: "created_at", Type: field.TypeTime},
-		{Name: "updated_at", Type: field.TypeTime},
-		{Name: "organization_id", Type: field.TypeUUID},
-		{Name: "application_id", Type: field.TypeUUID},
-	}
-	// ComponentGroupsTable holds the schema information for the "component_groups" table.
-	ComponentGroupsTable = &schema.Table{
-		Name:       "component_groups",
-		Columns:    ComponentGroupsColumns,
-		PrimaryKey: []*schema.Column{ComponentGroupsColumns[0]},
-		ForeignKeys: []*schema.ForeignKey{
-			{
-				Symbol:     "component_groups_organizations_organization",
-				Columns:    []*schema.Column{ComponentGroupsColumns[7]},
-				RefColumns: []*schema.Column{OrganizationsColumns[0]},
-				OnDelete:   schema.NoAction,
+				Columns: []*schema.Column{ComponentsColumns[12]},
 			},
 			{
-				Symbol:     "component_groups_applications_application",
-				Columns:    []*schema.Column{ComponentGroupsColumns[8]},
-				RefColumns: []*schema.Column{ApplicationsColumns[0]},
-				OnDelete:   schema.NoAction,
-			},
-		},
-		Indexes: []*schema.Index{
-			{
-				Name:    "componentgroup_organization_id",
+				Name:    "component_stage_id",
 				Unique:  false,
-				Columns: []*schema.Column{ComponentGroupsColumns[7]},
-			},
-			{
-				Name:    "componentgroup_application_id",
-				Unique:  false,
-				Columns: []*schema.Column{ComponentGroupsColumns[8]},
+				Columns: []*schema.Column{ComponentsColumns[16]},
 			},
 		},
 	}
@@ -786,6 +746,48 @@ var (
 			},
 		},
 	}
+	// WorkflowStagesColumns holds the columns for the "workflow_stages" table.
+	WorkflowStagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "ordinal", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "organization_id", Type: field.TypeUUID},
+		{Name: "application_id", Type: field.TypeUUID},
+	}
+	// WorkflowStagesTable holds the schema information for the "workflow_stages" table.
+	WorkflowStagesTable = &schema.Table{
+		Name:       "workflow_stages",
+		Columns:    WorkflowStagesColumns,
+		PrimaryKey: []*schema.Column{WorkflowStagesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "workflow_stages_organizations_organization",
+				Columns:    []*schema.Column{WorkflowStagesColumns[5]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "workflow_stages_applications_application",
+				Columns:    []*schema.Column{WorkflowStagesColumns[6]},
+				RefColumns: []*schema.Column{ApplicationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "workflowstage_organization_id",
+				Unique:  false,
+				Columns: []*schema.Column{WorkflowStagesColumns[5]},
+			},
+			{
+				Name:    "workflowstage_application_id_ordinal",
+				Unique:  false,
+				Columns: []*schema.Column{WorkflowStagesColumns[6], WorkflowStagesColumns[2]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		ApplicationsTable,
@@ -794,7 +796,6 @@ var (
 		CloudCredentialsTable,
 		ClustersTable,
 		ComponentsTable,
-		ComponentGroupsTable,
 		ComponentRunsTable,
 		GithubInstallationsTable,
 		GroupVariablesTable,
@@ -807,6 +808,7 @@ var (
 		UsersTable,
 		VariablesTable,
 		WorkflowRunsTable,
+		WorkflowStagesTable,
 	}
 )
 
@@ -822,9 +824,7 @@ func init() {
 	ComponentsTable.ForeignKeys[2].RefTable = ClustersTable
 	ComponentsTable.ForeignKeys[3].RefTable = ChartCredentialsTable
 	ComponentsTable.ForeignKeys[4].RefTable = GithubInstallationsTable
-	ComponentsTable.ForeignKeys[5].RefTable = ComponentGroupsTable
-	ComponentGroupsTable.ForeignKeys[0].RefTable = OrganizationsTable
-	ComponentGroupsTable.ForeignKeys[1].RefTable = ApplicationsTable
+	ComponentsTable.ForeignKeys[5].RefTable = WorkflowStagesTable
 	ComponentRunsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ComponentRunsTable.ForeignKeys[1].RefTable = WorkflowRunsTable
 	GithubInstallationsTable.ForeignKeys[0].RefTable = OrganizationsTable
@@ -848,4 +848,6 @@ func init() {
 	VariablesTable.ForeignKeys[1].RefTable = ApplicationsTable
 	WorkflowRunsTable.ForeignKeys[0].RefTable = OrganizationsTable
 	WorkflowRunsTable.ForeignKeys[1].RefTable = ApplicationsTable
+	WorkflowStagesTable.ForeignKeys[0].RefTable = OrganizationsTable
+	WorkflowStagesTable.ForeignKeys[1].RefTable = ApplicationsTable
 }

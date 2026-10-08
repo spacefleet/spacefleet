@@ -3,7 +3,6 @@
 package ent
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -12,12 +11,12 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/application"
-	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/organization"
+	"github.com/spacefleet/spacefleet/ent/workflowstage"
 )
 
-// ComponentGroup is the model entity for the ComponentGroup schema.
-type ComponentGroup struct {
+// WorkflowStage is the model entity for the WorkflowStage schema.
+type WorkflowStage struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID uuid.UUID `json:"id,omitempty"`
@@ -27,36 +26,34 @@ type ComponentGroup struct {
 	ApplicationID uuid.UUID `json:"application_id,omitempty"`
 	// Name holds the value of the "name" field.
 	Name string `json:"name,omitempty"`
-	// DependsOn holds the value of the "depends_on" field.
-	DependsOn []uuid.UUID `json:"depends_on,omitempty"`
-	// Position holds the value of the "position" field.
-	Position map[string]float64 `json:"position,omitempty"`
-	// Size holds the value of the "size" field.
-	Size map[string]float64 `json:"size,omitempty"`
+	// Ordinal holds the value of the "ordinal" field.
+	Ordinal int `json:"ordinal,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
-	// The values are being populated by the ComponentGroupQuery when eager-loading is set.
-	Edges        ComponentGroupEdges `json:"edges"`
+	// The values are being populated by the WorkflowStageQuery when eager-loading is set.
+	Edges        WorkflowStageEdges `json:"edges"`
 	selectValues sql.SelectValues
 }
 
-// ComponentGroupEdges holds the relations/edges for other nodes in the graph.
-type ComponentGroupEdges struct {
+// WorkflowStageEdges holds the relations/edges for other nodes in the graph.
+type WorkflowStageEdges struct {
 	// Organization holds the value of the organization edge.
 	Organization *Organization `json:"organization,omitempty"`
 	// Application holds the value of the application edge.
 	Application *Application `json:"application,omitempty"`
+	// Components holds the value of the components edge.
+	Components []*Component `json:"components,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [3]bool
 }
 
 // OrganizationOrErr returns the Organization value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
-func (e ComponentGroupEdges) OrganizationOrErr() (*Organization, error) {
+func (e WorkflowStageEdges) OrganizationOrErr() (*Organization, error) {
 	if e.Organization != nil {
 		return e.Organization, nil
 	} else if e.loadedTypes[0] {
@@ -67,7 +64,7 @@ func (e ComponentGroupEdges) OrganizationOrErr() (*Organization, error) {
 
 // ApplicationOrErr returns the Application value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
-func (e ComponentGroupEdges) ApplicationOrErr() (*Application, error) {
+func (e WorkflowStageEdges) ApplicationOrErr() (*Application, error) {
 	if e.Application != nil {
 		return e.Application, nil
 	} else if e.loadedTypes[1] {
@@ -76,18 +73,27 @@ func (e ComponentGroupEdges) ApplicationOrErr() (*Application, error) {
 	return nil, &NotLoadedError{edge: "application"}
 }
 
+// ComponentsOrErr returns the Components value or an error if the edge
+// was not loaded in eager-loading.
+func (e WorkflowStageEdges) ComponentsOrErr() ([]*Component, error) {
+	if e.loadedTypes[2] {
+		return e.Components, nil
+	}
+	return nil, &NotLoadedError{edge: "components"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
-func (*ComponentGroup) scanValues(columns []string) ([]any, error) {
+func (*WorkflowStage) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case componentgroup.FieldDependsOn, componentgroup.FieldPosition, componentgroup.FieldSize:
-			values[i] = new([]byte)
-		case componentgroup.FieldName:
+		case workflowstage.FieldOrdinal:
+			values[i] = new(sql.NullInt64)
+		case workflowstage.FieldName:
 			values[i] = new(sql.NullString)
-		case componentgroup.FieldCreatedAt, componentgroup.FieldUpdatedAt:
+		case workflowstage.FieldCreatedAt, workflowstage.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
-		case componentgroup.FieldID, componentgroup.FieldOrganizationID, componentgroup.FieldApplicationID:
+		case workflowstage.FieldID, workflowstage.FieldOrganizationID, workflowstage.FieldApplicationID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -97,68 +103,50 @@ func (*ComponentGroup) scanValues(columns []string) ([]any, error) {
 }
 
 // assignValues assigns the values that were returned from sql.Rows (after scanning)
-// to the ComponentGroup fields.
-func (_m *ComponentGroup) assignValues(columns []string, values []any) error {
+// to the WorkflowStage fields.
+func (_m *WorkflowStage) assignValues(columns []string, values []any) error {
 	if m, n := len(values), len(columns); m < n {
 		return fmt.Errorf("mismatch number of scan values: %d != %d", m, n)
 	}
 	for i := range columns {
 		switch columns[i] {
-		case componentgroup.FieldID:
+		case workflowstage.FieldID:
 			if value, ok := values[i].(*uuid.UUID); !ok {
 				return fmt.Errorf("unexpected type %T for field id", values[i])
 			} else if value != nil {
 				_m.ID = *value
 			}
-		case componentgroup.FieldOrganizationID:
+		case workflowstage.FieldOrganizationID:
 			if value, ok := values[i].(*uuid.UUID); !ok {
 				return fmt.Errorf("unexpected type %T for field organization_id", values[i])
 			} else if value != nil {
 				_m.OrganizationID = *value
 			}
-		case componentgroup.FieldApplicationID:
+		case workflowstage.FieldApplicationID:
 			if value, ok := values[i].(*uuid.UUID); !ok {
 				return fmt.Errorf("unexpected type %T for field application_id", values[i])
 			} else if value != nil {
 				_m.ApplicationID = *value
 			}
-		case componentgroup.FieldName:
+		case workflowstage.FieldName:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field name", values[i])
 			} else if value.Valid {
 				_m.Name = value.String
 			}
-		case componentgroup.FieldDependsOn:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field depends_on", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &_m.DependsOn); err != nil {
-					return fmt.Errorf("unmarshal field depends_on: %w", err)
-				}
+		case workflowstage.FieldOrdinal:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field ordinal", values[i])
+			} else if value.Valid {
+				_m.Ordinal = int(value.Int64)
 			}
-		case componentgroup.FieldPosition:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field position", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &_m.Position); err != nil {
-					return fmt.Errorf("unmarshal field position: %w", err)
-				}
-			}
-		case componentgroup.FieldSize:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field size", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &_m.Size); err != nil {
-					return fmt.Errorf("unmarshal field size: %w", err)
-				}
-			}
-		case componentgroup.FieldCreatedAt:
+		case workflowstage.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
 			} else if value.Valid {
 				_m.CreatedAt = value.Time
 			}
-		case componentgroup.FieldUpdatedAt:
+		case workflowstage.FieldUpdatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field updated_at", values[i])
 			} else if value.Valid {
@@ -171,44 +159,49 @@ func (_m *ComponentGroup) assignValues(columns []string, values []any) error {
 	return nil
 }
 
-// Value returns the ent.Value that was dynamically selected and assigned to the ComponentGroup.
+// Value returns the ent.Value that was dynamically selected and assigned to the WorkflowStage.
 // This includes values selected through modifiers, order, etc.
-func (_m *ComponentGroup) Value(name string) (ent.Value, error) {
+func (_m *WorkflowStage) Value(name string) (ent.Value, error) {
 	return _m.selectValues.Get(name)
 }
 
-// QueryOrganization queries the "organization" edge of the ComponentGroup entity.
-func (_m *ComponentGroup) QueryOrganization() *OrganizationQuery {
-	return NewComponentGroupClient(_m.config).QueryOrganization(_m)
+// QueryOrganization queries the "organization" edge of the WorkflowStage entity.
+func (_m *WorkflowStage) QueryOrganization() *OrganizationQuery {
+	return NewWorkflowStageClient(_m.config).QueryOrganization(_m)
 }
 
-// QueryApplication queries the "application" edge of the ComponentGroup entity.
-func (_m *ComponentGroup) QueryApplication() *ApplicationQuery {
-	return NewComponentGroupClient(_m.config).QueryApplication(_m)
+// QueryApplication queries the "application" edge of the WorkflowStage entity.
+func (_m *WorkflowStage) QueryApplication() *ApplicationQuery {
+	return NewWorkflowStageClient(_m.config).QueryApplication(_m)
 }
 
-// Update returns a builder for updating this ComponentGroup.
-// Note that you need to call ComponentGroup.Unwrap() before calling this method if this ComponentGroup
+// QueryComponents queries the "components" edge of the WorkflowStage entity.
+func (_m *WorkflowStage) QueryComponents() *ComponentQuery {
+	return NewWorkflowStageClient(_m.config).QueryComponents(_m)
+}
+
+// Update returns a builder for updating this WorkflowStage.
+// Note that you need to call WorkflowStage.Unwrap() before calling this method if this WorkflowStage
 // was returned from a transaction, and the transaction was committed or rolled back.
-func (_m *ComponentGroup) Update() *ComponentGroupUpdateOne {
-	return NewComponentGroupClient(_m.config).UpdateOne(_m)
+func (_m *WorkflowStage) Update() *WorkflowStageUpdateOne {
+	return NewWorkflowStageClient(_m.config).UpdateOne(_m)
 }
 
-// Unwrap unwraps the ComponentGroup entity that was returned from a transaction after it was closed,
+// Unwrap unwraps the WorkflowStage entity that was returned from a transaction after it was closed,
 // so that all future queries will be executed through the driver which created the transaction.
-func (_m *ComponentGroup) Unwrap() *ComponentGroup {
+func (_m *WorkflowStage) Unwrap() *WorkflowStage {
 	_tx, ok := _m.config.driver.(*txDriver)
 	if !ok {
-		panic("ent: ComponentGroup is not a transactional entity")
+		panic("ent: WorkflowStage is not a transactional entity")
 	}
 	_m.config.driver = _tx.drv
 	return _m
 }
 
 // String implements the fmt.Stringer.
-func (_m *ComponentGroup) String() string {
+func (_m *WorkflowStage) String() string {
 	var builder strings.Builder
-	builder.WriteString("ComponentGroup(")
+	builder.WriteString("WorkflowStage(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("organization_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.OrganizationID))
@@ -219,14 +212,8 @@ func (_m *ComponentGroup) String() string {
 	builder.WriteString("name=")
 	builder.WriteString(_m.Name)
 	builder.WriteString(", ")
-	builder.WriteString("depends_on=")
-	builder.WriteString(fmt.Sprintf("%v", _m.DependsOn))
-	builder.WriteString(", ")
-	builder.WriteString("position=")
-	builder.WriteString(fmt.Sprintf("%v", _m.Position))
-	builder.WriteString(", ")
-	builder.WriteString("size=")
-	builder.WriteString(fmt.Sprintf("%v", _m.Size))
+	builder.WriteString("ordinal=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Ordinal))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
@@ -237,5 +224,5 @@ func (_m *ComponentGroup) String() string {
 	return builder.String()
 }
 
-// ComponentGroups is a parsable slice of ComponentGroup.
-type ComponentGroups []*ComponentGroup
+// WorkflowStages is a parsable slice of WorkflowStage.
+type WorkflowStages []*WorkflowStage

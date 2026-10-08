@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkflowRunView } from "./WorkflowRunView";
 import { api } from "../api/client";
@@ -32,8 +32,9 @@ const mockPodLogs = usePodLogs as unknown as ReturnType<typeof vi.fn>;
 const compA = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const compB = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 
-// A preview run: A succeeded, B (depends on A) failed. The snapshot graph
-// carries the node names/types and the edge A->B.
+// A preview run: A succeeded, B (in the next stage) failed. The snapshot graph
+// carries the step names/types and the edge A->B; the server's stage summary
+// carries the stages the rail lists.
 const runDetail = {
   id: "run-1",
   application_id: "app-1",
@@ -51,19 +52,45 @@ const runDetail = {
     { id: "cr-a", component_id: compA, name: "release", type: "helm", status: "succeeded" },
     { id: "cr-b", component_id: compB, name: "apply", type: "manifest", status: "failed" },
   ],
+  stages: [
+    {
+      name: "Charts",
+      status: "succeeded",
+      components: [
+        { component_id: compA, name: "release", type: "helm", status: "succeeded", component_run_ids: ["cr-a"] },
+      ],
+    },
+    {
+      name: "Manifests",
+      status: "failed",
+      components: [
+        { component_id: compB, name: "apply", type: "manifest", status: "failed", component_run_ids: ["cr-b"] },
+      ],
+    },
+  ],
 };
+
+// LocationProbe prints the current search so a test can read the ?step= param.
+function LocationProbe() {
+  return <p data-testid="location-search">{useLocation().search}</p>;
+}
 
 // state carries the optional `from` the runs index passes when linking here, so
 // the back-target tests can exercise both arrival paths.
-function runViewTree(state?: { from: string }) {
+function runViewTree(state?: { from: string }, search = "") {
   return (
     <MemoryRouter
-      initialEntries={[{ pathname: "/applications/app-1/runs/run-1", state }]}
+      initialEntries={[{ pathname: "/applications/app-1/runs/run-1", search, state }]}
     >
       <Routes>
         <Route
           path="/applications/:appId/runs/:runId"
-          element={<WorkflowRunView />}
+          element={
+            <>
+              <WorkflowRunView />
+              <LocationProbe />
+            </>
+          }
         />
         <Route path="/applications/:appId" element={<div>application page</div>} />
         <Route path="/runs" element={<div>runs index</div>} />
@@ -72,8 +99,24 @@ function runViewTree(state?: { from: string }) {
   );
 }
 
-function renderRunView(state?: { from: string }) {
-  return render(runViewTree(state));
+function renderRunView(state?: { from: string }, search?: string) {
+  return render(runViewTree(state, search));
+}
+
+// rail is the run's stage → component → step list; pane the selected step.
+function rail() {
+  return screen.getByRole("navigation", { name: "Run steps" });
+}
+function pane() {
+  return screen.getByRole("region", { name: "Selected step" });
+}
+
+// clickStep selects a rail row by its leading text (a component's name, or an
+// OpenTofu step's "plan"/"apply").
+async function clickStep(label: string) {
+  await screen.findByRole("navigation", { name: "Run steps" });
+  const re = new RegExp(`^${label}`);
+  fireEvent.click(within(rail()).getByRole("button", { name: re }));
 }
 
 // A still-running preview: A succeeded, B is running. Non-terminal, so the
@@ -85,6 +128,16 @@ const runningDetail = {
   component_runs: [
     { id: "cr-a", component_id: compA, name: "release", type: "helm", status: "succeeded" },
     { id: "cr-b", component_id: compB, name: "apply", type: "manifest", status: "running" },
+  ],
+  stages: [
+    runDetail.stages[0],
+    {
+      name: "Manifests",
+      status: "running",
+      components: [
+        { component_id: compB, name: "apply", type: "manifest", status: "running", component_run_ids: ["cr-b"] },
+      ],
+    },
   ],
 };
 
@@ -120,7 +173,30 @@ const awaitingDetail = {
     { id: "cr-a", component_id: compA, name: "infra · plan", type: "terraform", status: "succeeded" },
     { id: "cr-b", component_id: compB, name: "infra · apply", type: "terraform", status: "awaiting_approval" },
   ],
+  stages: [
+    {
+      name: "Infrastructure",
+      status: "awaiting_approval",
+      components: [
+        { component_id: compA, name: "infra", type: "terraform", status: "awaiting_approval", component_run_ids: ["cr-a", "cr-b"] },
+      ],
+    },
+  ],
 };
+
+// tofuStages is the stage summary of a one-step OpenTofu run (a drift check, a
+// state operation, a blocked plan): one component with its single step.
+function tofuStages(status: string) {
+  return [
+    {
+      name: "Infrastructure",
+      status,
+      components: [
+        { component_id: compA, name: "infra", type: "terraform", status, component_run_ids: ["cr-a"] },
+      ],
+    },
+  ];
+}
 
 beforeEach(() => {
   mockPodLogs.mockReset();
@@ -132,20 +208,80 @@ beforeEach(() => {
 });
 
 describe("WorkflowRunView", () => {
-  it("renders snapshot nodes colored by their component-run status", async () => {
+  it("lists the run's stages in order, each with its components", async () => {
     mockApi.GET.mockImplementation((path: string) => {
       if (path === "/api/applications/{id}/runs/{runId}")
         return Promise.resolve({ data: runDetail, error: undefined });
       return Promise.resolve({ data: undefined, error: undefined });
     });
     renderRunView();
-    // Both snapshot nodes render with their names.
-    expect(await screen.findByText("release")).toBeInTheDocument();
-    expect(screen.getByText("apply")).toBeInTheDocument();
-    // Their statuses surface on the node (lowercase status label).
-    expect(screen.getByText("succeeded")).toBeInTheDocument();
-    // "failed" appears on both the run header badge and node B's status label.
-    expect(screen.getAllByText("failed").length).toBeGreaterThanOrEqual(2);
+    await screen.findByRole("navigation", { name: "Run steps" });
+    const charts = within(screen.getByRole("region", { name: "Stage Charts" }));
+    expect(charts.getByText("release")).toBeInTheDocument();
+    const manifests = within(screen.getByRole("region", { name: "Stage Manifests" }));
+    expect(manifests.getByText("apply")).toBeInTheDocument();
+    // Stages list in run order.
+    const headings = within(rail()).getAllByRole("heading").map((h) => h.textContent);
+    expect(headings).toEqual(["Charts", "Manifests"]);
+  });
+
+  it("opens on the failed step when none is chosen, without touching the URL", async () => {
+    mockApi.GET.mockImplementation(
+      (path: string, opts?: { params?: { path?: { componentRunId?: string } } }) => {
+        if (path === "/api/applications/{id}/runs/{runId}")
+          return Promise.resolve({ data: runDetail, error: undefined });
+        const id = opts?.params?.path?.componentRunId;
+        return Promise.resolve({
+          data: { id, name: id === "cr-b" ? "apply" : "release", type: "helm", status: "failed", diff: `diff of ${id}`, has_changes: true },
+          error: undefined,
+        });
+      },
+    );
+    renderRunView();
+    const selected = await screen.findByRole("region", { name: "Selected step" });
+    // A preview run's pane leads with the step's diff.
+    expect(await within(selected).findByText("diff of cr-b")).toBeInTheDocument();
+    expect(screen.getByTestId("location-search")).toHaveTextContent("");
+  });
+
+  it("records a chosen step in the URL, and a linked step opens directly", async () => {
+    mockApi.GET.mockImplementation(
+      (path: string, opts?: { params?: { path?: { componentRunId?: string } } }) => {
+        if (path === "/api/applications/{id}/runs/{runId}")
+          return Promise.resolve({ data: runDetail, error: undefined });
+        const id = opts?.params?.path?.componentRunId;
+        return Promise.resolve({
+          data: { id, name: id, type: "helm", status: "succeeded", diff: `diff of ${id}`, has_changes: true },
+          error: undefined,
+        });
+      },
+    );
+    const { unmount } = renderRunView();
+    await clickStep("release");
+    expect(await within(pane()).findByText("diff of cr-a")).toBeInTheDocument();
+    expect(screen.getByTestId("location-search")).toHaveTextContent("?step=cr-a");
+    unmount();
+
+    // Arriving with ?step= opens that step rather than the failed one.
+    renderRunView(undefined, "?step=cr-a");
+    expect(await within(await screen.findByRole("region", { name: "Selected step" })).findByText("diff of cr-a")).toBeInTheDocument();
+  });
+
+  it("lists an OpenTofu component's plan and apply steps under it", async () => {
+    mockStream.mockReturnValue({ value: null, status: "live", error: null });
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: awaitingDetail, error: undefined });
+      return Promise.resolve({ data: undefined, error: undefined });
+    });
+    renderRunView();
+    await screen.findByRole("navigation", { name: "Run steps" });
+    const r = within(rail());
+    expect(r.getByText("infra")).toBeInTheDocument();
+    expect(r.getByRole("button", { name: /^plan/ })).toBeInTheDocument();
+    expect(r.getByRole("button", { name: /^apply/ })).toBeInTheDocument();
+    // Parked at the apply's gate: that's the step the view follows.
+    expect(r.getByRole("button", { name: /^apply/ })).toHaveAttribute("aria-current", "true");
   });
 
   it("does not open the stream for a terminal run", async () => {
@@ -185,9 +321,7 @@ describe("WorkflowRunView", () => {
       return Promise.resolve({ data: undefined, error: undefined });
     });
     renderRunView();
-    // fireEvent.click dispatches only the click (no mousedown), avoiding
-    // React Flow's d3-zoom drag handler which crashes in jsdom.
-    fireEvent.click(await screen.findByText("release"));
+    await clickStep("release");
     // A preview run opens on the diff tab.
     expect(await screen.findByText("+ added line")).toBeInTheDocument();
     expect(screen.getByText("changes")).toBeInTheDocument();
@@ -201,7 +335,7 @@ describe("WorkflowRunView", () => {
     ).toBeInTheDocument();
   });
 
-  it("expands the panel to fill the view, hiding the DAG", async () => {
+  it("expands the panel to fill the view, hiding the rail", async () => {
     mockApi.GET.mockImplementation((path: string) => {
       if (path === "/api/applications/{id}/runs/{runId}")
         return Promise.resolve({ data: runDetail, error: undefined });
@@ -222,14 +356,14 @@ describe("WorkflowRunView", () => {
       return Promise.resolve({ data: undefined, error: undefined });
     });
     renderRunView();
-    fireEvent.click(await screen.findByText("release"));
+    await clickStep("release");
     await screen.findByRole("button", { name: /expand panel/i });
-    // Expanding unmounts the DAG (node "apply" disappears), leaving the panel
-    // the whole content area; collapsing brings it back.
+    // Expanding unmounts the rail, leaving the panel the whole content area;
+    // collapsing brings it back.
     fireEvent.click(screen.getByRole("button", { name: /expand panel/i }));
-    expect(screen.queryByText("apply")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Run steps" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /collapse panel/i }));
-    expect(await screen.findByText("apply")).toBeInTheDocument();
+    expect(await screen.findByRole("navigation", { name: "Run steps" })).toBeInTheDocument();
   });
 
   it("goes back to the application by default", async () => {
@@ -341,7 +475,7 @@ describe("WorkflowRunView", () => {
     mockApi.POST.mockResolvedValue({ data: awaitingDetail, error: undefined });
     renderRunView();
     // Open the parked apply step's panel.
-    fireEvent.click(await screen.findByText("infra · apply"));
+    await clickStep("apply");
     const approve = await screen.findByRole("button", { name: /approve/i });
     expect(screen.getByRole("button", { name: /reject/i })).toBeInTheDocument();
     fireEvent.click(approve);
@@ -357,7 +491,7 @@ describe("WorkflowRunView", () => {
     mockStream.mockReturnValue({ value: null, status: "live", error: null });
     mockAwaitingComponentDetails();
     renderRunView();
-    fireEvent.click(await screen.findByText("infra · apply"));
+    await clickStep("apply");
     // The parked apply step opens on the Plan output tab, showing the plan
     // step's logs — the review material for the gate.
     expect(await screen.findByText("tofu plan output")).toBeInTheDocument();
@@ -411,7 +545,7 @@ describe("WorkflowRunView", () => {
       return res;
     });
     renderRunView();
-    fireEvent.click(await screen.findByText("infra · apply"));
+    await clickStep("apply");
     // The approver sees the totals, the destructive callout, and the resource
     // row — not a wall of logs.
     expect(
@@ -427,7 +561,7 @@ describe("WorkflowRunView", () => {
     expect(screen.getByText("tofu plan body text")).toBeInTheDocument();
   });
 
-  it("leads with a settled tofu plan step's own parsed plan and shows counts on its node", async () => {
+  it("leads with a settled tofu plan step's own parsed plan and shows counts on its row", async () => {
     mockStream.mockReturnValue({ value: null, status: "live", error: null });
     mockAwaitingComponentDetails();
     // The run list carries the plan summary on the plan step's row (the node
@@ -449,15 +583,16 @@ describe("WorkflowRunView", () => {
       return res;
     });
     renderRunView();
-    // The node shows +1 ~0 -1 (and ±1 replaced) instead of its status word.
-    expect(await screen.findByText("+1")).toBeInTheDocument();
-    expect(screen.getByText("±1")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("infra · plan"));
+    // The plan step's rail row shows +1 ~0 -1 (and ±1 replaced).
+    await screen.findByRole("navigation", { name: "Run steps" });
+    expect(await within(rail()).findByText("+1")).toBeInTheDocument();
+    expect(within(rail()).getByText("±1")).toBeInTheDocument();
+    await clickStep("plan");
     // The Plan tab leads, with the summary.
     expect(
-      await screen.findByText("Plan: 1 to add, 0 to change, 1 to destroy."),
+      await within(pane()).findByText("Plan: 1 to add, 0 to change, 1 to destroy."),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^plan/i })).toBeInTheDocument();
+    expect(within(pane()).getByRole("button", { name: /^plan/i })).toBeInTheDocument();
   });
 
   it("follows a running step's output live, then hands over to the captured logs", async () => {
@@ -486,9 +621,9 @@ describe("WorkflowRunView", () => {
         : { lines: [], status: "idle", ended: false, error: null },
     );
     renderRunView();
-    fireEvent.click(await screen.findByText("apply"));
-    const pane = await screen.findByTestId("live-logs");
-    expect(pane).toHaveTextContent("deployment.apps/web configured");
+    await clickStep("apply");
+    const logs = await screen.findByTestId("live-logs");
+    expect(logs).toHaveTextContent("deployment.apps/web configured");
     // The stream was opened on the step's own log-stream path, enabled.
     expect(mockPodLogs).toHaveBeenCalledWith(
       "/api/applications/app-1/runs/run-1/components/cr-b/logs/stream",
@@ -507,7 +642,7 @@ describe("WorkflowRunView", () => {
       });
     });
     renderRunView();
-    fireEvent.click(await screen.findByText("apply"));
+    await clickStep("apply");
     expect(
       await screen.findByText("No logs were captured for this step."),
     ).toBeInTheDocument();
@@ -526,6 +661,7 @@ describe("WorkflowRunView", () => {
       component_runs: [
         { id: "cr-a", component_id: compA, name: "infra · plan", type: "terraform", status: "succeeded" },
       ],
+      stages: tofuStages("succeeded"),
     };
     mockApi.GET.mockImplementation((path: string) => {
       if (path === "/api/applications/{id}/runs/{runId}")
@@ -549,7 +685,7 @@ describe("WorkflowRunView", () => {
       });
     });
     renderRunView();
-    fireEvent.click(await screen.findByText("infra · plan"));
+    await clickStep("infra");
     expect(await screen.findByRole("button", { name: /^drift/i })).toBeInTheDocument();
     expect(screen.getByText(/Drift detected: 1 resource changed outside of OpenTofu/)).toBeInTheDocument();
     expect(screen.getByText("aws_instance.web")).toBeInTheDocument();
@@ -575,6 +711,7 @@ describe("WorkflowRunView", () => {
       component_runs: [
         { id: "cr-a", component_id: compA, name: "infra · state rm", type: "terraform", status: "awaiting_approval", requires_approval: true },
       ],
+      stages: tofuStages("awaiting_approval"),
     };
     mockApi.GET.mockImplementation((path: string) => {
       if (path === "/api/applications/{id}/runs/{runId}")
@@ -587,7 +724,7 @@ describe("WorkflowRunView", () => {
     renderRunView();
     expect(await screen.findByRole("heading", { name: "State operation" })).toBeInTheDocument();
     expect(screen.getByText(/Stop managing aws_instance.web/)).toBeInTheDocument();
-    fireEvent.click(screen.getByText("infra · state rm"));
+    await clickStep("infra");
     expect(await screen.findByText("Awaiting approval")).toBeInTheDocument();
     expect(screen.getByTestId("state-op-command")).toHaveTextContent("tofu state rm aws_instance.web");
     expect(screen.getByText(/Approving runs this command/)).toBeInTheDocument();
@@ -649,6 +786,7 @@ describe("WorkflowRunView", () => {
       component_runs: [
         { id: "cr-a", component_id: compA, name: "infra · plan", type: "terraform", status: "failed", policy: verdict },
       ],
+      stages: tofuStages("failed"),
     };
     mockApi.GET.mockImplementation((path: string) => {
       if (path === "/api/applications/{id}/runs/{runId}")
@@ -659,7 +797,7 @@ describe("WorkflowRunView", () => {
       });
     });
     renderRunView();
-    fireEvent.click(await screen.findByText("infra · plan"));
+    await clickStep("infra");
     const box = await screen.findByTestId("policy-verdict");
     expect(box).toHaveTextContent("Blocked by policy");
     expect(box).toHaveTextContent("no-db-deletes (block) — aws_db_instance.main would be destroyed");
@@ -694,7 +832,7 @@ describe("WorkflowRunView", () => {
     });
     renderRunView();
     expect(await screen.findByText(/by dev@example.com/)).toBeInTheDocument();
-    fireEvent.click(await screen.findByText("infra · apply"));
+    await clickStep("apply");
     const line = await screen.findByTestId("approval-policy");
     expect(line).toHaveTextContent("Approvers: ops@example.com, sre@example.com");
     expect(line).toHaveTextContent("1 of 2 approvals (ops@example.com)");
@@ -714,6 +852,15 @@ describe("WorkflowRunView", () => {
       component_runs: [
         { id: "cr-a", component_id: compA, name: "infra · plan", type: "terraform", status: "succeeded" },
         { id: "cr-b", component_id: compB, name: "infra · apply", type: "terraform", status: "succeeded" },
+      ],
+      stages: [
+        {
+          name: "Infrastructure",
+          status: "succeeded",
+          components: [
+            { component_id: compA, name: "infra", type: "terraform", status: "succeeded", component_run_ids: ["cr-a", "cr-b"] },
+          ],
+        },
       ],
     };
     mockApi.GET.mockImplementation(
@@ -761,7 +908,7 @@ describe("WorkflowRunView", () => {
       subnet_ids: { value: ["a", "b"], sensitive: false },
     });
     renderRunView();
-    fireEvent.click(await screen.findByText("infra · apply"));
+    await clickStep("apply");
     fireEvent.click(await screen.findByRole("button", { name: /^outputs$/i }));
     // Non-sensitive values render bare (strings) or as JSON (lists).
     expect(await screen.findByText("customer-a")).toBeInTheDocument();
@@ -782,7 +929,7 @@ describe("WorkflowRunView", () => {
     // lists, masked, but there is nothing to reveal.
     mockSettledTofuRun({ db_password: { sensitive: true } });
     renderRunView();
-    fireEvent.click(await screen.findByText("infra · apply"));
+    await clickStep("apply");
     fireEvent.click(await screen.findByRole("button", { name: /^outputs$/i }));
     expect(await screen.findByText("db_password")).toBeInTheDocument();
     expect(screen.getByText("••••••••")).toBeInTheDocument();
@@ -795,7 +942,7 @@ describe("WorkflowRunView", () => {
     mockStream.mockReturnValue({ value: null, status: "live", error: null });
     mockAwaitingComponentDetails();
     renderRunView();
-    fireEvent.click(await screen.findByText("infra · apply"));
+    await clickStep("apply");
     await screen.findByText("tofu plan output");
     expect(
       screen.queryByRole("button", { name: /^outputs$/i }),
@@ -810,7 +957,7 @@ describe("WorkflowRunView", () => {
       return Promise.resolve({ data: undefined, error: undefined });
     });
     renderRunView();
-    // The humanized label appears (header badge + node label).
+    // The humanized label appears on the header badge.
     expect(
       (await screen.findAllByText(/awaiting approval/i)).length,
     ).toBeGreaterThanOrEqual(1);
@@ -844,7 +991,7 @@ describe("WorkflowRunView", () => {
       return Promise.resolve({ data: undefined, error: undefined });
     });
     const { rerender } = renderRunView();
-    fireEvent.click(await screen.findByText("apply"));
+    await clickStep("apply");
     // A preview run opens on the diff tab; switch to the logs tab.
     fireEvent.click(await screen.findByRole("button", { name: /^logs$/i }));
     // First fetch: running, no logs.

@@ -14,6 +14,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/membership"
+	"github.com/spacefleet/spacefleet/lib/testsupport"
 	"github.com/spacefleet/spacefleet/lib/workflows"
 )
 
@@ -49,7 +50,7 @@ func TestGetApplicationComponentOutputs(t *testing.T) {
 		t.Fatalf("create app: %v", err)
 	}
 	infra, err := h.client.Component.Create().
-		SetOrganizationID(orgID).SetApplicationID(app.ID).SetName("infra").SetType("terraform").Save(ctx)
+		SetOrganizationID(orgID).SetApplicationID(app.ID).SetStageID(testsupport.Stage(t, h.client, orgID, app.ID)).SetName("infra").SetType("terraform").Save(ctx)
 	if err != nil {
 		t.Fatalf("create component: %v", err)
 	}

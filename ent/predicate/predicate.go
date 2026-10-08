@@ -24,9 +24,6 @@ type Cluster func(*sql.Selector)
 // Component is the predicate function for component builders.
 type Component func(*sql.Selector)
 
-// ComponentGroup is the predicate function for componentgroup builders.
-type ComponentGroup func(*sql.Selector)
-
 // ComponentRun is the predicate function for componentrun builders.
 type ComponentRun func(*sql.Selector)
 
@@ -62,3 +59,6 @@ type Variable func(*sql.Selector)
 
 // WorkflowRun is the predicate function for workflowrun builders.
 type WorkflowRun func(*sql.Selector)
+
+// WorkflowStage is the predicate function for workflowstage builders.
+type WorkflowStage func(*sql.Selector)

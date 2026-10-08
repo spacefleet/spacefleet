@@ -436,8 +436,8 @@ func tofuPlanArtifactSecret(runID, planID uuid.UUID) string {
 }
 
 // upstreamTofuPlanID returns the id of the terraform plan node an apply node
-// depends on (its expanded depends_on holds component-level edges, with groups
-// already desugared). expandExecutionNodes guarantees an apply unit depends on
+// depends on (its depends_on holds step-level edges, with stage order already
+// desugared). expandExecutionNodes guarantees an apply unit depends on
 // exactly its plan unit; a missing one (defensive) yields uuid.Nil, which
 // leaves the planfile Secret unset so the apply script fails closed.
 func upstreamTofuPlanID(node GraphNode, byID map[uuid.UUID]GraphNode) uuid.UUID {
@@ -656,7 +656,7 @@ func helmChartConfig(cfg map[string]string) map[string]string {
 }
 
 // decodeValuesSources parses the JSON-encoded []map[string]string a helm
-// component stores under the values_sources key (the canvas serializes the
+// component stores under the values_sources key (the builder serializes the
 // ordered git values sources there, since config is a flat string map). An empty
 // or absent value yields nil (inline-only values).
 func decodeValuesSources(encoded string) ([]map[string]string, error) {

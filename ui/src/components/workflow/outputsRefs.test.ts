@@ -3,47 +3,34 @@ import {
   componentsReferencing,
   outputsRefSnippet,
   upstreamTofuNames,
-  type RefGraphEdge,
-  type RefGraphNode,
+  type RefStage,
 } from "./outputsRefs";
 
-function comp(id: string, name: string, type: string, parentId?: string): RefGraphNode {
-  return { id, type: "component", parentId, data: { name, type } };
-}
-function group(id: string, name: string): RefGraphNode {
-  return { id, type: "group", data: { name } };
-}
-function edge(source: string, target: string): RefGraphEdge {
-  return { source, target };
+function stage(...comps: [string, string][]): RefStage {
+  return { components: comps.map(([name, type]) => ({ id: name, name, type })) };
 }
 
 describe("upstreamTofuNames", () => {
-  it("lists direct and transitive OpenTofu ancestors, not helm ones or descendants", () => {
-    // infra(tf) → mid(helm) → web(helm); db(tf) ← web (downstream of web).
-    const nodes = [
-      comp("infra", "infra", "terraform"),
-      comp("mid", "mid", "helm"),
-      comp("web", "web", "helm"),
-      comp("db", "db", "terraform"),
-    ];
-    const edges = [edge("infra", "mid"), edge("mid", "web"), edge("web", "db")];
-    expect(upstreamTofuNames("web", nodes, edges)).toEqual(["infra"]);
-    expect(upstreamTofuNames("infra", nodes, edges)).toEqual([]);
+  // infra(tf) | mid(helm), net(tf) | web(helm), db(tf)
+  const stages = [
+    stage(["infra", "terraform"]),
+    stage(["mid", "helm"], ["net", "terraform"]),
+    stage(["web", "helm"], ["db", "terraform"]),
+  ];
+
+  it("lists the OpenTofu components of every earlier stage, sorted", () => {
+    expect(upstreamTofuNames("web", stages)).toEqual(["infra", "net"]);
+    expect(upstreamTofuNames("mid", stages)).toEqual(["infra"]);
   });
 
-  it("desugars groups on both ends: depending on a group reaches its members, and a group's deps apply to members", () => {
-    // web depends on group g (member: infra/tf); member2 inherits g2's dep on net.
-    const nodes = [
-      group("g", "platform"),
-      comp("infra", "infra", "terraform", "g"),
-      comp("web", "web", "helm"),
-      group("g2", "apps"),
-      comp("member2", "member2", "helm", "g2"),
-      comp("net", "net", "terraform"),
-    ];
-    const edges = [edge("g", "web"), edge("net", "g2")];
-    expect(upstreamTofuNames("web", nodes, edges)).toEqual(["infra"]);
-    expect(upstreamTofuNames("member2", nodes, edges)).toEqual(["net"]);
+  it("never lists a component of the same or a later stage", () => {
+    // net runs alongside mid; db runs after it.
+    expect(upstreamTofuNames("mid", stages)).not.toContain("net");
+    expect(upstreamTofuNames("infra", stages)).toEqual([]);
+  });
+
+  it("returns nothing for a component that isn't in the workflow", () => {
+    expect(upstreamTofuNames("ghost", stages)).toEqual([]);
   });
 });
 

@@ -39,11 +39,11 @@ func (s *Server) ListAllRuns(ctx context.Context, _ ListAllRunsRequestObject) (L
 	if err != nil {
 		return nil, err
 	}
-	out := make([]WorkflowRun, len(list))
-	for i, r := range list {
-		out[i] = toAPIWorkflowRun(r)
+	steps, err := s.workflows.ListRunSteps(ctx, orgID, runIDs(list))
+	if err != nil {
+		return nil, err
 	}
-	return ListAllRuns200JSONResponse(RunList{Runs: out}), nil
+	return ListAllRuns200JSONResponse(toAPIRunList(list, steps)), nil
 }
 
 // ListRuns returns an application's workflow runs (newest first). Read access
@@ -63,11 +63,11 @@ func (s *Server) ListRuns(ctx context.Context, req ListRunsRequestObject) (ListR
 		}
 		return nil, err
 	}
-	out := make([]WorkflowRun, len(list))
-	for i, r := range list {
-		out[i] = toAPIWorkflowRun(r)
+	steps, err := s.workflows.ListRunSteps(ctx, orgID, runIDs(list))
+	if err != nil {
+		return nil, err
 	}
-	return ListRuns200JSONResponse(RunList{Runs: out}), nil
+	return ListRuns200JSONResponse(toAPIRunList(list, steps)), nil
 }
 
 // StartRun snapshots the current workflow, opens a run, enqueues the executor
@@ -315,8 +315,50 @@ func (s *Server) GetComponentRun(ctx context.Context, req GetComponentRunRequest
 	return GetComponentRun200JSONResponse(toAPIComponentRunDetail(cr, canSeeSecrets)), nil
 }
 
+// toAPIRunList maps run rows to the RunList payload the run lists (and the org
+// run stream) return, each run carrying its stage summary built from its steps
+// (stepsByRun, from ListRunSteps).
+func toAPIRunList(runs []*ent.WorkflowRun, stepsByRun map[uuid.UUID][]*ent.ComponentRun) RunList {
+	out := make([]WorkflowRun, len(runs))
+	for i, r := range runs {
+		out[i] = toAPIWorkflowRun(r)
+		stages := toAPIRunStages(workflows.RunStages(r.Graph, stepsByRun[r.ID]))
+		out[i].Stages = &stages
+	}
+	return RunList{Runs: out}
+}
+
+// runIDs lists the ids of the given runs.
+func runIDs(runs []*ent.WorkflowRun) []uuid.UUID {
+	ids := make([]uuid.UUID, len(runs))
+	for i, r := range runs {
+		ids[i] = r.ID
+	}
+	return ids
+}
+
+// toAPIRunStages maps a run's stage summary to the API shape.
+func toAPIRunStages(stages []workflows.RunStage) []RunStage {
+	out := make([]RunStage, len(stages))
+	for i, st := range stages {
+		comps := make([]RunStageComponent, len(st.Components))
+		for j, c := range st.Components {
+			comps[j] = RunStageComponent{
+				ComponentId:     c.ComponentID,
+				Name:            c.Name,
+				Type:            c.Type,
+				Status:          ComponentRunStatus(c.Status),
+				ComponentRunIds: c.ComponentRunIDs,
+			}
+		}
+		out[i] = RunStage{Name: st.Name, Status: ComponentRunStatus(st.Status), Components: comps}
+	}
+	return out
+}
+
 // toAPIWorkflowRun maps a run row to the API list/summary type. started_at /
-// finished_at pass through as nullable times.
+// finished_at pass through as nullable times. The stage summary needs the
+// run's steps, so the callers that have them (the lists and the detail) add it.
 func toAPIWorkflowRun(r *ent.WorkflowRun) WorkflowRun {
 	return WorkflowRun{
 		Id:            r.ID,
@@ -377,6 +419,8 @@ func toAPIWorkflowRunDetail(r *ent.WorkflowRun, steps []*ent.ComponentRun, canSe
 		Trigger:       b.Trigger,
 		ComponentRuns: make([]ComponentRun, len(steps)),
 	}
+	stages := toAPIRunStages(workflows.RunStages(r.Graph, steps))
+	out.Stages = &stages
 	// requires_approval is a property of the run's snapshot node, not the step
 	// row: read it off the graph so a client can tell a gated step apart before
 	// it parks (and after it was decided).

@@ -20,8 +20,8 @@ export type ImportSeed = { clusterId: string; release: HelmRelease };
 // workflow owner (routes /applications/new and /applications/:appId/edit; import
 // mode when an ImportSeed is passed via router state). It collects only the
 // app-level fields: a name and the runner cluster. The deploy steps — and their
-// per-component target cluster + namespace — are built afterwards on the workflow
-// canvas. The runner is fixed at registration, so it's read-only on edit.
+// per-component target cluster + namespace — are built afterwards in the
+// workflow builder. The runner is fixed at registration, so it's read-only on edit.
 export function ApplicationForm() {
   const { appId } = useParams();
   const editing = Boolean(appId);
@@ -113,7 +113,7 @@ export function ApplicationForm() {
         setError(error?.message ?? "Could not import the application");
         return;
       }
-      // Land on the workflow canvas so the user builds the deploy steps next.
+      // Land on the workflow builder so the user builds the deploy steps next.
       navigate(`/applications/${data.id}/workflow`);
       return;
     }
@@ -147,8 +147,8 @@ export function ApplicationForm() {
       <h1 className="mt-3 text-2xl font-bold tracking-tight">{title}</h1>
       <p className="mt-1 text-sm text-neutral-600">
         An application owns a deploy workflow. Set its name and runner cluster
-        here; build the deploy steps — and their targets — on the workflow canvas
-        afterwards.
+        here; build the deploy steps — and their targets — in the workflow
+        builder afterwards.
       </p>
 
       {loading ? (

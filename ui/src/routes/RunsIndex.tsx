@@ -5,6 +5,7 @@ import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import { formatDuration } from "../lib/duration";
 import { RunStatusBadge } from "../components/workflow/status";
+import { StageBar } from "../components/workflow/StageBar";
 import { runActionLabel } from "../components/workflow/runAction";
 import type { StreamStatus } from "../lib/resourceStream";
 import { useObjectStream } from "../lib/useObjectStream";
@@ -185,6 +186,7 @@ export function RunsIndex() {
                 <th className="px-4 py-2 font-medium">Runner cluster</th>
                 <th className="px-4 py-2 font-medium">Action</th>
                 <th className="px-4 py-2 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium">Stages</th>
                 <th className="px-4 py-2 font-medium">Started</th>
                 <th className="px-4 py-2 font-medium">Duration</th>
               </tr>
@@ -215,6 +217,9 @@ export function RunsIndex() {
                   </td>
                   <td className="px-4 py-3">
                     <RunStatusBadge status={r.status} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <StageBar stages={r.stages} />
                   </td>
                   <td className="px-4 py-3 text-neutral-600">
                     {new Date(r.created_at).toLocaleString()}

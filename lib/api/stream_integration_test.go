@@ -97,7 +97,7 @@ func (f *streamFixture) seedApp(orgID uuid.UUID) uuid.UUID {
 		f.t.Fatalf("create app: %v", err)
 	}
 	if _, err := f.client.Component.Create().
-		SetOrganizationID(orgID).SetApplicationID(app.ID).
+		SetOrganizationID(orgID).SetApplicationID(app.ID).SetStageID(testsupport.Stage(f.t, f.client, orgID, app.ID)).
 		SetName("api").SetType("helm").
 		SetConfig(map[string]string{"chart": "api", "values": "password: hunter2"}).
 		Save(ctx); err != nil {

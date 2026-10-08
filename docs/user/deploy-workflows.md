@@ -1,23 +1,29 @@
 # Deploying with workflows
 
-An **application** in Spacefleet is deployed by a **workflow** — a diagram of the
-steps that make it up and the order they run in. Each step is a **component**:
-a Helm release to install or upgrade, or a set of Kubernetes manifests to apply.
-You arrange the components on a canvas, draw arrows to say which steps wait for
-which, and then run the whole thing as one operation.
+An **application** in Spacefleet is deployed by a **workflow**: an ordered list
+of **stages**, each holding one or more **components**. A component is one step
+of the deploy — a Helm release to install or upgrade, a set of Kubernetes
+manifests to apply, or an OpenTofu module to plan and apply.
 
-A workflow is a graph, so a single application can fan out into several pieces —
-a database chart, the app's chart, and a one-off manifest — and Spacefleet runs
-them in the right order, in parallel where the order allows it.
+Stages run one after another, left to right. The components inside a stage run
+at the same time, and the next stage starts once every component of the current
+one has finished. A typical workflow reads like a sentence: an **Infrastructure**
+stage that provisions what the app needs, then an **Apps** stage that deploys
+the services onto it, then a **Verify** stage with a smoke test.
 
 ## Build the workflow
 
 1. Open **Applications** and select the application you want to work on.
-2. Select **Workflow** to open the builder canvas.
-3. Add a component with **Helm**, **Manifest**, or **OpenTofu**. It appears as
-   a node on the canvas.
-4. Select a node to edit it in the side panel:
-   - **Name** — a label for the step.
+2. Select **Workflow** to open the builder. Each stage is a column; its
+   components are listed inside it, top to bottom.
+3. Add a stage for each phase of the deploy, and rename it to say what it does
+   (click its name). Use the stage's menu to move it left or right, or to
+   delete it — deleting a stage removes its components too, so you're asked to
+   confirm when it isn't empty.
+4. In a stage, select **Add component** and choose **Helm**, **Manifest**, or
+   **OpenTofu**. The component editor opens:
+   - **Name** — a short, lowercase name for the step (letters, digits, and
+     hyphens). Other components refer to it by this name.
    - For a **Helm** component, where the chart comes from (an HTTP Helm
      repository, an OCI registry, or a Git repository), the chart name and
      version, the release name, and the **values** to install it with. For a
@@ -28,17 +34,21 @@ them in the right order, in parallel where the order allows it.
      working path holding your OpenTofu files, plus the state backend — and,
      for code that creates Kubernetes resources, optional **cluster
      authentication** — see [OpenTofu components](#opentofu-components).
-   - **Target cluster** and **target namespace** — optional per-step overrides.
-     Leave them blank to use the application's defaults; set them to send a
-     particular step to a different cluster or namespace.
-   - **Continue on failure** — when on, a failure of this step does not stop the
-     steps that depend on it; the overall run finishes as **partial** instead of
-     failed. Leave it off for a step that later steps truly require.
-5. Draw an arrow from one node to another to make the second **wait for** the
-   first. A step with no incoming arrows starts immediately; steps with no
-   unfinished prerequisites run at the same time. The graph must not contain a
-   loop — a step can't end up waiting on itself.
-6. **Save** the workflow.
+   - **Target cluster** and **target namespace** — where a Helm release is
+     installed (both required), or the cluster a Manifest component applies to.
+     OpenTofu components have no deploy target.
+   - **Continue on failure** — when on, a failure of this component does not
+     stop the later stages; the overall run finishes as **partial** instead of
+     failed. Leave it off for a component that later stages truly require.
+5. To change the order, drag a component to another place in its stage or into
+   another stage, or use the component's menu to move it up, down, or to the
+   previous or next stage. Only the stage a component is in affects when it
+   runs; its position within the stage is just for reading.
+6. Changes save automatically as you make them.
+
+Put a component in a **later stage** than anything it needs. Two components
+in the same stage start together, so neither can rely on the other having
+finished.
 
 The **values** you give a Helm component can contain secrets (passwords, tokens).
 They are stored with the application and are only shown back to members who can
@@ -53,7 +63,7 @@ run starts. See [Variables in component configuration](variable-interpolation.md
 ## OpenTofu components
 
 An OpenTofu component runs your infrastructure code with
-[OpenTofu](https://opentofu.org). One node does the full cycle: every run
+[OpenTofu](https://opentofu.org). One component does the full cycle: every run
 first produces a **plan** for review; the **apply** then waits for a human
 approval by default (turn on **Auto-approve apply** to skip the pause). The
 apply always executes exactly the plan that was reviewed — if someone changed
@@ -62,11 +72,11 @@ something different.
 
 ### Reading a plan
 
-Once a plan step settles, Spacefleet reads the plan for you. The step's node
-in the run view shows the totals at a glance (`+2 ~1 -1`, with a `±` count
-when anything is destroyed and recreated), so a destroy is visible from the
-diagram without opening the step. Open the step, or the apply step that is
-waiting for approval, and the **Plan** tab leads with:
+Once a plan step settles, Spacefleet reads the plan for you: the totals show
+at a glance (`+2 ~1 -1`, with a `±` count when anything is destroyed and
+recreated), so a destroy is visible before you approve anything. Open the plan
+step, or the apply step that is waiting for approval, and the **Plan** tab
+leads with:
 
 - a headline of what the plan does, called out in red when it destroys or
   replaces anything;
@@ -262,7 +272,7 @@ You can see the inventory in two places:
 
 - On the apply step of a run, under its **Resources** tab — the inventory as
   of that apply.
-- On the component itself: open the node in the workflow builder and scroll to
+- On the component itself: open it in the workflow builder and scroll to
   **State**, which shows the resources and outputs from the component's most
   recent successful apply, with a link to the run that recorded them. This is
   the place to answer "what does this component own right now?" without
@@ -379,8 +389,8 @@ These runs are available for OpenTofu components only.
 
 ## Run the workflow
 
-The builder has three run actions. Each one runs the **whole** workflow,
-respecting the order you drew:
+The application page has three run actions. Each one runs the **whole**
+workflow, stage by stage:
 
 - **Deploy** — install or upgrade every component on its target cluster. This is
   the action that changes your clusters. For a Helm step you can turn on the
@@ -449,9 +459,11 @@ Every run also records who started it, shown on the run page.
 ## Watch a run
 
 When you start a run, Spacefleet opens the **run view** and shows progress live —
-you don't need to refresh. The run moves through **pending → running**, and each
-component shows its own status (**pending → running → succeeded / failed**, or
-**skipped** when a prerequisite failed and the step couldn't run).
+you don't need to refresh. The run moves through **pending → running**. Down the
+left side are the run's stages and their components, each with its own status
+(**pending → running → succeeded / failed**, or **skipped** when an earlier stage
+failed and the component couldn't run); a stage's status sums up its components.
+An OpenTofu component lists its two steps, **plan** and **apply**, underneath it.
 
 When every step has settled the run reaches a terminal state:
 
@@ -461,16 +473,23 @@ When every step has settled the run reaches a terminal state:
 - **Partial** — only steps marked *continue on failure* failed; the run
   finished, but not everything succeeded.
 
-Select a component in the run view to see its detail: its log output — followed
-live while the step is still running, then kept once it settles — and, for a
-**Preview** run, the diff that step would apply. (Logs and diffs can echo a
-chart's values, so like the values themselves they're shown only to members who
-can edit the application.)
+Select a component (or one of its steps) to see its detail: its log output —
+followed live while the step is still running, then kept once it settles — and,
+for a **Preview** run, the diff that step would apply. Until you pick one, the
+view follows the step that most needs attention: one waiting for approval, then
+a failure, then whatever is running. The address bar keeps the step you
+selected, so you can share a link straight to a failed step's logs. (Logs and
+diffs can echo a chart's values, so like the values themselves they're shown
+only to members who can edit the application.)
 
 ## Run history
 
 Every run is kept. Open **Runs** (or **History**) on the application to see past
-runs newest-first, with each run's action, status, and when it ran. Open one to
-see the same detail as a live run, including a **snapshot of the workflow as it
-was when that run started** — so a past run stays accurate even after you've
-edited the workflow since.
+runs newest-first, with each run's action, status, when it ran, and a bar with
+one segment per stage colored by how that stage went — so a failure is easy to
+spot without opening anything. Open one to see the same detail as a live run,
+including a **snapshot of the workflow as it was when that run started** — so a
+past run stays accurate even after you've edited the workflow since.
+
+Runs from before workflows had stages are shown in stages too: each component
+is placed after everything it used to wait on, and the stages are numbered.

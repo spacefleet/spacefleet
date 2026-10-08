@@ -18,7 +18,6 @@ import (
 	"github.com/spacefleet/spacefleet/ent/cloudcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
-	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/groupvariable"
@@ -31,6 +30,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/user"
 	"github.com/spacefleet/spacefleet/ent/variable"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
+	"github.com/spacefleet/spacefleet/ent/workflowstage"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -97,7 +97,6 @@ func checkColumn(t, c string) error {
 			cloudcredential.Table:     cloudcredential.ValidColumn,
 			cluster.Table:             cluster.ValidColumn,
 			component.Table:           component.ValidColumn,
-			componentgroup.Table:      componentgroup.ValidColumn,
 			componentrun.Table:        componentrun.ValidColumn,
 			githubinstallation.Table:  githubinstallation.ValidColumn,
 			groupvariable.Table:       groupvariable.ValidColumn,
@@ -110,6 +109,7 @@ func checkColumn(t, c string) error {
 			user.Table:                user.ValidColumn,
 			variable.Table:            variable.ValidColumn,
 			workflowrun.Table:         workflowrun.ValidColumn,
+			workflowstage.Table:       workflowstage.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

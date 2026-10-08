@@ -230,6 +230,7 @@ func TestDeleteInUseRejected(t *testing.T) {
 	if _, err := client.Component.Create().
 		SetOrganizationID(org.ID).
 		SetApplicationID(app.ID).
+		SetStageID(testsupport.Stage(t, client, org.ID, app.ID)).
 		SetName("chart").
 		SetType("helm").
 		SetGithubInstallationID(inst.ID).

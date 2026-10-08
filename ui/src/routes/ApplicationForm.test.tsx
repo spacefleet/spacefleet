@@ -72,7 +72,7 @@ function renderEdit() {
 }
 
 describe("ApplicationForm create mode", () => {
-  it("creates an application then opens its workflow canvas", async () => {
+  it("creates an application then opens its workflow builder", async () => {
     mockApi.POST.mockResolvedValue({ data: { id: "app-9" }, error: undefined });
     renderCreate();
 

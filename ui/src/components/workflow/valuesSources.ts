@@ -1,5 +1,5 @@
 // The helm component's `values_sources` config key is a JSON-encoded string of
-// an ordered list of git value sources (see the planner). The canvas edits them
+// an ordered list of git value sources (see the planner). The editor edits them
 // as a structured list and serializes back to that single string key on save.
 
 export interface ValuesSourceRow {

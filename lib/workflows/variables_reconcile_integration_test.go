@@ -32,11 +32,11 @@ func TestReplaceWorkflowReconcilesComponentVariables(t *testing.T) {
 	idA, idB := uuid.New(), uuid.New()
 
 	// Start with components A and B.
-	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID,
-		[]ComponentInput{
+	if _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID,
+		stagesOf([]ComponentInput{
 			{ID: idA, Name: "a", Type: "helm", Config: helmCfg, TargetClusterID: &target, TargetNamespace: "prod"},
 			{ID: idB, Name: "b", Type: "helm", Config: helmCfg, TargetClusterID: &target, TargetNamespace: "prod"},
-		}, nil); err != nil {
+		})); err != nil {
 		t.Fatalf("ReplaceWorkflow (A,B): %v", err)
 	}
 
@@ -59,8 +59,8 @@ func TestReplaceWorkflowReconcilesComponentVariables(t *testing.T) {
 	mkVar("APP", nil)
 
 	// Replace with only A — B is removed.
-	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID,
-		[]ComponentInput{{ID: idA, Name: "a", Type: "helm", Config: helmCfg, TargetClusterID: &target, TargetNamespace: "prod"}}, nil); err != nil {
+	if _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID,
+		stagesOf([]ComponentInput{{ID: idA, Name: "a", Type: "helm", Config: helmCfg, TargetClusterID: &target, TargetNamespace: "prod"}})); err != nil {
 		t.Fatalf("ReplaceWorkflow (A): %v", err)
 	}
 
@@ -91,8 +91,8 @@ func TestReplaceWorkflowEmptyDropsAllComponentVariables(t *testing.T) {
 	id := uuid.New()
 	helmCfg := map[string]string{"chart_source": "http_repo", "repo_url": "https://x", "chart": "c"}
 
-	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID,
-		[]ComponentInput{{ID: id, Name: "a", Type: "helm", Config: helmCfg, TargetClusterID: &target, TargetNamespace: "prod"}}, nil); err != nil {
+	if _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID,
+		stagesOf([]ComponentInput{{ID: id, Name: "a", Type: "helm", Config: helmCfg, TargetClusterID: &target, TargetNamespace: "prod"}})); err != nil {
 		t.Fatalf("ReplaceWorkflow: %v", err)
 	}
 	if _, err := client.Variable.Create().SetOrganizationID(org.ID).SetApplicationID(app.ID).SetComponentID(id).SetName("V").SetValue("x").Save(ctx); err != nil {
@@ -103,7 +103,7 @@ func TestReplaceWorkflowEmptyDropsAllComponentVariables(t *testing.T) {
 	}
 
 	// Replace with an empty workflow.
-	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, nil, nil); err != nil {
+	if _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, nil); err != nil {
 		t.Fatalf("ReplaceWorkflow (empty): %v", err)
 	}
 

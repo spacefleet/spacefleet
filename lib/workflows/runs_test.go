@@ -23,31 +23,36 @@ func TestValidAction(t *testing.T) {
 	}
 }
 
-// TestSnapshotComponents proves the graph snapshot copies each node's as-run
-// config/targeting and emits optional FK ids only when set.
+// TestSnapshotComponents proves the graph snapshot copies each component's
+// as-run config/targeting, emits optional FK ids only when set, records the
+// stages that hold a component, and desugars stage order into depends_on:
+// every component waits on every component of the previous non-empty stage.
 func TestSnapshotComponents(t *testing.T) {
 	cluster := uuid.New()
-	comps := []*ent.Component{
-		{
-			ID:                uuid.New(),
-			Name:              "web",
-			Type:              component.TypeHelm,
-			Config:            map[string]string{"chart_source": "oci", "values": "x: 1"},
-			DependsOn:         nil,
-			ContinueOnFailure: true,
-			TargetClusterID:   cluster,
-			TargetNamespace:   "prod",
-		},
-		{
-			ID:   uuid.New(),
-			Name: "cfg",
-			Type: component.TypeManifest,
-			// no overrides set
-		},
+	web := &ent.Component{
+		ID:                uuid.New(),
+		Name:              "web",
+		Type:              component.TypeHelm,
+		Config:            map[string]string{"chart_source": "oci", "values": "x: 1"},
+		ContinueOnFailure: true,
+		TargetClusterID:   cluster,
+		TargetNamespace:   "prod",
 	}
-	snap := snapshotComponents(comps, nil, ActionDeploy)
-	if len(snap.Nodes) != 2 {
-		t.Fatalf("nodes = %d, want 2", len(snap.Nodes))
+	cfg := &ent.Component{
+		ID:   uuid.New(),
+		Name: "cfg",
+		Type: component.TypeManifest,
+		// no overrides set
+	}
+	worker := &ent.Component{ID: uuid.New(), Name: "worker", Type: component.TypeManifest}
+	stage := func(name string, comps ...*ent.Component) *ent.WorkflowStage {
+		return &ent.WorkflowStage{ID: uuid.New(), Name: name, Edges: ent.WorkflowStageEdges{Components: comps}}
+	}
+	first, empty, second := stage("build", web, cfg), stage("empty"), stage("deploy", worker)
+
+	snap := snapshotComponents([]*ent.WorkflowStage{first, empty, second}, ActionDeploy)
+	if len(snap.Nodes) != 3 {
+		t.Fatalf("nodes = %d, want 3", len(snap.Nodes))
 	}
 	n0 := snap.Nodes[0]
 	if n0.Name != "web" || n0.Type != "helm" || !n0.ContinueOnFailure {
@@ -59,12 +64,54 @@ func TestSnapshotComponents(t *testing.T) {
 	if n0.TargetClusterID == nil || *n0.TargetClusterID != cluster {
 		t.Fatalf("node0 target cluster not set: %v", n0.TargetClusterID)
 	}
-	if n0.DependsOn == nil {
-		t.Fatalf("depends_on should be non-nil ([])")
+	if n0.DependsOn == nil || len(n0.DependsOn) != 0 {
+		t.Fatalf("a first-stage component depends on nothing, as [] (got %v)", n0.DependsOn)
 	}
 	n1 := snap.Nodes[1]
 	if n1.TargetClusterID != nil || n1.ChartCredentialID != nil || n1.GitHubInstallationID != nil {
 		t.Fatalf("node1 should have no optional ids: %+v", n1)
+	}
+	if len(n1.DependsOn) != 0 {
+		t.Fatalf("components of one stage run in parallel; got deps %v", n1.DependsOn)
+	}
+	n2 := snap.Nodes[2]
+	if len(n2.DependsOn) != 2 || n2.DependsOn[0] != web.ID || n2.DependsOn[1] != cfg.ID {
+		t.Fatalf("worker should wait on the whole previous non-empty stage, got %v", n2.DependsOn)
+	}
+	for i, n := range snap.Nodes {
+		want := first.ID
+		if i == 2 {
+			want = second.ID
+		}
+		if n.StageID == nil || *n.StageID != want {
+			t.Errorf("node %d stage = %v, want %s", i, n.StageID, want)
+		}
+	}
+	// The empty stage has nothing to show, so it isn't recorded.
+	if len(snap.Stages) != 2 || snap.Stages[0] != (GraphStage{ID: first.ID, Name: "build"}) || snap.Stages[1] != (GraphStage{ID: second.ID, Name: "deploy"}) {
+		t.Fatalf("stages = %+v, want build then deploy", snap.Stages)
+	}
+}
+
+// TestSnapshotComponents_TerraformStage proves an OpenTofu component's plan
+// and apply units both keep its stage, and that a later stage waits on the
+// apply (the component only completes once it has applied).
+func TestSnapshotComponents_TerraformStage(t *testing.T) {
+	infra := &ent.Component{ID: uuid.New(), Name: "infra", Type: component.TypeTerraform}
+	web := &ent.Component{ID: uuid.New(), Name: "web", Type: component.TypeHelm}
+	s1 := &ent.WorkflowStage{ID: uuid.New(), Name: "infra", Edges: ent.WorkflowStageEdges{Components: []*ent.Component{infra}}}
+	s2 := &ent.WorkflowStage{ID: uuid.New(), Name: "apps", Edges: ent.WorkflowStageEdges{Components: []*ent.Component{web}}}
+
+	snap := snapshotComponents([]*ent.WorkflowStage{s1, s2}, ActionDeploy)
+	if len(snap.Nodes) != 3 {
+		t.Fatalf("nodes = %d, want plan + apply + web", len(snap.Nodes))
+	}
+	plan, apply, w := snap.Nodes[0], snap.Nodes[1], snap.Nodes[2]
+	if *plan.StageID != s1.ID || *apply.StageID != s1.ID || *w.StageID != s2.ID {
+		t.Errorf("stages = %v / %v / %v", *plan.StageID, *apply.StageID, *w.StageID)
+	}
+	if len(w.DependsOn) != 1 || w.DependsOn[0] != deriveApplyID(infra.ID) {
+		t.Errorf("web deps = %v, want the infra apply unit", w.DependsOn)
 	}
 }
 

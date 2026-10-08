@@ -207,9 +207,9 @@ func schedule(
 						// A dep id not present in the node set can never settle, so the
 						// dependent would otherwise hang forever (and the run could report
 						// succeeded while this component stays pending). Treat it as a hard
-						// error: fail the dependent now. validateDAG rejects unknown deps at
-						// write time, so this only fires on a corrupt/edited snapshot — but
-						// the scheduler must not strand a node on it.
+						// error: fail the dependent now. The snapshot only ever holds edges
+						// between its own nodes, so this only fires on a corrupt/edited
+						// snapshot — but the scheduler must not strand a node on it.
 						unknownDep = true
 						break
 					}

@@ -41,25 +41,34 @@ const (
 )
 
 // GraphSnapshot is the JSON shape stored on WorkflowRun.graph: the workflow's
-// nodes (with their as-run config and targeting) so an in-flight run is immune
-// to later edits and a past run stays auditable. The executor (next phase) reads
-// it back; the run-detail handler exposes it (with secret config redacted).
+// execution nodes (with their as-run config and targeting) so an in-flight run
+// is immune to later edits and a past run stays auditable. The worker reads it
+// back; the run-detail handler exposes it (with secret config redacted).
 //
-// Group containers are a builder concept the scheduler never sees: each node's
-// depends_on is already the *expanded*, pure component-level edge set (groups
-// desugared away), so the executor consumes it directly. Groups carries the
-// authored boxes purely so a future run view can render them; it is not used by
-// the scheduler.
+// Stages are a builder concept the scheduler never sees: each node's
+// depends_on is already the desugared step-level edge set (see
+// stageDependencies), so the worker consumes it directly. Stages records the
+// workflow's stages in run order purely so the run can be shown stage by stage
+// (see RunStages). A run started before workflows had stages has no Stages —
+// and may carry the old "groups" key, which is ignored.
 type GraphSnapshot struct {
 	Nodes  []GraphNode  `json:"nodes"`
-	Groups []GraphGroup `json:"groups,omitempty"`
+	Stages []GraphStage `json:"stages,omitempty"`
 }
 
-// GraphNode is one node of a snapshot: the component as it was when the run
-// began. Config is the type-specific param map (the "values" key may carry
-// secrets — redacted before it reaches a viewer). depends_on are the *expanded*
-// component-level edges (group references desugared into member ids). group_id
-// records the authored group membership for the run view only.
+// GraphStage is one stage of a snapshot: its id and name as the run began.
+// Nodes name it by StageID.
+type GraphStage struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// GraphNode is one node of a snapshot: the component (or, for an OpenTofu
+// component, one of its plan/apply steps) as it was when the run began. Config
+// is the type-specific param map (the "values" key may carry secrets — redacted
+// before it reaches a viewer). depends_on are the step-level edges the
+// scheduler runs (stage order desugared). stage_id records the stage the
+// component ran in, for the run view only.
 type GraphNode struct {
 	ID uuid.UUID `json:"id"`
 	// ComponentID is the authored component this execution node derives from. It
@@ -82,18 +91,7 @@ type GraphNode struct {
 	TargetNamespace      string          `json:"target_namespace,omitempty"`
 	ChartCredentialID    *uuid.UUID      `json:"chart_credential_id,omitempty"`
 	GitHubInstallationID *uuid.UUID      `json:"github_installation_id,omitempty"`
-	GroupID              *uuid.UUID      `json:"group_id,omitempty"`
-}
-
-// GraphGroup is one authored group container in a snapshot, retained so a future
-// run view can draw the boxes. The scheduler ignores it — node edges are already
-// expanded. Members are the component ids whose group_id is this group.
-type GraphGroup struct {
-	ID       uuid.UUID          `json:"id"`
-	Name     string             `json:"name"`
-	Members  []uuid.UUID        `json:"members"`
-	Position map[string]float64 `json:"position,omitempty"`
-	Size     map[string]float64 `json:"size,omitempty"`
+	StageID              *uuid.UUID      `json:"stage_id,omitempty"`
 }
 
 // validAction reports whether action is one of the whole-workflow run actions
@@ -149,22 +147,19 @@ func (s *Service) beginRun(ctx context.Context, orgID, appID uuid.UUID, action s
 		return nil, err
 	}
 
-	comps, err := s.ent.Component.Query().
-		Where(component.OrganizationID(orgID), component.ApplicationID(appID)).
-		Order(ent.Asc(component.FieldCreatedAt)).
-		All(ctx)
+	stages, err := s.loadStages(ctx, orgID, appID)
 	if err != nil {
 		return nil, err
 	}
 	if adjust != nil {
+		var comps []*ent.Component
+		for _, st := range stages {
+			comps = append(comps, st.Edges.Components...)
+		}
 		adjust(comps)
 	}
-	groups, err := s.listGroups(ctx, orgID, appID)
-	if err != nil {
-		return nil, err
-	}
 
-	snapshot := snapshotComponents(comps, groups, action)
+	snapshot := snapshotComponents(stages, action)
 	if action == ActionDrift && len(snapshot.Nodes) == 0 {
 		return nil, ErrNoDriftTargets
 	}
@@ -247,95 +242,99 @@ func (s *Service) createRun(ctx context.Context, orgID, appID uuid.UUID, action,
 	return run, nil
 }
 
-// snapshotComponents builds the graph snapshot from the live components and group
-// containers, copying each node's as-run config and targeting. Group references
-// are desugared away: each node's depends_on is the *expanded* component-level
-// edge set (a dependency on a group becomes a dependency on every member), so the
-// scheduler — which never sees a group — consumes it directly. The authored
-// groups are retained on the snapshot (with member ids) only so a future run view
-// can render the boxes. Optional FK fields are emitted only when set (non-zero),
-// so a snapshot reads cleanly.
-func snapshotComponents(comps []*ent.Component, groups []*ent.ComponentGroup, action string) GraphSnapshot {
-	// Reuse the pure expansion: build the inputs from the live rows.
-	compInputs := make([]ComponentInput, 0, len(comps))
-	for _, c := range comps {
-		in := ComponentInput{ID: c.ID, DependsOn: c.DependsOn}
-		if c.GroupID != uuid.Nil {
-			gid := c.GroupID
-			in.GroupID = &gid
+// snapshotComponents builds the graph snapshot from the live workflow — its
+// stages in run order, each with its components (Edges.Components) — copying
+// each component's as-run config and targeting. Stage order is desugared away:
+// each node's depends_on is the step-level edge set stageDependencies derives
+// (every component of a stage waits on every component of the previous
+// non-empty stage), so the scheduler — which never sees a stage — consumes it
+// directly. The stages themselves are recorded (only those holding a
+// component) so the run can be shown stage by stage. Optional FK fields are
+// emitted only when set (non-zero), so a snapshot reads cleanly.
+func snapshotComponents(stages []*ent.WorkflowStage, action string) GraphSnapshot {
+	// Reuse the pure desugaring: build the inputs from the live rows.
+	inputs := make([]StageInput, 0, len(stages))
+	for _, st := range stages {
+		in := StageInput{ID: st.ID}
+		for _, c := range st.Edges.Components {
+			in.Components = append(in.Components, ComponentInput{ID: c.ID})
 		}
-		compInputs = append(compInputs, in)
+		inputs = append(inputs, in)
 	}
-	groupInputs := make([]GroupInput, 0, len(groups))
-	for _, g := range groups {
-		groupInputs = append(groupInputs, GroupInput{ID: g.ID, DependsOn: g.DependsOn})
-	}
-	expanded := expandDependencies(compInputs, groupInputs)
+	deps := stageDependencies(inputs)
 
-	nodes := make([]GraphNode, 0, len(comps))
-	for _, c := range comps {
-		n := GraphNode{
-			ID:                c.ID,
-			ComponentID:       c.ID,
-			Name:              c.Name,
-			Type:              string(c.Type),
-			Config:            nonNilStringMap(c.Config),
-			DependsOn:         nonNilIDs(expanded[c.ID]),
-			ContinueOnFailure: c.ContinueOnFailure,
-			RequiresApproval:  c.RequiresApproval,
-			TargetNamespace:   c.TargetNamespace,
+	var (
+		nodes       []GraphNode
+		graphStages []GraphStage
+	)
+	for _, st := range stages {
+		if len(st.Edges.Components) == 0 {
+			continue
 		}
-		if !isZeroPolicy(c.ApprovalPolicy) {
-			p := c.ApprovalPolicy
-			n.ApprovalPolicy = &p
+		graphStages = append(graphStages, GraphStage{ID: st.ID, Name: st.Name})
+		for _, c := range st.Edges.Components {
+			n := componentNode(c, st.ID)
+			n.DependsOn = nonNilIDs(deps[c.ID])
+			nodes = append(nodes, n)
 		}
-		if c.TargetClusterID != uuid.Nil {
-			id := c.TargetClusterID
-			n.TargetClusterID = &id
-		}
-		if c.ChartCredentialID != uuid.Nil {
-			id := c.ChartCredentialID
-			n.ChartCredentialID = &id
-		}
-		if c.GithubInstallationID != uuid.Nil {
-			id := c.GithubInstallationID
-			n.GitHubInstallationID = &id
-		}
-		if c.GroupID != uuid.Nil {
-			id := c.GroupID
-			n.GroupID = &id
-		}
-		nodes = append(nodes, n)
-	}
-
-	// members[g] = component ids whose group_id == g, for the run-view boxes.
-	members := make(map[uuid.UUID][]uuid.UUID, len(groups))
-	for _, c := range comps {
-		if c.GroupID != uuid.Nil {
-			members[c.GroupID] = append(members[c.GroupID], c.ID)
-		}
-	}
-	var graphGroups []GraphGroup
-	for _, g := range groups {
-		gg := GraphGroup{
-			ID:      g.ID,
-			Name:    g.Name,
-			Members: nonNilIDs(members[g.ID]),
-		}
-		if len(g.Position) > 0 {
-			gg.Position = g.Position
-		}
-		if len(g.Size) > 0 {
-			gg.Size = g.Size
-		}
-		graphGroups = append(graphGroups, gg)
 	}
 	// Expand authored components into their per-run execution units (an OpenTofu
 	// component becomes a plan unit + an apply unit) just before assembling the
-	// snapshot. Groups are unaffected: their members still reference the plan
-	// unit (which keeps the authored id), and dependents are rewired to the apply
-	// unit inside the expansion.
-	return GraphSnapshot{Nodes: expandExecutionNodes(nodes, action), Groups: graphGroups}
+	// snapshot. Both units keep the component's stage; dependents are rewired to
+	// the apply unit inside the expansion.
+	return GraphSnapshot{Nodes: expandExecutionNodes(nodes, action), Stages: graphStages}
+}
+
+// componentNode copies one live component into a snapshot node in the given
+// stage, with no dependencies — the caller supplies those. Shared by the
+// whole-workflow snapshot and the single-component (scoped run, state
+// operation) ones so the as-run copy of a component can't drift between them.
+func componentNode(c *ent.Component, stageID uuid.UUID) GraphNode {
+	n := GraphNode{
+		ID:                c.ID,
+		ComponentID:       c.ID,
+		Name:              c.Name,
+		Type:              string(c.Type),
+		Config:            nonNilStringMap(c.Config),
+		DependsOn:         []uuid.UUID{},
+		ContinueOnFailure: c.ContinueOnFailure,
+		RequiresApproval:  c.RequiresApproval,
+		TargetNamespace:   c.TargetNamespace,
+	}
+	if stageID != uuid.Nil {
+		id := stageID
+		n.StageID = &id
+	}
+	if !isZeroPolicy(c.ApprovalPolicy) {
+		p := c.ApprovalPolicy
+		n.ApprovalPolicy = &p
+	}
+	if c.TargetClusterID != uuid.Nil {
+		id := c.TargetClusterID
+		n.TargetClusterID = &id
+	}
+	if c.ChartCredentialID != uuid.Nil {
+		id := c.ChartCredentialID
+		n.ChartCredentialID = &id
+	}
+	if c.GithubInstallationID != uuid.Nil {
+		id := c.GithubInstallationID
+		n.GitHubInstallationID = &id
+	}
+	return n
+}
+
+// snapshotStageOf returns the stage a single-component snapshot (a scoped run
+// or a state operation) records: the component's stage id and the one-stage
+// list, from the stage edge the caller eager-loaded. A component loaded
+// without its stage yields neither, and the run is shown as one unnamed stage.
+func snapshotStageOf(c *ent.Component) (*uuid.UUID, []GraphStage) {
+	st := c.Edges.Stage
+	if st == nil {
+		return nil, nil
+	}
+	id := st.ID
+	return &id, []GraphStage{{ID: st.ID, Name: st.Name}}
 }
 
 // tofuExecNamespace is the fixed UUIDv5 namespace used to derive an OpenTofu

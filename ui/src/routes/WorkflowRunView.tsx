@@ -5,16 +5,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useLocation, useNavigate, useParams } from "react-router";
 import {
-  ReactFlow,
-  Background,
-  Controls,
-  type Edge,
-  type Node,
-  type ReactFlowInstance,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router";
 import { ArrowLeft, Ban, Check, Maximize2, Minimize2, X } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
@@ -23,12 +19,11 @@ import { usePodLogs } from "../lib/usePodLogs";
 import type { components } from "../api/schema";
 import { formatDuration } from "../lib/duration";
 import { DiffView } from "../components/DiffView";
+import { TypeBadge } from "../components/workflow/TypeBadge";
 import {
-  RunNode,
-  TypeBadge,
-  type RunNodeData,
-} from "../components/workflow/nodes";
-import { RunStatusBadge } from "../components/workflow/status";
+  ComponentStatusIcon,
+  RunStatusBadge,
+} from "../components/workflow/status";
 import {
   runActionLabel,
   runScopeDescription,
@@ -51,14 +46,14 @@ type ComponentType = components["schemas"]["ComponentType"];
 type ComponentRunStatus = components["schemas"]["ComponentRunStatus"];
 type RunStatus = components["schemas"]["RunStatus"];
 type PolicyVerdict = components["schemas"]["PolicyVerdict"];
-
-const nodeTypes = { run: RunNode };
+type RunStage = components["schemas"]["RunStage"];
+type RunStageComponent = components["schemas"]["RunStageComponent"];
 
 // GraphSnapshot mirrors the backend's lib/workflows GraphSnapshot JSON written
-// to WorkflowRun.graph: nodes with their as-run config + depends_on (edges).
-// config carries the per-unit command ("plan"/"apply") an OpenTofu component's
-// execution units were expanded with, which lets the view pair an apply step
-// with its upstream plan step.
+// to WorkflowRun.graph: the execution steps with their as-run config and the
+// steps each waits on. config carries the per-step command ("plan"/"apply") an
+// OpenTofu component was expanded into, which lets the view pair an apply step
+// with its plan step.
 interface SnapshotNode {
   id: string;
   name: string;
@@ -72,8 +67,6 @@ interface GraphSnapshot {
   nodes?: SnapshotNode[];
 }
 
-type FlowNode = Node<RunNodeData & { componentRunId?: string }>;
-
 // A run is terminal once it reaches a settled status; the stream closes then.
 const TERMINAL: RunStatus[] = ["succeeded", "failed", "partial"];
 
@@ -86,19 +79,20 @@ function isReadOnlyAction(action: string): boolean {
 
 type StateOperation = components["schemas"]["StateOperation"];
 
-// WorkflowRunView is the live DAG run view (route
-// /applications/:appId/runs/:runId). It renders the run's snapshot graph as a
-// read-only React Flow DAG, colors each node by its component-run status, and
-// live-updates from the run SSE stream while in flight. Clicking a node shrinks
-// the DAG to a zoomed-out strip and opens a full-width bottom panel with the
-// step's logs (plus a diff for preview runs, and the upstream plan output for a
-// tofu apply step), which can be expanded to fill the whole view — the DAG here
-// is the picker; the logs are the content.
+// WorkflowRunView is the live run view (route /applications/:appId/runs/:runId).
+// A rail on the left lists the run's stages and their components with live
+// statuses — an OpenTofu component with its plan and apply steps under it — and
+// the main pane shows the selected step: its logs, plus a diff for preview
+// runs, the plan behind a tofu apply step, outputs, resources, and the approval
+// gate. The selected step is the ?step= search param, so a step is linkable;
+// without one the view follows the step that most needs attention as the run
+// progresses. Expanding the pane hides the rail.
 export function WorkflowRunView() {
   const { appId = "", runId = "" } = useParams();
   const { currentOrg, currentRole } = useOrg();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const canApprove = currentRole !== "viewer";
 
   // Where Back returns to. Pages that link here (the runs index) pass their own
@@ -114,26 +108,11 @@ export function WorkflowRunView() {
   const [run, setRun] = useState<WorkflowRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  // Whether the component-run panel fills the view (hiding the DAG) so logs get
-  // the full window while following a deploy.
+  // Whether the step pane fills the view (hiding the rail) so logs get the full
+  // window while following a deploy.
   const [expanded, setExpanded] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
-  const [flow, setFlow] = useState<ReactFlowInstance<FlowNode, Edge> | null>(
-    null,
-  );
-
-  // Selecting a node shrinks the DAG to a strip above the logs panel; refit the
-  // viewport after the container resizes (next frame) so the whole workflow
-  // stays visible at the new size. The DAG is a picker here, not the focus.
-  useEffect(() => {
-    if (!flow) return;
-    const frame = requestAnimationFrame(() => {
-      void flow.fitView({ padding: 0.15 });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [flow, selectedRunId, expanded]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -186,8 +165,15 @@ export function WorkflowRunView() {
     void load();
   }, [appId, runId, load]);
 
-  // Component runs keyed by their source component id, so a snapshot node can
-  // find its run status. Falls back to matching by id directly.
+  // Component runs (steps) by their own id, for the rail and the selection.
+  const stepById = useMemo(() => {
+    const m = new Map<string, ComponentRun>();
+    for (const cr of run?.component_runs ?? []) m.set(cr.id, cr);
+    return m;
+  }, [run]);
+
+  // Component runs keyed by their snapshot node id, so a snapshot node can find
+  // its step (the apply step's plan pairing below).
   const runsByComponent = useMemo(() => {
     const m = new Map<string, ComponentRun>();
     for (const cr of run?.component_runs ?? []) {
@@ -196,64 +182,37 @@ export function WorkflowRunView() {
     return m;
   }, [run]);
 
-  // Parse the snapshot graph for layout; fall back to deriving nodes from the
-  // component runs themselves if the snapshot is missing/unparseable.
-  const { nodes, edges } = useMemo(() => {
-    const snapshot = parseSnapshot(run?.graph);
-    const snapNodes = snapshot?.nodes ?? [];
+  const stages = useMemo(() => (run ? runStagesOf(run) : []), [run]);
 
-    let layoutNodes: {
-      id: string;
-      name: string;
-      type: string;
-      depends_on: string[];
-    }[];
-    if (snapNodes.length > 0) {
-      layoutNodes = snapNodes.map((n) => ({
-        id: n.id,
-        name: n.name,
-        type: n.type,
-        depends_on: n.depends_on ?? [],
-      }));
-    } else {
-      // Derive from component runs (no edges available without the snapshot).
-      layoutNodes = (run?.component_runs ?? []).map((cr) => ({
-        id: cr.component_id ?? cr.id,
-        name: cr.name ?? "(unnamed)",
-        type: cr.type ?? "helm",
-        depends_on: [],
-      }));
-    }
+  // The selected step: the ?step= param when it names one of this run's steps,
+  // else the one most worth looking at right now (which moves as the run
+  // progresses, until the user picks one).
+  const stepParam = searchParams.get("step");
+  const selectedRunId = useMemo(() => {
+    if (stepParam && stepById.has(stepParam)) return stepParam;
+    const ordered = stages
+      .flatMap((st) => st.components.flatMap((c) => c.component_run_ids))
+      .map((id) => stepById.get(id))
+      .filter((s): s is ComponentRun => s != null);
+    return mostRelevantStep(ordered)?.id ?? null;
+  }, [stepParam, stepById, stages]);
 
-    const depthOf = computeDepths(layoutNodes);
-    const perDepth: Record<number, number> = {};
-    const flowNodes: FlowNode[] = layoutNodes.map((n) => {
-      const cr = runsByComponent.get(n.id);
-      const depth = depthOf[n.id] ?? 0;
-      const col = perDepth[depth] ?? 0;
-      perDepth[depth] = col + 1;
-      return {
-        id: n.id,
-        type: "run",
-        position: { x: 80 + col * 240, y: 60 + depth * 150 },
-        data: {
-          name: n.name,
-          type: (n.type as ComponentType) ?? "helm",
-          status: cr?.status ?? "pending",
-          componentRunId: cr?.id,
-          plan: cr?.plan,
+  // Selecting a step records it in the URL (replacing, so stepping through a
+  // run doesn't fill the history) and keeps the router state that carries
+  // Back's target.
+  const selectStep = useCallback(
+    (id: string) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set("step", id);
+          return next;
         },
-      };
-    });
-
-    const flowEdges: Edge[] = [];
-    for (const n of layoutNodes) {
-      for (const dep of n.depends_on) {
-        flowEdges.push({ id: `${dep}->${n.id}`, source: dep, target: n.id });
-      }
-    }
-    return { nodes: flowNodes, edges: flowEdges };
-  }, [run, runsByComponent]);
+        { replace: true, state: location.state },
+      );
+    },
+    [setSearchParams, location.state],
+  );
 
   // When the selected step is an OpenTofu apply unit, resolve its upstream plan
   // unit's component run so the panel can surface the plan output right where
@@ -262,7 +221,7 @@ export function WorkflowRunView() {
   // independently), so they're excluded.
   const planSource = useMemo(() => {
     if (!selectedRunId || !run || isReadOnlyAction(run.action)) return null;
-    const cr = run.component_runs?.find((c) => c.id === selectedRunId);
+    const cr = stepById.get(selectedRunId);
     if (!cr?.component_id) return null;
     const snapNodes = parseSnapshot(run.graph)?.nodes ?? [];
     const node = snapNodes.find((n) => n.id === cr.component_id);
@@ -276,19 +235,19 @@ export function WorkflowRunView() {
       }
     }
     return null;
-  }, [selectedRunId, run, runsByComponent]);
+  }, [selectedRunId, run, stepById, runsByComponent]);
 
   // The selected step's approval policy, as snapshotted at run start, so the
   // gate can say who may approve and how many approvals it needs.
   const selectedPolicy = useMemo(() => {
     if (!selectedRunId || !run) return null;
-    const cr = run.component_runs?.find((c) => c.id === selectedRunId);
+    const cr = stepById.get(selectedRunId);
     if (!cr?.component_id) return null;
     const node = parseSnapshot(run.graph)?.nodes?.find(
       (n) => n.id === cr.component_id,
     );
     return node?.approval_policy ?? null;
-  }, [selectedRunId, run]);
+  }, [selectedRunId, run, stepById]);
 
   return (
     <div className="flex h-[calc(100vh-7rem)] flex-col">
@@ -365,43 +324,19 @@ export function WorkflowRunView() {
             <p className="pb-2 text-sm text-red-600">{cancelError}</p>
           )}
 
-          {/* The DAG on top, and — once a node is selected — a full-width bottom
-              panel for that component run. The logs are what the user came for;
-              the DAG is the picker. So selecting a node shrinks the DAG to a
-              zoomed-out strip (the fitView effect above keeps the whole
-              workflow in frame) and hands most of the view to the panel;
-              expanding the panel hides the DAG entirely. */}
-          <div className="flex min-h-0 flex-1 flex-col border border-neutral-200">
-            {!(expanded && selectedRunId) && (
-              <div
-                className={`min-h-0 min-w-0 ${
-                  selectedRunId ? "h-[30%] min-h-36 shrink-0" : "flex-1"
-                }`}
-              >
-                <ReactFlow
-                  nodes={nodes}
-                  edges={edges}
-                  nodeTypes={nodeTypes}
-                  nodesDraggable={false}
-                  nodesConnectable={false}
-                  proOptions={{ hideAttribution: true }}
-                  onInit={setFlow}
-                  // fitView won't zoom out past minZoom; a wide DAG in the
-                  // shrunken strip needs more headroom than the 0.5 default.
-                  minZoom={0.1}
-                  onNodeClick={(_, n) => {
-                    const crId = (n.data as { componentRunId?: string })
-                      .componentRunId;
-                    if (crId) setSelectedRunId(crId);
-                  }}
-                  fitView
-                >
-                  <Background />
-                  <Controls showInteractive={false} />
-                </ReactFlow>
-              </div>
+          {/* The rail of stages → components → steps on the left (above, on a
+              narrow screen) and the selected step's pane filling the rest.
+              Expanding the pane hides the rail. */}
+          <div className="flex min-h-0 flex-1 flex-col border border-neutral-200 md:flex-row">
+            {!expanded && (
+              <RunRail
+                stages={stages}
+                stepById={stepById}
+                selectedId={selectedRunId}
+                onSelect={selectStep}
+              />
             )}
-            {selectedRunId && (
+            {selectedRunId ? (
               <ComponentRunPanel
                 key={selectedRunId}
                 appId={appId}
@@ -410,11 +345,8 @@ export function WorkflowRunView() {
                 // The live status of the selected component run, folded from the
                 // run stream. Passing it as a key into the panel's fetch effect
                 // forces a re-fetch when the step transitions (e.g. to a terminal
-                // state), so logs/diff populate without a manual close/reopen.
-                liveStatus={
-                  run.component_runs?.find((cr) => cr.id === selectedRunId)
-                    ?.status
-                }
+                // state), so logs/diff populate without a manual reselect.
+                liveStatus={stepById.get(selectedRunId)?.status}
                 isPreview={isReadOnlyAction(run.action)}
                 isDrift={run.action === "drift"}
                 stateOp={run.state_op ?? null}
@@ -425,11 +357,11 @@ export function WorkflowRunView() {
                 onDecided={load}
                 expanded={expanded}
                 onToggleExpanded={() => setExpanded((e) => !e)}
-                onClose={() => {
-                  setSelectedRunId(null);
-                  setExpanded(false);
-                }}
               />
+            ) : (
+              <p className="p-4 text-sm text-neutral-500">
+                This run has no steps.
+              </p>
             )}
           </div>
         </>
@@ -438,11 +370,224 @@ export function WorkflowRunView() {
   );
 }
 
-// ComponentRunPanel is the full-width bottom panel for one component run: its
-// logs (and for preview runs, its diff; for a tofu apply step, its upstream
-// plan output) under a compact header, with the content area filling whatever
-// height the panel has — the view minus the DAG strip by default, or all of it
-// when expanded.
+// runStagesOf returns the run's stage summary. A payload without one (it is
+// always present from this server; this only guards a partial response) falls
+// back to a single stage listing each step as its own component.
+function runStagesOf(run: WorkflowRunDetail): RunStage[] {
+  if (run.stages) return run.stages;
+  const steps = run.component_runs ?? [];
+  if (steps.length === 0) return [];
+  return [
+    {
+      name: "Stage 1",
+      status: combineStatuses(steps.map((s) => s.status)),
+      components: steps.map((s) => ({
+        component_id: s.component_id ?? s.id,
+        name: s.name ?? "(unnamed)",
+        type: s.type ?? "helm",
+        status: s.status,
+        component_run_ids: [s.id],
+      })),
+    },
+  ];
+}
+
+// combineStatuses folds step statuses the way the server's stage summary does:
+// failed, then awaiting approval, then running (or a mix of settled and
+// pending, which is mid-flight), then all pending, then skipped, else
+// succeeded.
+function combineStatuses(statuses: ComponentRunStatus[]): ComponentRunStatus {
+  const has = new Set(statuses);
+  if (has.has("failed")) return "failed";
+  if (has.has("awaiting_approval")) return "awaiting_approval";
+  if (has.has("running")) return "running";
+  if (has.has("pending")) return has.size > 1 ? "running" : "pending";
+  if (has.has("skipped")) return "skipped";
+  return "succeeded";
+}
+
+// mostRelevantStep picks the step the view follows when none is chosen: one
+// waiting on a person, else one that failed, else one running, else the last
+// one that ran, else the first.
+function mostRelevantStep(steps: ComponentRun[]): ComponentRun | undefined {
+  for (const want of ["awaiting_approval", "failed", "running"] as const) {
+    const s = steps.find((x) => x.status === want);
+    if (s) return s;
+  }
+  const ran = steps.filter(
+    (s) => s.status !== "pending" && s.status !== "skipped",
+  );
+  return ran[ran.length - 1] ?? steps[0];
+}
+
+// primaryStep picks the step a component's row opens: the one that failed or
+// is waiting/running, else the later step once it has run (an OpenTofu
+// component's apply), else the first (its plan).
+function primaryStep(steps: ComponentRun[]): ComponentRun | undefined {
+  for (const want of ["failed", "awaiting_approval", "running"] as const) {
+    const s = steps.find((x) => x.status === want);
+    if (s) return s;
+  }
+  const last = steps[steps.length - 1];
+  if (last && last.status !== "pending" && last.status !== "skipped")
+    return last;
+  return steps[0];
+}
+
+// stepLabel is a step's own label under its component: an OpenTofu step's
+// name carries the component name plus " · plan" / " · apply" (or a state
+// operation), so the part after the last separator is the step.
+function stepLabel(name: string | undefined): string {
+  if (!name) return "step";
+  const i = name.lastIndexOf(" · ");
+  return i >= 0 ? name.slice(i + 3) : name;
+}
+
+// elapsed is a step's run time so far (or in total once it finished), or ""
+// before it starts.
+function elapsed(start?: string | null, end?: string | null): string {
+  if (!start) return "";
+  return formatDuration(start, end ?? undefined).replace(" (running)", "");
+}
+
+// componentElapsed spans a component's steps: from the first start to the
+// last finish (or now, while one is still going).
+function componentElapsed(steps: ComponentRun[]): string {
+  const starts = steps.map((s) => s.started_at).filter((x): x is string => !!x);
+  if (starts.length === 0) return "";
+  const start = starts.sort()[0];
+  const done = steps.every(
+    (s) => s.finished_at || s.status === "skipped" || s.status === "pending",
+  );
+  const ends = steps.map((s) => s.finished_at).filter((x): x is string => !!x);
+  return elapsed(start, done && ends.length > 0 ? ends.sort()[ends.length - 1] : null);
+}
+
+// RunRail lists the run's stages, each with its components; a component with
+// more than one step (an OpenTofu plan + apply) lists the steps under it.
+// Every row selects a step.
+function RunRail({
+  stages,
+  stepById,
+  selectedId,
+  onSelect,
+}: {
+  stages: RunStage[];
+  stepById: Map<string, ComponentRun>;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <nav
+      aria-label="Run steps"
+      className="max-h-56 shrink-0 overflow-y-auto border-b border-neutral-200 bg-neutral-50 pb-2 md:max-h-none md:w-72 md:border-b-0 md:border-r"
+    >
+      {stages.map((st, i) => (
+        <section key={`${i}-${st.name}`} aria-label={`Stage ${st.name}`}>
+          <h2 className="flex items-center gap-2 px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+            <ComponentStatusIcon status={st.status} />
+            <span className="truncate">{st.name}</span>
+          </h2>
+          <ul>
+            {st.components.map((c) => (
+              <RailComponent
+                key={c.component_id}
+                component={c}
+                stepById={stepById}
+                selectedId={selectedId}
+                onSelect={onSelect}
+              />
+            ))}
+          </ul>
+        </section>
+      ))}
+    </nav>
+  );
+}
+
+function RailComponent({
+  component,
+  stepById,
+  selectedId,
+  onSelect,
+}: {
+  component: RunStageComponent;
+  stepById: Map<string, ComponentRun>;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const steps = component.component_run_ids
+    .map((id) => stepById.get(id))
+    .filter((s): s is ComponentRun => s != null);
+  const multi = steps.length > 1;
+  const selected = !multi && steps.some((s) => s.id === selectedId);
+  const primary = primaryStep(steps);
+  const plan = !multi ? steps[0]?.plan : undefined;
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => primary && onSelect(primary.id)}
+        disabled={!primary}
+        aria-current={selected ? "true" : undefined}
+        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
+          selected ? "bg-white font-medium ring-1 ring-inset ring-neutral-300" : "hover:bg-white"
+        }`}
+      >
+        <ComponentStatusIcon status={component.status} />
+        <span
+          className={`min-w-0 flex-1 truncate ${
+            component.status === "skipped"
+              ? "text-neutral-500 line-through"
+              : "text-neutral-900"
+          }`}
+        >
+          {component.name}
+        </span>
+        {plan && <PlanCounts plan={plan} />}
+        <TypeBadge type={component.type as ComponentType} />
+        <span className="w-12 shrink-0 text-right text-xs text-neutral-400">
+          {componentElapsed(steps)}
+        </span>
+      </button>
+      {multi && (
+        <ul>
+          {steps.map((s) => {
+            const on = s.id === selectedId;
+            return (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(s.id)}
+                  aria-current={on ? "true" : undefined}
+                  className={`flex w-full items-center gap-2 py-1 pl-9 pr-3 text-left text-xs ${
+                    on
+                      ? "bg-white font-medium ring-1 ring-inset ring-neutral-300"
+                      : "text-neutral-600 hover:bg-white"
+                  }`}
+                >
+                  <ComponentStatusIcon status={s.status} />
+                  <span className="min-w-0 flex-1 truncate">
+                    {stepLabel(s.name)}
+                  </span>
+                  {s.plan && <PlanCounts plan={s.plan} />}
+                  <span className="w-12 shrink-0 text-right text-neutral-400">
+                    {elapsed(s.started_at, s.finished_at)}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+// ComponentRunPanel is the main pane for one component run (step): its logs
+// (and for preview runs, its diff; for a tofu apply step, its upstream plan
+// output) under a compact header, with the content area filling whatever room
+// the pane has — beside the rail by default, or the whole view when expanded.
 function ComponentRunPanel({
   appId,
   runId,
@@ -458,7 +603,6 @@ function ComponentRunPanel({
   onDecided,
   expanded,
   onToggleExpanded,
-  onClose,
 }: {
   appId: string;
   runId: string;
@@ -488,7 +632,6 @@ function ComponentRunPanel({
   onDecided: () => void;
   expanded: boolean;
   onToggleExpanded: () => void;
-  onClose: () => void;
 }) {
   const [detail, setDetail] = useState<ComponentRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -608,7 +751,10 @@ function ComponentRunPanel({
   }, [ownPlan]);
 
   return (
-    <section className="flex w-full min-h-0 flex-1 flex-col border-t border-neutral-200 bg-white">
+    <section
+      aria-label="Selected step"
+      className="flex min-h-0 min-w-0 flex-1 flex-col bg-white"
+    >
       <div className="flex items-center justify-between gap-2 border-b border-neutral-200 px-4 py-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
@@ -638,7 +784,7 @@ function ComponentRunPanel({
             aria-label={expanded ? "Collapse panel" : "Expand panel"}
             title={
               expanded
-                ? "Shrink the panel and show the DAG again"
+                ? "Shrink the panel and show the run's steps again"
                 : "Expand the panel to fill the view"
             }
             className="p-1 text-neutral-400 hover:text-neutral-900"
@@ -648,14 +794,6 @@ function ComponentRunPanel({
             ) : (
               <Maximize2 className="h-4 w-4" />
             )}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close panel"
-            className="p-1 text-neutral-400 hover:text-neutral-900"
-          >
-            <X className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -952,31 +1090,6 @@ function parseSnapshot(raw: string | undefined): GraphSnapshot | null {
   } catch {
     return null;
   }
-}
-
-// computeDepths assigns each node a DAG depth (longest path from a root) for a
-// simple top-down layered layout. Cycles can't occur (the server validated
-// acyclic), but the visited guard keeps it safe regardless.
-function computeDepths(
-  nodes: { id: string; depends_on: string[] }[],
-): Record<string, number> {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const depth: Record<string, number> = {};
-  const resolve = (id: string, seen: Set<string>): number => {
-    if (depth[id] !== undefined) return depth[id];
-    if (seen.has(id)) return 0;
-    seen.add(id);
-    const n = byId.get(id);
-    if (!n || n.depends_on.length === 0) {
-      depth[id] = 0;
-      return 0;
-    }
-    const d = 1 + Math.max(...n.depends_on.map((p) => resolve(p, seen)));
-    depth[id] = d;
-    return d;
-  };
-  for (const n of nodes) resolve(n.id, new Set());
-  return depth;
 }
 
 // ApprovalPolicyLine explains a parked gate's policy: who may approve, the

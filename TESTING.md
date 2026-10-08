@@ -96,12 +96,19 @@ A few real-browser journeys, each driving the UI against the real API:
 - **policies** — a plan policy refused by the Rego compiler, then one saved,
   toggled, and deleted.
 - **notifications** — a notification channel added and deleted.
+- **workflow-builder** — the stage builder's real-browser behavior: a menu
+  that opens past its scrolling area is still on top (hit-tested, since
+  Playwright would otherwise scroll a clipping container to reach it), adding
+  a component opens its editor in the right stage, drag and drop and the card
+  menu move components, and a new stage can be added and renamed. It serves
+  the app's workflow endpoints from an in-memory workflow (see below for why
+  there's no real application) and asserts on what the builder PUTs.
 
 Every spec logs in through the shared `loginIntoOrg` helper
 ([ui/e2e/helpers.ts](ui/e2e/helpers.ts)), which creates an organization for
 a fresh user and otherwise accepts whichever organization the dev database
 already holds. Journeys that need a **runner cluster** (registering an
-application, building a workflow, starting a run) are deliberately not
+application, saving a workflow for real, starting a run) are deliberately not
 e2e-tested: they would need a Tekton-enabled cluster in CI, and the worker
 and planner are covered by the Go integration tests with a faked executor.
 

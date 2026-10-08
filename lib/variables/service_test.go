@@ -97,6 +97,7 @@ func newComponent(t *testing.T, client *ent.Client, orgID, appID uuid.UUID, name
 	c, err := client.Component.Create().
 		SetOrganizationID(orgID).
 		SetApplicationID(appID).
+		SetStageID(testsupport.Stage(t, client, orgID, appID)).
 		SetName(name).
 		SetType("helm").
 		Save(context.Background())

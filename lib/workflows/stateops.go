@@ -10,6 +10,7 @@ import (
 
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/ent/component"
+	"github.com/spacefleet/spacefleet/ent/workflowstage"
 	"github.com/spacefleet/spacefleet/lib/tofu"
 )
 
@@ -46,6 +47,7 @@ func (s *Service) BeginStateOp(ctx context.Context, orgID, appID, componentID uu
 	}
 	comp, err := s.ent.Component.Query().
 		Where(component.OrganizationID(orgID), component.ApplicationID(appID), component.ID(componentID)).
+		WithStage(func(q *ent.WorkflowStageQuery) { q.Where(workflowstage.OrganizationID(orgID)) }).
 		Only(ctx)
 	if err != nil {
 		return nil, err
@@ -88,11 +90,9 @@ func stateOpSnapshot(c *ent.Component, op tofu.StateOp) GraphSnapshot {
 		id := c.GithubInstallationID
 		n.GitHubInstallationID = &id
 	}
-	if c.GroupID != uuid.Nil {
-		id := c.GroupID
-		n.GroupID = &id
-	}
-	return GraphSnapshot{Nodes: []GraphNode{n}}
+	stageID, stages := snapshotStageOf(c)
+	n.StageID = stageID
+	return GraphSnapshot{Stages: stages, Nodes: []GraphNode{n}}
 }
 
 // StateOpOf decodes the state operation stored on a state_op run's args. It

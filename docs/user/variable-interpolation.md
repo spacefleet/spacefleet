@@ -57,7 +57,7 @@ deployed, so they always match the chart contents. Two constraints follow:
 - they can only appear in the **values** (the namespace and release name are
   needed before the repository is cloned).
 
-## `components.*` — outputs of upstream OpenTofu components
+## `components.*` — outputs of OpenTofu components in earlier stages
 
 `${{ components.NAME.outputs.KEY }}` inserts an
 [output value](https://opentofu.org/docs/language/values/outputs/) of the
@@ -77,14 +77,14 @@ output "namespace" {
 `${{ components.infra.outputs.namespace }}`, and its values can reference
 further outputs the same way.
 
-The referenced component must be an **OpenTofu component upstream of the
-referencing one** — connected before it in the workflow, directly or through
-other steps — which is exactly what guarantees its apply has finished before
-the value is needed. The editor offers an *insert an output reference* shortcut
-under the values and namespace fields listing the components you can use, and
-saving a workflow that references a component that isn't upstream (or doesn't
-exist, or shares its name with another component) is rejected with a message
-naming the problem.
+The referenced component must be an **OpenTofu component in an earlier stage
+than the referencing one** — which is exactly what guarantees its apply has
+finished before the value is needed. (Components in the same stage run at the
+same time, so they can't reference each other.) The editor offers an *insert an
+output reference* shortcut under the values and namespace fields listing the
+components you can use, and saving a workflow that references a component in
+the same or a later stage (or one that doesn't exist, or shares its name with
+another component) is rejected with a message naming the problem.
 
 Which value is used:
 
@@ -124,8 +124,8 @@ unrelated syntax and pass through untouched.
 - A malformed reference (for example, a missing `}}`), an unknown name like
   `${{ env.HOME }}`, a `run.*` key used where it can't work, or a
   `components.*` reference to a component that doesn't exist, isn't an OpenTofu
-  component, or isn't upstream of the referencing one is rejected when you
-  **save** the workflow, with a message pointing at the problem.
+  component, or isn't in an earlier stage than the referencing one is rejected
+  when you **save** the workflow, with a message pointing at the problem.
 - A reference to a variable that doesn't exist, or to an output that was never
   captured, fails the **step at run time** (both can change independently of
   the workflow, so this can only be checked when the run starts).

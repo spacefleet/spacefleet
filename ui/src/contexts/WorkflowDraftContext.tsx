@@ -9,31 +9,16 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate, useParams } from "react-router";
-import {
-  addEdge,
-  applyEdgeChanges,
-  applyNodeChanges,
-  type Connection,
-  type Edge,
-  type EdgeChange,
-  type Node,
-  type NodeChange,
-} from "@xyflow/react";
 import { api } from "../api/client";
 import { useOrg } from "./OrgContext";
 import type { components } from "../api/schema";
 import { githubAppEnabled } from "../lib/appConfig";
 import { TOFU_SEED_VERSION } from "../lib/tofuVersions";
-import type {
-  BuilderNodeData,
-  GroupNodeData,
-} from "../components/workflow/nodes";
 import type { EditableComponent } from "../components/workflow/ComponentFields";
 
 type Component = components["schemas"]["Component"];
 type ComponentInput = components["schemas"]["ComponentInput"];
-type ComponentGroup = components["schemas"]["ComponentGroup"];
-type ComponentGroupInput = components["schemas"]["ComponentGroupInput"];
+type WorkflowStageInput = components["schemas"]["WorkflowStageInput"];
 type ComponentType = components["schemas"]["ComponentType"];
 type Cluster = components["schemas"]["Cluster"];
 type ChartCredential = components["schemas"]["ChartCredential"];
@@ -42,68 +27,19 @@ type GitHubInstallation = components["schemas"]["GitHubInstallation"];
 type Variable = components["schemas"]["Variable"];
 type ComponentOutputKeys = components["schemas"]["ComponentOutputKeys"];
 
-// A component (type "component") node carries the editable component as its data;
-// a group (type "group") node carries just the group name. Both share the canvas.
-export type FlowNode = Node<
-  (BuilderNodeData & { component: EditableComponent }) | GroupNodeData
->;
-
-// Default size for a freshly added group container.
-const DEFAULT_GROUP_SIZE = { w: 320, h: 220 };
-
-function isGroupNode(n: FlowNode): boolean {
-  return n.type === "group";
-}
-
-// Which React Flow node changes actually alter persisted state. Selection and
-// the measurement "dimensions" pass React Flow emits on mount must NOT mark the
-// draft dirty — otherwise auto-save would fire on every load and every click. A
-// "dimensions" change with a defined `resizing` flag comes from the user dragging
-// the NodeResizer, which we do persist.
-function isPersistentNodeChange(c: NodeChange): boolean {
-  if (c.type === "position") return true;
-  if (c.type === "remove" || c.type === "add" || c.type === "replace")
-    return true;
-  if (c.type === "dimensions") return c.resizing !== undefined;
-  return false; // "select"
-}
-
-// Edge selection isn't persisted; add/remove/replace are.
-function isPersistentEdgeChange(c: EdgeChange): boolean {
-  return c.type !== "select";
-}
-
-// groupAt finds the group whose bounds contain the absolute point (x, y), so a
-// dragged node can be matched to the group it's hovering over / dropped into.
-function groupAt(ns: FlowNode[], x: number, y: number): FlowNode | undefined {
-  return ns.find((g) => {
-    if (!isGroupNode(g)) return false;
-    const w = g.width ?? DEFAULT_GROUP_SIZE.w;
-    const h = g.height ?? DEFAULT_GROUP_SIZE.h;
-    return (
-      x >= g.position.x &&
-      x <= g.position.x + w &&
-      y >= g.position.y &&
-      y <= g.position.y + h
-    );
-  });
-}
-
-// absPos resolves a node's absolute canvas position, accounting for its parent
-// (child positions are stored relative to the parent group).
-function absPos(ns: FlowNode[], n: FlowNode): { x: number; y: number } {
-  const parent = n.parentId ? ns.find((p) => p.id === n.parentId) : undefined;
-  return {
-    x: (parent?.position.x ?? 0) + n.position.x,
-    y: (parent?.position.y ?? 0) + n.position.y,
-  };
+// DraftStage is one stage of the in-memory workflow: its id, display name, and
+// its components in display order. The stages array order is run order.
+export interface DraftStage {
+  id: string;
+  name: string;
+  components: EditableComponent[];
 }
 
 // seedComponent builds a fresh, empty editable component for a newly-added node
-// of the given type. terraform is a single OpenTofu node that runs plan → apply:
-// it carries no command (synthesized per run on the server) and defaults to
-// gated (requires_approval = true → apply pauses for review); the editor frames
-// that as an "Auto-approve apply" opt-out.
+// of the given type. terraform is a single OpenTofu component that runs plan →
+// apply: it carries no command (synthesized per run on the server) and defaults
+// to gated (requires_approval = true → apply pauses for review); the editor
+// frames that as an "Auto-approve apply" opt-out.
 function seedComponent(id: string, type: ComponentType): EditableComponent {
   const base = {
     id,
@@ -119,14 +55,14 @@ function seedComponent(id: string, type: ComponentType): EditableComponent {
     case "helm":
       return {
         ...base,
-        name: "helm release",
+        name: "helm-release",
         config: { chart_source: "http_repo" },
         requires_approval: false,
       };
     case "terraform":
-      // New nodes run the newest supported OpenTofu line — which locks state
-      // automatically (native s3 locking); only pre-existing nodes (no
-      // tofu_version) stay on the server's older default line.
+      // New components run the newest supported OpenTofu line — which locks
+      // state automatically (native s3 locking); only pre-existing components
+      // (no tofu_version) stay on the server's older default line.
       return {
         ...base,
         name: "opentofu",
@@ -136,15 +72,14 @@ function seedComponent(id: string, type: ComponentType): EditableComponent {
     default:
       return {
         ...base,
-        name: "manifest apply",
+        name: "manifest-apply",
         config: {},
         requires_approval: false,
       };
   }
 }
 
-// toEditable strips position/depends_on/group_id (which live on the node + edges)
-// off a loaded Component into the working shape the editor edits.
+// toEditable copies a loaded Component into the working shape the editor edits.
 function toEditable(c: Component): EditableComponent {
   return {
     id: c.id,
@@ -161,13 +96,50 @@ function toEditable(c: Component): EditableComponent {
   };
 }
 
+// toInput maps an editable component to the PUT payload shape, dropping blank
+// config values (the server treats absent and empty alike, and a blank key
+// would only add noise to the stored map).
+function toInput(c: EditableComponent): ComponentInput {
+  const config: Record<string, string> = {};
+  for (const [k, v] of Object.entries(c.config)) {
+    if (v != null && v !== "") config[k] = v;
+  }
+  return {
+    id: c.id,
+    name: c.name,
+    type: c.type,
+    config,
+    continue_on_failure: c.continue_on_failure,
+    requires_approval: c.requires_approval,
+    approval_policy: c.approval_policy ?? undefined,
+    target_cluster_id: c.target_cluster_id,
+    target_namespace: c.target_namespace,
+    chart_credential_id: c.chart_credential_id,
+    github_installation_id: c.github_installation_id,
+  };
+}
+
+// nextStageName picks "Stage N" for a new stage, N one past the highest number
+// already used that way, so adding after a delete never repeats a name.
+function nextStageName(stages: DraftStage[]): string {
+  let n = stages.length;
+  for (const st of stages) {
+    const m = /^Stage (\d+)$/.exec(st.name);
+    if (m) n = Math.max(n, Number(m[1]));
+  }
+  return `Stage ${n + 1}`;
+}
+
+function newStage(stages: DraftStage[]): DraftStage {
+  return { id: crypto.randomUUID(), name: nextStageName(stages), components: [] };
+}
+
 interface WorkflowDraftValue {
   appId: string;
   canEdit: boolean;
   githubEnabled: boolean;
 
-  nodes: FlowNode[];
-  edges: Edge[];
+  stages: DraftStage[];
   clusters: Cluster[];
   credentials: ChartCredential[];
   cloudCredentials: CloudCredential[];
@@ -188,40 +160,41 @@ interface WorkflowDraftValue {
   // their endpoints (e.g. encryption disabled) — the workflow itself still saved.
   varFlushError: string | null;
 
-  // A request to frame specific node ids in the viewport, bumped (via nonce) each
-  // time so the canvas re-fits even when the same ids are focused twice. The
-  // canvas consumes this with fitView; the provider only records the intent
-  // because it can't call into React Flow's instance itself.
-  focus: { ids: string[]; nonce: number } | null;
+  addStage: () => void;
+  renameStage: (id: string, name: string) => void;
+  // Removes the stage and every component in it.
+  deleteStage: (id: string) => void;
+  // Moves a stage one place earlier (-1) or later (+1) in run order.
+  moveStage: (id: string, delta: -1 | 1) => void;
 
-  onNodesChange: (changes: NodeChange[]) => void;
-  onEdgesChange: (changes: EdgeChange[]) => void;
-  onConnect: (conn: Connection) => void;
-  onNodeDrag: (node: Node) => void;
-  onNodeDragStop: (node: Node) => void;
-
-  addComponent: (type: ComponentType) => void;
-  addGroup: () => void;
-  groupSelection: (ids: string[]) => void;
+  // addComponent navigates to the editor's create route for a new component of
+  // the given type in the given stage; creation itself is driven by the route
+  // (see ensureProvisional).
+  addComponent: (stageId: string, type: ComponentType) => void;
+  // moveComponent places a component in a stage at toIndex — an index into
+  // that stage's components with the moved one already taken out.
+  moveComponent: (componentId: string, toStageId: string, toIndex: number) => void;
   updateComponent: (next: EditableComponent) => void;
-  deleteNode: (id: string) => void;
+  deleteComponent: (id: string) => void;
   getComponent: (id: string) => EditableComponent | null;
+  // The stage holding a component (and its position in run order), or null.
+  stageOf: (componentId: string) => { stage: DraftStage; index: number } | null;
 
-  // A freshly added node is "provisional": it shows on the canvas but is excluded
-  // from the saved payload until the editor commits it, so backing out of the
-  // editor leaves nothing behind. The node editor drives these.
+  // A freshly added component is "provisional": it shows in its stage but is
+  // excluded from the saved payload until the editor commits it, so backing out
+  // of the editor leaves nothing behind. The editor drives these.
   isProvisional: (id: string) => boolean;
-  // ensureProvisional creates the provisional node for a given id+type if it
-  // doesn't already exist. The editor calls it on mount so a deep link / page
-  // reload to a not-yet-saved create page re-seeds a fresh node instead of
-  // showing "node not found"; addComponent navigates here rather than mutating
-  // state itself, so creation is driven entirely by the route.
-  ensureProvisional: (id: string, type: ComponentType) => void;
+  // ensureProvisional creates the provisional component for a given id+type in
+  // the given stage if it doesn't already exist. The editor calls it on mount
+  // so a deep link / page reload to a not-yet-saved create page re-seeds a
+  // fresh component instead of showing "not found"; a stage id that no longer
+  // exists falls back to the last stage (or a new first stage).
+  ensureProvisional: (id: string, type: ComponentType, stageId: string | null) => void;
   commitComponent: (next: EditableComponent) => void;
   discardNewNode: (id: string) => void;
 
   // Staged component variables: a not-yet-saved component can't write to its
-  // variable endpoints (the component row doesn't exist yet), so the node editor
+  // variable endpoints (the component row doesn't exist yet), so the editor
   // stages them here, keyed by component id. The next successful workflow save
   // flushes them to the real create endpoint (see save()).
   getStagedVars: (componentId: string) => Variable[];
@@ -232,8 +205,9 @@ interface WorkflowDraftValue {
 
 const WorkflowDraftContext = createContext<WorkflowDraftValue | null>(null);
 
-// useWorkflowDraft reads the in-memory workflow draft shared across the canvas
-// and the full-page node editor. Throws if used outside the provider.
+// useWorkflowDraft reads the in-memory workflow draft shared across the stage
+// builder and the full-page component editor. Throws if used outside the
+// provider.
 // eslint-disable-next-line react-refresh/only-export-components
 export function useWorkflowDraft(): WorkflowDraftValue {
   const ctx = useContext(WorkflowDraftContext);
@@ -244,12 +218,11 @@ export function useWorkflowDraft(): WorkflowDraftValue {
   return ctx;
 }
 
-// WorkflowDraftProvider owns the whole workflow draft (nodes/edges/groups +
-// reference data + save/run state) so unsaved edits survive navigating between
-// the canvas (the DAG) and the full-page node editor (which live on nested
-// routes under one layout). It loads the workflow on mount when the draft is
-// empty so a deep link to the editor route works, and reloads when the org
-// changes (mirroring the old builder's effect deps).
+// WorkflowDraftProvider owns the whole workflow draft (stages + components +
+// reference data + save state) so unsaved edits survive navigating between the
+// builder and the full-page component editor (which live on nested routes
+// under one layout). It loads the workflow on mount so a deep link to the
+// editor route works, and reloads when the org changes.
 export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   const { appId = "" } = useParams();
   const { currentOrg, currentRole } = useOrg();
@@ -257,12 +230,12 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   const canEdit = currentRole !== "viewer";
   const githubEnabled = githubAppEnabled();
 
-  const [nodes, setNodes] = useState<FlowNode[]>([]);
-  const [edges, setEdges] = useState<Edge[]>([]);
+  const [stages, setStages] = useState<DraftStage[]>([]);
 
-  // Ids of newly added nodes the editor hasn't committed yet (see isProvisional /
-  // commitComponent / discardNewNode). They render on the canvas but are kept out
-  // of the save payload until committed, so an abandoned add never persists.
+  // Ids of newly added components the editor hasn't committed yet (see
+  // isProvisional / commitComponent / discardNewNode). They show in their stage
+  // but are kept out of the save payload until committed, so an abandoned add
+  // never persists.
   const [provisional, setProvisional] = useState<Set<string>>(() => new Set());
 
   const [clusters, setClusters] = useState<Cluster[]>([]);
@@ -277,8 +250,8 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   );
 
   // Staged component variables for not-yet-saved components, keyed by component
-  // id. A ref (not state): the node editor owns the on-screen list, this is just
-  // the durable buffer that survives navigating between editor and canvas and is
+  // id. A ref (not state): the editor owns the on-screen list, this is just the
+  // durable buffer that survives navigating between editor and builder and is
   // drained by the next successful save. discardNewNode drops a node's entry.
   const stagedVarsRef = useRef<Map<string, Variable[]>>(new Map());
 
@@ -289,24 +262,10 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   const [saved, setSaved] = useState(false);
   const [varFlushError, setVarFlushError] = useState<string | null>(null);
 
-  // Viewport-focus request: when something adds/groups nodes we ask the canvas to
-  // frame them. The nonce (a ref-backed counter, since Date.now/Math.random are
-  // unavailable here and would be overkill anyway) guarantees a fresh object so
-  // the canvas effect refires even when the same ids are focused twice.
-  const [focus, setFocus] = useState<{ ids: string[]; nonce: number } | null>(
-    null,
-  );
-  const focusNonce = useRef(0);
-  const requestFocus = useCallback((ids: string[]) => {
-    if (ids.length === 0) return;
-    focusNonce.current += 1;
-    setFocus({ ids, nonce: focusNonce.current });
-  }, []);
-
   // markDirty flags the draft as having unsaved edits and bumps an edit revision.
   // The revision lets a save that resolves after newer edits avoid stamping the
   // draft "saved" (it would mask those edits) — instead the auto-save effect runs
-  // again. Every genuine edit funnels through here; selection/measurement do not.
+  // again. Every genuine edit funnels through here.
   const revision = useRef(0);
   const markDirty = useCallback(() => {
     revision.current += 1;
@@ -316,9 +275,9 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     setSaveError(null);
   }, []);
 
-  // Load the workflow and lay out group + component nodes from their persisted
-  // position. Group nodes come first in the array so they render behind their
-  // children; component nodes whose group_id is set become React Flow children.
+  // Load the workflow. An application with no stages yet gets one empty local
+  // "Stage 1" so there is somewhere to add the first component — it isn't
+  // saved until something is actually added (the draft loads clean).
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -330,68 +289,12 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-    const comps = data.components;
-    const groups: ComponentGroup[] = data.groups ?? [];
-
-    const groupNodes: FlowNode[] = groups.map((g, i) => ({
-      id: g.id,
-      type: "group",
-      position: {
-        x: typeof g.position?.x === "number" ? g.position.x : 60 + i * 360,
-        y: typeof g.position?.y === "number" ? g.position.y : 60,
-      },
-      width: typeof g.size?.w === "number" ? g.size.w : DEFAULT_GROUP_SIZE.w,
-      height: typeof g.size?.h === "number" ? g.size.h : DEFAULT_GROUP_SIZE.h,
-      data: { name: g.name },
+    const loaded: DraftStage[] = data.stages.map((st) => ({
+      id: st.id,
+      name: st.name,
+      components: st.components.map(toEditable),
     }));
-
-    const groupIds = new Set(groups.map((g) => g.id));
-    const componentNodes: FlowNode[] = comps.map((c, i) => {
-      const parentId =
-        c.group_id && groupIds.has(c.group_id) ? c.group_id : undefined;
-      return {
-        id: c.id,
-        type: "component",
-        position: {
-          x:
-            typeof c.position?.x === "number"
-              ? c.position.x
-              : 80 + (i % 4) * 240,
-          y:
-            typeof c.position?.y === "number"
-              ? c.position.y
-              : 80 + Math.floor(i / 4) * 160,
-        },
-        ...(parentId
-          ? { parentId, extent: "parent" as const, expandParent: true }
-          : {}),
-        data: {
-          name: c.name,
-          type: c.type,
-          continueOnFailure: c.continue_on_failure,
-          component: toEditable(c),
-        },
-      };
-    });
-
-    // An edge per dependency: dep → node. dep may reference a component or a
-    // group, and the target may be a component or a group — both endpoints are
-    // real nodes on the canvas, so the edge resolves either way.
-    const flowEdges: Edge[] = [];
-    for (const c of comps) {
-      for (const dep of c.depends_on ?? []) {
-        flowEdges.push({ id: `${dep}->${c.id}`, source: dep, target: c.id });
-      }
-    }
-    for (const g of groups) {
-      for (const dep of g.depends_on ?? []) {
-        flowEdges.push({ id: `${dep}->${g.id}`, source: dep, target: g.id });
-      }
-    }
-
-    // Group nodes first so they render behind their children.
-    setNodes([...groupNodes, ...componentNodes]);
-    setEdges(flowEdges);
+    setStages(loaded.length > 0 ? loaded : [newStage([])]);
     // Everything just loaded matches the server, so nothing is pending.
     setProvisional(new Set());
     // The freshly loaded draft matches the server, so it's clean — important so
@@ -401,9 +304,9 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, [appId]);
 
-  // Load on mount and whenever the org changes. Re-running on org change mirrors
-  // the original builder; it also resets any unsaved draft, which is correct
-  // because the draft belongs to the previously-selected org.
+  // Load on mount and whenever the org changes. Re-running on org change also
+  // resets any unsaved draft, which is correct because the draft belongs to the
+  // previously-selected org.
   useEffect(() => {
     void load();
   }, [load, currentOrg?.id]);
@@ -453,286 +356,160 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     })();
   }, [appId, currentOrg?.id]);
 
-  const onNodesChange = useCallback(
-    (changes: NodeChange[]) => {
-      setNodes((ns) => applyNodeChanges(changes, ns) as FlowNode[]);
-      if (changes.some(isPersistentNodeChange)) markDirty();
-    },
-    [markDirty],
-  );
-  const onEdgesChange = useCallback(
-    (changes: EdgeChange[]) => {
-      setEdges((es) => applyEdgeChanges(changes, es));
-      if (changes.some(isPersistentEdgeChange)) markDirty();
-    },
-    [markDirty],
-  );
-  const onConnect = useCallback(
-    (conn: Connection) => {
-      if (!conn.source || !conn.target || conn.source === conn.target) return;
-      setEdges((es) =>
-        addEdge({ id: `${conn.source}->${conn.target}`, ...conn }, es),
-      );
+  const addStage = useCallback(() => {
+    setStages((ss) => [...ss, newStage(ss)]);
+    markDirty();
+  }, [markDirty]);
+
+  const renameStage = useCallback(
+    (id: string, name: string) => {
+      setStages((ss) => ss.map((st) => (st.id === id ? { ...st, name } : st)));
       markDirty();
     },
     [markDirty],
   );
 
-  // clearDropHighlights removes the transient isDropTarget flag from every group,
-  // returning the same array reference when nothing changed (so callers can skip
-  // a needless re-render).
-  const clearDropHighlights = useCallback((ns: FlowNode[]): FlowNode[] => {
-    let changed = false;
-    const next = ns.map((n) => {
-      if (isGroupNode(n) && (n.data as GroupNodeData).isDropTarget) {
-        changed = true;
-        return { ...n, data: { ...n.data, isDropTarget: false } };
-      }
-      return n;
-    });
-    return changed ? next : ns;
-  }, []);
-
-  // While a component node is being dragged, light up the group it's hovering
-  // over so it's obvious the group is a drop target. We only rewrite group data
-  // when the target actually changes, leaving the dragged node's position to the
-  // normal onNodesChange flow.
-  const onNodeDrag = useCallback(
-    (dragged: Node) => {
-      setNodes((ns) => {
-        const node = ns.find((n) => n.id === dragged.id) as
-          FlowNode | undefined;
-        if (!node || isGroupNode(node)) return clearDropHighlights(ns);
-
-        // dragged.position is live (and parent-relative when the node has a parent).
-        const parent = node.parentId
-          ? ns.find((n) => n.id === node.parentId)
-          : undefined;
-        const x = (parent?.position.x ?? 0) + dragged.position.x;
-        const y = (parent?.position.y ?? 0) + dragged.position.y;
-        const targetId = groupAt(ns, x, y)?.id;
-
-        let changed = false;
-        const next = ns.map((n) => {
-          if (!isGroupNode(n)) return n;
-          const should = n.id === targetId;
-          if (((n.data as GroupNodeData).isDropTarget ?? false) !== should) {
-            changed = true;
-            return { ...n, data: { ...n.data, isDropTarget: should } };
-          }
-          return n;
-        });
-        return changed ? next : ns;
-      });
+  const deleteStage = useCallback(
+    (id: string) => {
+      // Drop any staged variables of the removed components so they can't
+      // flush onto a later component that reuses the id.
+      const gone = stages.find((st) => st.id === id);
+      for (const c of gone?.components ?? []) stagedVarsRef.current.delete(c.id);
+      setStages((ss) => ss.filter((st) => st.id !== id));
+      markDirty();
     },
-    [clearDropHighlights],
+    [stages, markDirty],
   );
 
-  // On drag stop, decide group membership: if a component node's bounds land
-  // inside a group node, adopt it (parentId + position relative to the parent,
-  // expandParent so the group grows to keep it enclosed); if dragged clear of
-  // every group, detach it. Group nodes themselves never become children. Any
-  // drop-target highlight from the drag is cleared.
-  const onNodeDragStop = useCallback(
-    (dragged: Node) => {
-      setNodes((prev) => {
-        const ns = clearDropHighlights(prev);
-        const node = ns.find((n) => n.id === dragged.id) as
-          FlowNode | undefined;
-        if (!node || isGroupNode(node)) return ns;
-
-        const abs = absPos(ns, node);
-        const target = groupAt(ns, abs.x, abs.y);
-        const nextParentId = target?.id;
-        if (nextParentId === node.parentId) return ns; // no membership change
-
-        markDirty();
-        return ns.map((n) => {
-          if (n.id !== node.id) return n;
-          if (nextParentId) {
-            const g = ns.find((x) => x.id === nextParentId)!;
-            return {
-              ...n,
-              parentId: nextParentId,
-              extent: "parent" as const,
-              expandParent: true,
-              position: { x: abs.x - g.position.x, y: abs.y - g.position.y },
-            };
-          }
-          // Detached: restore absolute position, drop parent linkage.
-          const rest = { ...n, position: abs };
-          delete rest.parentId;
-          delete rest.extent;
-          delete rest.expandParent;
-          return rest;
-        });
+  const moveStage = useCallback(
+    (id: string, delta: -1 | 1) => {
+      setStages((ss) => {
+        const i = ss.findIndex((st) => st.id === id);
+        const j = i + delta;
+        if (i < 0 || j < 0 || j >= ss.length) return ss;
+        const next = [...ss];
+        [next[i], next[j]] = [next[j], next[i]];
+        return next;
       });
+      markDirty();
     },
-    [clearDropHighlights, markDirty],
+    [markDirty],
   );
 
-  // addComponent navigates to the node editor's create route (carrying the type
-  // in a `new` query param) WITHOUT mutating state. The editor calls
-  // ensureProvisional on mount to create the node, so creation is driven entirely
-  // by the route — a page reload on the create page re-seeds a fresh node instead
-  // of landing on "node not found". (No requestFocus: we navigate off the canvas.)
+  // addComponent navigates to the editor's create route (carrying the type and
+  // stage in query params) WITHOUT mutating state. The editor calls
+  // ensureProvisional on mount to create the component, so creation is driven
+  // entirely by the route — a page reload on the create page re-seeds a fresh
+  // component instead of landing on "not found".
   const addComponent = useCallback(
-    (type: ComponentType) => {
+    (stageId: string, type: ComponentType) => {
       const id = crypto.randomUUID();
-      navigate(`/applications/${appId}/workflow/nodes/${id}?new=${type}`);
+      navigate(
+        `/applications/${appId}/workflow/nodes/${id}?new=${type}&stage=${stageId}`,
+      );
     },
     [appId, navigate],
   );
 
-  // ensureProvisional creates the provisional node for id+type if it isn't
-  // already in the draft (idempotent — safe to call repeatedly, e.g. across a
-  // StrictMode double-effect or a reload). It's provisional until the editor
-  // commits it — no markDirty, so an abandoned add never auto-saves (the node is
-  // excluded from the payload while provisional). A committed node is left alone.
+  // ensureProvisional creates the provisional component for id+type if it
+  // isn't already in the draft (idempotent — safe to call repeatedly, e.g.
+  // across a StrictMode double-effect or a reload). It's provisional until the
+  // editor commits it — no markDirty, so an abandoned add never auto-saves (the
+  // component is excluded from the payload while provisional).
   const ensureProvisional = useCallback(
-    (id: string, type: ComponentType) => {
-      if (nodes.some((n) => n.id === id)) return;
+    (id: string, type: ComponentType, stageId: string | null) => {
+      // A committed component is left alone.
+      if (stages.some((st) => st.components.some((c) => c.id === id))) return;
       const editable = seedComponent(id, type);
-      setNodes((ns) => {
-        if (ns.some((n) => n.id === id)) return ns;
-        // Tile new top-level nodes into a non-overlapping grid (same spacing as the
-        // load-time fallback layout) so they don't stack and overlap.
-        const slot = ns.filter(
-          (n) => n.type === "component" && !n.parentId,
-        ).length;
-        return [
-          ...ns,
-          {
-            id,
-            type: "component",
-            position: {
-              x: 80 + (slot % 4) * 240,
-              y: 80 + Math.floor(slot / 4) * 160,
-            },
-            data: {
-              name: editable.name,
-              type: editable.type,
-              continueOnFailure: editable.continue_on_failure,
-              component: editable,
-            },
-          },
-        ];
+      setStages((ss) => {
+        if (ss.some((st) => st.components.some((c) => c.id === id))) return ss;
+        let target = ss.findIndex((st) => st.id === stageId);
+        let next = ss;
+        if (target < 0) {
+          // The stage is gone (or the URL never named one): use the last
+          // stage, or start one if there are none.
+          if (ss.length === 0) next = [newStage([])];
+          target = next.length - 1;
+        }
+        return next.map((st, i) =>
+          i === target ? { ...st, components: [...st.components, editable] } : st,
+        );
       });
-      setProvisional((p) => new Set(p).add(id));
+      setProvisional((p) => (p.has(id) ? p : new Set(p).add(id)));
     },
-    [nodes],
+    [stages],
   );
 
-  const addGroup = useCallback(() => {
-    const id = crypto.randomUUID();
-    setNodes((ns) => {
-      const groupCount = ns.filter(isGroupNode).length;
-      const groupNode: FlowNode = {
-        id,
-        type: "group",
-        // Lay groups out in their own lower band, spaced by a full group width so
-        // they don't overlap each other or the top-level component grid above.
-        position: {
-          x: 80 + groupCount * (DEFAULT_GROUP_SIZE.w + 48),
-          y: 80 + 3 * 160 + 40,
-        },
-        width: DEFAULT_GROUP_SIZE.w,
-        height: DEFAULT_GROUP_SIZE.h,
-        data: { name: "group" },
-      };
-      // Keep group nodes first so they render behind children.
-      return [groupNode, ...ns];
-    });
-    markDirty();
-    requestFocus([id]);
-  }, [markDirty, requestFocus]);
-
-  // groupSelection wraps the given component nodes in a new group sized to
-  // enclose them (with padding for the header), reparenting each one. This is the
-  // shift-select path: pick nodes on the canvas, then hit "Group". Selected group
-  // nodes are ignored; a node already inside another group is moved into the new
-  // one. The group is prepended so it renders behind — and lists before — its
-  // children, satisfying React Flow's parent-before-child ordering.
-  const groupSelection = useCallback(
-    (ids: string[]) => {
-      const idSet = new Set(ids);
-      const gid = crypto.randomUUID();
-      setNodes((ns) => {
-        const members = ns.filter(
-          (n) => n.type === "component" && idSet.has(n.id),
-        );
-        if (members.length === 0) return ns;
-
-        // Approximate node footprint (min-w-[11rem] ≈ 176px wide, ~64px tall).
-        const NODE_W = 176;
-        const NODE_H = 64;
-        const PAD = 28;
-        const HEADER = 24;
-
-        let minX = Infinity;
-        let minY = Infinity;
-        let maxX = -Infinity;
-        let maxY = -Infinity;
-        for (const m of members) {
-          const a = absPos(ns, m);
-          minX = Math.min(minX, a.x);
-          minY = Math.min(minY, a.y);
-          maxX = Math.max(maxX, a.x + NODE_W);
-          maxY = Math.max(maxY, a.y + NODE_H);
-        }
-
-        const gx = minX - PAD;
-        const gy = minY - PAD - HEADER;
-        const gw = maxX - minX + PAD * 2;
-        const gh = maxY - minY + PAD * 2 + HEADER;
-        const group: FlowNode = {
-          id: gid,
-          type: "group",
-          position: { x: gx, y: gy },
-          width: gw,
-          height: gh,
-          data: { name: "group" },
-        };
-
-        const reparented = ns.map((n) => {
-          if (!idSet.has(n.id) || n.type !== "component") return n;
-          const a = absPos(ns, n);
-          return {
-            ...n,
-            parentId: gid,
-            extent: "parent" as const,
-            expandParent: true,
-            position: { x: a.x - gx, y: a.y - gy },
-          };
+  const moveComponent = useCallback(
+    (componentId: string, toStageId: string, toIndex: number) => {
+      setStages((ss) => {
+        const moving = ss
+          .flatMap((st) => st.components)
+          .find((c) => c.id === componentId);
+        if (!moving || !ss.some((st) => st.id === toStageId)) return ss;
+        const without = ss.map((st) => ({
+          ...st,
+          components: st.components.filter((c) => c.id !== componentId),
+        }));
+        return without.map((st) => {
+          if (st.id !== toStageId) return st;
+          const at = Math.max(0, Math.min(toIndex, st.components.length));
+          const comps = [...st.components];
+          comps.splice(at, 0, moving);
+          return { ...st, components: comps };
         });
-        return [group, ...reparented];
       });
       markDirty();
-      requestFocus([gid]);
     },
-    [markDirty, requestFocus],
+    [markDirty],
   );
 
   const updateComponent = useCallback(
     (next: EditableComponent) => {
-      setNodes((ns) =>
-        ns.map((n) =>
-          n.id === next.id && n.type === "component"
-            ? {
-                ...n,
-                data: {
-                  name: next.name,
-                  type: next.type,
-                  continueOnFailure: next.continue_on_failure,
-                  component: next,
-                },
-              }
-            : n,
-        ),
+      setStages((ss) =>
+        ss.map((st) => ({
+          ...st,
+          components: st.components.map((c) => (c.id === next.id ? next : c)),
+        })),
       );
       markDirty();
     },
     [markDirty],
+  );
+
+  const deleteComponent = useCallback(
+    (id: string) => {
+      setStages((ss) =>
+        ss.map((st) => ({
+          ...st,
+          components: st.components.filter((c) => c.id !== id),
+        })),
+      );
+      stagedVarsRef.current.delete(id);
+      markDirty();
+    },
+    [markDirty],
+  );
+
+  const getComponent = useCallback(
+    (id: string): EditableComponent | null => {
+      for (const st of stages) {
+        const c = st.components.find((x) => x.id === id);
+        if (c) return c;
+      }
+      return null;
+    },
+    [stages],
+  );
+
+  const stageOf = useCallback(
+    (componentId: string) => {
+      const index = stages.findIndex((st) =>
+        st.components.some((c) => c.id === componentId),
+      );
+      return index < 0 ? null : { stage: stages[index], index };
+    },
+    [stages],
   );
 
   const isProvisional = useCallback(
@@ -741,8 +518,8 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   );
 
   // commitComponent is the editor's Save: it writes the working copy back into
-  // the draft and clears the node's provisional flag, so it now travels in the
-  // save payload and the debounced auto-save persists it.
+  // the draft and clears the component's provisional flag, so it now travels in
+  // the save payload and the debounced auto-save persists it.
   const commitComponent = useCallback(
     (next: EditableComponent) => {
       updateComponent(next);
@@ -756,30 +533,34 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     [updateComponent, provisional],
   );
 
-  // discardNewNode is the editor's Cancel for a node that was never committed: it
-  // removes the node and any edges touching it from the draft. A no-op for an
-  // already-committed node — backing out of those just drops the editor's local
-  // edits without touching the draft.
+  // discardNewNode is the editor's Cancel for a component that was never
+  // committed: it removes the component from its stage. A no-op for an
+  // already-committed component — backing out of those just drops the editor's
+  // local edits without touching the draft.
   const discardNewNode = useCallback(
     (id: string) => {
       if (!provisional.has(id)) return;
-      setNodes((ns) => ns.filter((n) => n.id !== id));
-      setEdges((es) => es.filter((e) => e.source !== id && e.target !== id));
+      setStages((ss) =>
+        ss.map((st) => ({
+          ...st,
+          components: st.components.filter((c) => c.id !== id),
+        })),
+      );
       setProvisional((prev) => {
         const n = new Set(prev);
         n.delete(id);
         return n;
       });
-      // Drop any staged variables for the abandoned node so they don't flush
-      // onto some later component that reuses the (random) id — they can't.
+      // Drop any staged variables for the abandoned component so they don't
+      // flush onto some later component that reuses the (random) id.
       stagedVarsRef.current.delete(id);
     },
     [provisional],
   );
 
   // Staged component variables (see the interface): a stable ref-backed buffer,
-  // so reads/writes don't re-render the provider and survive editor⇄canvas
-  // navigation. The node editor's in-memory VariablesEditor reads/writes these.
+  // so reads/writes don't re-render the provider and survive editor⇄builder
+  // navigation. The editor's in-memory VariablesEditor reads/writes these.
   const getStagedVars = useCallback(
     (componentId: string): Variable[] =>
       stagedVarsRef.current.get(componentId) ?? [],
@@ -830,120 +611,29 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     [appId],
   );
 
-  const deleteNode = useCallback(
-    (id: string) => {
-      setNodes((ns) => {
-        // Detach any children of a deleted group so they aren't orphaned (React
-        // Flow would drop a child whose parent is gone). Restore absolute position.
-        const target = ns.find((n) => n.id === id);
-        const isGroup = target?.type === "group";
-        return ns
-          .filter((n) => n.id !== id)
-          .map((n) => {
-            if (isGroup && n.parentId === id) {
-              const abs = {
-                x: (target?.position.x ?? 0) + n.position.x,
-                y: (target?.position.y ?? 0) + n.position.y,
-              };
-              const rest = { ...n, position: abs };
-              delete rest.parentId;
-              delete rest.extent;
-              return rest;
-            }
-            return n;
-          });
-      });
-      setEdges((es) => es.filter((e) => e.source !== id && e.target !== id));
-      markDirty();
-    },
-    [markDirty],
+  // Assemble the PUT payload: every stage in order with its committed
+  // components in order. Provisional components are left out until the editor
+  // commits them.
+  const buildPayload = useCallback(
+    (): WorkflowStageInput[] =>
+      stages.map((st) => ({
+        id: st.id,
+        name: st.name,
+        components: st.components
+          .filter((c) => !provisional.has(c.id))
+          .map(toInput),
+      })),
+    [stages, provisional],
   );
-
-  const getComponent = useCallback(
-    (id: string): EditableComponent | null => {
-      const n = nodes.find((x) => x.id === id);
-      if (!n || n.type !== "component") return null;
-      return (n.data as { component: EditableComponent }).component;
-    },
-    [nodes],
-  );
-
-  // Assemble the PUT payload from nodes + edges. For each edge source→target the
-  // source id is contributed into the target's depends_on (the target may be a
-  // component or a group). A component's group_id is its parentId when that
-  // parent is a group node. Positions are stored as-is (child positions are
-  // parent-relative, which load restores alongside parentId).
-  const buildPayload = useCallback((): {
-    components: ComponentInput[];
-    groups: ComponentGroupInput[];
-  } => {
-    const groupIds = new Set(nodes.filter(isGroupNode).map((n) => n.id));
-
-    // depends_on per target id, built from inbound edges. Edges that touch a
-    // provisional (uncommitted) node are skipped — that node isn't persisted, so
-    // a dependency on it would dangle.
-    const dependsByTarget = new Map<string, string[]>();
-    for (const e of edges) {
-      if (provisional.has(e.source) || provisional.has(e.target)) continue;
-      const arr = dependsByTarget.get(e.target) ?? [];
-      arr.push(e.source);
-      dependsByTarget.set(e.target, arr);
-    }
-
-    // Provisional component nodes are excluded until the editor commits them.
-    const componentNodes = nodes.filter(
-      (n) => n.type === "component" && !provisional.has(n.id),
-    );
-    const groupNodes = nodes.filter(isGroupNode);
-
-    const components: ComponentInput[] = componentNodes.map((n) => {
-      const c = (n.data as { component: EditableComponent }).component;
-      const config: Record<string, string> = {};
-      for (const [k, v] of Object.entries(c.config)) {
-        if (v != null && v !== "") config[k] = v;
-      }
-      const group_id =
-        n.parentId && groupIds.has(n.parentId) ? n.parentId : null;
-      return {
-        id: c.id,
-        name: c.name,
-        type: c.type,
-        config,
-        depends_on: dependsByTarget.get(n.id) ?? [],
-        continue_on_failure: c.continue_on_failure,
-        requires_approval: c.requires_approval,
-        approval_policy: c.approval_policy ?? undefined,
-        target_cluster_id: c.target_cluster_id,
-        target_namespace: c.target_namespace,
-        chart_credential_id: c.chart_credential_id,
-        github_installation_id: c.github_installation_id,
-        position: { x: Math.round(n.position.x), y: Math.round(n.position.y) },
-        group_id,
-      };
-    });
-
-    const groups: ComponentGroupInput[] = groupNodes.map((n) => ({
-      id: n.id,
-      name: (n.data as GroupNodeData).name,
-      depends_on: dependsByTarget.get(n.id) ?? [],
-      position: { x: Math.round(n.position.x), y: Math.round(n.position.y) },
-      size: {
-        w: Math.round(n.width ?? DEFAULT_GROUP_SIZE.w),
-        h: Math.round(n.height ?? DEFAULT_GROUP_SIZE.h),
-      },
-    }));
-
-    return { components, groups };
-  }, [nodes, edges, provisional]);
 
   const save = useCallback(async () => {
     const rev = revision.current;
     setSaving(true);
     setSaveError(null);
-    const { components, groups } = buildPayload();
+    const payload = buildPayload();
     const { data, error } = await api.PUT("/api/applications/{id}/workflow", {
       params: { path: { id: appId } },
-      body: { components, groups },
+      body: { stages: payload },
     });
     setSaving(false);
     if (error || !data) {
@@ -955,13 +645,15 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     if (revision.current === rev) setSaved(true);
     // The components in this payload now exist server-side, so any variables
     // staged for them can be flushed to their endpoints.
-    await flushStagedVars(new Set(components.map((c) => c.id)));
+    await flushStagedVars(
+      new Set(payload.flatMap((st) => st.components.map((c) => c.id))),
+    );
   }, [appId, buildPayload, flushStagedVars]);
 
   // Auto-save: whenever the draft is dirty (and we can edit), schedule a debounced
-  // save. `save`'s identity changes with every node/edge edit (it closes over the
-  // payload), so this effect re-runs and resets the timer on each change — that's
-  // the debounce. A save in flight (saving) or a clean draft (saved) short-circuits.
+  // save. `save`'s identity changes with every edit (it closes over the payload),
+  // so this effect re-runs and resets the timer on each change — that's the
+  // debounce. A save in flight (saving) or a clean draft (saved) short-circuits.
   useEffect(() => {
     if (!canEdit || loading || saving || saved || error || saveError) return;
     const t = setTimeout(() => void save(), 800);
@@ -973,8 +665,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       appId,
       canEdit,
       githubEnabled,
-      nodes,
-      edges,
+      stages,
       clusters,
       credentials,
       cloudCredentials,
@@ -987,20 +678,18 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       saving,
       saved,
       varFlushError,
-      focus,
-      onNodesChange,
-      onEdgesChange,
-      onConnect,
-      onNodeDrag,
-      onNodeDragStop,
+      addStage,
+      renameStage,
+      deleteStage,
+      moveStage,
       addComponent,
-      ensureProvisional,
-      addGroup,
-      groupSelection,
+      moveComponent,
       updateComponent,
-      deleteNode,
+      deleteComponent,
       getComponent,
+      stageOf,
       isProvisional,
+      ensureProvisional,
       commitComponent,
       discardNewNode,
       getStagedVars,
@@ -1011,8 +700,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       appId,
       canEdit,
       githubEnabled,
-      nodes,
-      edges,
+      stages,
       clusters,
       credentials,
       cloudCredentials,
@@ -1025,20 +713,18 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       saving,
       saved,
       varFlushError,
-      focus,
-      onNodesChange,
-      onEdgesChange,
-      onConnect,
-      onNodeDrag,
-      onNodeDragStop,
+      addStage,
+      renameStage,
+      deleteStage,
+      moveStage,
       addComponent,
-      ensureProvisional,
-      addGroup,
-      groupSelection,
+      moveComponent,
       updateComponent,
-      deleteNode,
+      deleteComponent,
       getComponent,
+      stageOf,
       isProvisional,
+      ensureProvisional,
       commitComponent,
       discardNewNode,
       getStagedVars,

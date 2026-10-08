@@ -17,10 +17,10 @@ import (
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
-	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/schema"
+	"github.com/spacefleet/spacefleet/ent/workflowstage"
 )
 
 // ComponentCreate is the builder for creating a Component entity.
@@ -69,9 +69,23 @@ func (_c *ComponentCreate) SetConfig(v map[string]string) *ComponentCreate {
 	return _c
 }
 
-// SetDependsOn sets the "depends_on" field.
-func (_c *ComponentCreate) SetDependsOn(v []uuid.UUID) *ComponentCreate {
-	_c.mutation.SetDependsOn(v)
+// SetStageID sets the "stage_id" field.
+func (_c *ComponentCreate) SetStageID(v uuid.UUID) *ComponentCreate {
+	_c.mutation.SetStageID(v)
+	return _c
+}
+
+// SetOrdinal sets the "ordinal" field.
+func (_c *ComponentCreate) SetOrdinal(v int) *ComponentCreate {
+	_c.mutation.SetOrdinal(v)
+	return _c
+}
+
+// SetNillableOrdinal sets the "ordinal" field if the given value is not nil.
+func (_c *ComponentCreate) SetNillableOrdinal(v *int) *ComponentCreate {
+	if v != nil {
+		_c.SetOrdinal(*v)
+	}
 	return _c
 }
 
@@ -173,26 +187,6 @@ func (_c *ComponentCreate) SetNillableGithubInstallationID(v *uuid.UUID) *Compon
 	return _c
 }
 
-// SetPosition sets the "position" field.
-func (_c *ComponentCreate) SetPosition(v map[string]float64) *ComponentCreate {
-	_c.mutation.SetPosition(v)
-	return _c
-}
-
-// SetGroupID sets the "group_id" field.
-func (_c *ComponentCreate) SetGroupID(v uuid.UUID) *ComponentCreate {
-	_c.mutation.SetGroupID(v)
-	return _c
-}
-
-// SetNillableGroupID sets the "group_id" field if the given value is not nil.
-func (_c *ComponentCreate) SetNillableGroupID(v *uuid.UUID) *ComponentCreate {
-	if v != nil {
-		_c.SetGroupID(*v)
-	}
-	return _c
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (_c *ComponentCreate) SetCreatedAt(v time.Time) *ComponentCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -260,9 +254,9 @@ func (_c *ComponentCreate) SetGithubInstallation(v *GitHubInstallation) *Compone
 	return _c.SetGithubInstallationID(v.ID)
 }
 
-// SetGroup sets the "group" edge to the ComponentGroup entity.
-func (_c *ComponentCreate) SetGroup(v *ComponentGroup) *ComponentCreate {
-	return _c.SetGroupID(v.ID)
+// SetStage sets the "stage" edge to the WorkflowStage entity.
+func (_c *ComponentCreate) SetStage(v *WorkflowStage) *ComponentCreate {
+	return _c.SetStageID(v.ID)
 }
 
 // Mutation returns the ComponentMutation object of the builder.
@@ -303,6 +297,10 @@ func (_c *ComponentCreate) defaults() {
 	if _, ok := _c.mutation.GetType(); !ok {
 		v := component.DefaultType
 		_c.mutation.SetType(v)
+	}
+	if _, ok := _c.mutation.Ordinal(); !ok {
+		v := component.DefaultOrdinal
+		_c.mutation.SetOrdinal(v)
 	}
 	if _, ok := _c.mutation.ContinueOnFailure(); !ok {
 		v := component.DefaultContinueOnFailure
@@ -350,6 +348,12 @@ func (_c *ComponentCreate) check() error {
 			return &ValidationError{Name: "type", err: fmt.Errorf(`ent: validator failed for field "Component.type": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.StageID(); !ok {
+		return &ValidationError{Name: "stage_id", err: errors.New(`ent: missing required field "Component.stage_id"`)}
+	}
+	if _, ok := _c.mutation.Ordinal(); !ok {
+		return &ValidationError{Name: "ordinal", err: errors.New(`ent: missing required field "Component.ordinal"`)}
+	}
 	if _, ok := _c.mutation.ContinueOnFailure(); !ok {
 		return &ValidationError{Name: "continue_on_failure", err: errors.New(`ent: missing required field "Component.continue_on_failure"`)}
 	}
@@ -367,6 +371,9 @@ func (_c *ComponentCreate) check() error {
 	}
 	if len(_c.mutation.ApplicationIDs()) == 0 {
 		return &ValidationError{Name: "application", err: errors.New(`ent: missing required edge "Component.application"`)}
+	}
+	if len(_c.mutation.StageIDs()) == 0 {
+		return &ValidationError{Name: "stage", err: errors.New(`ent: missing required edge "Component.stage"`)}
 	}
 	return nil
 }
@@ -416,9 +423,9 @@ func (_c *ComponentCreate) createSpec() (*Component, *sqlgraph.CreateSpec) {
 		_spec.SetField(component.FieldConfig, field.TypeJSON, value)
 		_node.Config = value
 	}
-	if value, ok := _c.mutation.DependsOn(); ok {
-		_spec.SetField(component.FieldDependsOn, field.TypeJSON, value)
-		_node.DependsOn = value
+	if value, ok := _c.mutation.Ordinal(); ok {
+		_spec.SetField(component.FieldOrdinal, field.TypeInt, value)
+		_node.Ordinal = value
 	}
 	if value, ok := _c.mutation.ContinueOnFailure(); ok {
 		_spec.SetField(component.FieldContinueOnFailure, field.TypeBool, value)
@@ -435,10 +442,6 @@ func (_c *ComponentCreate) createSpec() (*Component, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.TargetNamespace(); ok {
 		_spec.SetField(component.FieldTargetNamespace, field.TypeString, value)
 		_node.TargetNamespace = value
-	}
-	if value, ok := _c.mutation.Position(); ok {
-		_spec.SetField(component.FieldPosition, field.TypeJSON, value)
-		_node.Position = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(component.FieldCreatedAt, field.TypeTime, value)
@@ -533,21 +536,21 @@ func (_c *ComponentCreate) createSpec() (*Component, *sqlgraph.CreateSpec) {
 		_node.GithubInstallationID = nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
-	if nodes := _c.mutation.GroupIDs(); len(nodes) > 0 {
+	if nodes := _c.mutation.StageIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
 			Inverse: false,
-			Table:   component.GroupTable,
-			Columns: []string{component.GroupColumn},
+			Table:   component.StageTable,
+			Columns: []string{component.StageColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(componentgroup.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(workflowstage.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
-		_node.GroupID = nodes[0]
+		_node.StageID = nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -644,21 +647,33 @@ func (u *ComponentUpsert) ClearConfig() *ComponentUpsert {
 	return u
 }
 
-// SetDependsOn sets the "depends_on" field.
-func (u *ComponentUpsert) SetDependsOn(v []uuid.UUID) *ComponentUpsert {
-	u.Set(component.FieldDependsOn, v)
+// SetStageID sets the "stage_id" field.
+func (u *ComponentUpsert) SetStageID(v uuid.UUID) *ComponentUpsert {
+	u.Set(component.FieldStageID, v)
 	return u
 }
 
-// UpdateDependsOn sets the "depends_on" field to the value that was provided on create.
-func (u *ComponentUpsert) UpdateDependsOn() *ComponentUpsert {
-	u.SetExcluded(component.FieldDependsOn)
+// UpdateStageID sets the "stage_id" field to the value that was provided on create.
+func (u *ComponentUpsert) UpdateStageID() *ComponentUpsert {
+	u.SetExcluded(component.FieldStageID)
 	return u
 }
 
-// ClearDependsOn clears the value of the "depends_on" field.
-func (u *ComponentUpsert) ClearDependsOn() *ComponentUpsert {
-	u.SetNull(component.FieldDependsOn)
+// SetOrdinal sets the "ordinal" field.
+func (u *ComponentUpsert) SetOrdinal(v int) *ComponentUpsert {
+	u.Set(component.FieldOrdinal, v)
+	return u
+}
+
+// UpdateOrdinal sets the "ordinal" field to the value that was provided on create.
+func (u *ComponentUpsert) UpdateOrdinal() *ComponentUpsert {
+	u.SetExcluded(component.FieldOrdinal)
+	return u
+}
+
+// AddOrdinal adds v to the "ordinal" field.
+func (u *ComponentUpsert) AddOrdinal(v int) *ComponentUpsert {
+	u.Add(component.FieldOrdinal, v)
 	return u
 }
 
@@ -773,42 +788,6 @@ func (u *ComponentUpsert) UpdateGithubInstallationID() *ComponentUpsert {
 // ClearGithubInstallationID clears the value of the "github_installation_id" field.
 func (u *ComponentUpsert) ClearGithubInstallationID() *ComponentUpsert {
 	u.SetNull(component.FieldGithubInstallationID)
-	return u
-}
-
-// SetPosition sets the "position" field.
-func (u *ComponentUpsert) SetPosition(v map[string]float64) *ComponentUpsert {
-	u.Set(component.FieldPosition, v)
-	return u
-}
-
-// UpdatePosition sets the "position" field to the value that was provided on create.
-func (u *ComponentUpsert) UpdatePosition() *ComponentUpsert {
-	u.SetExcluded(component.FieldPosition)
-	return u
-}
-
-// ClearPosition clears the value of the "position" field.
-func (u *ComponentUpsert) ClearPosition() *ComponentUpsert {
-	u.SetNull(component.FieldPosition)
-	return u
-}
-
-// SetGroupID sets the "group_id" field.
-func (u *ComponentUpsert) SetGroupID(v uuid.UUID) *ComponentUpsert {
-	u.Set(component.FieldGroupID, v)
-	return u
-}
-
-// UpdateGroupID sets the "group_id" field to the value that was provided on create.
-func (u *ComponentUpsert) UpdateGroupID() *ComponentUpsert {
-	u.SetExcluded(component.FieldGroupID)
-	return u
-}
-
-// ClearGroupID clears the value of the "group_id" field.
-func (u *ComponentUpsert) ClearGroupID() *ComponentUpsert {
-	u.SetNull(component.FieldGroupID)
 	return u
 }
 
@@ -930,24 +909,38 @@ func (u *ComponentUpsertOne) ClearConfig() *ComponentUpsertOne {
 	})
 }
 
-// SetDependsOn sets the "depends_on" field.
-func (u *ComponentUpsertOne) SetDependsOn(v []uuid.UUID) *ComponentUpsertOne {
+// SetStageID sets the "stage_id" field.
+func (u *ComponentUpsertOne) SetStageID(v uuid.UUID) *ComponentUpsertOne {
 	return u.Update(func(s *ComponentUpsert) {
-		s.SetDependsOn(v)
+		s.SetStageID(v)
 	})
 }
 
-// UpdateDependsOn sets the "depends_on" field to the value that was provided on create.
-func (u *ComponentUpsertOne) UpdateDependsOn() *ComponentUpsertOne {
+// UpdateStageID sets the "stage_id" field to the value that was provided on create.
+func (u *ComponentUpsertOne) UpdateStageID() *ComponentUpsertOne {
 	return u.Update(func(s *ComponentUpsert) {
-		s.UpdateDependsOn()
+		s.UpdateStageID()
 	})
 }
 
-// ClearDependsOn clears the value of the "depends_on" field.
-func (u *ComponentUpsertOne) ClearDependsOn() *ComponentUpsertOne {
+// SetOrdinal sets the "ordinal" field.
+func (u *ComponentUpsertOne) SetOrdinal(v int) *ComponentUpsertOne {
 	return u.Update(func(s *ComponentUpsert) {
-		s.ClearDependsOn()
+		s.SetOrdinal(v)
+	})
+}
+
+// AddOrdinal adds v to the "ordinal" field.
+func (u *ComponentUpsertOne) AddOrdinal(v int) *ComponentUpsertOne {
+	return u.Update(func(s *ComponentUpsert) {
+		s.AddOrdinal(v)
+	})
+}
+
+// UpdateOrdinal sets the "ordinal" field to the value that was provided on create.
+func (u *ComponentUpsertOne) UpdateOrdinal() *ComponentUpsertOne {
+	return u.Update(func(s *ComponentUpsert) {
+		s.UpdateOrdinal()
 	})
 }
 
@@ -1081,48 +1074,6 @@ func (u *ComponentUpsertOne) UpdateGithubInstallationID() *ComponentUpsertOne {
 func (u *ComponentUpsertOne) ClearGithubInstallationID() *ComponentUpsertOne {
 	return u.Update(func(s *ComponentUpsert) {
 		s.ClearGithubInstallationID()
-	})
-}
-
-// SetPosition sets the "position" field.
-func (u *ComponentUpsertOne) SetPosition(v map[string]float64) *ComponentUpsertOne {
-	return u.Update(func(s *ComponentUpsert) {
-		s.SetPosition(v)
-	})
-}
-
-// UpdatePosition sets the "position" field to the value that was provided on create.
-func (u *ComponentUpsertOne) UpdatePosition() *ComponentUpsertOne {
-	return u.Update(func(s *ComponentUpsert) {
-		s.UpdatePosition()
-	})
-}
-
-// ClearPosition clears the value of the "position" field.
-func (u *ComponentUpsertOne) ClearPosition() *ComponentUpsertOne {
-	return u.Update(func(s *ComponentUpsert) {
-		s.ClearPosition()
-	})
-}
-
-// SetGroupID sets the "group_id" field.
-func (u *ComponentUpsertOne) SetGroupID(v uuid.UUID) *ComponentUpsertOne {
-	return u.Update(func(s *ComponentUpsert) {
-		s.SetGroupID(v)
-	})
-}
-
-// UpdateGroupID sets the "group_id" field to the value that was provided on create.
-func (u *ComponentUpsertOne) UpdateGroupID() *ComponentUpsertOne {
-	return u.Update(func(s *ComponentUpsert) {
-		s.UpdateGroupID()
-	})
-}
-
-// ClearGroupID clears the value of the "group_id" field.
-func (u *ComponentUpsertOne) ClearGroupID() *ComponentUpsertOne {
-	return u.Update(func(s *ComponentUpsert) {
-		s.ClearGroupID()
 	})
 }
 
@@ -1413,24 +1364,38 @@ func (u *ComponentUpsertBulk) ClearConfig() *ComponentUpsertBulk {
 	})
 }
 
-// SetDependsOn sets the "depends_on" field.
-func (u *ComponentUpsertBulk) SetDependsOn(v []uuid.UUID) *ComponentUpsertBulk {
+// SetStageID sets the "stage_id" field.
+func (u *ComponentUpsertBulk) SetStageID(v uuid.UUID) *ComponentUpsertBulk {
 	return u.Update(func(s *ComponentUpsert) {
-		s.SetDependsOn(v)
+		s.SetStageID(v)
 	})
 }
 
-// UpdateDependsOn sets the "depends_on" field to the value that was provided on create.
-func (u *ComponentUpsertBulk) UpdateDependsOn() *ComponentUpsertBulk {
+// UpdateStageID sets the "stage_id" field to the value that was provided on create.
+func (u *ComponentUpsertBulk) UpdateStageID() *ComponentUpsertBulk {
 	return u.Update(func(s *ComponentUpsert) {
-		s.UpdateDependsOn()
+		s.UpdateStageID()
 	})
 }
 
-// ClearDependsOn clears the value of the "depends_on" field.
-func (u *ComponentUpsertBulk) ClearDependsOn() *ComponentUpsertBulk {
+// SetOrdinal sets the "ordinal" field.
+func (u *ComponentUpsertBulk) SetOrdinal(v int) *ComponentUpsertBulk {
 	return u.Update(func(s *ComponentUpsert) {
-		s.ClearDependsOn()
+		s.SetOrdinal(v)
+	})
+}
+
+// AddOrdinal adds v to the "ordinal" field.
+func (u *ComponentUpsertBulk) AddOrdinal(v int) *ComponentUpsertBulk {
+	return u.Update(func(s *ComponentUpsert) {
+		s.AddOrdinal(v)
+	})
+}
+
+// UpdateOrdinal sets the "ordinal" field to the value that was provided on create.
+func (u *ComponentUpsertBulk) UpdateOrdinal() *ComponentUpsertBulk {
+	return u.Update(func(s *ComponentUpsert) {
+		s.UpdateOrdinal()
 	})
 }
 
@@ -1564,48 +1529,6 @@ func (u *ComponentUpsertBulk) UpdateGithubInstallationID() *ComponentUpsertBulk 
 func (u *ComponentUpsertBulk) ClearGithubInstallationID() *ComponentUpsertBulk {
 	return u.Update(func(s *ComponentUpsert) {
 		s.ClearGithubInstallationID()
-	})
-}
-
-// SetPosition sets the "position" field.
-func (u *ComponentUpsertBulk) SetPosition(v map[string]float64) *ComponentUpsertBulk {
-	return u.Update(func(s *ComponentUpsert) {
-		s.SetPosition(v)
-	})
-}
-
-// UpdatePosition sets the "position" field to the value that was provided on create.
-func (u *ComponentUpsertBulk) UpdatePosition() *ComponentUpsertBulk {
-	return u.Update(func(s *ComponentUpsert) {
-		s.UpdatePosition()
-	})
-}
-
-// ClearPosition clears the value of the "position" field.
-func (u *ComponentUpsertBulk) ClearPosition() *ComponentUpsertBulk {
-	return u.Update(func(s *ComponentUpsert) {
-		s.ClearPosition()
-	})
-}
-
-// SetGroupID sets the "group_id" field.
-func (u *ComponentUpsertBulk) SetGroupID(v uuid.UUID) *ComponentUpsertBulk {
-	return u.Update(func(s *ComponentUpsert) {
-		s.SetGroupID(v)
-	})
-}
-
-// UpdateGroupID sets the "group_id" field to the value that was provided on create.
-func (u *ComponentUpsertBulk) UpdateGroupID() *ComponentUpsertBulk {
-	return u.Update(func(s *ComponentUpsert) {
-		s.UpdateGroupID()
-	})
-}
-
-// ClearGroupID clears the value of the "group_id" field.
-func (u *ComponentUpsertBulk) ClearGroupID() *ComponentUpsertBulk {
-	return u.Update(func(s *ComponentUpsert) {
-		s.ClearGroupID()
 	})
 }
 

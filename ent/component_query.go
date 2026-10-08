@@ -16,10 +16,10 @@ import (
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
-	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/predicate"
+	"github.com/spacefleet/spacefleet/ent/workflowstage"
 )
 
 // ComponentQuery is the builder for querying Component entities.
@@ -34,7 +34,7 @@ type ComponentQuery struct {
 	withTargetCluster      *ClusterQuery
 	withChartCredential    *ChartCredentialQuery
 	withGithubInstallation *GitHubInstallationQuery
-	withGroup              *ComponentGroupQuery
+	withStage              *WorkflowStageQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -181,9 +181,9 @@ func (_q *ComponentQuery) QueryGithubInstallation() *GitHubInstallationQuery {
 	return query
 }
 
-// QueryGroup chains the current query on the "group" edge.
-func (_q *ComponentQuery) QueryGroup() *ComponentGroupQuery {
-	query := (&ComponentGroupClient{config: _q.config}).Query()
+// QueryStage chains the current query on the "stage" edge.
+func (_q *ComponentQuery) QueryStage() *WorkflowStageQuery {
+	query := (&WorkflowStageClient{config: _q.config}).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
 			return nil, err
@@ -194,8 +194,8 @@ func (_q *ComponentQuery) QueryGroup() *ComponentGroupQuery {
 		}
 		step := sqlgraph.NewStep(
 			sqlgraph.From(component.Table, component.FieldID, selector),
-			sqlgraph.To(componentgroup.Table, componentgroup.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, component.GroupTable, component.GroupColumn),
+			sqlgraph.To(workflowstage.Table, workflowstage.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, component.StageTable, component.StageColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -400,7 +400,7 @@ func (_q *ComponentQuery) Clone() *ComponentQuery {
 		withTargetCluster:      _q.withTargetCluster.Clone(),
 		withChartCredential:    _q.withChartCredential.Clone(),
 		withGithubInstallation: _q.withGithubInstallation.Clone(),
-		withGroup:              _q.withGroup.Clone(),
+		withStage:              _q.withStage.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -462,14 +462,14 @@ func (_q *ComponentQuery) WithGithubInstallation(opts ...func(*GitHubInstallatio
 	return _q
 }
 
-// WithGroup tells the query-builder to eager-load the nodes that are connected to
-// the "group" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *ComponentQuery) WithGroup(opts ...func(*ComponentGroupQuery)) *ComponentQuery {
-	query := (&ComponentGroupClient{config: _q.config}).Query()
+// WithStage tells the query-builder to eager-load the nodes that are connected to
+// the "stage" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ComponentQuery) WithStage(opts ...func(*WorkflowStageQuery)) *ComponentQuery {
+	query := (&WorkflowStageClient{config: _q.config}).Query()
 	for _, opt := range opts {
 		opt(query)
 	}
-	_q.withGroup = query
+	_q.withStage = query
 	return _q
 }
 
@@ -557,7 +557,7 @@ func (_q *ComponentQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Co
 			_q.withTargetCluster != nil,
 			_q.withChartCredential != nil,
 			_q.withGithubInstallation != nil,
-			_q.withGroup != nil,
+			_q.withStage != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -608,9 +608,9 @@ func (_q *ComponentQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Co
 			return nil, err
 		}
 	}
-	if query := _q.withGroup; query != nil {
-		if err := _q.loadGroup(ctx, query, nodes, nil,
-			func(n *Component, e *ComponentGroup) { n.Edges.Group = e }); err != nil {
+	if query := _q.withStage; query != nil {
+		if err := _q.loadStage(ctx, query, nodes, nil,
+			func(n *Component, e *WorkflowStage) { n.Edges.Stage = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -762,11 +762,11 @@ func (_q *ComponentQuery) loadGithubInstallation(ctx context.Context, query *Git
 	}
 	return nil
 }
-func (_q *ComponentQuery) loadGroup(ctx context.Context, query *ComponentGroupQuery, nodes []*Component, init func(*Component), assign func(*Component, *ComponentGroup)) error {
+func (_q *ComponentQuery) loadStage(ctx context.Context, query *WorkflowStageQuery, nodes []*Component, init func(*Component), assign func(*Component, *WorkflowStage)) error {
 	ids := make([]uuid.UUID, 0, len(nodes))
 	nodeids := make(map[uuid.UUID][]*Component)
 	for i := range nodes {
-		fk := nodes[i].GroupID
+		fk := nodes[i].StageID
 		if _, ok := nodeids[fk]; !ok {
 			ids = append(ids, fk)
 		}
@@ -775,7 +775,7 @@ func (_q *ComponentQuery) loadGroup(ctx context.Context, query *ComponentGroupQu
 	if len(ids) == 0 {
 		return nil
 	}
-	query.Where(componentgroup.IDIn(ids...))
+	query.Where(workflowstage.IDIn(ids...))
 	neighbors, err := query.All(ctx)
 	if err != nil {
 		return err
@@ -783,7 +783,7 @@ func (_q *ComponentQuery) loadGroup(ctx context.Context, query *ComponentGroupQu
 	for _, n := range neighbors {
 		nodes, ok := nodeids[n.ID]
 		if !ok {
-			return fmt.Errorf(`unexpected foreign-key "group_id" returned %v`, n.ID)
+			return fmt.Errorf(`unexpected foreign-key "stage_id" returned %v`, n.ID)
 		}
 		for i := range nodes {
 			assign(nodes[i], n)
@@ -832,8 +832,8 @@ func (_q *ComponentQuery) querySpec() *sqlgraph.QuerySpec {
 		if _q.withGithubInstallation != nil {
 			_spec.Node.AddColumnOnce(component.FieldGithubInstallationID)
 		}
-		if _q.withGroup != nil {
-			_spec.Node.AddColumnOnce(component.FieldGroupID)
+		if _q.withStage != nil {
+			_spec.Node.AddColumnOnce(component.FieldStageID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

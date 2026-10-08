@@ -8,30 +8,30 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/predicate"
+	"github.com/spacefleet/spacefleet/ent/workflowstage"
 )
 
-// ComponentGroupDelete is the builder for deleting a ComponentGroup entity.
-type ComponentGroupDelete struct {
+// WorkflowStageDelete is the builder for deleting a WorkflowStage entity.
+type WorkflowStageDelete struct {
 	config
 	hooks    []Hook
-	mutation *ComponentGroupMutation
+	mutation *WorkflowStageMutation
 }
 
-// Where appends a list predicates to the ComponentGroupDelete builder.
-func (_d *ComponentGroupDelete) Where(ps ...predicate.ComponentGroup) *ComponentGroupDelete {
+// Where appends a list predicates to the WorkflowStageDelete builder.
+func (_d *WorkflowStageDelete) Where(ps ...predicate.WorkflowStage) *WorkflowStageDelete {
 	_d.mutation.Where(ps...)
 	return _d
 }
 
 // Exec executes the deletion query and returns how many vertices were deleted.
-func (_d *ComponentGroupDelete) Exec(ctx context.Context) (int, error) {
+func (_d *WorkflowStageDelete) Exec(ctx context.Context) (int, error) {
 	return withHooks(ctx, _d.sqlExec, _d.mutation, _d.hooks)
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_d *ComponentGroupDelete) ExecX(ctx context.Context) int {
+func (_d *WorkflowStageDelete) ExecX(ctx context.Context) int {
 	n, err := _d.Exec(ctx)
 	if err != nil {
 		panic(err)
@@ -39,8 +39,8 @@ func (_d *ComponentGroupDelete) ExecX(ctx context.Context) int {
 	return n
 }
 
-func (_d *ComponentGroupDelete) sqlExec(ctx context.Context) (int, error) {
-	_spec := sqlgraph.NewDeleteSpec(componentgroup.Table, sqlgraph.NewFieldSpec(componentgroup.FieldID, field.TypeUUID))
+func (_d *WorkflowStageDelete) sqlExec(ctx context.Context) (int, error) {
+	_spec := sqlgraph.NewDeleteSpec(workflowstage.Table, sqlgraph.NewFieldSpec(workflowstage.FieldID, field.TypeUUID))
 	if ps := _d.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
@@ -56,32 +56,32 @@ func (_d *ComponentGroupDelete) sqlExec(ctx context.Context) (int, error) {
 	return affected, err
 }
 
-// ComponentGroupDeleteOne is the builder for deleting a single ComponentGroup entity.
-type ComponentGroupDeleteOne struct {
-	_d *ComponentGroupDelete
+// WorkflowStageDeleteOne is the builder for deleting a single WorkflowStage entity.
+type WorkflowStageDeleteOne struct {
+	_d *WorkflowStageDelete
 }
 
-// Where appends a list predicates to the ComponentGroupDelete builder.
-func (_d *ComponentGroupDeleteOne) Where(ps ...predicate.ComponentGroup) *ComponentGroupDeleteOne {
+// Where appends a list predicates to the WorkflowStageDelete builder.
+func (_d *WorkflowStageDeleteOne) Where(ps ...predicate.WorkflowStage) *WorkflowStageDeleteOne {
 	_d._d.mutation.Where(ps...)
 	return _d
 }
 
 // Exec executes the deletion query.
-func (_d *ComponentGroupDeleteOne) Exec(ctx context.Context) error {
+func (_d *WorkflowStageDeleteOne) Exec(ctx context.Context) error {
 	n, err := _d._d.Exec(ctx)
 	switch {
 	case err != nil:
 		return err
 	case n == 0:
-		return &NotFoundError{componentgroup.Label}
+		return &NotFoundError{workflowstage.Label}
 	default:
 		return nil
 	}
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_d *ComponentGroupDeleteOne) ExecX(ctx context.Context) {
+func (_d *WorkflowStageDeleteOne) ExecX(ctx context.Context) {
 	if err := _d.Exec(ctx); err != nil {
 		panic(err)
 	}

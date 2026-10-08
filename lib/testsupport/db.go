@@ -36,6 +36,22 @@ var dbCounter atomic.Int64
 // stack up aren't blocked — CI runs the services and gets full coverage.
 func NewEntClient(t *testing.T) *ent.Client {
 	t.Helper()
+	sqlDB, client := NewDatabase(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, err := migrate.New(sqlDB, migrations.FS).Up(ctx); err != nil {
+		t.Fatalf("integration: migrate: %v", err)
+	}
+	return client
+}
+
+// NewDatabase is NewEntClient without the migrations: a freshly created, empty
+// Postgres database dedicated to this test (dropped during cleanup), as both
+// the raw *sql.DB and an *ent.Client over it. A migration test applies the
+// migrations itself, stopping partway to seed data in an older schema.
+// Skips like NewEntClient when Postgres is unreachable.
+func NewDatabase(t *testing.T) (*sql.DB, *ent.Client) {
+	t.Helper()
 
 	baseDSN := firstNonEmpty(os.Getenv("TEST_DATABASE_URL"), os.Getenv("DATABASE_URL"), defaultBaseDSN)
 
@@ -75,13 +91,6 @@ func NewEntClient(t *testing.T) *ent.Client {
 		t.Fatalf("integration: open test db: %v", err)
 	}
 
-	if _, err := migrate.New(sqlDB, migrations.FS).Up(ctx); err != nil {
-		_ = client.Close()
-		_ = sqlDB.Close()
-		_ = admin.Close()
-		t.Fatalf("integration: migrate: %v", err)
-	}
-
 	t.Cleanup(func() {
 		_ = client.Close()
 		_ = sqlDB.Close()
@@ -94,7 +103,7 @@ func NewEntClient(t *testing.T) *ent.Client {
 		_ = admin.Close()
 	})
 
-	return client
+	return sqlDB, client
 }
 
 // withDBName returns dsn with its database (path) replaced by name.

@@ -10,16 +10,15 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
-	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
-	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/predicate"
 	"github.com/spacefleet/spacefleet/ent/schema"
+	"github.com/spacefleet/spacefleet/ent/workflowstage"
 )
 
 // ComponentUpdate is the builder for updating Component entities.
@@ -75,21 +74,38 @@ func (_u *ComponentUpdate) ClearConfig() *ComponentUpdate {
 	return _u
 }
 
-// SetDependsOn sets the "depends_on" field.
-func (_u *ComponentUpdate) SetDependsOn(v []uuid.UUID) *ComponentUpdate {
-	_u.mutation.SetDependsOn(v)
+// SetStageID sets the "stage_id" field.
+func (_u *ComponentUpdate) SetStageID(v uuid.UUID) *ComponentUpdate {
+	_u.mutation.SetStageID(v)
 	return _u
 }
 
-// AppendDependsOn appends value to the "depends_on" field.
-func (_u *ComponentUpdate) AppendDependsOn(v []uuid.UUID) *ComponentUpdate {
-	_u.mutation.AppendDependsOn(v)
+// SetNillableStageID sets the "stage_id" field if the given value is not nil.
+func (_u *ComponentUpdate) SetNillableStageID(v *uuid.UUID) *ComponentUpdate {
+	if v != nil {
+		_u.SetStageID(*v)
+	}
 	return _u
 }
 
-// ClearDependsOn clears the value of the "depends_on" field.
-func (_u *ComponentUpdate) ClearDependsOn() *ComponentUpdate {
-	_u.mutation.ClearDependsOn()
+// SetOrdinal sets the "ordinal" field.
+func (_u *ComponentUpdate) SetOrdinal(v int) *ComponentUpdate {
+	_u.mutation.ResetOrdinal()
+	_u.mutation.SetOrdinal(v)
+	return _u
+}
+
+// SetNillableOrdinal sets the "ordinal" field if the given value is not nil.
+func (_u *ComponentUpdate) SetNillableOrdinal(v *int) *ComponentUpdate {
+	if v != nil {
+		_u.SetOrdinal(*v)
+	}
+	return _u
+}
+
+// AddOrdinal adds value to the "ordinal" field.
+func (_u *ComponentUpdate) AddOrdinal(v int) *ComponentUpdate {
+	_u.mutation.AddOrdinal(v)
 	return _u
 }
 
@@ -221,38 +237,6 @@ func (_u *ComponentUpdate) ClearGithubInstallationID() *ComponentUpdate {
 	return _u
 }
 
-// SetPosition sets the "position" field.
-func (_u *ComponentUpdate) SetPosition(v map[string]float64) *ComponentUpdate {
-	_u.mutation.SetPosition(v)
-	return _u
-}
-
-// ClearPosition clears the value of the "position" field.
-func (_u *ComponentUpdate) ClearPosition() *ComponentUpdate {
-	_u.mutation.ClearPosition()
-	return _u
-}
-
-// SetGroupID sets the "group_id" field.
-func (_u *ComponentUpdate) SetGroupID(v uuid.UUID) *ComponentUpdate {
-	_u.mutation.SetGroupID(v)
-	return _u
-}
-
-// SetNillableGroupID sets the "group_id" field if the given value is not nil.
-func (_u *ComponentUpdate) SetNillableGroupID(v *uuid.UUID) *ComponentUpdate {
-	if v != nil {
-		_u.SetGroupID(*v)
-	}
-	return _u
-}
-
-// ClearGroupID clears the value of the "group_id" field.
-func (_u *ComponentUpdate) ClearGroupID() *ComponentUpdate {
-	_u.mutation.ClearGroupID()
-	return _u
-}
-
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ComponentUpdate) SetUpdatedAt(v time.Time) *ComponentUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -274,9 +258,9 @@ func (_u *ComponentUpdate) SetGithubInstallation(v *GitHubInstallation) *Compone
 	return _u.SetGithubInstallationID(v.ID)
 }
 
-// SetGroup sets the "group" edge to the ComponentGroup entity.
-func (_u *ComponentUpdate) SetGroup(v *ComponentGroup) *ComponentUpdate {
-	return _u.SetGroupID(v.ID)
+// SetStage sets the "stage" edge to the WorkflowStage entity.
+func (_u *ComponentUpdate) SetStage(v *WorkflowStage) *ComponentUpdate {
+	return _u.SetStageID(v.ID)
 }
 
 // Mutation returns the ComponentMutation object of the builder.
@@ -302,9 +286,9 @@ func (_u *ComponentUpdate) ClearGithubInstallation() *ComponentUpdate {
 	return _u
 }
 
-// ClearGroup clears the "group" edge to the ComponentGroup entity.
-func (_u *ComponentUpdate) ClearGroup() *ComponentUpdate {
-	_u.mutation.ClearGroup()
+// ClearStage clears the "stage" edge to the WorkflowStage entity.
+func (_u *ComponentUpdate) ClearStage() *ComponentUpdate {
+	_u.mutation.ClearStage()
 	return _u
 }
 
@@ -362,6 +346,9 @@ func (_u *ComponentUpdate) check() error {
 	if _u.mutation.ApplicationCleared() && len(_u.mutation.ApplicationIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Component.application"`)
 	}
+	if _u.mutation.StageCleared() && len(_u.mutation.StageIDs()) > 0 {
+		return errors.New(`ent: clearing a required unique edge "Component.stage"`)
+	}
 	return nil
 }
 
@@ -389,16 +376,11 @@ func (_u *ComponentUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.ConfigCleared() {
 		_spec.ClearField(component.FieldConfig, field.TypeJSON)
 	}
-	if value, ok := _u.mutation.DependsOn(); ok {
-		_spec.SetField(component.FieldDependsOn, field.TypeJSON, value)
+	if value, ok := _u.mutation.Ordinal(); ok {
+		_spec.SetField(component.FieldOrdinal, field.TypeInt, value)
 	}
-	if value, ok := _u.mutation.AppendedDependsOn(); ok {
-		_spec.AddModifier(func(u *sql.UpdateBuilder) {
-			sqljson.Append(u, component.FieldDependsOn, value)
-		})
-	}
-	if _u.mutation.DependsOnCleared() {
-		_spec.ClearField(component.FieldDependsOn, field.TypeJSON)
+	if value, ok := _u.mutation.AddedOrdinal(); ok {
+		_spec.AddField(component.FieldOrdinal, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.ContinueOnFailure(); ok {
 		_spec.SetField(component.FieldContinueOnFailure, field.TypeBool, value)
@@ -417,12 +399,6 @@ func (_u *ComponentUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.TargetNamespaceCleared() {
 		_spec.ClearField(component.FieldTargetNamespace, field.TypeString)
-	}
-	if value, ok := _u.mutation.Position(); ok {
-		_spec.SetField(component.FieldPosition, field.TypeJSON, value)
-	}
-	if _u.mutation.PositionCleared() {
-		_spec.ClearField(component.FieldPosition, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(component.FieldUpdatedAt, field.TypeTime, value)
@@ -514,28 +490,28 @@ func (_u *ComponentUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	if _u.mutation.GroupCleared() {
+	if _u.mutation.StageCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
 			Inverse: false,
-			Table:   component.GroupTable,
-			Columns: []string{component.GroupColumn},
+			Table:   component.StageTable,
+			Columns: []string{component.StageColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(componentgroup.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(workflowstage.FieldID, field.TypeUUID),
 			},
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := _u.mutation.GroupIDs(); len(nodes) > 0 {
+	if nodes := _u.mutation.StageIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
 			Inverse: false,
-			Table:   component.GroupTable,
-			Columns: []string{component.GroupColumn},
+			Table:   component.StageTable,
+			Columns: []string{component.StageColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(componentgroup.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(workflowstage.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -603,21 +579,38 @@ func (_u *ComponentUpdateOne) ClearConfig() *ComponentUpdateOne {
 	return _u
 }
 
-// SetDependsOn sets the "depends_on" field.
-func (_u *ComponentUpdateOne) SetDependsOn(v []uuid.UUID) *ComponentUpdateOne {
-	_u.mutation.SetDependsOn(v)
+// SetStageID sets the "stage_id" field.
+func (_u *ComponentUpdateOne) SetStageID(v uuid.UUID) *ComponentUpdateOne {
+	_u.mutation.SetStageID(v)
 	return _u
 }
 
-// AppendDependsOn appends value to the "depends_on" field.
-func (_u *ComponentUpdateOne) AppendDependsOn(v []uuid.UUID) *ComponentUpdateOne {
-	_u.mutation.AppendDependsOn(v)
+// SetNillableStageID sets the "stage_id" field if the given value is not nil.
+func (_u *ComponentUpdateOne) SetNillableStageID(v *uuid.UUID) *ComponentUpdateOne {
+	if v != nil {
+		_u.SetStageID(*v)
+	}
 	return _u
 }
 
-// ClearDependsOn clears the value of the "depends_on" field.
-func (_u *ComponentUpdateOne) ClearDependsOn() *ComponentUpdateOne {
-	_u.mutation.ClearDependsOn()
+// SetOrdinal sets the "ordinal" field.
+func (_u *ComponentUpdateOne) SetOrdinal(v int) *ComponentUpdateOne {
+	_u.mutation.ResetOrdinal()
+	_u.mutation.SetOrdinal(v)
+	return _u
+}
+
+// SetNillableOrdinal sets the "ordinal" field if the given value is not nil.
+func (_u *ComponentUpdateOne) SetNillableOrdinal(v *int) *ComponentUpdateOne {
+	if v != nil {
+		_u.SetOrdinal(*v)
+	}
+	return _u
+}
+
+// AddOrdinal adds value to the "ordinal" field.
+func (_u *ComponentUpdateOne) AddOrdinal(v int) *ComponentUpdateOne {
+	_u.mutation.AddOrdinal(v)
 	return _u
 }
 
@@ -749,38 +742,6 @@ func (_u *ComponentUpdateOne) ClearGithubInstallationID() *ComponentUpdateOne {
 	return _u
 }
 
-// SetPosition sets the "position" field.
-func (_u *ComponentUpdateOne) SetPosition(v map[string]float64) *ComponentUpdateOne {
-	_u.mutation.SetPosition(v)
-	return _u
-}
-
-// ClearPosition clears the value of the "position" field.
-func (_u *ComponentUpdateOne) ClearPosition() *ComponentUpdateOne {
-	_u.mutation.ClearPosition()
-	return _u
-}
-
-// SetGroupID sets the "group_id" field.
-func (_u *ComponentUpdateOne) SetGroupID(v uuid.UUID) *ComponentUpdateOne {
-	_u.mutation.SetGroupID(v)
-	return _u
-}
-
-// SetNillableGroupID sets the "group_id" field if the given value is not nil.
-func (_u *ComponentUpdateOne) SetNillableGroupID(v *uuid.UUID) *ComponentUpdateOne {
-	if v != nil {
-		_u.SetGroupID(*v)
-	}
-	return _u
-}
-
-// ClearGroupID clears the value of the "group_id" field.
-func (_u *ComponentUpdateOne) ClearGroupID() *ComponentUpdateOne {
-	_u.mutation.ClearGroupID()
-	return _u
-}
-
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ComponentUpdateOne) SetUpdatedAt(v time.Time) *ComponentUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -802,9 +763,9 @@ func (_u *ComponentUpdateOne) SetGithubInstallation(v *GitHubInstallation) *Comp
 	return _u.SetGithubInstallationID(v.ID)
 }
 
-// SetGroup sets the "group" edge to the ComponentGroup entity.
-func (_u *ComponentUpdateOne) SetGroup(v *ComponentGroup) *ComponentUpdateOne {
-	return _u.SetGroupID(v.ID)
+// SetStage sets the "stage" edge to the WorkflowStage entity.
+func (_u *ComponentUpdateOne) SetStage(v *WorkflowStage) *ComponentUpdateOne {
+	return _u.SetStageID(v.ID)
 }
 
 // Mutation returns the ComponentMutation object of the builder.
@@ -830,9 +791,9 @@ func (_u *ComponentUpdateOne) ClearGithubInstallation() *ComponentUpdateOne {
 	return _u
 }
 
-// ClearGroup clears the "group" edge to the ComponentGroup entity.
-func (_u *ComponentUpdateOne) ClearGroup() *ComponentUpdateOne {
-	_u.mutation.ClearGroup()
+// ClearStage clears the "stage" edge to the WorkflowStage entity.
+func (_u *ComponentUpdateOne) ClearStage() *ComponentUpdateOne {
+	_u.mutation.ClearStage()
 	return _u
 }
 
@@ -903,6 +864,9 @@ func (_u *ComponentUpdateOne) check() error {
 	if _u.mutation.ApplicationCleared() && len(_u.mutation.ApplicationIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Component.application"`)
 	}
+	if _u.mutation.StageCleared() && len(_u.mutation.StageIDs()) > 0 {
+		return errors.New(`ent: clearing a required unique edge "Component.stage"`)
+	}
 	return nil
 }
 
@@ -947,16 +911,11 @@ func (_u *ComponentUpdateOne) sqlSave(ctx context.Context) (_node *Component, er
 	if _u.mutation.ConfigCleared() {
 		_spec.ClearField(component.FieldConfig, field.TypeJSON)
 	}
-	if value, ok := _u.mutation.DependsOn(); ok {
-		_spec.SetField(component.FieldDependsOn, field.TypeJSON, value)
+	if value, ok := _u.mutation.Ordinal(); ok {
+		_spec.SetField(component.FieldOrdinal, field.TypeInt, value)
 	}
-	if value, ok := _u.mutation.AppendedDependsOn(); ok {
-		_spec.AddModifier(func(u *sql.UpdateBuilder) {
-			sqljson.Append(u, component.FieldDependsOn, value)
-		})
-	}
-	if _u.mutation.DependsOnCleared() {
-		_spec.ClearField(component.FieldDependsOn, field.TypeJSON)
+	if value, ok := _u.mutation.AddedOrdinal(); ok {
+		_spec.AddField(component.FieldOrdinal, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.ContinueOnFailure(); ok {
 		_spec.SetField(component.FieldContinueOnFailure, field.TypeBool, value)
@@ -975,12 +934,6 @@ func (_u *ComponentUpdateOne) sqlSave(ctx context.Context) (_node *Component, er
 	}
 	if _u.mutation.TargetNamespaceCleared() {
 		_spec.ClearField(component.FieldTargetNamespace, field.TypeString)
-	}
-	if value, ok := _u.mutation.Position(); ok {
-		_spec.SetField(component.FieldPosition, field.TypeJSON, value)
-	}
-	if _u.mutation.PositionCleared() {
-		_spec.ClearField(component.FieldPosition, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(component.FieldUpdatedAt, field.TypeTime, value)
@@ -1072,28 +1025,28 @@ func (_u *ComponentUpdateOne) sqlSave(ctx context.Context) (_node *Component, er
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	if _u.mutation.GroupCleared() {
+	if _u.mutation.StageCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
 			Inverse: false,
-			Table:   component.GroupTable,
-			Columns: []string{component.GroupColumn},
+			Table:   component.StageTable,
+			Columns: []string{component.StageColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(componentgroup.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(workflowstage.FieldID, field.TypeUUID),
 			},
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := _u.mutation.GroupIDs(); len(nodes) > 0 {
+	if nodes := _u.mutation.StageIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
 			Inverse: false,
-			Table:   component.GroupTable,
-			Columns: []string{component.GroupColumn},
+			Table:   component.StageTable,
+			Columns: []string{component.StageColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(componentgroup.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(workflowstage.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

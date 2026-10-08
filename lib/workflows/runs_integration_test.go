@@ -72,6 +72,7 @@ func addComponent(t *testing.T, client *ent.Client, orgID, appID uuid.UUID, name
 	c, err := client.Component.Create().
 		SetOrganizationID(orgID).
 		SetApplicationID(appID).
+		SetStageID(testsupport.Stage(t, client, orgID, appID)).
 		SetName(name).
 		SetType("helm").
 		SetConfig(config).
@@ -223,17 +224,17 @@ func TestReplaceWorkflowValidatesComponentTargets(t *testing.T) {
 	target := newCluster(t, client, org.ID, "target")
 
 	// Valid: helm targeting an in-org token cluster.
-	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, []ComponentInput{helmInput(target.ID)}, nil); err != nil {
+	if _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, stagesOf([]ComponentInput{helmInput(target.ID)})); err != nil {
 		t.Fatalf("valid target: %v", err)
 	}
 	// Target cluster not in the org → ErrInvalidTarget.
-	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, []ComponentInput{helmInput(uuid.New())}, nil); !errors.Is(err, ErrInvalidTarget) {
+	if _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, stagesOf([]ComponentInput{helmInput(uuid.New())})); !errors.Is(err, ErrInvalidTarget) {
 		t.Fatalf("unknown target: want ErrInvalidTarget, got %v", err)
 	}
 	// Cross-org cluster → ErrInvalidTarget.
 	other := newOrg(t, client, "Other")
 	foreign := newCluster(t, client, other.ID, "foreign")
-	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, []ComponentInput{helmInput(foreign.ID)}, nil); !errors.Is(err, ErrInvalidTarget) {
+	if _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, stagesOf([]ComponentInput{helmInput(foreign.ID)})); !errors.Is(err, ErrInvalidTarget) {
 		t.Fatalf("cross-org target: want ErrInvalidTarget, got %v", err)
 	}
 }
@@ -259,7 +260,7 @@ func TestReplaceWorkflowInClusterTargetRequiresRunner(t *testing.T) {
 	}
 
 	// In-cluster target that is the runner → ok.
-	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, []ComponentInput{helmInput(inCluster.ID)}, nil); err != nil {
+	if _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, stagesOf([]ComponentInput{helmInput(inCluster.ID)})); err != nil {
 		t.Fatalf("in-cluster target == runner: %v", err)
 	}
 	// A different in-cluster target (not the runner) → ErrInvalidTarget.
@@ -268,7 +269,7 @@ func TestReplaceWorkflowInClusterTargetRequiresRunner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create other in-cluster: %v", err)
 	}
-	if _, _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, []ComponentInput{helmInput(otherInCluster.ID)}, nil); !errors.Is(err, ErrInvalidTarget) {
+	if _, err := svc.ReplaceWorkflow(ctx, org.ID, app.ID, stagesOf([]ComponentInput{helmInput(otherInCluster.ID)})); !errors.Is(err, ErrInvalidTarget) {
 		t.Fatalf("in-cluster target != runner: want ErrInvalidTarget, got %v", err)
 	}
 }
@@ -342,6 +343,7 @@ func TestBeginRunExpandsTerraform(t *testing.T) {
 	tf, err := client.Component.Create().
 		SetOrganizationID(org.ID).
 		SetApplicationID(app.ID).
+		SetStageID(testsupport.Stage(t, client, org.ID, app.ID)).
 		SetName("infra").
 		SetType("terraform").
 		SetConfig(map[string]string{"repo_url": "https://github.com/acme/infra", "path": "envs/prod", "backend": "s3"}).
@@ -833,7 +835,9 @@ func TestBeginComponentRun(t *testing.T) {
 		terraformConfigBackend: "s3", terraformConfigBackendConfig: `{"bucket":"b","key":"k","region":"r"}`,
 		terraformConfigPlanFlags: `["-var=env=prod"]`,
 	})
-	if _, err := client.Component.UpdateOneID(tf.ID).SetType(TypeTerraform).SetDependsOn([]uuid.UUID{helmComp.ID}).Save(ctx); err != nil {
+	// infra runs in a later stage than api, so a whole-workflow run would make it
+	// wait on api — a scoped run of infra alone must not.
+	if _, err := client.Component.UpdateOneID(tf.ID).SetType(TypeTerraform).SetStageID(testsupport.NewStage(t, client, org.ID, app.ID, "infra")).Save(ctx); err != nil {
 		t.Fatalf("set terraform type: %v", err)
 	}
 	targets := []string{"aws_instance.web"}
@@ -1000,8 +1004,8 @@ func TestReapExpiredApprovals(t *testing.T) {
 		t.Fatalf("set policy: %v", err)
 	}
 	after := addComponent(t, client, org.ID, app.ID, "after", nil)
-	if _, err := client.Component.UpdateOneID(after.ID).SetDependsOn([]uuid.UUID{gated.ID}).Save(ctx); err != nil {
-		t.Fatalf("set dependency: %v", err)
+	if _, err := client.Component.UpdateOneID(after.ID).SetStageID(testsupport.NewStage(t, client, org.ID, app.ID, "after")).Save(ctx); err != nil {
+		t.Fatalf("move to a later stage: %v", err)
 	}
 	run, err := svc.BeginRun(ctx, org.ID, app.ID, ActionDeploy)
 	if err != nil {

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -38,6 +38,11 @@ const app = {
   updated_at: "2026-06-03T10:00:00Z",
 };
 
+const RELEASE = "11111111-1111-1111-1111-111111111111";
+const APPLY = "22222222-2222-2222-2222-222222222222";
+
+// The latest run: release succeeded, then apply failed. Its stage summary is
+// what colors the overview and fills the stage bar.
 const run = {
   id: "run-2",
   application_id: "app-1",
@@ -45,33 +50,57 @@ const run = {
   status: "succeeded",
   created_at: "2026-06-03T10:00:00Z",
   finished_at: "2026-06-03T10:01:00Z",
-};
-
-// A two-component workflow for the at-a-glance overview card.
-const workflow = {
-  components: [
+  stages: [
     {
-      id: "11111111-1111-1111-1111-111111111111",
-      name: "release",
-      type: "helm",
-      config: {},
-      depends_on: [],
-      continue_on_failure: false,
-      target_namespace: "",
-      position: { x: 100, y: 100 },
+      name: "Charts",
+      status: "succeeded",
+      components: [
+        { component_id: RELEASE, name: "release", type: "helm", status: "succeeded", component_run_ids: ["cr-1"] },
+      ],
     },
     {
-      id: "22222222-2222-2222-2222-222222222222",
-      name: "apply",
-      type: "manifest",
-      config: {},
-      depends_on: ["11111111-1111-1111-1111-111111111111"],
-      continue_on_failure: false,
-      target_namespace: "",
-      position: { x: 100, y: 300 },
+      name: "Manifests",
+      status: "failed",
+      components: [
+        { component_id: APPLY, name: "apply", type: "manifest", status: "failed", component_run_ids: ["cr-2"] },
+      ],
     },
   ],
-  groups: [],
+};
+
+// A two-stage workflow for the at-a-glance overview card.
+const workflow = {
+  stages: [
+    {
+      id: "s1",
+      name: "Charts",
+      components: [
+        {
+          id: RELEASE,
+          name: "release",
+          type: "helm",
+          config: {},
+          continue_on_failure: false,
+          target_cluster_id: "c1",
+          target_namespace: "web",
+        },
+      ],
+    },
+    {
+      id: "s2",
+      name: "Manifests",
+      components: [
+        {
+          id: APPLY,
+          name: "apply",
+          type: "manifest",
+          config: { path: "k8s" },
+          continue_on_failure: false,
+          target_namespace: "",
+        },
+      ],
+    },
+  ],
 };
 
 function renderDetail() {
@@ -81,7 +110,7 @@ function renderDetail() {
         <Route path="/applications/:appId" element={<ApplicationDetail />} />
         <Route
           path="/applications/:appId/workflow"
-          element={<div>workflow canvas</div>}
+          element={<div>workflow builder</div>}
         />
         <Route
           path="/applications/:appId/runs/:runId"
@@ -131,14 +160,35 @@ describe("ApplicationDetail overview", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /edit workflow/i }),
     );
-    expect(await screen.findByText("workflow canvas")).toBeInTheDocument();
+    expect(await screen.findByText("workflow builder")).toBeInTheDocument();
   });
 
-  it("shows the workflow overview's component nodes", async () => {
+  it("shows the workflow's stages and components, colored by the latest run", async () => {
     renderDetail();
-    // Both components from the saved workflow render in the overview DAG.
-    expect(await screen.findByText("release")).toBeInTheDocument();
-    expect(screen.getByText("apply")).toBeInTheDocument();
+    const charts = await screen.findByRole("region", { name: "Stage Charts" });
+    expect(within(charts).getByText("release")).toBeInTheDocument();
+    // The helm card's summary is its deploy target.
+    expect(within(charts).getByText("prod / web")).toBeInTheDocument();
+    const manifests = screen.getByRole("region", { name: "Stage Manifests" });
+    const applyCard = within(manifests).getByRole("button", { name: /apply/ });
+    // apply failed in the latest run: its card takes the failed colors.
+    expect(applyCard.className).toContain("border-red-500");
+  });
+
+  it("shows the latest run's stages as a bar", async () => {
+    renderDetail();
+    expect(
+      await screen.findByRole("img", {
+        name: "Stages — Charts: succeeded, Manifests: failed",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("opens the builder from a component in the overview", async () => {
+    renderDetail();
+    const charts = await screen.findByRole("region", { name: "Stage Charts" });
+    await userEvent.click(within(charts).getByRole("button", { name: /release/ }));
+    expect(await screen.findByText("workflow builder")).toBeInTheDocument();
   });
 
   it("starts a deploy run and navigates to the run view", async () => {

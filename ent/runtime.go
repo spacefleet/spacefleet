@@ -12,7 +12,6 @@ import (
 	"github.com/spacefleet/spacefleet/ent/cloudcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
-	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/groupvariable"
@@ -26,6 +25,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/user"
 	"github.com/spacefleet/spacefleet/ent/variable"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
+	"github.com/spacefleet/spacefleet/ent/workflowstage"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -156,20 +156,24 @@ func init() {
 	componentDescName := componentFields[3].Descriptor()
 	// component.NameValidator is a validator for the "name" field. It is called by the builders before save.
 	component.NameValidator = componentDescName.Validators[0].(func(string) error)
+	// componentDescOrdinal is the schema descriptor for ordinal field.
+	componentDescOrdinal := componentFields[7].Descriptor()
+	// component.DefaultOrdinal holds the default value on creation for the ordinal field.
+	component.DefaultOrdinal = componentDescOrdinal.Default.(int)
 	// componentDescContinueOnFailure is the schema descriptor for continue_on_failure field.
-	componentDescContinueOnFailure := componentFields[7].Descriptor()
+	componentDescContinueOnFailure := componentFields[8].Descriptor()
 	// component.DefaultContinueOnFailure holds the default value on creation for the continue_on_failure field.
 	component.DefaultContinueOnFailure = componentDescContinueOnFailure.Default.(bool)
 	// componentDescRequiresApproval is the schema descriptor for requires_approval field.
-	componentDescRequiresApproval := componentFields[8].Descriptor()
+	componentDescRequiresApproval := componentFields[9].Descriptor()
 	// component.DefaultRequiresApproval holds the default value on creation for the requires_approval field.
 	component.DefaultRequiresApproval = componentDescRequiresApproval.Default.(bool)
 	// componentDescCreatedAt is the schema descriptor for created_at field.
-	componentDescCreatedAt := componentFields[16].Descriptor()
+	componentDescCreatedAt := componentFields[15].Descriptor()
 	// component.DefaultCreatedAt holds the default value on creation for the created_at field.
 	component.DefaultCreatedAt = componentDescCreatedAt.Default.(func() time.Time)
 	// componentDescUpdatedAt is the schema descriptor for updated_at field.
-	componentDescUpdatedAt := componentFields[17].Descriptor()
+	componentDescUpdatedAt := componentFields[16].Descriptor()
 	// component.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	component.DefaultUpdatedAt = componentDescUpdatedAt.Default.(func() time.Time)
 	// component.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -178,26 +182,6 @@ func init() {
 	componentDescID := componentFields[0].Descriptor()
 	// component.DefaultID holds the default value on creation for the id field.
 	component.DefaultID = componentDescID.Default.(func() uuid.UUID)
-	componentgroupFields := schema.ComponentGroup{}.Fields()
-	_ = componentgroupFields
-	// componentgroupDescName is the schema descriptor for name field.
-	componentgroupDescName := componentgroupFields[3].Descriptor()
-	// componentgroup.NameValidator is a validator for the "name" field. It is called by the builders before save.
-	componentgroup.NameValidator = componentgroupDescName.Validators[0].(func(string) error)
-	// componentgroupDescCreatedAt is the schema descriptor for created_at field.
-	componentgroupDescCreatedAt := componentgroupFields[7].Descriptor()
-	// componentgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
-	componentgroup.DefaultCreatedAt = componentgroupDescCreatedAt.Default.(func() time.Time)
-	// componentgroupDescUpdatedAt is the schema descriptor for updated_at field.
-	componentgroupDescUpdatedAt := componentgroupFields[8].Descriptor()
-	// componentgroup.DefaultUpdatedAt holds the default value on creation for the updated_at field.
-	componentgroup.DefaultUpdatedAt = componentgroupDescUpdatedAt.Default.(func() time.Time)
-	// componentgroup.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
-	componentgroup.UpdateDefaultUpdatedAt = componentgroupDescUpdatedAt.UpdateDefault.(func() time.Time)
-	// componentgroupDescID is the schema descriptor for id field.
-	componentgroupDescID := componentgroupFields[0].Descriptor()
-	// componentgroup.DefaultID holds the default value on creation for the id field.
-	componentgroup.DefaultID = componentgroupDescID.Default.(func() uuid.UUID)
 	componentrunFields := schema.ComponentRun{}.Fields()
 	_ = componentrunFields
 	// componentrunDescApprovedBy is the schema descriptor for approved_by field.
@@ -426,4 +410,28 @@ func init() {
 	workflowrunDescID := workflowrunFields[0].Descriptor()
 	// workflowrun.DefaultID holds the default value on creation for the id field.
 	workflowrun.DefaultID = workflowrunDescID.Default.(func() uuid.UUID)
+	workflowstageFields := schema.WorkflowStage{}.Fields()
+	_ = workflowstageFields
+	// workflowstageDescName is the schema descriptor for name field.
+	workflowstageDescName := workflowstageFields[3].Descriptor()
+	// workflowstage.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	workflowstage.NameValidator = workflowstageDescName.Validators[0].(func(string) error)
+	// workflowstageDescOrdinal is the schema descriptor for ordinal field.
+	workflowstageDescOrdinal := workflowstageFields[4].Descriptor()
+	// workflowstage.DefaultOrdinal holds the default value on creation for the ordinal field.
+	workflowstage.DefaultOrdinal = workflowstageDescOrdinal.Default.(int)
+	// workflowstageDescCreatedAt is the schema descriptor for created_at field.
+	workflowstageDescCreatedAt := workflowstageFields[5].Descriptor()
+	// workflowstage.DefaultCreatedAt holds the default value on creation for the created_at field.
+	workflowstage.DefaultCreatedAt = workflowstageDescCreatedAt.Default.(func() time.Time)
+	// workflowstageDescUpdatedAt is the schema descriptor for updated_at field.
+	workflowstageDescUpdatedAt := workflowstageFields[6].Descriptor()
+	// workflowstage.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	workflowstage.DefaultUpdatedAt = workflowstageDescUpdatedAt.Default.(func() time.Time)
+	// workflowstage.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	workflowstage.UpdateDefaultUpdatedAt = workflowstageDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// workflowstageDescID is the schema descriptor for id field.
+	workflowstageDescID := workflowstageFields[0].Descriptor()
+	// workflowstage.DefaultID holds the default value on creation for the id field.
+	workflowstage.DefaultID = workflowstageDescID.Default.(func() uuid.UUID)
 }

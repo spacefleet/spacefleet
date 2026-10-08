@@ -10,6 +10,7 @@ import (
 
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/membership"
+	"github.com/spacefleet/spacefleet/lib/testsupport"
 )
 
 // TestStartStateOperation covers the handler's own gates: a viewer is
@@ -43,7 +44,7 @@ func TestStartStateOperation(t *testing.T) {
 		t.Fatalf("create app: %v", err)
 	}
 	infra, err := h.client.Component.Create().
-		SetOrganizationID(orgID).SetApplicationID(app.ID).SetName("infra").SetType("terraform").
+		SetOrganizationID(orgID).SetApplicationID(app.ID).SetStageID(testsupport.Stage(t, h.client, orgID, app.ID)).SetName("infra").SetType("terraform").
 		SetConfig(map[string]string{"repo_url": "r", "path": "p", "backend": "s3", "plan_flags": `["-var=env=prod","-target=x"]`}).Save(ctx)
 	if err != nil {
 		t.Fatalf("create component: %v", err)

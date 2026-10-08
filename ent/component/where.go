@@ -71,6 +71,16 @@ func Name(v string) predicate.Component {
 	return predicate.Component(sql.FieldEQ(FieldName, v))
 }
 
+// StageID applies equality check predicate on the "stage_id" field. It's identical to StageIDEQ.
+func StageID(v uuid.UUID) predicate.Component {
+	return predicate.Component(sql.FieldEQ(FieldStageID, v))
+}
+
+// Ordinal applies equality check predicate on the "ordinal" field. It's identical to OrdinalEQ.
+func Ordinal(v int) predicate.Component {
+	return predicate.Component(sql.FieldEQ(FieldOrdinal, v))
+}
+
 // ContinueOnFailure applies equality check predicate on the "continue_on_failure" field. It's identical to ContinueOnFailureEQ.
 func ContinueOnFailure(v bool) predicate.Component {
 	return predicate.Component(sql.FieldEQ(FieldContinueOnFailure, v))
@@ -99,11 +109,6 @@ func ChartCredentialID(v uuid.UUID) predicate.Component {
 // GithubInstallationID applies equality check predicate on the "github_installation_id" field. It's identical to GithubInstallationIDEQ.
 func GithubInstallationID(v uuid.UUID) predicate.Component {
 	return predicate.Component(sql.FieldEQ(FieldGithubInstallationID, v))
-}
-
-// GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
-func GroupID(v uuid.UUID) predicate.Component {
-	return predicate.Component(sql.FieldEQ(FieldGroupID, v))
 }
 
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
@@ -251,14 +256,64 @@ func ConfigNotNil() predicate.Component {
 	return predicate.Component(sql.FieldNotNull(FieldConfig))
 }
 
-// DependsOnIsNil applies the IsNil predicate on the "depends_on" field.
-func DependsOnIsNil() predicate.Component {
-	return predicate.Component(sql.FieldIsNull(FieldDependsOn))
+// StageIDEQ applies the EQ predicate on the "stage_id" field.
+func StageIDEQ(v uuid.UUID) predicate.Component {
+	return predicate.Component(sql.FieldEQ(FieldStageID, v))
 }
 
-// DependsOnNotNil applies the NotNil predicate on the "depends_on" field.
-func DependsOnNotNil() predicate.Component {
-	return predicate.Component(sql.FieldNotNull(FieldDependsOn))
+// StageIDNEQ applies the NEQ predicate on the "stage_id" field.
+func StageIDNEQ(v uuid.UUID) predicate.Component {
+	return predicate.Component(sql.FieldNEQ(FieldStageID, v))
+}
+
+// StageIDIn applies the In predicate on the "stage_id" field.
+func StageIDIn(vs ...uuid.UUID) predicate.Component {
+	return predicate.Component(sql.FieldIn(FieldStageID, vs...))
+}
+
+// StageIDNotIn applies the NotIn predicate on the "stage_id" field.
+func StageIDNotIn(vs ...uuid.UUID) predicate.Component {
+	return predicate.Component(sql.FieldNotIn(FieldStageID, vs...))
+}
+
+// OrdinalEQ applies the EQ predicate on the "ordinal" field.
+func OrdinalEQ(v int) predicate.Component {
+	return predicate.Component(sql.FieldEQ(FieldOrdinal, v))
+}
+
+// OrdinalNEQ applies the NEQ predicate on the "ordinal" field.
+func OrdinalNEQ(v int) predicate.Component {
+	return predicate.Component(sql.FieldNEQ(FieldOrdinal, v))
+}
+
+// OrdinalIn applies the In predicate on the "ordinal" field.
+func OrdinalIn(vs ...int) predicate.Component {
+	return predicate.Component(sql.FieldIn(FieldOrdinal, vs...))
+}
+
+// OrdinalNotIn applies the NotIn predicate on the "ordinal" field.
+func OrdinalNotIn(vs ...int) predicate.Component {
+	return predicate.Component(sql.FieldNotIn(FieldOrdinal, vs...))
+}
+
+// OrdinalGT applies the GT predicate on the "ordinal" field.
+func OrdinalGT(v int) predicate.Component {
+	return predicate.Component(sql.FieldGT(FieldOrdinal, v))
+}
+
+// OrdinalGTE applies the GTE predicate on the "ordinal" field.
+func OrdinalGTE(v int) predicate.Component {
+	return predicate.Component(sql.FieldGTE(FieldOrdinal, v))
+}
+
+// OrdinalLT applies the LT predicate on the "ordinal" field.
+func OrdinalLT(v int) predicate.Component {
+	return predicate.Component(sql.FieldLT(FieldOrdinal, v))
+}
+
+// OrdinalLTE applies the LTE predicate on the "ordinal" field.
+func OrdinalLTE(v int) predicate.Component {
+	return predicate.Component(sql.FieldLTE(FieldOrdinal, v))
 }
 
 // ContinueOnFailureEQ applies the EQ predicate on the "continue_on_failure" field.
@@ -456,46 +511,6 @@ func GithubInstallationIDNotNil() predicate.Component {
 	return predicate.Component(sql.FieldNotNull(FieldGithubInstallationID))
 }
 
-// PositionIsNil applies the IsNil predicate on the "position" field.
-func PositionIsNil() predicate.Component {
-	return predicate.Component(sql.FieldIsNull(FieldPosition))
-}
-
-// PositionNotNil applies the NotNil predicate on the "position" field.
-func PositionNotNil() predicate.Component {
-	return predicate.Component(sql.FieldNotNull(FieldPosition))
-}
-
-// GroupIDEQ applies the EQ predicate on the "group_id" field.
-func GroupIDEQ(v uuid.UUID) predicate.Component {
-	return predicate.Component(sql.FieldEQ(FieldGroupID, v))
-}
-
-// GroupIDNEQ applies the NEQ predicate on the "group_id" field.
-func GroupIDNEQ(v uuid.UUID) predicate.Component {
-	return predicate.Component(sql.FieldNEQ(FieldGroupID, v))
-}
-
-// GroupIDIn applies the In predicate on the "group_id" field.
-func GroupIDIn(vs ...uuid.UUID) predicate.Component {
-	return predicate.Component(sql.FieldIn(FieldGroupID, vs...))
-}
-
-// GroupIDNotIn applies the NotIn predicate on the "group_id" field.
-func GroupIDNotIn(vs ...uuid.UUID) predicate.Component {
-	return predicate.Component(sql.FieldNotIn(FieldGroupID, vs...))
-}
-
-// GroupIDIsNil applies the IsNil predicate on the "group_id" field.
-func GroupIDIsNil() predicate.Component {
-	return predicate.Component(sql.FieldIsNull(FieldGroupID))
-}
-
-// GroupIDNotNil applies the NotNil predicate on the "group_id" field.
-func GroupIDNotNil() predicate.Component {
-	return predicate.Component(sql.FieldNotNull(FieldGroupID))
-}
-
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Component {
 	return predicate.Component(sql.FieldEQ(FieldCreatedAt, v))
@@ -691,21 +706,21 @@ func HasGithubInstallationWith(preds ...predicate.GitHubInstallation) predicate.
 	})
 }
 
-// HasGroup applies the HasEdge predicate on the "group" edge.
-func HasGroup() predicate.Component {
+// HasStage applies the HasEdge predicate on the "stage" edge.
+func HasStage() predicate.Component {
 	return predicate.Component(func(s *sql.Selector) {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, GroupTable, GroupColumn),
+			sqlgraph.Edge(sqlgraph.M2O, false, StageTable, StageColumn),
 		)
 		sqlgraph.HasNeighbors(s, step)
 	})
 }
 
-// HasGroupWith applies the HasEdge predicate on the "group" edge with a given conditions (other predicates).
-func HasGroupWith(preds ...predicate.ComponentGroup) predicate.Component {
+// HasStageWith applies the HasEdge predicate on the "stage" edge with a given conditions (other predicates).
+func HasStageWith(preds ...predicate.WorkflowStage) predicate.Component {
 	return predicate.Component(func(s *sql.Selector) {
-		step := newGroupStep()
+		step := newStageStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

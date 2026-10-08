@@ -29,7 +29,7 @@ func TestWorkflowRoutesNilServiceReturn503(t *testing.T) {
 		name, method, path, body string
 	}{
 		{"get workflow", http.MethodGet, "/api/applications/" + id + "/workflow", ""},
-		{"replace workflow", http.MethodPut, "/api/applications/" + id + "/workflow", `{"components":[]}`},
+		{"replace workflow", http.MethodPut, "/api/applications/" + id + "/workflow", `{"stages":[]}`},
 		{"component outputs", http.MethodGet, "/api/applications/" + id + "/component-outputs", ""},
 		{"list runs", http.MethodGet, "/api/applications/" + id + "/runs", ""},
 		{"start run", http.MethodPost, "/api/applications/" + id + "/runs", `{"action":"deploy"}`},
@@ -51,15 +51,13 @@ func TestWorkflowRoutesNilServiceReturn503(t *testing.T) {
 }
 
 // TestToAPIComponentRedaction proves a viewer (canSee=false) never receives the
-// secret-bearing `values` key, while an editor (canSee=true) does — and that the
-// required array/map fields are non-nil regardless.
+// secret-bearing `values` key, while an editor (canSee=true) does.
 func TestToAPIComponentRedaction(t *testing.T) {
 	c := &ent.Component{
 		ID:                uuid.New(),
 		Name:              "web",
 		Type:              component.TypeHelm,
 		Config:            map[string]string{"chart_source": "http_repo", "values": "secret: hunter2"},
-		DependsOn:         nil,
 		ContinueOnFailure: true,
 	}
 
@@ -69,9 +67,6 @@ func TestToAPIComponentRedaction(t *testing.T) {
 	}
 	if viewer.Config["chart_source"] != "http_repo" {
 		t.Fatalf("non-secret config dropped: %v", viewer.Config)
-	}
-	if viewer.DependsOn == nil {
-		t.Fatalf("depends_on should be non-nil ([]), got nil")
 	}
 	if !viewer.ContinueOnFailure {
 		t.Fatalf("continue_on_failure not mapped")
@@ -123,52 +118,76 @@ func TestRedactGraph(t *testing.T) {
 	}
 }
 
-// TestToComponentInput proves the API input maps to the service input with the
-// client-provided id, defaulted optionals, and the float32→float64 position
-// conversion.
-func TestToComponentInput(t *testing.T) {
-	id := uuid.New()
-	dep := uuid.New()
+// TestToStageInput proves the API input maps to the service input with the
+// client-provided ids, trimmed names, defaulted optionals, and the
+// components kept in order.
+func TestToStageInput(t *testing.T) {
+	stageID, a, b := uuid.New(), uuid.New(), uuid.New()
 	cluster := uuid.New()
 	ns := "prod"
 	cont := true
-	deps := []uuid.UUID{dep}
-	pos := map[string]float32{"x": 1.5, "y": 2.5}
-	in := toComponentInput(ComponentInput{
-		Id:                id,
-		Name:              "  web  ",
-		Type:              "helm",
-		Config:            &map[string]string{"chart_source": "oci"},
-		ContinueOnFailure: &cont,
-		DependsOn:         &deps,
-		TargetClusterId:   &cluster,
-		TargetNamespace:   &ns,
-		Position:          &pos,
+	in := toStageInput(WorkflowStageInput{
+		Id:   stageID,
+		Name: "  Deploy  ",
+		Components: []ComponentInput{
+			{
+				Id:                a,
+				Name:              "  web  ",
+				Type:              "helm",
+				Config:            &map[string]string{"chart_source": "oci"},
+				ContinueOnFailure: &cont,
+				TargetClusterId:   &cluster,
+				TargetNamespace:   &ns,
+			},
+			{Id: b, Name: "cfg", Type: "manifest"},
+		},
 	})
-	if in.ID != id {
-		t.Fatalf("id not preserved: %v", in.ID)
+	if in.ID != stageID || in.Name != "Deploy" {
+		t.Fatalf("stage = %v %q, want the id and a trimmed name", in.ID, in.Name)
 	}
-	if in.Name != "web" {
-		t.Fatalf("name not trimmed: %q", in.Name)
+	if len(in.Components) != 2 || in.Components[0].ID != a || in.Components[1].ID != b {
+		t.Fatalf("components not kept in order: %+v", in.Components)
 	}
-	if !in.ContinueOnFailure {
+	web := in.Components[0]
+	if web.Name != "web" {
+		t.Fatalf("name not trimmed: %q", web.Name)
+	}
+	if !web.ContinueOnFailure || in.Components[1].ContinueOnFailure {
 		t.Fatalf("continue_on_failure not mapped")
 	}
-	if len(in.DependsOn) != 1 || in.DependsOn[0] != dep {
-		t.Fatalf("depends_on not mapped: %v", in.DependsOn)
-	}
-	if in.Position["x"] != 1.5 || in.Position["y"] != 2.5 {
-		t.Fatalf("position not converted: %v", in.Position)
+	if web.TargetClusterID == nil || *web.TargetClusterID != cluster || web.TargetNamespace != "prod" {
+		t.Fatalf("target not mapped: %v %q", web.TargetClusterID, web.TargetNamespace)
 	}
 }
 
-// TestIsWorkflowValidation proves the DAG/config/action sentinels classify as
-// validation (→ 400) and an unrelated error does not.
+// TestToAPIWorkflow proves stages map in order with their components.
+func TestToAPIWorkflow(t *testing.T) {
+	web := &ent.Component{ID: uuid.New(), Name: "web", Type: component.TypeHelm, Config: map[string]string{"values": "x"}}
+	stages := []*ent.WorkflowStage{
+		{ID: uuid.New(), Name: "Empty"},
+		{ID: uuid.New(), Name: "Deploy", Edges: ent.WorkflowStageEdges{Components: []*ent.Component{web}}},
+	}
+	out := toAPIWorkflow(stages, false)
+	if len(out.Stages) != 2 || out.Stages[0].Name != "Empty" || out.Stages[1].Name != "Deploy" {
+		t.Fatalf("stages = %+v", out.Stages)
+	}
+	if out.Stages[0].Components == nil || len(out.Stages[0].Components) != 0 {
+		t.Fatalf("an empty stage should have [] components, got %v", out.Stages[0].Components)
+	}
+	if len(out.Stages[1].Components) != 1 || out.Stages[1].Components[0].Id != web.ID {
+		t.Fatalf("components = %+v", out.Stages[1].Components)
+	}
+	if _, ok := out.Stages[1].Components[0].Config["values"]; ok {
+		t.Fatal("viewer workflow still has values")
+	}
+}
+
+// TestIsWorkflowValidation proves the workflow/config/action sentinels
+// classify as validation (→ 400) and an unrelated error does not.
 func TestIsWorkflowValidation(t *testing.T) {
 	for _, err := range []error{
-		workflows.ErrDuplicateID, workflows.ErrMissingID, workflows.ErrUnknownDependency,
-		workflows.ErrSelfDependency, workflows.ErrCycle, workflows.ErrInvalidConfig,
-		workflows.ErrInvalidTarget, workflows.ErrInvalidAction,
+		workflows.ErrDuplicateID, workflows.ErrMissingID, workflows.ErrInvalidStage,
+		workflows.ErrInvalidConfig, workflows.ErrInvalidTarget, workflows.ErrInvalidAction,
 	} {
 		if !isWorkflowValidation(err) {
 			t.Fatalf("%v should classify as validation", err)

@@ -402,6 +402,11 @@ func (s *Server) StreamOrgRuns(w http.ResponseWriter, r *http.Request) {
 		writeStreamError(w, http.StatusInternalServerError, "internal", "internal error")
 		return
 	}
+	steps, err := s.workflows.ListRunSteps(ctx, orgID, runIDs(runs))
+	if err != nil {
+		writeStreamError(w, http.StatusInternalServerError, "internal", "internal error")
+		return
+	}
 
 	ctx, cancel := context.WithDeadline(ctx, streamDeadline(ctx))
 	defer cancel()
@@ -411,11 +416,11 @@ func (s *Server) StreamOrgRuns(w http.ResponseWriter, r *http.Request) {
 		writeStreamError(w, http.StatusInternalServerError, "internal", "streaming unsupported")
 		return
 	}
-	if err := sse.event("snapshot", toAPIRunList(runs)); err != nil {
+	if err := sse.event("snapshot", toAPIRunList(runs, steps)); err != nil {
 		return
 	}
 
-	prev := orgRunsStateKey(runs)
+	prev := orgRunsStateKey(runs, steps)
 	poll := time.NewTicker(time.Second)
 	defer poll.Stop()
 	heartbeat := time.NewTicker(streamHeartbeat)
@@ -433,35 +438,37 @@ func (s *Server) StreamOrgRuns(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return
 			}
-			key := orgRunsStateKey(runs)
+			steps, err := s.workflows.ListRunSteps(ctx, orgID, runIDs(runs))
+			if err != nil {
+				return
+			}
+			key := orgRunsStateKey(runs, steps)
 			if key == prev {
 				continue
 			}
 			prev = key
-			if err := sse.event("snapshot", toAPIRunList(runs)); err != nil {
+			if err := sse.event("snapshot", toAPIRunList(runs, steps)); err != nil {
 				return
 			}
 		}
 	}
 }
 
-// toAPIRunList maps run rows to the RunList payload the index stream/endpoint
-// return.
-func toAPIRunList(runs []*ent.WorkflowRun) RunList {
-	out := make([]WorkflowRun, len(runs))
-	for i, r := range runs {
-		out[i] = toAPIWorkflowRun(r)
-	}
-	return RunList{Runs: out}
-}
-
 // orgRunsStateKey is a change key over the surfaced fields of every run in the
-// list, so a no-op poll doesn't emit a redundant event but any run's progress
-// (status/message change, a new or finished run) does. The list is already in a
-// stable order (newest-first), so the key reflects membership order too.
-func orgRunsStateKey(runs []*ent.WorkflowRun) string {
+// list — including each step's status, which the stage summary shows — so a
+// no-op poll doesn't emit a redundant event but any run's progress
+// (status/message change, a step settling, a new or finished run) does. The
+// list is already in a stable order (newest-first), so the key reflects
+// membership order too.
+func orgRunsStateKey(runs []*ent.WorkflowRun, stepsByRun map[uuid.UUID][]*ent.ComponentRun) string {
 	var b strings.Builder
 	for _, run := range runs {
+		for _, st := range stepsByRun[run.ID] {
+			b.WriteString(st.ID.String())
+			b.WriteByte('=')
+			b.WriteString(string(st.Status))
+			b.WriteByte(',')
+		}
 		b.WriteString(run.ID.String())
 		b.WriteByte(':')
 		b.WriteString(string(run.Status))

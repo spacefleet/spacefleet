@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -13,58 +14,60 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
 	"github.com/spacefleet/spacefleet/ent/application"
-	"github.com/spacefleet/spacefleet/ent/componentgroup"
+	"github.com/spacefleet/spacefleet/ent/component"
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/predicate"
+	"github.com/spacefleet/spacefleet/ent/workflowstage"
 )
 
-// ComponentGroupQuery is the builder for querying ComponentGroup entities.
-type ComponentGroupQuery struct {
+// WorkflowStageQuery is the builder for querying WorkflowStage entities.
+type WorkflowStageQuery struct {
 	config
 	ctx              *QueryContext
-	order            []componentgroup.OrderOption
+	order            []workflowstage.OrderOption
 	inters           []Interceptor
-	predicates       []predicate.ComponentGroup
+	predicates       []predicate.WorkflowStage
 	withOrganization *OrganizationQuery
 	withApplication  *ApplicationQuery
+	withComponents   *ComponentQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
 }
 
-// Where adds a new predicate for the ComponentGroupQuery builder.
-func (_q *ComponentGroupQuery) Where(ps ...predicate.ComponentGroup) *ComponentGroupQuery {
+// Where adds a new predicate for the WorkflowStageQuery builder.
+func (_q *WorkflowStageQuery) Where(ps ...predicate.WorkflowStage) *WorkflowStageQuery {
 	_q.predicates = append(_q.predicates, ps...)
 	return _q
 }
 
 // Limit the number of records to be returned by this query.
-func (_q *ComponentGroupQuery) Limit(limit int) *ComponentGroupQuery {
+func (_q *WorkflowStageQuery) Limit(limit int) *WorkflowStageQuery {
 	_q.ctx.Limit = &limit
 	return _q
 }
 
 // Offset to start from.
-func (_q *ComponentGroupQuery) Offset(offset int) *ComponentGroupQuery {
+func (_q *WorkflowStageQuery) Offset(offset int) *WorkflowStageQuery {
 	_q.ctx.Offset = &offset
 	return _q
 }
 
 // Unique configures the query builder to filter duplicate records on query.
 // By default, unique is set to true, and can be disabled using this method.
-func (_q *ComponentGroupQuery) Unique(unique bool) *ComponentGroupQuery {
+func (_q *WorkflowStageQuery) Unique(unique bool) *WorkflowStageQuery {
 	_q.ctx.Unique = &unique
 	return _q
 }
 
 // Order specifies how the records should be ordered.
-func (_q *ComponentGroupQuery) Order(o ...componentgroup.OrderOption) *ComponentGroupQuery {
+func (_q *WorkflowStageQuery) Order(o ...workflowstage.OrderOption) *WorkflowStageQuery {
 	_q.order = append(_q.order, o...)
 	return _q
 }
 
 // QueryOrganization chains the current query on the "organization" edge.
-func (_q *ComponentGroupQuery) QueryOrganization() *OrganizationQuery {
+func (_q *WorkflowStageQuery) QueryOrganization() *OrganizationQuery {
 	query := (&OrganizationClient{config: _q.config}).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
@@ -75,9 +78,9 @@ func (_q *ComponentGroupQuery) QueryOrganization() *OrganizationQuery {
 			return nil, err
 		}
 		step := sqlgraph.NewStep(
-			sqlgraph.From(componentgroup.Table, componentgroup.FieldID, selector),
+			sqlgraph.From(workflowstage.Table, workflowstage.FieldID, selector),
 			sqlgraph.To(organization.Table, organization.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, componentgroup.OrganizationTable, componentgroup.OrganizationColumn),
+			sqlgraph.Edge(sqlgraph.M2O, false, workflowstage.OrganizationTable, workflowstage.OrganizationColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -86,7 +89,7 @@ func (_q *ComponentGroupQuery) QueryOrganization() *OrganizationQuery {
 }
 
 // QueryApplication chains the current query on the "application" edge.
-func (_q *ComponentGroupQuery) QueryApplication() *ApplicationQuery {
+func (_q *WorkflowStageQuery) QueryApplication() *ApplicationQuery {
 	query := (&ApplicationClient{config: _q.config}).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
@@ -97,9 +100,9 @@ func (_q *ComponentGroupQuery) QueryApplication() *ApplicationQuery {
 			return nil, err
 		}
 		step := sqlgraph.NewStep(
-			sqlgraph.From(componentgroup.Table, componentgroup.FieldID, selector),
+			sqlgraph.From(workflowstage.Table, workflowstage.FieldID, selector),
 			sqlgraph.To(application.Table, application.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, componentgroup.ApplicationTable, componentgroup.ApplicationColumn),
+			sqlgraph.Edge(sqlgraph.M2O, false, workflowstage.ApplicationTable, workflowstage.ApplicationColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -107,21 +110,43 @@ func (_q *ComponentGroupQuery) QueryApplication() *ApplicationQuery {
 	return query
 }
 
-// First returns the first ComponentGroup entity from the query.
-// Returns a *NotFoundError when no ComponentGroup was found.
-func (_q *ComponentGroupQuery) First(ctx context.Context) (*ComponentGroup, error) {
+// QueryComponents chains the current query on the "components" edge.
+func (_q *WorkflowStageQuery) QueryComponents() *ComponentQuery {
+	query := (&ComponentClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(workflowstage.Table, workflowstage.FieldID, selector),
+			sqlgraph.To(component.Table, component.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, workflowstage.ComponentsTable, workflowstage.ComponentsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// First returns the first WorkflowStage entity from the query.
+// Returns a *NotFoundError when no WorkflowStage was found.
+func (_q *WorkflowStageQuery) First(ctx context.Context) (*WorkflowStage, error) {
 	nodes, err := _q.Limit(1).All(setContextOp(ctx, _q.ctx, ent.OpQueryFirst))
 	if err != nil {
 		return nil, err
 	}
 	if len(nodes) == 0 {
-		return nil, &NotFoundError{componentgroup.Label}
+		return nil, &NotFoundError{workflowstage.Label}
 	}
 	return nodes[0], nil
 }
 
 // FirstX is like First, but panics if an error occurs.
-func (_q *ComponentGroupQuery) FirstX(ctx context.Context) *ComponentGroup {
+func (_q *WorkflowStageQuery) FirstX(ctx context.Context) *WorkflowStage {
 	node, err := _q.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -129,22 +154,22 @@ func (_q *ComponentGroupQuery) FirstX(ctx context.Context) *ComponentGroup {
 	return node
 }
 
-// FirstID returns the first ComponentGroup ID from the query.
-// Returns a *NotFoundError when no ComponentGroup ID was found.
-func (_q *ComponentGroupQuery) FirstID(ctx context.Context) (id uuid.UUID, err error) {
+// FirstID returns the first WorkflowStage ID from the query.
+// Returns a *NotFoundError when no WorkflowStage ID was found.
+func (_q *WorkflowStageQuery) FirstID(ctx context.Context) (id uuid.UUID, err error) {
 	var ids []uuid.UUID
 	if ids, err = _q.Limit(1).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryFirstID)); err != nil {
 		return
 	}
 	if len(ids) == 0 {
-		err = &NotFoundError{componentgroup.Label}
+		err = &NotFoundError{workflowstage.Label}
 		return
 	}
 	return ids[0], nil
 }
 
 // FirstIDX is like FirstID, but panics if an error occurs.
-func (_q *ComponentGroupQuery) FirstIDX(ctx context.Context) uuid.UUID {
+func (_q *WorkflowStageQuery) FirstIDX(ctx context.Context) uuid.UUID {
 	id, err := _q.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -152,10 +177,10 @@ func (_q *ComponentGroupQuery) FirstIDX(ctx context.Context) uuid.UUID {
 	return id
 }
 
-// Only returns a single ComponentGroup entity found by the query, ensuring it only returns one.
-// Returns a *NotSingularError when more than one ComponentGroup entity is found.
-// Returns a *NotFoundError when no ComponentGroup entities are found.
-func (_q *ComponentGroupQuery) Only(ctx context.Context) (*ComponentGroup, error) {
+// Only returns a single WorkflowStage entity found by the query, ensuring it only returns one.
+// Returns a *NotSingularError when more than one WorkflowStage entity is found.
+// Returns a *NotFoundError when no WorkflowStage entities are found.
+func (_q *WorkflowStageQuery) Only(ctx context.Context) (*WorkflowStage, error) {
 	nodes, err := _q.Limit(2).All(setContextOp(ctx, _q.ctx, ent.OpQueryOnly))
 	if err != nil {
 		return nil, err
@@ -164,14 +189,14 @@ func (_q *ComponentGroupQuery) Only(ctx context.Context) (*ComponentGroup, error
 	case 1:
 		return nodes[0], nil
 	case 0:
-		return nil, &NotFoundError{componentgroup.Label}
+		return nil, &NotFoundError{workflowstage.Label}
 	default:
-		return nil, &NotSingularError{componentgroup.Label}
+		return nil, &NotSingularError{workflowstage.Label}
 	}
 }
 
 // OnlyX is like Only, but panics if an error occurs.
-func (_q *ComponentGroupQuery) OnlyX(ctx context.Context) *ComponentGroup {
+func (_q *WorkflowStageQuery) OnlyX(ctx context.Context) *WorkflowStage {
 	node, err := _q.Only(ctx)
 	if err != nil {
 		panic(err)
@@ -179,10 +204,10 @@ func (_q *ComponentGroupQuery) OnlyX(ctx context.Context) *ComponentGroup {
 	return node
 }
 
-// OnlyID is like Only, but returns the only ComponentGroup ID in the query.
-// Returns a *NotSingularError when more than one ComponentGroup ID is found.
+// OnlyID is like Only, but returns the only WorkflowStage ID in the query.
+// Returns a *NotSingularError when more than one WorkflowStage ID is found.
 // Returns a *NotFoundError when no entities are found.
-func (_q *ComponentGroupQuery) OnlyID(ctx context.Context) (id uuid.UUID, err error) {
+func (_q *WorkflowStageQuery) OnlyID(ctx context.Context) (id uuid.UUID, err error) {
 	var ids []uuid.UUID
 	if ids, err = _q.Limit(2).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryOnlyID)); err != nil {
 		return
@@ -191,15 +216,15 @@ func (_q *ComponentGroupQuery) OnlyID(ctx context.Context) (id uuid.UUID, err er
 	case 1:
 		id = ids[0]
 	case 0:
-		err = &NotFoundError{componentgroup.Label}
+		err = &NotFoundError{workflowstage.Label}
 	default:
-		err = &NotSingularError{componentgroup.Label}
+		err = &NotSingularError{workflowstage.Label}
 	}
 	return
 }
 
 // OnlyIDX is like OnlyID, but panics if an error occurs.
-func (_q *ComponentGroupQuery) OnlyIDX(ctx context.Context) uuid.UUID {
+func (_q *WorkflowStageQuery) OnlyIDX(ctx context.Context) uuid.UUID {
 	id, err := _q.OnlyID(ctx)
 	if err != nil {
 		panic(err)
@@ -207,18 +232,18 @@ func (_q *ComponentGroupQuery) OnlyIDX(ctx context.Context) uuid.UUID {
 	return id
 }
 
-// All executes the query and returns a list of ComponentGroups.
-func (_q *ComponentGroupQuery) All(ctx context.Context) ([]*ComponentGroup, error) {
+// All executes the query and returns a list of WorkflowStages.
+func (_q *WorkflowStageQuery) All(ctx context.Context) ([]*WorkflowStage, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryAll)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return nil, err
 	}
-	qr := querierAll[[]*ComponentGroup, *ComponentGroupQuery]()
-	return withInterceptors[[]*ComponentGroup](ctx, _q, qr, _q.inters)
+	qr := querierAll[[]*WorkflowStage, *WorkflowStageQuery]()
+	return withInterceptors[[]*WorkflowStage](ctx, _q, qr, _q.inters)
 }
 
 // AllX is like All, but panics if an error occurs.
-func (_q *ComponentGroupQuery) AllX(ctx context.Context) []*ComponentGroup {
+func (_q *WorkflowStageQuery) AllX(ctx context.Context) []*WorkflowStage {
 	nodes, err := _q.All(ctx)
 	if err != nil {
 		panic(err)
@@ -226,20 +251,20 @@ func (_q *ComponentGroupQuery) AllX(ctx context.Context) []*ComponentGroup {
 	return nodes
 }
 
-// IDs executes the query and returns a list of ComponentGroup IDs.
-func (_q *ComponentGroupQuery) IDs(ctx context.Context) (ids []uuid.UUID, err error) {
+// IDs executes the query and returns a list of WorkflowStage IDs.
+func (_q *WorkflowStageQuery) IDs(ctx context.Context) (ids []uuid.UUID, err error) {
 	if _q.ctx.Unique == nil && _q.path != nil {
 		_q.Unique(true)
 	}
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryIDs)
-	if err = _q.Select(componentgroup.FieldID).Scan(ctx, &ids); err != nil {
+	if err = _q.Select(workflowstage.FieldID).Scan(ctx, &ids); err != nil {
 		return nil, err
 	}
 	return ids, nil
 }
 
 // IDsX is like IDs, but panics if an error occurs.
-func (_q *ComponentGroupQuery) IDsX(ctx context.Context) []uuid.UUID {
+func (_q *WorkflowStageQuery) IDsX(ctx context.Context) []uuid.UUID {
 	ids, err := _q.IDs(ctx)
 	if err != nil {
 		panic(err)
@@ -248,16 +273,16 @@ func (_q *ComponentGroupQuery) IDsX(ctx context.Context) []uuid.UUID {
 }
 
 // Count returns the count of the given query.
-func (_q *ComponentGroupQuery) Count(ctx context.Context) (int, error) {
+func (_q *WorkflowStageQuery) Count(ctx context.Context) (int, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryCount)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return 0, err
 	}
-	return withInterceptors[int](ctx, _q, querierCount[*ComponentGroupQuery](), _q.inters)
+	return withInterceptors[int](ctx, _q, querierCount[*WorkflowStageQuery](), _q.inters)
 }
 
 // CountX is like Count, but panics if an error occurs.
-func (_q *ComponentGroupQuery) CountX(ctx context.Context) int {
+func (_q *WorkflowStageQuery) CountX(ctx context.Context) int {
 	count, err := _q.Count(ctx)
 	if err != nil {
 		panic(err)
@@ -266,7 +291,7 @@ func (_q *ComponentGroupQuery) CountX(ctx context.Context) int {
 }
 
 // Exist returns true if the query has elements in the graph.
-func (_q *ComponentGroupQuery) Exist(ctx context.Context) (bool, error) {
+func (_q *WorkflowStageQuery) Exist(ctx context.Context) (bool, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryExist)
 	switch _, err := _q.FirstID(ctx); {
 	case IsNotFound(err):
@@ -279,7 +304,7 @@ func (_q *ComponentGroupQuery) Exist(ctx context.Context) (bool, error) {
 }
 
 // ExistX is like Exist, but panics if an error occurs.
-func (_q *ComponentGroupQuery) ExistX(ctx context.Context) bool {
+func (_q *WorkflowStageQuery) ExistX(ctx context.Context) bool {
 	exist, err := _q.Exist(ctx)
 	if err != nil {
 		panic(err)
@@ -287,20 +312,21 @@ func (_q *ComponentGroupQuery) ExistX(ctx context.Context) bool {
 	return exist
 }
 
-// Clone returns a duplicate of the ComponentGroupQuery builder, including all associated steps. It can be
+// Clone returns a duplicate of the WorkflowStageQuery builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
-func (_q *ComponentGroupQuery) Clone() *ComponentGroupQuery {
+func (_q *WorkflowStageQuery) Clone() *WorkflowStageQuery {
 	if _q == nil {
 		return nil
 	}
-	return &ComponentGroupQuery{
+	return &WorkflowStageQuery{
 		config:           _q.config,
 		ctx:              _q.ctx.Clone(),
-		order:            append([]componentgroup.OrderOption{}, _q.order...),
+		order:            append([]workflowstage.OrderOption{}, _q.order...),
 		inters:           append([]Interceptor{}, _q.inters...),
-		predicates:       append([]predicate.ComponentGroup{}, _q.predicates...),
+		predicates:       append([]predicate.WorkflowStage{}, _q.predicates...),
 		withOrganization: _q.withOrganization.Clone(),
 		withApplication:  _q.withApplication.Clone(),
+		withComponents:   _q.withComponents.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -309,7 +335,7 @@ func (_q *ComponentGroupQuery) Clone() *ComponentGroupQuery {
 
 // WithOrganization tells the query-builder to eager-load the nodes that are connected to
 // the "organization" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *ComponentGroupQuery) WithOrganization(opts ...func(*OrganizationQuery)) *ComponentGroupQuery {
+func (_q *WorkflowStageQuery) WithOrganization(opts ...func(*OrganizationQuery)) *WorkflowStageQuery {
 	query := (&OrganizationClient{config: _q.config}).Query()
 	for _, opt := range opts {
 		opt(query)
@@ -320,12 +346,23 @@ func (_q *ComponentGroupQuery) WithOrganization(opts ...func(*OrganizationQuery)
 
 // WithApplication tells the query-builder to eager-load the nodes that are connected to
 // the "application" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *ComponentGroupQuery) WithApplication(opts ...func(*ApplicationQuery)) *ComponentGroupQuery {
+func (_q *WorkflowStageQuery) WithApplication(opts ...func(*ApplicationQuery)) *WorkflowStageQuery {
 	query := (&ApplicationClient{config: _q.config}).Query()
 	for _, opt := range opts {
 		opt(query)
 	}
 	_q.withApplication = query
+	return _q
+}
+
+// WithComponents tells the query-builder to eager-load the nodes that are connected to
+// the "components" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *WorkflowStageQuery) WithComponents(opts ...func(*ComponentQuery)) *WorkflowStageQuery {
+	query := (&ComponentClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withComponents = query
 	return _q
 }
 
@@ -339,15 +376,15 @@ func (_q *ComponentGroupQuery) WithApplication(opts ...func(*ApplicationQuery)) 
 //		Count int `json:"count,omitempty"`
 //	}
 //
-//	client.ComponentGroup.Query().
-//		GroupBy(componentgroup.FieldOrganizationID).
+//	client.WorkflowStage.Query().
+//		GroupBy(workflowstage.FieldOrganizationID).
 //		Aggregate(ent.Count()).
 //		Scan(ctx, &v)
-func (_q *ComponentGroupQuery) GroupBy(field string, fields ...string) *ComponentGroupGroupBy {
+func (_q *WorkflowStageQuery) GroupBy(field string, fields ...string) *WorkflowStageGroupBy {
 	_q.ctx.Fields = append([]string{field}, fields...)
-	grbuild := &ComponentGroupGroupBy{build: _q}
+	grbuild := &WorkflowStageGroupBy{build: _q}
 	grbuild.flds = &_q.ctx.Fields
-	grbuild.label = componentgroup.Label
+	grbuild.label = workflowstage.Label
 	grbuild.scan = grbuild.Scan
 	return grbuild
 }
@@ -361,23 +398,23 @@ func (_q *ComponentGroupQuery) GroupBy(field string, fields ...string) *Componen
 //		OrganizationID uuid.UUID `json:"organization_id,omitempty"`
 //	}
 //
-//	client.ComponentGroup.Query().
-//		Select(componentgroup.FieldOrganizationID).
+//	client.WorkflowStage.Query().
+//		Select(workflowstage.FieldOrganizationID).
 //		Scan(ctx, &v)
-func (_q *ComponentGroupQuery) Select(fields ...string) *ComponentGroupSelect {
+func (_q *WorkflowStageQuery) Select(fields ...string) *WorkflowStageSelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)
-	sbuild := &ComponentGroupSelect{ComponentGroupQuery: _q}
-	sbuild.label = componentgroup.Label
+	sbuild := &WorkflowStageSelect{WorkflowStageQuery: _q}
+	sbuild.label = workflowstage.Label
 	sbuild.flds, sbuild.scan = &_q.ctx.Fields, sbuild.Scan
 	return sbuild
 }
 
-// Aggregate returns a ComponentGroupSelect configured with the given aggregations.
-func (_q *ComponentGroupQuery) Aggregate(fns ...AggregateFunc) *ComponentGroupSelect {
+// Aggregate returns a WorkflowStageSelect configured with the given aggregations.
+func (_q *WorkflowStageQuery) Aggregate(fns ...AggregateFunc) *WorkflowStageSelect {
 	return _q.Select().Aggregate(fns...)
 }
 
-func (_q *ComponentGroupQuery) prepareQuery(ctx context.Context) error {
+func (_q *WorkflowStageQuery) prepareQuery(ctx context.Context) error {
 	for _, inter := range _q.inters {
 		if inter == nil {
 			return fmt.Errorf("ent: uninitialized interceptor (forgotten import ent/runtime?)")
@@ -389,7 +426,7 @@ func (_q *ComponentGroupQuery) prepareQuery(ctx context.Context) error {
 		}
 	}
 	for _, f := range _q.ctx.Fields {
-		if !componentgroup.ValidColumn(f) {
+		if !workflowstage.ValidColumn(f) {
 			return &ValidationError{Name: f, err: fmt.Errorf("ent: invalid field %q for query", f)}
 		}
 	}
@@ -403,20 +440,21 @@ func (_q *ComponentGroupQuery) prepareQuery(ctx context.Context) error {
 	return nil
 }
 
-func (_q *ComponentGroupQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*ComponentGroup, error) {
+func (_q *WorkflowStageQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*WorkflowStage, error) {
 	var (
-		nodes       = []*ComponentGroup{}
+		nodes       = []*WorkflowStage{}
 		_spec       = _q.querySpec()
-		loadedTypes = [2]bool{
+		loadedTypes = [3]bool{
 			_q.withOrganization != nil,
 			_q.withApplication != nil,
+			_q.withComponents != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
-		return (*ComponentGroup).scanValues(nil, columns)
+		return (*WorkflowStage).scanValues(nil, columns)
 	}
 	_spec.Assign = func(columns []string, values []any) error {
-		node := &ComponentGroup{config: _q.config}
+		node := &WorkflowStage{config: _q.config}
 		nodes = append(nodes, node)
 		node.Edges.loadedTypes = loadedTypes
 		return node.assignValues(columns, values)
@@ -432,22 +470,29 @@ func (_q *ComponentGroupQuery) sqlAll(ctx context.Context, hooks ...queryHook) (
 	}
 	if query := _q.withOrganization; query != nil {
 		if err := _q.loadOrganization(ctx, query, nodes, nil,
-			func(n *ComponentGroup, e *Organization) { n.Edges.Organization = e }); err != nil {
+			func(n *WorkflowStage, e *Organization) { n.Edges.Organization = e }); err != nil {
 			return nil, err
 		}
 	}
 	if query := _q.withApplication; query != nil {
 		if err := _q.loadApplication(ctx, query, nodes, nil,
-			func(n *ComponentGroup, e *Application) { n.Edges.Application = e }); err != nil {
+			func(n *WorkflowStage, e *Application) { n.Edges.Application = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withComponents; query != nil {
+		if err := _q.loadComponents(ctx, query, nodes,
+			func(n *WorkflowStage) { n.Edges.Components = []*Component{} },
+			func(n *WorkflowStage, e *Component) { n.Edges.Components = append(n.Edges.Components, e) }); err != nil {
 			return nil, err
 		}
 	}
 	return nodes, nil
 }
 
-func (_q *ComponentGroupQuery) loadOrganization(ctx context.Context, query *OrganizationQuery, nodes []*ComponentGroup, init func(*ComponentGroup), assign func(*ComponentGroup, *Organization)) error {
+func (_q *WorkflowStageQuery) loadOrganization(ctx context.Context, query *OrganizationQuery, nodes []*WorkflowStage, init func(*WorkflowStage), assign func(*WorkflowStage, *Organization)) error {
 	ids := make([]uuid.UUID, 0, len(nodes))
-	nodeids := make(map[uuid.UUID][]*ComponentGroup)
+	nodeids := make(map[uuid.UUID][]*WorkflowStage)
 	for i := range nodes {
 		fk := nodes[i].OrganizationID
 		if _, ok := nodeids[fk]; !ok {
@@ -474,9 +519,9 @@ func (_q *ComponentGroupQuery) loadOrganization(ctx context.Context, query *Orga
 	}
 	return nil
 }
-func (_q *ComponentGroupQuery) loadApplication(ctx context.Context, query *ApplicationQuery, nodes []*ComponentGroup, init func(*ComponentGroup), assign func(*ComponentGroup, *Application)) error {
+func (_q *WorkflowStageQuery) loadApplication(ctx context.Context, query *ApplicationQuery, nodes []*WorkflowStage, init func(*WorkflowStage), assign func(*WorkflowStage, *Application)) error {
 	ids := make([]uuid.UUID, 0, len(nodes))
-	nodeids := make(map[uuid.UUID][]*ComponentGroup)
+	nodeids := make(map[uuid.UUID][]*WorkflowStage)
 	for i := range nodes {
 		fk := nodes[i].ApplicationID
 		if _, ok := nodeids[fk]; !ok {
@@ -503,8 +548,38 @@ func (_q *ComponentGroupQuery) loadApplication(ctx context.Context, query *Appli
 	}
 	return nil
 }
+func (_q *WorkflowStageQuery) loadComponents(ctx context.Context, query *ComponentQuery, nodes []*WorkflowStage, init func(*WorkflowStage), assign func(*WorkflowStage, *Component)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*WorkflowStage)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(component.FieldStageID)
+	}
+	query.Where(predicate.Component(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(workflowstage.ComponentsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.StageID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "stage_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
 
-func (_q *ComponentGroupQuery) sqlCount(ctx context.Context) (int, error) {
+func (_q *WorkflowStageQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
 	_spec.Node.Columns = _q.ctx.Fields
 	if len(_q.ctx.Fields) > 0 {
@@ -513,8 +588,8 @@ func (_q *ComponentGroupQuery) sqlCount(ctx context.Context) (int, error) {
 	return sqlgraph.CountNodes(ctx, _q.driver, _spec)
 }
 
-func (_q *ComponentGroupQuery) querySpec() *sqlgraph.QuerySpec {
-	_spec := sqlgraph.NewQuerySpec(componentgroup.Table, componentgroup.Columns, sqlgraph.NewFieldSpec(componentgroup.FieldID, field.TypeUUID))
+func (_q *WorkflowStageQuery) querySpec() *sqlgraph.QuerySpec {
+	_spec := sqlgraph.NewQuerySpec(workflowstage.Table, workflowstage.Columns, sqlgraph.NewFieldSpec(workflowstage.FieldID, field.TypeUUID))
 	_spec.From = _q.sql
 	if unique := _q.ctx.Unique; unique != nil {
 		_spec.Unique = *unique
@@ -523,17 +598,17 @@ func (_q *ComponentGroupQuery) querySpec() *sqlgraph.QuerySpec {
 	}
 	if fields := _q.ctx.Fields; len(fields) > 0 {
 		_spec.Node.Columns = make([]string, 0, len(fields))
-		_spec.Node.Columns = append(_spec.Node.Columns, componentgroup.FieldID)
+		_spec.Node.Columns = append(_spec.Node.Columns, workflowstage.FieldID)
 		for i := range fields {
-			if fields[i] != componentgroup.FieldID {
+			if fields[i] != workflowstage.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
 		}
 		if _q.withOrganization != nil {
-			_spec.Node.AddColumnOnce(componentgroup.FieldOrganizationID)
+			_spec.Node.AddColumnOnce(workflowstage.FieldOrganizationID)
 		}
 		if _q.withApplication != nil {
-			_spec.Node.AddColumnOnce(componentgroup.FieldApplicationID)
+			_spec.Node.AddColumnOnce(workflowstage.FieldApplicationID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {
@@ -559,12 +634,12 @@ func (_q *ComponentGroupQuery) querySpec() *sqlgraph.QuerySpec {
 	return _spec
 }
 
-func (_q *ComponentGroupQuery) sqlQuery(ctx context.Context) *sql.Selector {
+func (_q *WorkflowStageQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	builder := sql.Dialect(_q.driver.Dialect())
-	t1 := builder.Table(componentgroup.Table)
+	t1 := builder.Table(workflowstage.Table)
 	columns := _q.ctx.Fields
 	if len(columns) == 0 {
-		columns = componentgroup.Columns
+		columns = workflowstage.Columns
 	}
 	selector := builder.Select(t1.Columns(columns...)...).From(t1)
 	if _q.sql != nil {
@@ -591,28 +666,28 @@ func (_q *ComponentGroupQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	return selector
 }
 
-// ComponentGroupGroupBy is the group-by builder for ComponentGroup entities.
-type ComponentGroupGroupBy struct {
+// WorkflowStageGroupBy is the group-by builder for WorkflowStage entities.
+type WorkflowStageGroupBy struct {
 	selector
-	build *ComponentGroupQuery
+	build *WorkflowStageQuery
 }
 
 // Aggregate adds the given aggregation functions to the group-by query.
-func (_g *ComponentGroupGroupBy) Aggregate(fns ...AggregateFunc) *ComponentGroupGroupBy {
+func (_g *WorkflowStageGroupBy) Aggregate(fns ...AggregateFunc) *WorkflowStageGroupBy {
 	_g.fns = append(_g.fns, fns...)
 	return _g
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_g *ComponentGroupGroupBy) Scan(ctx context.Context, v any) error {
+func (_g *WorkflowStageGroupBy) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _g.build.ctx, ent.OpQueryGroupBy)
 	if err := _g.build.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*ComponentGroupQuery, *ComponentGroupGroupBy](ctx, _g.build, _g, _g.build.inters, v)
+	return scanWithInterceptors[*WorkflowStageQuery, *WorkflowStageGroupBy](ctx, _g.build, _g, _g.build.inters, v)
 }
 
-func (_g *ComponentGroupGroupBy) sqlScan(ctx context.Context, root *ComponentGroupQuery, v any) error {
+func (_g *WorkflowStageGroupBy) sqlScan(ctx context.Context, root *WorkflowStageQuery, v any) error {
 	selector := root.sqlQuery(ctx).Select()
 	aggregation := make([]string, 0, len(_g.fns))
 	for _, fn := range _g.fns {
@@ -639,28 +714,28 @@ func (_g *ComponentGroupGroupBy) sqlScan(ctx context.Context, root *ComponentGro
 	return sql.ScanSlice(rows, v)
 }
 
-// ComponentGroupSelect is the builder for selecting fields of ComponentGroup entities.
-type ComponentGroupSelect struct {
-	*ComponentGroupQuery
+// WorkflowStageSelect is the builder for selecting fields of WorkflowStage entities.
+type WorkflowStageSelect struct {
+	*WorkflowStageQuery
 	selector
 }
 
 // Aggregate adds the given aggregation functions to the selector query.
-func (_s *ComponentGroupSelect) Aggregate(fns ...AggregateFunc) *ComponentGroupSelect {
+func (_s *WorkflowStageSelect) Aggregate(fns ...AggregateFunc) *WorkflowStageSelect {
 	_s.fns = append(_s.fns, fns...)
 	return _s
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_s *ComponentGroupSelect) Scan(ctx context.Context, v any) error {
+func (_s *WorkflowStageSelect) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _s.ctx, ent.OpQuerySelect)
 	if err := _s.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*ComponentGroupQuery, *ComponentGroupSelect](ctx, _s.ComponentGroupQuery, _s, _s.inters, v)
+	return scanWithInterceptors[*WorkflowStageQuery, *WorkflowStageSelect](ctx, _s.WorkflowStageQuery, _s, _s.inters, v)
 }
 
-func (_s *ComponentGroupSelect) sqlScan(ctx context.Context, root *ComponentGroupQuery, v any) error {
+func (_s *WorkflowStageSelect) sqlScan(ctx context.Context, root *WorkflowStageQuery, v any) error {
 	selector := root.sqlQuery(ctx)
 	aggregation := make([]string, 0, len(_s.fns))
 	for _, fn := range _s.fns {

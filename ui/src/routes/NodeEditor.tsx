@@ -22,13 +22,13 @@ import { stagedBackend } from "../components/variablesBackend";
 type ComponentType = components["schemas"]["ComponentType"];
 
 // The component types the create route (?new=…) accepts, so a hand-edited or
-// stale URL can't seed a bogus node.
+// stale URL can't seed a bogus component.
 const NEW_TYPES: ComponentType[] = ["helm", "manifest", "terraform"];
 
 // componentsEqual compares two editable components field by field (config is a
 // flat string map) so the editor can tell whether its local working copy still
-// matches the committed node — which drives the unsaved-changes hint and whether
-// Save is enabled.
+// matches the committed component — which drives the unsaved-changes hint and
+// whether Save is enabled.
 function componentsEqual(a: EditableComponent, b: EditableComponent): boolean {
   if (
     a.name !== b.name ||
@@ -50,14 +50,13 @@ function componentsEqual(a: EditableComponent, b: EditableComponent): boolean {
   return ak.every((k) => a.config[k] === b.config[k]);
 }
 
-// NodeEditor is the full-page editor for one workflow node, reached at
+// NodeEditor is the full-page editor for one workflow component, reached at
 // /applications/:appId/workflow/nodes/:nodeId. It edits a local working copy of
-// the node — edits do NOT touch the shared workflow draft until the user clicks
-// Save. Cancel (or Back) discards those edits; for a freshly added node, which is
-// provisional until saved, Cancel removes it from the draft entirely. Saving a
-// node is therefore its own operation, separate from the canvas's layout save.
-// Viewers see the fields read-only with no Save/Cancel. A Back link returns to
-// the canvas through the router (never raw history).
+// the component — edits do NOT touch the shared workflow draft until the user
+// clicks Save. Cancel (or Back) discards those edits; for a freshly added
+// component, which is provisional until saved, Cancel removes it from the draft
+// entirely. Viewers see the fields read-only with no Save/Cancel. A Back link
+// returns to the stage builder through the router (never raw history).
 export function NodeEditor() {
   const { appId = "", nodeId = "" } = useParams();
   const [searchParams] = useSearchParams();
@@ -66,8 +65,8 @@ export function NodeEditor() {
     canEdit,
     loading,
     error,
-    nodes,
-    edges,
+    stages,
+    stageOf,
     clusters,
     credentials,
     cloudCredentials,
@@ -80,39 +79,44 @@ export function NodeEditor() {
     ensureProvisional,
     commitComponent,
     discardNewNode,
-    deleteNode,
+    deleteComponent,
     getStagedVars,
     setStagedVars,
   } = useWorkflowDraft();
 
-  // The committed node as it currently lives in the shared draft.
+  // The committed component as it currently lives in the shared draft, and the
+  // stage it runs in.
   const committed = getComponent(nodeId);
   const isNew = isProvisional(nodeId);
+  const placed = stageOf(nodeId);
 
-  // Create flow: when the route carries ?new=<type> and the node isn't in the
-  // draft yet, seed it. This runs both on the first add (addComponent navigates
-  // here) and after a page reload of the create page — which re-fetches the
-  // workflow without the still-unsaved node — so the reload re-seeds a fresh
-  // create form instead of "node not found". Gated on !loading so it fires after
-  // the workflow load settles (not against the pre-load empty draft).
+  // Create flow: when the route carries ?new=<type> (and ?stage=<id>) and the
+  // component isn't in the draft yet, seed it in that stage. This runs both on
+  // the first add (addComponent navigates here) and after a page reload of the
+  // create page — which re-fetches the workflow without the still-unsaved
+  // component — so the reload re-seeds a fresh create form instead of "not
+  // found". Gated on !loading so it fires after the workflow load settles (not
+  // against the pre-load empty draft).
   //
   // discardedRef stops the seed from coming back to life after the user cancels:
-  // discardNewNode removes the node, which re-fires this effect (committed flips
-  // to null) and would otherwise recreate what we just discarded. It is NOT keyed
-  // on having-seeded-once, because a legitimate re-seed is required when a draft
-  // reload wipes the provisional node — the org context loads asynchronously and
-  // can trigger a second workflow load that resets the draft right after we seed,
-  // so the effect must re-seed then. cancel()/removeNode() set this before they
-  // discard; a page reload remounts the editor fresh, resetting it.
+  // discardNewNode removes the component, which re-fires this effect (committed
+  // flips to null) and would otherwise recreate what we just discarded. It is NOT
+  // keyed on having-seeded-once, because a legitimate re-seed is required when a
+  // draft reload wipes the provisional component — the org context loads
+  // asynchronously and can trigger a second workflow load that resets the draft
+  // right after we seed, so the effect must re-seed then. cancel()/removeNode()
+  // set this before they discard; a page reload remounts the editor fresh,
+  // resetting it.
   const newType = searchParams.get("new");
+  const newStage = searchParams.get("stage");
   const discardedRef = useRef(false);
   useEffect(() => {
     if (loading || error) return;
     if (committed || discardedRef.current) return;
     if (newType && (NEW_TYPES as string[]).includes(newType)) {
-      ensureProvisional(nodeId, newType as ComponentType);
+      ensureProvisional(nodeId, newType as ComponentType, newStage);
     }
-  }, [loading, error, committed, newType, nodeId, ensureProvisional]);
+  }, [loading, error, committed, newType, newStage, nodeId, ensureProvisional]);
 
   // Local working copy. Seeded once per node id from the committed value; edits
   // stay here until Save. (Local edits never call updateComponent, so `committed`
@@ -127,13 +131,13 @@ export function NodeEditor() {
   }, [committed, nodeId]);
 
   function backToWorkflow() {
-    // Relative navigation up to the canvas (index of the workflow layout).
+    // Relative navigation up to the builder (index of the workflow layout).
     navigate("..");
   }
 
-  // Cancel/Back: drop a provisional node entirely; for a committed node just
+  // Cancel/Back: drop a provisional component entirely; for a committed one just
   // leave (the local edits were never applied to the draft). discardedRef stops
-  // the create effect from re-seeding the node we're discarding before the
+  // the create effect from re-seeding the component we're discarding before the
   // navigation away unmounts the editor.
   function cancel() {
     if (isNew) {
@@ -154,7 +158,7 @@ export function NodeEditor() {
       discardedRef.current = true;
       discardNewNode(nodeId);
     } else {
-      deleteNode(nodeId);
+      deleteComponent(nodeId);
     }
     backToWorkflow();
   }
@@ -162,21 +166,23 @@ export function NodeEditor() {
   const view = draft ?? committed;
   const dirty =
     draft != null && committed != null && !componentsEqual(draft, committed);
-  // A provisional node always has something to save (it isn't persisted yet).
+  // A provisional component always has something to save (it isn't persisted
+  // yet).
   const hasUnsaved = canEdit && (dirty || isNew);
 
-  // The upstream OpenTofu components whose outputs this node may reference —
-  // computed over the draft graph (groups desugared), feeding the
-  // insert-a-reference helper on the helm values/namespace fields.
+  // The upstream OpenTofu components whose outputs this component may
+  // reference — those in an earlier stage — feeding the insert-a-reference
+  // helper on the helm values/namespace fields.
   const upstreamOutputs = useMemo(
-    () => upstreamTofuNames(nodeId, nodes, edges),
-    [nodeId, nodes, edges],
+    () => upstreamTofuNames(nodeId, stages),
+    [nodeId, stages],
   );
 
-  // For a not-yet-saved node, variables are staged in the draft's in-memory
-  // buffer (the component row doesn't exist server-side yet) and flushed by the
-  // next workflow save; a saved node uses the default API backend. Memoized so
-  // the VariablesEditor's transport identity is stable across renders.
+  // For a not-yet-saved component, variables are staged in the draft's
+  // in-memory buffer (the component row doesn't exist server-side yet) and
+  // flushed by the next workflow save; a saved one uses the default API backend.
+  // Memoized so the VariablesEditor's transport identity is stable across
+  // renders.
   const stagedVarBackend = useMemo(
     () =>
       stagedBackend(
@@ -193,20 +199,17 @@ export function NodeEditor() {
   // suggester offers its name and a "keys appear after a run" hint).
   const refContext = useMemo<RefContext>(() => {
     const outputKeysByName: Record<string, OutputKeyInfo[]> = {};
-    for (const n of nodes) {
-      if (n.type !== "component") continue;
-      const name = (n.data as { component?: EditableComponent }).component
-        ?.name;
-      if (!name || !upstreamOutputs.includes(name)) continue;
-      const keys = componentOutputs[n.id];
-      if (keys) outputKeysByName[name] = keys;
+    for (const c of stages.flatMap((st) => st.components)) {
+      if (!c.name || !upstreamOutputs.includes(c.name)) continue;
+      const keys = componentOutputs[c.id];
+      if (keys) outputKeysByName[c.name] = keys;
     }
     return {
       varsNames: appVariableNames,
       componentNames: upstreamOutputs,
       outputKeysByName,
     };
-  }, [nodes, upstreamOutputs, componentOutputs, appVariableNames]);
+  }, [stages, upstreamOutputs, componentOutputs, appVariableNames]);
 
   // Rename check: other components reference this one's outputs by its
   // committed name, so renaming it breaks them until they're updated too. A
@@ -221,15 +224,12 @@ export function NodeEditor() {
       renamedFrom
         ? componentsReferencing(
             renamedFrom,
-            nodes
-              .filter((n) => n.type === "component" && n.id !== nodeId)
-              .map(
-                (n) => (n.data as { component?: EditableComponent }).component,
-              )
-              .filter((c): c is EditableComponent => c != null),
+            stages
+              .flatMap((st) => st.components)
+              .filter((c) => c.id !== nodeId),
           )
         : [],
-    [renamedFrom, nodes, nodeId],
+    [renamedFrom, stages, nodeId],
   );
 
   return (
@@ -250,14 +250,14 @@ export function NodeEditor() {
       ) : !view ? (
         <div className="mt-6">
           <p className="text-sm text-neutral-600">
-            That node isn’t in this workflow.
+            That component isn’t in this workflow.
           </p>
           <button
             type="button"
             onClick={backToWorkflow}
             className="mt-2 text-sm font-medium text-neutral-700 hover:text-black"
           >
-            Back to the canvas
+            Back to the workflow
           </button>
         </div>
       ) : (
@@ -266,10 +266,15 @@ export function NodeEditor() {
             <div className="min-w-0">
               <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
                 {view.type} component
+                {placed && (
+                  <span className="ml-1 normal-case tracking-normal">
+                    · in stage {placed.index + 1}, {placed.stage.name}
+                  </span>
+                )}
                 {isNew && <span className="ml-1 text-neutral-400">· new</span>}
               </p>
               <h1 className="mt-0.5 truncate text-xl font-bold tracking-tight">
-                {view.name || "Edit node"}
+                {view.name || "Edit component"}
               </h1>
             </div>
             {canEdit && (
@@ -279,7 +284,7 @@ export function NodeEditor() {
                 className="inline-flex shrink-0 items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                Delete node
+                Delete component
               </button>
             )}
           </div>
@@ -337,15 +342,15 @@ export function NodeEditor() {
                 className="inline-flex items-center gap-1.5 bg-black px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
               >
                 <Save className="h-3.5 w-3.5" />
-                Save node
+                Save component
               </button>
             </div>
           )}
 
           {/* Component variables. These override the app-level variables of the
-              same name for this component's job. For a saved node they write
-              through their own endpoints; for a new node they're staged and
-              flushed when the node is saved into the workflow — so they can be
+              same name for this component's job. For a saved component they write
+              through their own endpoints; for a new component they're staged
+              and flushed when it is saved into the workflow — so they can be
               authored in the same pass as the rest of the component. */}
           <div className="mt-6 border border-neutral-200 bg-white p-4">
             <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
@@ -355,8 +360,8 @@ export function NodeEditor() {
               Passed to this component’s job as environment variables,
               overriding any app-level variable of the same name.{" "}
               {isNew
-                ? "Saved when you save this node."
-                : "Saved separately from the node above."}{" "}
+                ? "Saved when you save this component."
+                : "Saved separately from the settings above."}{" "}
               A sensitive value is sealed and never shown again.
             </p>
             <VariablesEditor
@@ -368,8 +373,8 @@ export function NodeEditor() {
 
           {/* An OpenTofu component's recorded state: the resources it manages
               and its outputs, as of its last successful apply, plus — for an
-              editor — the guarded state operations. Only for a saved node — a
-              new one has no history. */}
+              editor — the guarded state operations. Only for a saved
+              component — a new one has no history. */}
           {!isNew && draft?.type === "terraform" && (
             <ComponentStatePanel
               appId={appId}

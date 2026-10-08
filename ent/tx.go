@@ -24,8 +24,6 @@ type Tx struct {
 	Cluster *ClusterClient
 	// Component is the client for interacting with the Component builders.
 	Component *ComponentClient
-	// ComponentGroup is the client for interacting with the ComponentGroup builders.
-	ComponentGroup *ComponentGroupClient
 	// ComponentRun is the client for interacting with the ComponentRun builders.
 	ComponentRun *ComponentRunClient
 	// GitHubInstallation is the client for interacting with the GitHubInstallation builders.
@@ -50,6 +48,8 @@ type Tx struct {
 	Variable *VariableClient
 	// WorkflowRun is the client for interacting with the WorkflowRun builders.
 	WorkflowRun *WorkflowRunClient
+	// WorkflowStage is the client for interacting with the WorkflowStage builders.
+	WorkflowStage *WorkflowStageClient
 
 	// lazily loaded.
 	client     *Client
@@ -187,7 +187,6 @@ func (tx *Tx) init() {
 	tx.CloudCredential = NewCloudCredentialClient(tx.config)
 	tx.Cluster = NewClusterClient(tx.config)
 	tx.Component = NewComponentClient(tx.config)
-	tx.ComponentGroup = NewComponentGroupClient(tx.config)
 	tx.ComponentRun = NewComponentRunClient(tx.config)
 	tx.GitHubInstallation = NewGitHubInstallationClient(tx.config)
 	tx.GroupVariable = NewGroupVariableClient(tx.config)
@@ -200,6 +199,7 @@ func (tx *Tx) init() {
 	tx.User = NewUserClient(tx.config)
 	tx.Variable = NewVariableClient(tx.config)
 	tx.WorkflowRun = NewWorkflowRunClient(tx.config)
+	tx.WorkflowStage = NewWorkflowStageClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

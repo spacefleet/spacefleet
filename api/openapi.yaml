@@ -1038,18 +1038,19 @@ paths:
 
   /api/applications/{id}/workflow:
     get:
-      summary: Get an application's deploy workflow (its component graph)
+      summary: Get an application's deploy workflow (its stages and components)
       description: |
-        Org-scoped. Returns the application's workflow as the list of its
-        components (the DAG nodes; edges are each node's depends_on). Secret-
-        bearing component config (the Helm `values` override) is redacted for
-        callers below editor.
+        Org-scoped. Returns the application's workflow as its ordered stages,
+        each holding its ordered components. Stages run in order; the
+        components within a stage run in parallel. Secret-bearing component
+        config (the Helm `values` override) is redacted for callers below
+        editor.
       operationId: getApplicationWorkflow
       parameters:
         - $ref: "#/components/parameters/ApplicationID"
       responses:
         "200":
-          description: The application's workflow components
+          description: The application's workflow
           content:
             application/json:
               schema:
@@ -1059,10 +1060,12 @@ paths:
     put:
       summary: Replace an application's deploy workflow
       description: |
-        Org-scoped, editor or above. Validates the proposed DAG (distinct
-        non-zero ids, dependencies exist, no self-dependency, acyclic, per-type
-        config valid) and atomically replaces the application's components with
-        it. A validation failure returns 400 before any write.
+        Org-scoped, editor or above. Validates the proposed workflow (distinct
+        non-zero ids, non-empty stage names, per-type config valid,
+        output references only to OpenTofu components in an earlier stage) and
+        atomically replaces the application's stages and components with it,
+        keeping the order given. A validation failure returns 400 before any
+        write.
       operationId: replaceApplicationWorkflow
       parameters:
         - $ref: "#/components/parameters/ApplicationID"
@@ -1074,7 +1077,7 @@ paths:
               $ref: "#/components/schemas/WorkflowReplaceRequest"
       responses:
         "200":
-          description: The replaced workflow components
+          description: The replaced workflow
           content:
             application/json:
               schema:
@@ -1382,7 +1385,7 @@ paths:
       summary: List an application's workflow runs
       description: |
         Org-scoped. Returns the application's workflow runs newest-first — one
-        per deploy/uninstall/preview of the whole DAG, plus component-scoped
+        per deploy/uninstall/preview of the whole workflow, plus component-scoped
         runs and state operations — for a CI-like history.
         Component runs and the graph snapshot are not included here; fetch a
         single run for those.
@@ -2962,7 +2965,7 @@ components:
     Application:
       type: object
       description: |
-        A deployable workload that owns a deploy workflow (a DAG of components).
+        A deployable workload that owns a deploy workflow (stages of components).
         The application holds only the workflow-owner fields; all chart-specific
         config and targeting (cluster + namespace) live on its components, and
         run/sync state lives on its runs.
@@ -3758,10 +3761,11 @@ components:
     Component:
       type: object
       description: |
-        One node of an application's deploy workflow (a DAG step). Edges are
-        expressed by each node's depends_on. The secret-bearing config (the Helm
-        `values` override) is redacted for callers below editor.
-      required: [id, name, type, config, depends_on, continue_on_failure]
+        One component of an application's deploy workflow: a typed step that
+        runs within its stage, in parallel with the stage's other components.
+        The secret-bearing config (the Helm `values` override) is redacted for
+        callers below editor.
+      required: [id, name, type, config, continue_on_failure]
       properties:
         id:
           type: string
@@ -3813,17 +3817,11 @@ components:
             (`-var`/`-var-file`/`-target`) go in `plan_flags`, not `apply_flags`.
             The `values` and `backend_config` keys are redacted for callers below
             editor.
-        depends_on:
-          type: array
-          items:
-            type: string
-            format: uuid
-          description: Ids of sibling components this node waits on.
         continue_on_failure:
           type: boolean
           description: |
-            When true, a failure of this node does not skip its dependents or
-            fail the run (the run settles "partial" instead).
+            When true, a failure of this component does not skip the later
+            stages or fail the run (the run settles "partial" instead).
         requires_approval:
           type: boolean
           description: |
@@ -3856,19 +3854,6 @@ components:
           format: uuid
           nullable: true
           description: Optional GitHub App installation for a private git source.
-        position:
-          type: object
-          additionalProperties:
-            type: number
-          description: Canvas coordinates {x, y} for the workflow builder UI.
-        group_id:
-          type: string
-          format: uuid
-          nullable: true
-          description: |
-            Id of the explicit group container this component is a parallel
-            member of, or null when ungrouped. A node that depends on a group
-            waits for all of its members.
 
     ApprovalPolicy:
       type: object
@@ -3908,9 +3893,9 @@ components:
     ComponentInput:
       type: object
       description: |
-        One proposed workflow node, supplied by the canvas. id is client-provided
-        (a stable uuid per node) so depends_on edges and canvas identity survive a
-        replace.
+        One proposed workflow component, supplied by the builder. id is
+        client-provided (a stable uuid per component) so the component's
+        variables, state, and run history stay attached across a replace.
       required: [id, name, type]
       properties:
         id:
@@ -3933,18 +3918,13 @@ components:
           type: object
           additionalProperties:
             type: string
-        depends_on:
-          type: array
-          items:
-            type: string
-            format: uuid
         continue_on_failure:
           type: boolean
         requires_approval:
           type: boolean
           description: |
-            When true, the run parks at this node until a human approves it
-            (status awaiting_approval). Defaults to false.
+            When true, the run parks at this component until a human approves
+            it (status awaiting_approval). Defaults to false.
         approval_policy:
           $ref: "#/components/schemas/ApprovalPolicy"
         target_cluster_id:
@@ -3967,113 +3947,74 @@ components:
           type: string
           format: uuid
           nullable: true
-        position:
-          type: object
-          additionalProperties:
-            type: number
-        group_id:
-          type: string
-          format: uuid
-          nullable: true
 
-    ComponentGroup:
+    WorkflowStage:
       type: object
       description: |
-        An explicit group container in an application's deploy workflow — a named
-        box holding components that run in parallel. A node that depends on the
-        group waits for all of its members (all-must-complete); a group's
-        depends_on makes every member wait on those refs. Groups are a builder
-        concept that desugar into component-level depends_on; the scheduler never
-        sees a group.
-      required: [id, name, depends_on]
+        One stage of an application's workflow: a named, ordered set of
+        components that run in parallel. Stages run in order — a stage starts
+        once every component of the previous stage has finished, and a failure
+        (without continue_on_failure) skips every later stage.
+      required: [id, name, components]
       properties:
         id:
           type: string
           format: uuid
         name:
           type: string
-        depends_on:
-          type: array
-          items:
-            type: string
-            format: uuid
-          description: |
-            Ids of the components/groups the whole group waits on (entries may
-            reference a component or a sibling group).
-        position:
-          type: object
-          additionalProperties:
-            type: number
-          description: Canvas coordinates {x, y} for the workflow builder UI.
-        size:
-          type: object
-          additionalProperties:
-            type: number
-          description: Canvas dimensions {w, h} for the workflow builder UI.
-
-    ComponentGroupInput:
-      type: object
-      description: |
-        One proposed group container, supplied by the canvas. id is
-        client-provided (a stable uuid per group) so component group_id refs and
-        depends_on edges survive a replace.
-      required: [id, name]
-      properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        depends_on:
-          type: array
-          items:
-            type: string
-            format: uuid
-        position:
-          type: object
-          additionalProperties:
-            type: number
-        size:
-          type: object
-          additionalProperties:
-            type: number
-
-    Workflow:
-      type: object
-      description: |
-        An application's deploy workflow — its components plus any explicit group
-        containers.
-      required: [components, groups]
-      properties:
         components:
           type: array
           items:
             $ref: "#/components/schemas/Component"
-        groups:
-          type: array
-          items:
-            $ref: "#/components/schemas/ComponentGroup"
 
-    WorkflowReplaceRequest:
+    WorkflowStageInput:
       type: object
       description: |
-        The full set of components and group containers to replace the workflow
-        with.
-      required: [components]
+        One proposed stage, supplied by the builder. id is client-provided (a
+        stable uuid per stage). A stage may be empty.
+      required: [id, name, components]
       properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: The stage's display name.
         components:
           type: array
           items:
             $ref: "#/components/schemas/ComponentInput"
-        groups:
+
+    Workflow:
+      type: object
+      description: |
+        An application's deploy workflow — its stages, in run order, each with
+        its components.
+      required: [stages]
+      properties:
+        stages:
           type: array
           items:
-            $ref: "#/components/schemas/ComponentGroupInput"
+            $ref: "#/components/schemas/WorkflowStage"
+
+    WorkflowReplaceRequest:
+      type: object
+      description: |
+        The full workflow to replace the current one with: every stage, in run
+        order, each with its components in display order.
+      required: [stages]
+      properties:
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkflowStageInput"
 
     RunAction:
       type: string
       description: |
-        What a workflow run does across the whole DAG. `drift` is a drift
+        What a workflow run does across the whole workflow. `drift` is a drift
         check: every OpenTofu component runs a read-only refresh-only plan
         reporting what changed outside of OpenTofu since its last apply; Helm
         and Manifest components take no part (400 if the application has no
@@ -4149,6 +4090,59 @@ components:
           $ref: "#/components/schemas/RunScope"
         trigger:
           $ref: "#/components/schemas/RunTrigger"
+        stages:
+          type: array
+          description: |
+            The run's stages in order, each with its components and their
+            combined status — the at-a-glance shape of the run. Present on the
+            run list, the run detail, and their streams. A run started before
+            workflows had stages gets stages derived from its recorded
+            dependencies (named "Stage 1", "Stage 2", …).
+          items:
+            $ref: "#/components/schemas/RunStage"
+
+    RunStage:
+      type: object
+      description: One stage of a run, with the combined status of its components.
+      required: [name, status, components]
+      properties:
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/ComponentRunStatus"
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunStageComponent"
+
+    RunStageComponent:
+      type: object
+      description: |
+        One component within a run's stage. An OpenTofu component runs as two
+        steps (plan, then apply — or just a plan on a read-only run), so it
+        lists both step ids; every other component has one. status combines
+        the steps: failed if any failed, then awaiting approval, then running,
+        succeeded once every step succeeded.
+      required: [component_id, name, type, status, component_run_ids]
+      properties:
+        component_id:
+          type: string
+          format: uuid
+          description: The authored component's id (it may since have been deleted).
+        name:
+          type: string
+          description: The component's name as it ran.
+        type:
+          type: string
+          description: The component's type as it ran.
+        status:
+          $ref: "#/components/schemas/ComponentRunStatus"
+        component_run_ids:
+          type: array
+          description: The ids of this component's steps (component runs), in run order.
+          items:
+            type: string
+            format: uuid
 
     RunList:
       type: object
@@ -4677,9 +4671,10 @@ components:
             graph:
               type: string
               description: |
-                JSON snapshot of the workflow graph (nodes + edges + config) as it
-                was when the run began. Secret-bearing config is redacted for
-                callers below editor.
+                JSON snapshot of the workflow (stages, plus each execution step
+                with its config and the steps it waits on) as it was when the
+                run began. Secret-bearing config is redacted for callers below
+                editor.
 
     Variable:
       type: object

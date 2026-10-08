@@ -13,7 +13,7 @@ import { ImportApplication } from "./routes/ImportApplication";
 import { ApplicationDetail } from "./routes/ApplicationDetail";
 import { ApplicationGroupDetail } from "./routes/ApplicationGroupDetail";
 import { WorkflowLayout } from "./routes/WorkflowLayout";
-import { WorkflowCanvas } from "./routes/WorkflowCanvas";
+import { WorkflowBuilder } from "./routes/WorkflowBuilder";
 import { NodeEditor } from "./routes/NodeEditor";
 import { WorkflowRuns } from "./routes/WorkflowRuns";
 import { WorkflowRunView } from "./routes/WorkflowRunView";
@@ -127,15 +127,15 @@ export function App() {
                   element={<ApplicationForm />}
                 />
                 {/* Workflow builder: a layout route owning the in-memory draft
-                    (so unsaved edits survive canvas↔editor navigation), with the
-                    DAG canvas at the index and the full-page node editor under
-                    nodes/:nodeId. Listed before the ":appId" detail route so the
-                    "/workflow" segment isn't swallowed. */}
+                    (so unsaved edits survive builder↔editor navigation), with the
+                    stage builder at the index and the full-page component editor
+                    under nodes/:nodeId. Listed before the ":appId" detail route
+                    so the "/workflow" segment isn't swallowed. */}
                 <Route
                   path="/applications/:appId/workflow"
                   element={<WorkflowLayout />}
                 >
-                  <Route index element={<WorkflowCanvas />} />
+                  <Route index element={<WorkflowBuilder />} />
                   <Route path="nodes/:nodeId" element={<NodeEditor />} />
                 </Route>
                 {/* Workflow run history (a CI-like list of runs). */}
@@ -143,8 +143,8 @@ export function App() {
                   path="/applications/:appId/runs"
                   element={<WorkflowRuns />}
                 />
-                {/* One workflow run's live DAG view (status-colored nodes +
-                    per-component logs/diff). */}
+                {/* One workflow run's live view: its stages and components,
+                    and the selected step's logs/plan/diff (?step=). */}
                 <Route
                   path="/applications/:appId/runs/:runId"
                   element={<WorkflowRunView />}

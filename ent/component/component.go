@@ -26,8 +26,10 @@ const (
 	FieldType = "type"
 	// FieldConfig holds the string denoting the config field in the database.
 	FieldConfig = "config"
-	// FieldDependsOn holds the string denoting the depends_on field in the database.
-	FieldDependsOn = "depends_on"
+	// FieldStageID holds the string denoting the stage_id field in the database.
+	FieldStageID = "stage_id"
+	// FieldOrdinal holds the string denoting the ordinal field in the database.
+	FieldOrdinal = "ordinal"
 	// FieldContinueOnFailure holds the string denoting the continue_on_failure field in the database.
 	FieldContinueOnFailure = "continue_on_failure"
 	// FieldRequiresApproval holds the string denoting the requires_approval field in the database.
@@ -42,10 +44,6 @@ const (
 	FieldChartCredentialID = "chart_credential_id"
 	// FieldGithubInstallationID holds the string denoting the github_installation_id field in the database.
 	FieldGithubInstallationID = "github_installation_id"
-	// FieldPosition holds the string denoting the position field in the database.
-	FieldPosition = "position"
-	// FieldGroupID holds the string denoting the group_id field in the database.
-	FieldGroupID = "group_id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -60,8 +58,8 @@ const (
 	EdgeChartCredential = "chart_credential"
 	// EdgeGithubInstallation holds the string denoting the github_installation edge name in mutations.
 	EdgeGithubInstallation = "github_installation"
-	// EdgeGroup holds the string denoting the group edge name in mutations.
-	EdgeGroup = "group"
+	// EdgeStage holds the string denoting the stage edge name in mutations.
+	EdgeStage = "stage"
 	// Table holds the table name of the component in the database.
 	Table = "components"
 	// OrganizationTable is the table that holds the organization relation/edge.
@@ -99,13 +97,13 @@ const (
 	GithubInstallationInverseTable = "github_installations"
 	// GithubInstallationColumn is the table column denoting the github_installation relation/edge.
 	GithubInstallationColumn = "github_installation_id"
-	// GroupTable is the table that holds the group relation/edge.
-	GroupTable = "components"
-	// GroupInverseTable is the table name for the ComponentGroup entity.
-	// It exists in this package in order to avoid circular dependency with the "componentgroup" package.
-	GroupInverseTable = "component_groups"
-	// GroupColumn is the table column denoting the group relation/edge.
-	GroupColumn = "group_id"
+	// StageTable is the table that holds the stage relation/edge.
+	StageTable = "components"
+	// StageInverseTable is the table name for the WorkflowStage entity.
+	// It exists in this package in order to avoid circular dependency with the "workflowstage" package.
+	StageInverseTable = "workflow_stages"
+	// StageColumn is the table column denoting the stage relation/edge.
+	StageColumn = "stage_id"
 )
 
 // Columns holds all SQL columns for component fields.
@@ -116,7 +114,8 @@ var Columns = []string{
 	FieldName,
 	FieldType,
 	FieldConfig,
-	FieldDependsOn,
+	FieldStageID,
+	FieldOrdinal,
 	FieldContinueOnFailure,
 	FieldRequiresApproval,
 	FieldApprovalPolicy,
@@ -124,8 +123,6 @@ var Columns = []string{
 	FieldTargetNamespace,
 	FieldChartCredentialID,
 	FieldGithubInstallationID,
-	FieldPosition,
-	FieldGroupID,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -143,6 +140,8 @@ func ValidColumn(column string) bool {
 var (
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
+	// DefaultOrdinal holds the default value on creation for the "ordinal" field.
+	DefaultOrdinal int
 	// DefaultContinueOnFailure holds the default value on creation for the "continue_on_failure" field.
 	DefaultContinueOnFailure bool
 	// DefaultRequiresApproval holds the default value on creation for the "requires_approval" field.
@@ -212,6 +211,16 @@ func ByType(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldType, opts...).ToFunc()
 }
 
+// ByStageID orders the results by the stage_id field.
+func ByStageID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStageID, opts...).ToFunc()
+}
+
+// ByOrdinal orders the results by the ordinal field.
+func ByOrdinal(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOrdinal, opts...).ToFunc()
+}
+
 // ByContinueOnFailure orders the results by the continue_on_failure field.
 func ByContinueOnFailure(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldContinueOnFailure, opts...).ToFunc()
@@ -240,11 +249,6 @@ func ByChartCredentialID(opts ...sql.OrderTermOption) OrderOption {
 // ByGithubInstallationID orders the results by the github_installation_id field.
 func ByGithubInstallationID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGithubInstallationID, opts...).ToFunc()
-}
-
-// ByGroupID orders the results by the group_id field.
-func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldGroupID, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.
@@ -292,10 +296,10 @@ func ByGithubInstallationField(field string, opts ...sql.OrderTermOption) OrderO
 	}
 }
 
-// ByGroupField orders the results by group field.
-func ByGroupField(field string, opts ...sql.OrderTermOption) OrderOption {
+// ByStageField orders the results by stage field.
+func ByStageField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newGroupStep(), sql.OrderByField(field, opts...))
+		sqlgraph.OrderByNeighborTerms(s, newStageStep(), sql.OrderByField(field, opts...))
 	}
 }
 func newOrganizationStep() *sqlgraph.Step {
@@ -333,10 +337,10 @@ func newGithubInstallationStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.M2O, false, GithubInstallationTable, GithubInstallationColumn),
 	)
 }
-func newGroupStep() *sqlgraph.Step {
+func newStageStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(GroupInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.M2O, false, GroupTable, GroupColumn),
+		sqlgraph.To(StageInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, false, StageTable, StageColumn),
 	)
 }

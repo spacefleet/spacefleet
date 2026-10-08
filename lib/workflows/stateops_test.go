@@ -21,11 +21,11 @@ func TestStateOpSnapshot(t *testing.T) {
 		Config:               map[string]string{"repo_url": "r", "path": "p", terraformConfigBackend: "s3", terraformConfigPlanFlags: `["-var=env=prod"]`},
 		RequiresApproval:     false,
 		ContinueOnFailure:    true,
-		DependsOn:            []uuid.UUID{uuid.New()},
 		GithubInstallationID: inst,
+		Edges:                ent.ComponentEdges{Stage: &ent.WorkflowStage{ID: uuid.New(), Name: "infra"}},
 	}
 	snap := stateOpSnapshot(c, tofu.StateOp{Operation: tofu.StateOpRemove, Address: "aws_instance.web"})
-	if len(snap.Nodes) != 1 || len(snap.Groups) != 0 {
+	if len(snap.Nodes) != 1 || len(snap.Stages) != 1 {
 		t.Fatalf("snapshot = %+v, want exactly one node", snap)
 	}
 	n := snap.Nodes[0]
@@ -40,6 +40,9 @@ func TestStateOpSnapshot(t *testing.T) {
 	}
 	if !n.RequiresApproval || n.ContinueOnFailure || len(n.DependsOn) != 0 {
 		t.Errorf("gate/deps wrong: %+v", n)
+	}
+	if n.StageID == nil || *n.StageID != c.Edges.Stage.ID || snap.Stages[0].ID != c.Edges.Stage.ID {
+		t.Errorf("stage not carried: %v / %+v", n.StageID, snap.Stages)
 	}
 	if n.GitHubInstallationID == nil || *n.GitHubInstallationID != inst {
 		t.Errorf("installation not carried: %+v", n.GitHubInstallationID)

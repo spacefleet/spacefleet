@@ -15,10 +15,10 @@ import (
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
-	"github.com/spacefleet/spacefleet/ent/componentgroup"
 	"github.com/spacefleet/spacefleet/ent/githubinstallation"
 	"github.com/spacefleet/spacefleet/ent/organization"
 	"github.com/spacefleet/spacefleet/ent/schema"
+	"github.com/spacefleet/spacefleet/ent/workflowstage"
 )
 
 // Component is the model entity for the Component schema.
@@ -36,8 +36,10 @@ type Component struct {
 	Type component.Type `json:"type,omitempty"`
 	// Config holds the value of the "config" field.
 	Config map[string]string `json:"config,omitempty"`
-	// DependsOn holds the value of the "depends_on" field.
-	DependsOn []uuid.UUID `json:"depends_on,omitempty"`
+	// StageID holds the value of the "stage_id" field.
+	StageID uuid.UUID `json:"stage_id,omitempty"`
+	// Ordinal holds the value of the "ordinal" field.
+	Ordinal int `json:"ordinal,omitempty"`
 	// ContinueOnFailure holds the value of the "continue_on_failure" field.
 	ContinueOnFailure bool `json:"continue_on_failure,omitempty"`
 	// RequiresApproval holds the value of the "requires_approval" field.
@@ -52,10 +54,6 @@ type Component struct {
 	ChartCredentialID uuid.UUID `json:"chart_credential_id,omitempty"`
 	// GithubInstallationID holds the value of the "github_installation_id" field.
 	GithubInstallationID uuid.UUID `json:"github_installation_id,omitempty"`
-	// Position holds the value of the "position" field.
-	Position map[string]float64 `json:"position,omitempty"`
-	// GroupID holds the value of the "group_id" field.
-	GroupID uuid.UUID `json:"group_id,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -78,8 +76,8 @@ type ComponentEdges struct {
 	ChartCredential *ChartCredential `json:"chart_credential,omitempty"`
 	// GithubInstallation holds the value of the github_installation edge.
 	GithubInstallation *GitHubInstallation `json:"github_installation,omitempty"`
-	// Group holds the value of the group edge.
-	Group *ComponentGroup `json:"group,omitempty"`
+	// Stage holds the value of the stage edge.
+	Stage *WorkflowStage `json:"stage,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
 	loadedTypes [6]bool
@@ -140,15 +138,15 @@ func (e ComponentEdges) GithubInstallationOrErr() (*GitHubInstallation, error) {
 	return nil, &NotLoadedError{edge: "github_installation"}
 }
 
-// GroupOrErr returns the Group value or an error if the edge
+// StageOrErr returns the Stage value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
-func (e ComponentEdges) GroupOrErr() (*ComponentGroup, error) {
-	if e.Group != nil {
-		return e.Group, nil
+func (e ComponentEdges) StageOrErr() (*WorkflowStage, error) {
+	if e.Stage != nil {
+		return e.Stage, nil
 	} else if e.loadedTypes[5] {
-		return nil, &NotFoundError{label: componentgroup.Label}
+		return nil, &NotFoundError{label: workflowstage.Label}
 	}
-	return nil, &NotLoadedError{edge: "group"}
+	return nil, &NotLoadedError{edge: "stage"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -156,15 +154,17 @@ func (*Component) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case component.FieldConfig, component.FieldDependsOn, component.FieldApprovalPolicy, component.FieldPosition:
+		case component.FieldConfig, component.FieldApprovalPolicy:
 			values[i] = new([]byte)
 		case component.FieldContinueOnFailure, component.FieldRequiresApproval:
 			values[i] = new(sql.NullBool)
+		case component.FieldOrdinal:
+			values[i] = new(sql.NullInt64)
 		case component.FieldName, component.FieldType, component.FieldTargetNamespace:
 			values[i] = new(sql.NullString)
 		case component.FieldCreatedAt, component.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
-		case component.FieldID, component.FieldOrganizationID, component.FieldApplicationID, component.FieldTargetClusterID, component.FieldChartCredentialID, component.FieldGithubInstallationID, component.FieldGroupID:
+		case component.FieldID, component.FieldOrganizationID, component.FieldApplicationID, component.FieldStageID, component.FieldTargetClusterID, component.FieldChartCredentialID, component.FieldGithubInstallationID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -219,13 +219,17 @@ func (_m *Component) assignValues(columns []string, values []any) error {
 					return fmt.Errorf("unmarshal field config: %w", err)
 				}
 			}
-		case component.FieldDependsOn:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field depends_on", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &_m.DependsOn); err != nil {
-					return fmt.Errorf("unmarshal field depends_on: %w", err)
-				}
+		case component.FieldStageID:
+			if value, ok := values[i].(*uuid.UUID); !ok {
+				return fmt.Errorf("unexpected type %T for field stage_id", values[i])
+			} else if value != nil {
+				_m.StageID = *value
+			}
+		case component.FieldOrdinal:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field ordinal", values[i])
+			} else if value.Valid {
+				_m.Ordinal = int(value.Int64)
 			}
 		case component.FieldContinueOnFailure:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -270,20 +274,6 @@ func (_m *Component) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field github_installation_id", values[i])
 			} else if value != nil {
 				_m.GithubInstallationID = *value
-			}
-		case component.FieldPosition:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field position", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &_m.Position); err != nil {
-					return fmt.Errorf("unmarshal field position: %w", err)
-				}
-			}
-		case component.FieldGroupID:
-			if value, ok := values[i].(*uuid.UUID); !ok {
-				return fmt.Errorf("unexpected type %T for field group_id", values[i])
-			} else if value != nil {
-				_m.GroupID = *value
 			}
 		case component.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -335,9 +325,9 @@ func (_m *Component) QueryGithubInstallation() *GitHubInstallationQuery {
 	return NewComponentClient(_m.config).QueryGithubInstallation(_m)
 }
 
-// QueryGroup queries the "group" edge of the Component entity.
-func (_m *Component) QueryGroup() *ComponentGroupQuery {
-	return NewComponentClient(_m.config).QueryGroup(_m)
+// QueryStage queries the "stage" edge of the Component entity.
+func (_m *Component) QueryStage() *WorkflowStageQuery {
+	return NewComponentClient(_m.config).QueryStage(_m)
 }
 
 // Update returns a builder for updating this Component.
@@ -378,8 +368,11 @@ func (_m *Component) String() string {
 	builder.WriteString("config=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Config))
 	builder.WriteString(", ")
-	builder.WriteString("depends_on=")
-	builder.WriteString(fmt.Sprintf("%v", _m.DependsOn))
+	builder.WriteString("stage_id=")
+	builder.WriteString(fmt.Sprintf("%v", _m.StageID))
+	builder.WriteString(", ")
+	builder.WriteString("ordinal=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Ordinal))
 	builder.WriteString(", ")
 	builder.WriteString("continue_on_failure=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ContinueOnFailure))
@@ -401,12 +394,6 @@ func (_m *Component) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("github_installation_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.GithubInstallationID))
-	builder.WriteString(", ")
-	builder.WriteString("position=")
-	builder.WriteString(fmt.Sprintf("%v", _m.Position))
-	builder.WriteString(", ")
-	builder.WriteString("group_id=")
-	builder.WriteString(fmt.Sprintf("%v", _m.GroupID))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

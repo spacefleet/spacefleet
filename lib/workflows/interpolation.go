@@ -305,16 +305,16 @@ func helmInterpolationFields(n ComponentInput) []helmField {
 }
 
 // validateOutputRefs checks every ${{ components.<name>.outputs.<key> }}
-// reference across the workflow's helm nodes against the authored graph: the
+// reference across the workflow's helm components against the workflow: the
 // name must resolve to exactly one component (a duplicated name is only an
 // error when referenced), that component must be an OpenTofu (terraform) one,
-// and it must be a transitive depends_on ancestor of the referencing node —
-// the DAG already guarantees an ancestor settles before the referencing node
-// plans, so checking ancestry here surfaces the mistake at authoring time
-// instead of mid-run. expanded is the component-level adjacency from
-// expandDependencies (groups desugared) — the same edges the run executes, so
-// a dependency routed through a group counts. Output keys are run-time data
-// and deliberately not validated (the parser already rejects an empty key).
+// and it must run in an earlier stage than the referencing component — stage
+// order guarantees it settles before the referencing component plans, so
+// checking it here surfaces the mistake at authoring time instead of mid-run.
+// expanded is the component-level adjacency from stageDependencies — the same
+// edges the run executes — so "earlier stage" is ancestry over it. Output keys
+// are run-time data and deliberately not validated (the parser already rejects
+// an empty key).
 // Parse errors are skipped — validateHelmInterpolation rejected them first.
 // Failures wrap ErrInvalidConfig so a handler maps them to a 400.
 func validateOutputRefs(components []ComponentInput, expanded map[uuid.UUID][]uuid.UUID) error {
@@ -352,7 +352,7 @@ func validateOutputRefs(components []ComponentInput, expanded map[uuid.UUID][]uu
 					ancestors = transitiveDeps(expanded, n.ID)
 				}
 				if _, ok := ancestors[target[0].ID]; !ok {
-					return fmt.Errorf("%w: node %q (helm) %s: %s: component %q must be an upstream dependency of %q — add it to the depends_on chain", ErrInvalidConfig, n.Name, f.name, ref.Raw, ref.Component, n.Name)
+					return fmt.Errorf("%w: node %q (helm) %s: %s: component %q must run in an earlier stage than %q — move it to an earlier stage", ErrInvalidConfig, n.Name, f.name, ref.Raw, ref.Component, n.Name)
 				}
 			}
 		}
@@ -361,8 +361,8 @@ func validateOutputRefs(components []ComponentInput, expanded map[uuid.UUID][]uu
 }
 
 // transitiveDeps returns the transitive depends_on closure of one node (every
-// ancestor id) over the expanded component-level adjacency. The graph is
-// already cycle-checked, but the seen set makes the walk safe regardless.
+// ancestor id) over the expanded component-level adjacency. Stage order can't
+// form a cycle, but the seen set makes the walk safe regardless.
 func transitiveDeps(expanded map[uuid.UUID][]uuid.UUID, id uuid.UUID) map[uuid.UUID]struct{} {
 	seen := make(map[uuid.UUID]struct{})
 	stack := append([]uuid.UUID(nil), expanded[id]...)

@@ -15,6 +15,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/membership"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
+	"github.com/spacefleet/spacefleet/lib/testsupport"
 	"github.com/spacefleet/spacefleet/lib/workflows"
 )
 
@@ -49,12 +50,12 @@ func TestGetComponentState(t *testing.T) {
 		t.Fatalf("create app: %v", err)
 	}
 	infra, err := h.client.Component.Create().
-		SetOrganizationID(orgID).SetApplicationID(app.ID).SetName("infra").SetType("terraform").Save(ctx)
+		SetOrganizationID(orgID).SetApplicationID(app.ID).SetStageID(testsupport.Stage(t, h.client, orgID, app.ID)).SetName("infra").SetType("terraform").Save(ctx)
 	if err != nil {
 		t.Fatalf("create component: %v", err)
 	}
 	never, err := h.client.Component.Create().
-		SetOrganizationID(orgID).SetApplicationID(app.ID).SetName("never").SetType("terraform").Save(ctx)
+		SetOrganizationID(orgID).SetApplicationID(app.ID).SetStageID(testsupport.Stage(t, h.client, orgID, app.ID)).SetName("never").SetType("terraform").Save(ctx)
 	if err != nil {
 		t.Fatalf("create component: %v", err)
 	}
@@ -168,7 +169,7 @@ func TestGetComponentStateLock(t *testing.T) {
 		t.Fatalf("create app: %v", err)
 	}
 	infra, err := h.client.Component.Create().
-		SetOrganizationID(orgID).SetApplicationID(app.ID).SetName("infra").SetType("terraform").Save(ctx)
+		SetOrganizationID(orgID).SetApplicationID(app.ID).SetStageID(testsupport.Stage(t, h.client, orgID, app.ID)).SetName("infra").SetType("terraform").Save(ctx)
 	if err != nil {
 		t.Fatalf("create component: %v", err)
 	}
@@ -237,7 +238,7 @@ func TestGetComponentStateLock(t *testing.T) {
 	// lock: an editor gets a state view carrying only the lock (no recorded
 	// run, no resources); a viewer still gets the 404.
 	never, err := h.client.Component.Create().
-		SetOrganizationID(orgID).SetApplicationID(app.ID).SetName("never").SetType("terraform").Save(ctx)
+		SetOrganizationID(orgID).SetApplicationID(app.ID).SetStageID(testsupport.Stage(t, h.client, orgID, app.ID)).SetName("never").SetType("terraform").Save(ctx)
 	if err != nil {
 		t.Fatalf("create component: %v", err)
 	}
@@ -289,7 +290,7 @@ func TestGetComponentStateDrift(t *testing.T) {
 		t.Fatalf("create app: %v", err)
 	}
 	infra, err := h.client.Component.Create().
-		SetOrganizationID(orgID).SetApplicationID(app.ID).SetName("infra").SetType("terraform").Save(ctx)
+		SetOrganizationID(orgID).SetApplicationID(app.ID).SetStageID(testsupport.Stage(t, h.client, orgID, app.ID)).SetName("infra").SetType("terraform").Save(ctx)
 	if err != nil {
 		t.Fatalf("create component: %v", err)
 	}

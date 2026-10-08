@@ -12,8 +12,9 @@ Go binary that serves both the API and the embedded React SPA.
 
 What it does today:
 
-- **Workflows** of Helm, manifest, and OpenTofu components with a visual
-  builder, groups, dependencies, and `${{ }}` interpolation between steps.
+- **Workflows** of Helm, manifest, and OpenTofu components arranged in
+  stages, with `${{ }}` interpolation between steps and a stage-by-stage run
+  view.
 - **OpenTofu, first class** — plan review with per-resource diffs, gated
   applies, managed S3/GCS/Azure state backends, workspaces, `TF_VAR` inputs,
   a provider plugin cache, captured outputs and resource inventory, drift

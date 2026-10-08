@@ -17,7 +17,8 @@ import { githubAppEnabled } from "../lib/appConfig";
 import { DeleteApplicationDialog } from "../components/DeleteApplicationDialog";
 import { RunStatusBadge } from "../components/workflow/status";
 import { runActionLabel } from "../components/workflow/runAction";
-import { WorkflowOverview } from "../components/workflow/WorkflowOverview";
+import { WorkflowStagesOverview } from "../components/workflow/WorkflowStagesOverview";
+import { StageBar } from "../components/workflow/StageBar";
 import { VariablesEditor } from "../components/VariablesEditor";
 import { formatDuration } from "../lib/duration";
 
@@ -33,10 +34,11 @@ type PushTrigger = components["schemas"]["PushTrigger"];
 const TERMINAL: RunStatus[] = ["succeeded", "failed", "partial"];
 
 // ApplicationDetail is the per-app overview (route /applications/:appId). An
-// application owns a deploy workflow (a DAG of components); this page shows an
-// at-a-glance view of that workflow with the run controls (deploy / preview /
-// uninstall), the app's targeting, and the most recent run's status. The
-// workflow editor page is only for building/changing the DAG itself.
+// application owns a deploy workflow (stages of components); this page shows an
+// at-a-glance view of that workflow — colored by the latest run — with the run
+// controls (deploy / preview / uninstall), the app's runner, and the most
+// recent run's status. The workflow builder page is only for building/changing
+// the workflow itself.
 export function ApplicationDetail() {
   const { appId = "" } = useParams();
   const { currentOrg, currentRole } = useOrg();
@@ -155,7 +157,8 @@ export function ApplicationDetail() {
   );
 
   // Start a run against the saved workflow and jump to its live view. Runs are
-  // started from here (not the workflow editor) — the editor only builds the DAG.
+  // started from here (not the workflow builder) — the builder only edits the
+  // workflow.
   const startRun = useCallback(
     async (action: RunAction) => {
       setRunning(true);
@@ -237,9 +240,9 @@ export function ApplicationDetail() {
             </div>
           </div>
 
-          {/* Workflow: an at-a-glance view of the deploy DAG plus the run
-              controls. Building/changing the DAG happens on the dedicated
-              workflow editor page; runs are started from here. */}
+          {/* Workflow: an at-a-glance view of the stages plus the run
+              controls. Building/changing the workflow happens on the dedicated
+              builder page; runs are started from here. */}
           <div className="mt-6 border border-neutral-200 bg-white">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 px-4 py-2">
               <div className="flex items-center gap-2">
@@ -269,7 +272,12 @@ export function ApplicationDetail() {
                 </button>
               </div>
             </div>
-            <WorkflowOverview appId={appId} />
+            <WorkflowStagesOverview
+              appId={appId}
+              clusterName={(id) => clusters[id]}
+              latestStages={displayRun?.stages}
+              onOpen={() => navigate(`/applications/${appId}/workflow`)}
+            />
             {canEdit && (
               <div className="flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 px-4 py-3">
                 {runError && (
@@ -421,6 +429,7 @@ export function ApplicationDetail() {
                     {runActionLabel(displayRun.action, displayRun.scope)}
                   </span>
                   <RunStatusBadge status={displayRun.status} />
+                  <StageBar stages={displayRun.stages} />
                 </span>
                 <span className="text-neutral-500">
                   {new Date(displayRun.created_at).toLocaleString()} ·{" "}

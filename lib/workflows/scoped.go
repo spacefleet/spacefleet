@@ -10,6 +10,7 @@ import (
 
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/ent/component"
+	"github.com/spacefleet/spacefleet/ent/workflowstage"
 	"github.com/spacefleet/spacefleet/lib/tofu"
 )
 
@@ -66,6 +67,7 @@ func (s *Service) BeginComponentRun(ctx context.Context, orgID, appID, component
 	}
 	comp, err := s.ent.Component.Query().
 		Where(component.OrganizationID(orgID), component.ApplicationID(appID), component.ID(componentID)).
+		WithStage(func(q *ent.WorkflowStageQuery) { q.Where(workflowstage.OrganizationID(orgID)) }).
 		Only(ctx)
 	if err != nil {
 		return nil, err
@@ -110,11 +112,9 @@ func scopedSnapshot(c *ent.Component, action string, targets []string) GraphSnap
 		id := c.GithubInstallationID
 		n.GitHubInstallationID = &id
 	}
-	if c.GroupID != uuid.Nil {
-		id := c.GroupID
-		n.GroupID = &id
-	}
-	return GraphSnapshot{Nodes: expandExecutionNodes([]GraphNode{n}, action)}
+	stageID, stages := snapshotStageOf(c)
+	n.StageID = stageID
+	return GraphSnapshot{Stages: stages, Nodes: expandExecutionNodes([]GraphNode{n}, action)}
 }
 
 // withTargets returns a copy of a terraform config map whose plan_flags

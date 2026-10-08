@@ -10,22 +10,24 @@ import (
 	"github.com/google/uuid"
 )
 
-// Component is one node of an application's deploy workflow — a typed step in the
-// DAG the application owns. The first types are a Helm release ("helm") and a
+// Component is one step of an application's deploy workflow — a typed job that
+// runs within one of the application's stages. The first types are a Helm release ("helm") and a
 // manifest apply ("manifest"); the enum lets the set grow (Terraform, …) without
 // a migration churn. Type-specific, non-secret parameters live in config, a flat
 // string map validated per type in the service (helm: chart_source/repo_url/
 // chart/version/git_ref/git_path/values/values_sources/release_name; manifest:
 // repo_url/git_ref/path), mirroring how Application stored its chart config.
 //
-// depends_on lists the sibling components this one waits on; concurrency is "no
-// unmet deps". continue_on_failure decides whether a failed node skips its
-// dependents (false) or not (true → the run goes "partial"). target_cluster_id /
+// stage_id is the stage the component runs in and ordinal its display order
+// within that stage; the components of a stage run in parallel and stages run in
+// order (see WorkflowStage). continue_on_failure decides whether a failed
+// component skips the later stages (false) or not (true → the run goes
+// "partial"). target_cluster_id /
 // target_namespace are the component's own deploy target — required for the
 // cluster-deploying types (helm needs both, manifest needs the cluster) and
 // unset for terraform, which has no cluster target; the service validates this
 // per type. chart_credential_id / github_installation_id are optional
-// private-pull credentials. position is the canvas {x,y} for the builder UI.
+// private-pull credentials.
 //
 // Like every resource it carries organization_id so every service query is
 // org-scoped (the tenancy boundary), not via the application join alone.
@@ -85,11 +87,15 @@ func (Component) Fields() []ent.Field {
 		// shape can vary per type without a migration, exactly as Application stored
 		// its chart config. Validated per type in the service.
 		field.JSON("config", map[string]string{}).Optional(),
-		// Ids of sibling components this node waits on. The graph is a DAG; the
-		// service validates it acyclic at write time.
-		field.JSON("depends_on", []uuid.UUID{}).Optional(),
-		// When true, a failure of this node does not skip its dependents or fail the
-		// run (the run settles "partial" instead).
+		// The stage this component runs in. Bound to the stage edge below; ON
+		// DELETE CASCADE in the migration.
+		field.UUID("stage_id", uuid.UUID{}),
+		// Display order within the stage, 0-based. Rewritten on every workflow
+		// replace. Order carries no run semantics — a stage's components run in
+		// parallel.
+		field.Int("ordinal").Default(0),
+		// When true, a failure of this component does not skip the later stages or
+		// fail the run (the run settles "partial" instead).
 		field.Bool("continue_on_failure").Default(false),
 		// When true, a run pauses at this node ("awaiting_approval") and waits for a
 		// human to approve before it executes. The general per-component approval-gate
@@ -114,14 +120,6 @@ func (Component) Fields() []ent.Field {
 		// mirroring Application. Bound to the github_installation edge below;
 		// RESTRICT in the migration.
 		field.UUID("github_installation_id", uuid.UUID{}).Optional(),
-		// Canvas coordinates {x, y} for the workflow builder UI.
-		field.JSON("position", map[string]float64{}).Optional(),
-		// Optional membership in an explicit group container. When set, this
-		// component is a parallel member of the group; the service desugars the
-		// group's depends_on onto the member and expands group references at
-		// validate/snapshot time. Bound to the group edge below; ON DELETE SET NULL
-		// in the migration (deleting a group ungroups its members).
-		field.UUID("group_id", uuid.UUID{}).Optional(),
 		field.Time("created_at").Default(time.Now).Immutable(),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}
@@ -155,12 +153,12 @@ func (Component) Edges() []ent.Edge {
 		edge.To("github_installation", GitHubInstallation.Type).
 			Field("github_installation_id").
 			Unique(),
-		// Optional membership in an explicit group container. ON DELETE SET NULL in
-		// the migration: deleting a group ungroups its members rather than deleting
-		// them (the migration, not this edge, is the source of truth for that).
-		edge.To("group", ComponentGroup.Type).
-			Field("group_id").
-			Unique(),
+		// The stage this component runs in. ON DELETE CASCADE in the migration: a
+		// component disappears with its stage.
+		edge.To("stage", WorkflowStage.Type).
+			Field("stage_id").
+			Unique().
+			Required(),
 	}
 }
 
@@ -169,5 +167,7 @@ func (Component) Indexes() []ent.Index {
 		index.Fields("organization_id"),
 		// Listing an application's components.
 		index.Fields("application_id"),
+		// Listing a stage's components.
+		index.Fields("stage_id"),
 	}
 }

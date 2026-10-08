@@ -54,6 +54,10 @@ const runs = [
     status: "succeeded",
     created_at: "2026-06-03T10:00:00Z",
     finished_at: "2026-06-03T10:02:00Z",
+    stages: [
+      { name: "Infrastructure", status: "succeeded", components: [] },
+      { name: "Apps", status: "succeeded", components: [] },
+    ],
   },
   {
     id: "run-1",
@@ -122,6 +126,22 @@ describe("RunsIndex", () => {
     expect(within(body).getByText("billing")).toBeInTheDocument();
     // billing's runner resolves to its name (the deploy target is per-component).
     expect(within(body).getByText("staging")).toBeInTheDocument();
+  });
+
+  it("shows each run's stages as a bar, one segment per stage", async () => {
+    routeGet();
+    renderIndex();
+
+    const body = await findTableBody();
+    const row = within(body).getByText("checkout").closest("tr") as HTMLElement;
+    const bar = within(row).getByRole("img", {
+      name: "Stages — Infrastructure: succeeded, Apps: succeeded",
+    });
+    expect(bar.children).toHaveLength(2);
+    expect(bar.children[0]).toHaveAttribute("title", "Infrastructure: succeeded");
+    // A run without a stage summary just shows no bar.
+    const billing = within(body).getByText("billing").closest("tr") as HTMLElement;
+    expect(within(billing).queryByRole("img")).not.toBeInTheDocument();
   });
 
   it("filters by application", async () => {

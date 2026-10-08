@@ -66,17 +66,23 @@ func workerJob(a WorkflowRunArgs, attempt, maxAttempts int) *river.Job[WorkflowR
 	}
 }
 
-// addManifestComponent creates a manifest workflow node directly (bypassing
-// write-time validation — the fake executor never runs the script).
-func addManifestComponent(t *testing.T, client *ent.Client, orgID, appID uuid.UUID, name string, dependsOn ...uuid.UUID) *ent.Component {
+// addManifestComponent creates a manifest workflow component directly
+// (bypassing write-time validation — the fake executor never runs the script)
+// in the application's first stage, or — laterStage — in a new stage after the
+// existing ones, so it runs after everything added before it.
+func addManifestComponent(t *testing.T, client *ent.Client, orgID, appID uuid.UUID, name string, laterStage bool) *ent.Component {
 	t.Helper()
+	stage := testsupport.Stage(t, client, orgID, appID)
+	if laterStage {
+		stage = testsupport.NewStage(t, client, orgID, appID, "")
+	}
 	c, err := client.Component.Create().
 		SetOrganizationID(orgID).
 		SetApplicationID(appID).
+		SetStageID(stage).
 		SetName(name).
 		SetType("manifest").
 		SetConfig(map[string]string{"repo_url": "https://github.com/acme/manifests.git", "path": "k8s/"}).
-		SetDependsOn(dependsOn).
 		Save(context.Background())
 	if err != nil {
 		t.Fatalf("create component %q: %v", name, err)
@@ -144,6 +150,7 @@ func addTerraformComponent(t *testing.T, client *ent.Client, orgID, appID uuid.U
 	c, err := client.Component.Create().
 		SetOrganizationID(orgID).
 		SetApplicationID(appID).
+		SetStageID(testsupport.Stage(t, client, orgID, appID)).
 		SetName(name).
 		SetType("terraform").
 		SetConfig(map[string]string{"repo_url": "https://github.com/acme/infra", "path": "envs/prod", "backend": "s3"}).
@@ -400,7 +407,7 @@ func TestWorkRetryableFailureLeavesRunInFlight(t *testing.T) {
 
 	org := newOrg(t, client, "Acme")
 	app := newApp(t, client, org.ID, "web")
-	comp := addManifestComponent(t, client, org.ID, app.ID, "site")
+	comp := addManifestComponent(t, client, org.ID, app.ID, "site", false)
 	run, args := beginRun(t, svc, org.ID, app.ID)
 
 	// Attempt 1 of 3: submit succeeds (the TaskRun is now live on the cluster),
@@ -460,8 +467,8 @@ func TestWorkRetryableFailureDefersDependentSkips(t *testing.T) {
 
 	org := newOrg(t, client, "Acme")
 	app := newApp(t, client, org.ID, "web")
-	a := addManifestComponent(t, client, org.ID, app.ID, "base")
-	b := addManifestComponent(t, client, org.ID, app.ID, "overlay", a.ID)
+	a := addManifestComponent(t, client, org.ID, app.ID, "base", false)
+	b := addManifestComponent(t, client, org.ID, app.ID, "overlay", true)
 	run, args := beginRun(t, svc, org.ID, app.ID)
 
 	// Attempt 1 of 3: even the submit fails — nothing reached the cluster.
@@ -505,8 +512,8 @@ func TestWorkRetryableFailureFinalAttemptSettles(t *testing.T) {
 
 	org := newOrg(t, client, "Acme")
 	app := newApp(t, client, org.ID, "web")
-	a := addManifestComponent(t, client, org.ID, app.ID, "base")
-	b := addManifestComponent(t, client, org.ID, app.ID, "overlay", a.ID)
+	a := addManifestComponent(t, client, org.ID, app.ID, "base", false)
+	b := addManifestComponent(t, client, org.ID, app.ID, "overlay", true)
 	run, args := beginRun(t, svc, org.ID, app.ID)
 
 	funcs := succeedingFuncs()
@@ -544,7 +551,7 @@ func TestWorkDeterministicFailureSettlesWithoutRetry(t *testing.T) {
 
 	org := newOrg(t, client, "Acme")
 	app := newApp(t, client, org.ID, "web")
-	comp := addManifestComponent(t, client, org.ID, app.ID, "site")
+	comp := addManifestComponent(t, client, org.ID, app.ID, "site", false)
 	run, args := beginRun(t, svc, org.ID, app.ID)
 
 	funcs := succeedingFuncs()

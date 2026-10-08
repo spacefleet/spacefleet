@@ -8,7 +8,7 @@ you can start managing the workload through a deploy workflow.
 
 Adopting a release **does not redeploy it**. The release keeps running exactly
 as it is; Spacefleet just starts tracking it as an application. You then build
-the application's **deploy workflow** on the canvas — and from then on you
+the application's **deploy workflow** in the builder — and from then on you
 deploy, preview, and uninstall it the same way as any other application. (See
 [Deploying with workflows](deploy-workflows.md).)
 
@@ -44,7 +44,7 @@ stored another way (for example with a ConfigMap or SQL backend) won't appear.
 
 The application is created as an **imported** application — nothing is deployed,
 the live release keeps running untouched — and Spacefleet takes you to the
-**workflow canvas** to build its deploy steps.
+**workflow builder** to build its deploy steps.
 
 ## Build its workflow
 

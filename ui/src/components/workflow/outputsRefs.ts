@@ -1,71 +1,33 @@
 // Helpers for ${{ components.<name>.outputs.<key> }} references in the
-// workflow editor: which OpenTofu components a node may reference (its
-// transitive upstream dependencies — the same ancestry rule the server
-// enforces on save), and which components reference a given name (so a rename
-// can warn before it breaks them). Pure functions over a minimal structural
-// slice of the canvas state, unit-tested without React Flow.
+// workflow editor: which OpenTofu components a component may reference (those
+// in an earlier stage — the same rule the server enforces on save), and which
+// components reference a given name (so a rename can warn before it breaks
+// them). Pure functions over a minimal structural slice of the draft, unit
+// tested without React.
 
-// The slice of a canvas node these helpers read. `kind` is the React Flow node
-// type ("component" | "group"); `parentId` is group membership; `data` carries
-// the component's display name and component type.
-export interface RefGraphNode {
-  id: string;
-  type?: string;
-  parentId?: string;
-  data: { name?: string; type?: string };
+// The slice of a draft stage these helpers read: its components, in order.
+export interface RefStage {
+  components: { id: string; name: string; type: string }[];
 }
 
-// One dependency edge: target depends on source (source may be a group).
-export interface RefGraphEdge {
-  source: string;
-  target: string;
-}
-
-// upstreamTofuNames lists the names of the OpenTofu (terraform) components
-// that are transitive depends_on ancestors of nodeId, with group containers
-// desugared the way the server expands them: depending on a group means
-// depending on every member, and a group's dependencies apply to each member.
-// These are exactly the components whose outputs the node may reference.
+// upstreamTofuNames lists the names of the OpenTofu (terraform) components in
+// stages before the one holding componentId — exactly the components whose
+// outputs it may reference, since an earlier stage always finishes first. A
+// component in the same stage runs in parallel, so it never qualifies. Sorted;
+// empty when componentId isn't in any stage.
 export function upstreamTofuNames(
-  nodeId: string,
-  nodes: RefGraphNode[],
-  edges: RefGraphEdge[],
+  componentId: string,
+  stages: RefStage[],
 ): string[] {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const groupIds = new Set(nodes.filter((n) => n.type === "group").map((n) => n.id));
-  const members = new Map<string, string[]>();
-  for (const n of nodes) {
-    if (n.type !== "group" && n.parentId && groupIds.has(n.parentId)) {
-      members.set(n.parentId, [...(members.get(n.parentId) ?? []), n.id]);
-    }
-  }
-  // Inbound edge sources per target (component or group).
-  const sourcesOf = new Map<string, string[]>();
-  for (const e of edges) {
-    sourcesOf.set(e.target, [...(sourcesOf.get(e.target) ?? []), e.source]);
-  }
-  // deps resolves one node's direct dependencies to component ids: its own
-  // inbound edges plus its group's, with group sources expanded to members.
-  function deps(id: string): string[] {
-    const refs = [...(sourcesOf.get(id) ?? [])];
-    const parent = byId.get(id)?.parentId;
-    if (parent && groupIds.has(parent)) refs.push(...(sourcesOf.get(parent) ?? []));
-    return refs.flatMap((ref) => (groupIds.has(ref) ? (members.get(ref) ?? []) : [ref]));
-  }
-
-  const seen = new Set<string>();
-  const stack = deps(nodeId);
-  while (stack.length > 0) {
-    const id = stack.pop()!;
-    if (id === nodeId || seen.has(id)) continue;
-    seen.add(id);
-    stack.push(...deps(id));
-  }
-
+  const at = stages.findIndex((st) =>
+    st.components.some((c) => c.id === componentId),
+  );
+  if (at < 0) return [];
   const names = new Set<string>();
-  for (const id of seen) {
-    const n = byId.get(id);
-    if (n && n.data.type === "terraform" && n.data.name) names.add(n.data.name);
+  for (const st of stages.slice(0, at)) {
+    for (const c of st.components) {
+      if (c.type === "terraform" && c.name) names.add(c.name);
+    }
   }
   return [...names].sort();
 }

@@ -25,9 +25,8 @@ type CloudCredential = components["schemas"]["CloudCredential"];
 type GitHubInstallation = components["schemas"]["GitHubInstallation"];
 type GitHubRepository = components["schemas"]["GitHubRepository"];
 
-// EditableComponent is the canvas's working copy of one node — the fields the
-// editor edits. position/depends_on/group_id live on the React Flow node + edges,
-// not here, so the builder assembles them at save time.
+// EditableComponent is the builder's working copy of one component — the
+// fields the editor edits. The stage it runs in is the draft stage holding it.
 export interface EditableComponent {
   id: string;
   name: string;

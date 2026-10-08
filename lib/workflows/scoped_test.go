@@ -21,12 +21,12 @@ func TestScopedSnapshot(t *testing.T) {
 		Config:               map[string]string{"repo_url": "r", "path": "p", terraformConfigBackend: "s3", terraformConfigPlanFlags: `["-var=env=prod"]`},
 		RequiresApproval:     false,
 		ContinueOnFailure:    true,
-		DependsOn:            []uuid.UUID{uuid.New()},
 		GithubInstallationID: inst,
+		Edges:                ent.ComponentEdges{Stage: &ent.WorkflowStage{ID: uuid.New(), Name: "infra"}},
 	}
 
 	snap := scopedSnapshot(c, ActionUninstall, []string{"aws_instance.web", `module.vpc["a"].aws_subnet.b[0]`})
-	if len(snap.Nodes) != 2 || len(snap.Groups) != 0 {
+	if len(snap.Nodes) != 2 || len(snap.Stages) != 1 {
 		t.Fatalf("snapshot = %+v, want plan + apply units", snap)
 	}
 	plan, apply := snap.Nodes[0], snap.Nodes[1]
@@ -45,6 +45,9 @@ func TestScopedSnapshot(t *testing.T) {
 	}
 	if len(plan.DependsOn) != 0 || len(apply.DependsOn) != 1 || apply.DependsOn[0] != c.ID {
 		t.Errorf("deps: plan=%v apply=%v", plan.DependsOn, apply.DependsOn)
+	}
+	if plan.StageID == nil || apply.StageID == nil || *plan.StageID != c.Edges.Stage.ID || *apply.StageID != c.Edges.Stage.ID || snap.Stages[0].Name != "infra" {
+		t.Errorf("stage not carried: plan=%v apply=%v stages=%+v", plan.StageID, apply.StageID, snap.Stages)
 	}
 	if plan.RequiresApproval || !apply.RequiresApproval {
 		t.Error("a destroy must gate its apply regardless of the component's flag")
