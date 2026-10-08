@@ -16,11 +16,29 @@ export function setAuthTokenProvider(
   tokenProvider = fn;
 }
 
+// ApiAuthBinder wires this up too. It's called with the rejected token when the
+// backend answers 401 to a request that carried one: the stored session is no
+// longer valid (e.g. Dex restarted and rotated its signing keys), so the binder
+// drops it and AuthGate routes to /login rather than leaving the app sending a
+// dead token until it expires.
+let unauthorizedHandler: ((token: string) => void) | null = null;
+
+export function setUnauthorizedHandler(fn: ((token: string) => void) | null) {
+  unauthorizedHandler = fn;
+}
+
 const authMiddleware: Middleware = {
   async onRequest({ request }) {
     if (!tokenProvider) return;
     const token = await tokenProvider();
     if (token) request.headers.set("Authorization", `Bearer ${token}`);
+  },
+  onResponse({ request, response }) {
+    if (response.status !== 401) return;
+    const auth = request.headers.get("Authorization");
+    if (auth?.startsWith("Bearer ")) {
+      unauthorizedHandler?.(auth.slice("Bearer ".length));
+    }
   },
 };
 

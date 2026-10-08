@@ -1,6 +1,6 @@
 import { Outlet } from "react-router";
 import { useAuth } from "react-oidc-context";
-import { setAuthTokenProvider } from "../api/client";
+import { setAuthTokenProvider, setUnauthorizedHandler } from "../api/client";
 
 // Installs the bearer-token provider that the API client (src/api/client.ts)
 // attaches to every request. It returns the current Dex-issued ID token, which
@@ -11,11 +11,19 @@ import { setAuthTokenProvider } from "../api/client";
 // a single token, so it always sends the freshest token (e.g. after a silent
 // renew) without needing to re-run.
 //
+// It also installs the 401 handler: when the backend rejects the token we're
+// holding, the stored session is dropped so AuthGate routes to /login. A 401
+// for a token we've since replaced (an in-flight request racing a fresh
+// sign-in) is ignored.
+//
 // It's set during render — not in useEffect — so it's in place before any
 // descendant's mount effects fire (child effects run before parent effects in
 // React, so effect-based wiring would race the first API call from a child).
 export function ApiAuthBinder() {
   const auth = useAuth();
   setAuthTokenProvider(async () => auth.user?.id_token ?? null);
+  setUnauthorizedHandler((token) => {
+    if (auth.user?.id_token === token) void auth.removeUser();
+  });
   return <Outlet />;
 }

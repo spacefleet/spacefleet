@@ -47,6 +47,10 @@ func RequireAuth(publicPaths []string, verify TokenVerifier) func(http.Handler) 
 			// token; a real OIDC verifier should reject it.
 			sess, err := verify(r.Context(), bearerToken(r))
 			if err != nil || sess == nil {
+				// The client only ever sees "invalid token"; log the reason
+				// (bad signature, expired, wrong issuer/audience) so it can
+				// be diagnosed server-side. The error never carries the token.
+				log.Printf("auth: %s %s rejected: %v", r.Method, r.URL.Path, err)
 				writeJSONError(w, http.StatusUnauthorized, "unauthorized", "invalid token")
 				return
 			}
