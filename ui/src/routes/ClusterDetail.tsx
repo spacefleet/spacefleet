@@ -15,6 +15,7 @@ import type { components } from "../api/schema";
 import { ClusterCapabilities } from "../components/ClusterCapabilities";
 import { TektonPanel } from "../components/TektonPanel";
 import { CONNECTION_METHODS } from "../components/connectionMethods";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type Cluster = components["schemas"]["Cluster"];
 
@@ -41,6 +42,7 @@ export function ClusterDetail() {
   const canEdit = currentRole !== "viewer";
 
   const [cluster, setCluster] = useState<Cluster | null>(null);
+  useDocumentTitle(cluster?.name, "Clusters");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);

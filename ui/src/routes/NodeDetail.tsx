@@ -10,6 +10,7 @@ import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import { nodeAge, nodeRolesLabel, type Cluster, type Node } from "../lib/nodes";
 import { useResourceStream } from "../lib/useResourceStream";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 // NodeDetail is the drill-down for a single node, reached by clicking a row on
 // the Nodes page (route /infrastructure/nodes/:clusterId/:nodeName). It streams
@@ -18,6 +19,7 @@ import { useResourceStream } from "../lib/useResourceStream";
 export function NodeDetail() {
   const { clusterId = "", nodeName = "" } = useParams();
   const decodedName = decodeURIComponent(nodeName);
+  useDocumentTitle(decodedName, "Nodes");
   const { currentOrg } = useOrg();
   const navigate = useNavigate();
   const [cluster, setCluster] = useState<Cluster | null>(null);

@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import { RunnerRequiredNotice } from "../components/RunnerRequiredNotice";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type CreateRequest = components["schemas"]["ApplicationCreateRequest"];
 type UpdateRequest = components["schemas"]["ApplicationUpdateRequest"];
@@ -80,6 +81,14 @@ export function ApplicationForm() {
     })();
   }, [editing, appId, currentOrg?.id]);
 
+  const title = editing
+    ? "Edit application"
+    : importing
+      ? "Import application"
+      : "Create application";
+
+  useDocumentTitle(title);
+
   if (!canEdit) return <Navigate to="/applications" replace />;
 
   const clusterName = (id: string) =>
@@ -135,12 +144,6 @@ export function ApplicationForm() {
     }
     navigate(`/applications/${data.id}/workflow`);
   }
-
-  const title = editing
-    ? "Edit application"
-    : importing
-      ? "Import application"
-      : "Create application";
 
   return (
     <div className="max-w-2xl">

@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import type { ImportSeed } from "./ApplicationForm";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type Cluster = components["schemas"]["Cluster"];
 type HelmRelease = components["schemas"]["HelmRelease"];
@@ -75,6 +76,8 @@ export function ImportApplication() {
     const seed: ImportSeed = { clusterId, release };
     navigate("/applications/new", { state: { importSeed: seed } });
   }
+
+  useDocumentTitle("Import existing release");
 
   if (!canEdit) return <Navigate to="/applications" replace />;
 

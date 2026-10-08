@@ -18,6 +18,7 @@ import type {
 import { VariablesEditor } from "../components/VariablesEditor";
 import { ComponentStatePanel } from "../components/workflow/ComponentStatePanel";
 import { stagedBackend } from "../components/variablesBackend";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type ComponentType = components["schemas"]["ComponentType"];
 
@@ -62,6 +63,7 @@ export function NodeEditor() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const {
+    appName,
     canEdit,
     loading,
     error,
@@ -89,6 +91,7 @@ export function NodeEditor() {
   const committed = getComponent(nodeId);
   const isNew = isProvisional(nodeId);
   const placed = stageOf(nodeId);
+  useDocumentTitle(committed?.name, "Workflow", appName);
 
   // Create flow: when the route carries ?new=<type> (and ?stage=<id>) and the
   // component isn't in the draft yet, seed it in that stage. This runs both on

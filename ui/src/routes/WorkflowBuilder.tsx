@@ -20,6 +20,7 @@ import {
 } from "../components/workflow/StageColumns";
 import { componentSummary } from "../components/workflow/stageView";
 import type { EditableComponent } from "../components/workflow/ComponentFields";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 // Where a dragged component would land: a stage and an index into that
 // stage's components as currently displayed (the dragged one included).
@@ -40,6 +41,7 @@ export function WorkflowBuilder() {
   const { appId = "" } = useParams();
   const navigate = useNavigate();
   const {
+    appName,
     canEdit,
     stages,
     clusters,
@@ -60,6 +62,7 @@ export function WorkflowBuilder() {
     discardNewNode,
     save,
   } = useWorkflowDraft();
+  useDocumentTitle("Workflow", appName);
 
   const clusterName = useCallback(
     (id: string) => clusters.find((c) => c.id === id)?.name,

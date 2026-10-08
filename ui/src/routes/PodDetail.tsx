@@ -12,6 +12,7 @@ import {
 } from "../lib/pods";
 import { useResourceStream } from "../lib/useResourceStream";
 import { PodLogsModal } from "../components/PodLogsModal";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 // PodDetail is the drill-down for a single pod, reached by clicking a row on the
 // Pods page (route /infrastructure/pods/:clusterId/:namespace/:podName). It
@@ -25,6 +26,7 @@ export function PodDetail() {
   } = useParams();
   const decodedNs = decodeURIComponent(namespace);
   const decodedName = decodeURIComponent(podName);
+  useDocumentTitle(decodedName, "Pods");
   const { currentOrg } = useOrg();
   const navigate = useNavigate();
   const [cluster, setCluster] = useState<Cluster | null>(null);

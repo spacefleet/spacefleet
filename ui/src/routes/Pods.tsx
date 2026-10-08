@@ -14,6 +14,7 @@ import {
 import { useClusterPodStreams } from "../lib/useClusterPodStreams";
 import { PodLogsModal } from "../components/PodLogsModal";
 import type { StreamStatus } from "../lib/resourceStream";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 // Pods is the Infrastructure › Pods page. It lists the Kubernetes pods of the
 // organization's registered clusters and updates live, with two coordinated
@@ -25,6 +26,7 @@ import type { StreamStatus } from "../lib/resourceStream";
 // that becomes irrelevant resets to "all".
 export function Pods() {
   const { currentOrg } = useOrg();
+  useDocumentTitle("Pods");
   const navigate = useNavigate();
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [clustersLoading, setClustersLoading] = useState(true);

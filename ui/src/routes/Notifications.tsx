@@ -3,6 +3,7 @@ import { Bell, KeyRound, Plus, Send, Trash2, X } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type Channel = components["schemas"]["NotificationChannel"];
 type Kind = components["schemas"]["NotificationChannelKind"];
@@ -32,6 +33,7 @@ const EVENT_LABEL: Record<EventKind, string> = Object.fromEntries(
 // Admins manage channels; other members can see them.
 export function Notifications() {
   const { currentOrg, currentRole } = useOrg();
+  useDocumentTitle("Notifications");
   const isAdmin = currentRole === "admin";
   const [channels, setChannels] = useState<Channel[]>([]);
   const [apps, setApps] = useState<Application[]>([]);

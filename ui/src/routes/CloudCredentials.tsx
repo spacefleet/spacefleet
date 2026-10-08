@@ -3,6 +3,7 @@ import { KeyRound, Plus, Trash2, X } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type CloudCredential = components["schemas"]["CloudCredential"];
 type CloudProvider = components["schemas"]["CloudProvider"];
@@ -25,6 +26,7 @@ const PROVIDER_LABELS: Record<CloudProvider, string> = {
 // api/client.ts).
 export function CloudCredentials() {
   const { currentOrg, currentRole } = useOrg();
+  useDocumentTitle("Cloud Credentials");
   const canEdit = currentRole !== "viewer";
   const [creds, setCreds] = useState<CloudCredential[]>([]);
   const [loading, setLoading] = useState(true);

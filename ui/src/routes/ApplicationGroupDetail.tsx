@@ -14,6 +14,7 @@ import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import { VariablesEditor } from "../components/VariablesEditor";
 import type { components } from "../api/schema";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type Application = components["schemas"]["Application"];
 type ApplicationGroup = components["schemas"]["ApplicationGroup"];
@@ -30,6 +31,7 @@ export function ApplicationGroupDetail() {
   const canEdit = currentRole !== "viewer";
 
   const [group, setGroup] = useState<ApplicationGroup | null>(null);
+  useDocumentTitle(group?.name, "Applications");
   const [groups, setGroups] = useState<ApplicationGroup[]>([]);
   const [apps, setApps] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);

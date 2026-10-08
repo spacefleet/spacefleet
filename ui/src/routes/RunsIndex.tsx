@@ -9,6 +9,7 @@ import { StageBar } from "../components/workflow/StageBar";
 import { runActionLabel } from "../components/workflow/runAction";
 import type { StreamStatus } from "../lib/resourceStream";
 import { useObjectStream } from "../lib/useObjectStream";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type WorkflowRun = components["schemas"]["WorkflowRun"];
 type RunList = components["schemas"]["RunList"];
@@ -29,6 +30,7 @@ const ALL = "__all__";
 // table no longer shows a single target cluster.
 export function RunsIndex() {
   const { currentOrg } = useOrg();
+  useDocumentTitle("Workflow Runs");
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();

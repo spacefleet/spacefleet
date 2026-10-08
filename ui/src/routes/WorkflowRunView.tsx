@@ -15,6 +15,8 @@ import { ArrowLeft, Ban, Check, Maximize2, Minimize2, X } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import { useObjectStream } from "../lib/useObjectStream";
+import { useApplicationName } from "../lib/useApplicationName";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { usePodLogs } from "../lib/usePodLogs";
 import type { components } from "../api/schema";
 import { formatDuration } from "../lib/duration";
@@ -145,6 +147,16 @@ export function WorkflowRunView() {
   useEffect(() => {
     if (streamed) setRun(streamed);
   }, [streamed]);
+
+  // The window title leads with the run's action and live status, so a run
+  // left in a background tab shows its progress.
+  const appName = useApplicationName(appId);
+  const actionLabel = run ? runActionLabel(run.action, run.scope) : "";
+  useDocumentTitle(
+    run &&
+      `${actionLabel.charAt(0).toUpperCase()}${actionLabel.slice(1)} (${run.status.replace(/_/g, " ")})`,
+    appName,
+  );
 
   // Cancel an in-flight run: marks it failed server-side. The stream then folds
   // the terminal state in (or the reaper would have, eventually) — here we also

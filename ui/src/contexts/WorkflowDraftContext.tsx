@@ -11,6 +11,7 @@ import {
 import { useNavigate, useParams } from "react-router";
 import { api } from "../api/client";
 import { useOrg } from "./OrgContext";
+import { useApplicationName } from "../lib/useApplicationName";
 import type { components } from "../api/schema";
 import { githubAppEnabled } from "../lib/appConfig";
 import { TOFU_SEED_VERSION } from "../lib/tofuVersions";
@@ -136,6 +137,9 @@ function newStage(stages: DraftStage[]): DraftStage {
 
 interface WorkflowDraftValue {
   appId: string;
+  // The application's display name (for the window title); undefined until
+  // loaded.
+  appName: string | undefined;
   canEdit: boolean;
   githubEnabled: boolean;
 
@@ -229,6 +233,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const canEdit = currentRole !== "viewer";
   const githubEnabled = githubAppEnabled();
+  const appName = useApplicationName(appId);
 
   const [stages, setStages] = useState<DraftStage[]>([]);
 
@@ -663,6 +668,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   const value = useMemo<WorkflowDraftValue>(
     () => ({
       appId,
+      appName,
       canEdit,
       githubEnabled,
       stages,
@@ -698,6 +704,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     }),
     [
       appId,
+      appName,
       canEdit,
       githubEnabled,
       stages,

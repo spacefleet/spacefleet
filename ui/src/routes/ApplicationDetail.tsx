@@ -21,6 +21,7 @@ import { WorkflowStagesOverview } from "../components/workflow/WorkflowStagesOve
 import { StageBar } from "../components/workflow/StageBar";
 import { VariablesEditor } from "../components/VariablesEditor";
 import { formatDuration } from "../lib/duration";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type Application = components["schemas"]["Application"];
 type WorkflowRun = components["schemas"]["WorkflowRun"];
@@ -46,6 +47,7 @@ export function ApplicationDetail() {
   const canEdit = currentRole !== "viewer";
 
   const [app, setApp] = useState<Application | null>(null);
+  useDocumentTitle(app?.name, "Applications");
   const [latestRun, setLatestRun] = useState<WorkflowRun | null>(null);
   const [clusters, setClusters] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);

@@ -3,6 +3,7 @@ import { KeyRound, Plus, Trash2, X } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type ChartCredential = components["schemas"]["ChartCredential"];
 type CreateRequest = components["schemas"]["ChartCredentialCreateRequest"];
@@ -17,6 +18,7 @@ type CreateRequest = components["schemas"]["ChartCredentialCreateRequest"];
 // api/client.ts).
 export function PrivateCharts() {
   const { currentOrg, currentRole } = useOrg();
+  useDocumentTitle("Private Charts");
   const canEdit = currentRole !== "viewer";
   const [creds, setCreds] = useState<ChartCredential[]>([]);
   const [loading, setLoading] = useState(true);

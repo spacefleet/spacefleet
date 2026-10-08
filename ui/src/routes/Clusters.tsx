@@ -14,6 +14,7 @@ import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import { RegisterClusterDialog } from "../components/RegisterClusterDialog";
 import { CONNECTION_METHODS } from "../components/connectionMethods";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type Cluster = components["schemas"]["Cluster"];
 
@@ -27,6 +28,7 @@ type Cluster = components["schemas"]["Cluster"];
 // by the API client (see api/client.ts).
 export function Clusters() {
   const { currentOrg, currentRole } = useOrg();
+  useDocumentTitle("Clusters");
   // Viewers can see clusters and their live status but take no action.
   const canEdit = currentRole !== "viewer";
   const navigate = useNavigate();

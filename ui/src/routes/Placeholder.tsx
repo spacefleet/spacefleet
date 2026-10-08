@@ -1,5 +1,6 @@
 import { useLocation } from "react-router";
 import { navLeaves } from "../nav";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 // Placeholder is the stand-in page rendered for every scaffolded nav leaf that
 // doesn't yet have a real implementation. It reads the nav config to show the
@@ -11,6 +12,7 @@ export function Placeholder() {
   const match = navLeaves.find(({ leaf }) => leaf.path === pathname);
   const sectionLabel = match?.section.label ?? "";
   const title = match?.leaf.label ?? "Page";
+  useDocumentTitle(title);
 
   return (
     <div>

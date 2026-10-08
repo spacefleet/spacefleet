@@ -3,6 +3,7 @@ import { Plus, ShieldCheck, Trash2, X } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type Policy = components["schemas"]["Policy"];
 type Enforcement = components["schemas"]["PolicyEnforcement"];
@@ -25,6 +26,7 @@ deny contains msg if {
 // manage them; other members can read them.
 export function Policies() {
   const { currentOrg, currentRole } = useOrg();
+  useDocumentTitle("Policies");
   const isAdmin = currentRole === "admin";
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [apps, setApps] = useState<Application[]>([]);

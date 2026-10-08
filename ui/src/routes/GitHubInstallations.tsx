@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import { githubAppEnabled } from "../lib/appConfig";
 import type { components } from "../api/schema";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type GitHubInstallation = components["schemas"]["GitHubInstallation"];
 
@@ -16,6 +17,7 @@ type GitHubInstallation = components["schemas"]["GitHubInstallation"];
 // header is attached automatically (see api/client.ts).
 export function GitHubInstallations() {
   const { currentOrg, currentRole } = useOrg();
+  useDocumentTitle("GitHub");
   const canEdit = currentRole !== "viewer";
   const appEnabled = githubAppEnabled();
   const [installations, setInstallations] = useState<GitHubInstallation[]>([]);

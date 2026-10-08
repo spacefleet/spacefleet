@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import { RunnerRequiredNotice } from "../components/RunnerRequiredNotice";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type Application = components["schemas"]["Application"];
 type ApplicationGroup = components["schemas"]["ApplicationGroup"];
@@ -20,6 +21,7 @@ type Cluster = components["schemas"]["Cluster"];
 // automatically (api/client.ts).
 export function Applications() {
   const { currentOrg, currentRole } = useOrg();
+  useDocumentTitle("Applications");
   const canEdit = currentRole !== "viewer";
   const navigate = useNavigate();
   const [apps, setApps] = useState<Application[]>([]);

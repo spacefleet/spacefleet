@@ -2,6 +2,7 @@ import { Navigate } from "react-router";
 import { useAuth } from "react-oidc-context";
 import icon from "@/assets/spacefleet-icon.svg";
 import { loginMethods } from "../lib/appConfig";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 // Login is the explicit sign-in screen. Unauthenticated users land here (sent by
 // AuthGate) instead of being bounced straight into Dex, and sign-out returns
@@ -15,6 +16,7 @@ import { loginMethods } from "../lib/appConfig";
 export function Login() {
   const auth = useAuth();
   const methods = loginMethods();
+  useDocumentTitle("Sign in");
 
   // Already signed in (e.g. navigated to /login by hand): go home.
   if (auth.isAuthenticated) {

@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import { emailEnabled } from "../lib/appConfig";
 import type { components } from "../api/schema";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type Member = components["schemas"]["Member"];
 type Invitation = components["schemas"]["Invitation"];
@@ -21,6 +22,7 @@ const ROLES: { value: Role; label: string; hint: string }[] = [
 // for when email isn't configured.
 export function Members() {
   const { currentOrg, currentRole } = useOrg();
+  useDocumentTitle("Members");
 
   const [members, setMembers] = useState<Member[]>([]);
   const [invites, setInvites] = useState<Invitation[]>([]);

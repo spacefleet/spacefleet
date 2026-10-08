@@ -6,6 +6,7 @@ import { useOrg } from "../contexts/OrgContext";
 import { namespacePhase, type Namespace } from "../lib/namespaces";
 import { nodeAge, type Cluster } from "../lib/nodes";
 import { useResourceStream } from "../lib/useResourceStream";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 // NamespaceDetail is the drill-down for a single namespace, reached by clicking
 // a row on the Namespaces page (route
@@ -15,6 +16,7 @@ import { useResourceStream } from "../lib/useResourceStream";
 export function NamespaceDetail() {
   const { clusterId = "", namespaceName = "" } = useParams();
   const decodedName = decodeURIComponent(namespaceName);
+  useDocumentTitle(decodedName, "Namespaces");
   const { currentOrg } = useOrg();
   const navigate = useNavigate();
   const [cluster, setCluster] = useState<Cluster | null>(null);

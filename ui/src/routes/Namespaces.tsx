@@ -7,6 +7,7 @@ import { namespacePhase } from "../lib/namespaces";
 import { nodeAge, type Cluster } from "../lib/nodes";
 import { useClusterNamespaceStreams } from "../lib/useClusterNamespaceStreams";
 import type { StreamStatus } from "../lib/resourceStream";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 const ALL = "all";
 
@@ -18,6 +19,7 @@ const ALL = "all";
 // detailed view.
 export function Namespaces() {
   const { currentOrg } = useOrg();
+  useDocumentTitle("Namespaces");
   const navigate = useNavigate();
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [clustersLoading, setClustersLoading] = useState(true);

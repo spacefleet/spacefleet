@@ -12,6 +12,7 @@ import { useOrg } from "../contexts/OrgContext";
 import { nodeAge, nodeRolesLabel, type Cluster } from "../lib/nodes";
 import { useClusterNodeStreams } from "../lib/useClusterNodeStreams";
 import type { StreamStatus } from "../lib/resourceStream";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 const ALL = "all";
 
@@ -23,6 +24,7 @@ const ALL = "all";
 // manual refresh, even when the window is in the background.
 export function Nodes() {
   const { currentOrg } = useOrg();
+  useDocumentTitle("Nodes");
   const navigate = useNavigate();
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [clustersLoading, setClustersLoading] = useState(true);

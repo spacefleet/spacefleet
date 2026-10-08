@@ -4,6 +4,7 @@ import { useAuth } from "react-oidc-context";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type InvitationPreview = components["schemas"]["InvitationPreview"];
 
@@ -22,6 +23,9 @@ export function AcceptInvite() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
+  useDocumentTitle(
+    preview ? `Join ${preview.organization_name}` : "Invitation",
+  );
 
   useEffect(() => {
     let active = true;

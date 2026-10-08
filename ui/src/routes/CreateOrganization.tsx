@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import { orgCreationEnabled } from "../lib/appConfig";
 import { NoOrganizations } from "../components/NoOrganizations";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 // CreateOrganization is the destination for users with no organization (the
 // OrgGate sends them here) and is also reachable from the navbar to spin up
@@ -22,6 +23,7 @@ export function CreateOrganization() {
 
   // First-run users (no orgs yet) can't cancel — there's nowhere to go back to.
   const hasOrgs = memberships.length > 0;
+  useDocumentTitle(hasOrgs ? "New organization" : "Create your organization");
 
   // Org creation can be disabled server-side. Guard the route directly so a
   // typed URL or stale link can't reach the form: members already in an org go
