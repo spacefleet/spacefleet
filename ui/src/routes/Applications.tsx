@@ -4,15 +4,19 @@ import { AppWindow, Folder, FolderPlus, Loader2, Plus } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
+import { RunnerRequiredNotice } from "../components/RunnerRequiredNotice";
 
 type Application = components["schemas"]["Application"];
 type ApplicationGroup = components["schemas"]["ApplicationGroup"];
+type Cluster = components["schemas"]["Cluster"];
 
 // Applications is the Applications › All Apps page: it organizes the org's
 // applications like a file directory. Groups (folders) are listed first; click
 // one to drill into /applications/groups/:id and see just its apps. Ungrouped
 // apps sit below at the root. Each app row links to its detail page, and editors
-// can move an app into a group inline. The X-Organization-ID header is attached
+// can move an app into a group inline. An app needs a runner cluster, so until
+// the org has one that runs jobs, editors see why instead of a Create button
+// that leads to an empty dropdown. The X-Organization-ID header is attached
 // automatically (api/client.ts).
 export function Applications() {
   const { currentOrg, currentRole } = useOrg();
@@ -20,6 +24,9 @@ export function Applications() {
   const navigate = useNavigate();
   const [apps, setApps] = useState<Application[]>([]);
   const [groups, setGroups] = useState<ApplicationGroup[]>([]);
+  // null until loaded (or if the load failed): only a known-empty list gates
+  // creation, so a cluster-list hiccup never locks the button.
+  const [clusters, setClusters] = useState<Cluster[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,14 +39,16 @@ export function Applications() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [appsRes, groupsRes] = await Promise.all([
+    const [appsRes, groupsRes, clustersRes] = await Promise.all([
       api.GET("/api/applications"),
       api.GET("/api/application-groups"),
+      api.GET("/api/clusters"),
     ]);
     if (appsRes.error)
       setError(appsRes.error.message ?? "Could not load applications");
     setApps(appsRes.data ?? []);
     setGroups(groupsRes.data ?? []);
+    setClusters(clustersRes.error ? null : (clustersRes.data ?? []));
     setLoading(false);
   }, []);
 
@@ -82,6 +91,8 @@ export function Applications() {
   const countFor = (groupId: string) =>
     apps.filter((a) => a.group_id === groupId).length;
   const empty = !loading && groups.length === 0 && apps.length === 0;
+  const needsRunner =
+    canEdit && clusters !== null && !clusters.some((c) => c.runs_jobs);
 
   return (
     <div>
@@ -111,7 +122,13 @@ export function Applications() {
             <button
               type="button"
               onClick={() => navigate("/applications/new")}
-              className="inline-flex items-center gap-2 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
+              disabled={needsRunner}
+              title={
+                needsRunner
+                  ? "Register a cluster that runs jobs first"
+                  : undefined
+              }
+              className="inline-flex items-center gap-2 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-black"
             >
               <Plus className="h-4 w-4" />
               Create app
@@ -119,6 +136,10 @@ export function Applications() {
           </div>
         )}
       </div>
+
+      {needsRunner && (
+        <RunnerRequiredNotice clusters={clusters} className="mt-6" />
+      )}
 
       {creatingGroup && (
         <div className="mt-6 border border-neutral-200 bg-white p-4">
@@ -176,7 +197,9 @@ export function Applications() {
             No applications yet
           </p>
           <p className="mt-1 text-sm text-neutral-500">
-            Create your first application, or a group to organize them.
+            {needsRunner
+              ? "Once a cluster runs jobs, create your first application here."
+              : "Create your first application, or a group to organize them."}
           </p>
         </div>
       ) : (

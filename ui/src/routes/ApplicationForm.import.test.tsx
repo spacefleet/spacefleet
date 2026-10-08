@@ -28,7 +28,7 @@ const mockApi = api as unknown as {
   POST: ReturnType<typeof vi.fn>;
 };
 
-const cluster = { id: "cluster-1", name: "prod" };
+const cluster = { id: "cluster-1", name: "prod", runs_jobs: true };
 const release = {
   name: "cache",
   namespace: "data",

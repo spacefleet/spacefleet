@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import {
   CheckCircle2,
   CircleDashed,
@@ -21,7 +21,8 @@ type Cluster = components["schemas"]["Cluster"];
 // to the current organization and opens a dialog to register more. Each row is
 // a way into the cluster's detail page (/admin/clusters/:id) — that's where
 // every per-cluster action now lives (capabilities, jobs, delete). The
-// list itself just shows identity and live connection status. It is the first
+// list itself just shows identity and live connection status. Linking here
+// with ?register=1 opens the dialog on arrival. It is the first
 // org-scoped resource — the X-Organization-ID header is attached automatically
 // by the API client (see api/client.ts).
 export function Clusters() {
@@ -33,6 +34,7 @@ export function Clusters() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
   // Clusters whose connectivity is being re-probed in the background.
   const [checking, setChecking] = useState<Set<string>>(new Set());
 
@@ -70,6 +72,22 @@ export function Clusters() {
     setLoading(false);
     void refreshConnectivity(list);
   }, [refreshConnectivity]);
+
+  // ?register=1 (e.g. from the "Register a cluster" link on Applications) opens
+  // the dialog, then drops the param so closing the dialog or refreshing the
+  // page doesn't reopen it.
+  useEffect(() => {
+    if (!searchParams.has("register")) return;
+    if (canEdit) setRegistering(true);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("register");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [searchParams, setSearchParams, canEdit]);
 
   // Reload whenever the active organization changes.
   useEffect(() => {

@@ -21,12 +21,18 @@ const mockApi = api as unknown as {
   PUT: ReturnType<typeof vi.fn>;
 };
 
-// The page loads apps and groups together (Promise.all); route GET by path so a
-// test can set each independently. Anything not specified resolves empty.
+// A cluster that can be an application's runner (job running turned on).
+const runnerCluster = { id: "c1", name: "ci", runs_jobs: true };
+
+// The page loads apps, groups, and clusters together (Promise.all); route GET by
+// path so a test can set each independently. Apps and groups default empty;
+// clusters default to one runner so creation isn't gated.
 function mockData(opts: {
   apps?: unknown[];
   groups?: unknown[];
+  clusters?: unknown[];
   appsError?: { message: string };
+  clustersError?: { message: string };
 }) {
   mockApi.GET.mockImplementation((path: string) => {
     if (path === "/api/applications")
@@ -36,6 +42,11 @@ function mockData(opts: {
       });
     if (path === "/api/application-groups")
       return Promise.resolve({ data: opts.groups ?? [], error: undefined });
+    if (path === "/api/clusters")
+      return Promise.resolve({
+        data: opts.clustersError ? undefined : (opts.clusters ?? [runnerCluster]),
+        error: opts.clustersError,
+      });
     return Promise.resolve({ data: undefined, error: undefined });
   });
 }
@@ -52,6 +63,7 @@ function renderApps() {
           element={<div>group detail</div>}
         />
         <Route path="/applications/:id" element={<div>app detail</div>} />
+        <Route path="/admin/clusters" element={<div>clusters page</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -139,6 +151,61 @@ describe("Applications list", () => {
     expect(
       screen.queryByRole("button", { name: /new group/i }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("Applications runner prerequisite", () => {
+  const createButton = () => screen.getByRole("button", { name: /create app/i });
+
+  it("asks to register a cluster when the org has none", async () => {
+    mockData({ clusters: [] });
+    renderApps();
+    expect(
+      await screen.findByText("Register a cluster to create applications"),
+    ).toBeInTheDocument();
+    expect(createButton()).toBeDisabled();
+
+    // The link opens the register dialog on the clusters page.
+    const link = screen.getByRole("link", { name: /register a cluster/i });
+    expect(link).toHaveAttribute("href", "/admin/clusters?register=1");
+    await userEvent.click(link);
+    expect(await screen.findByText("clusters page")).toBeInTheDocument();
+  });
+
+  it("asks to turn on job running when no cluster runs jobs", async () => {
+    mockData({ clusters: [{ ...runnerCluster, runs_jobs: false }] });
+    renderApps();
+    expect(
+      await screen.findByText("Turn on job running to create applications"),
+    ).toBeInTheDocument();
+    expect(createButton()).toBeDisabled();
+    expect(
+      screen.getByRole("link", { name: /go to clusters/i }),
+    ).toHaveAttribute("href", "/admin/clusters");
+  });
+
+  it("shows no notice once a cluster runs jobs", async () => {
+    mockData({});
+    renderApps();
+    await screen.findByText("No applications yet");
+    expect(createButton()).toBeEnabled();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("doesn't gate creation when the cluster list fails to load", async () => {
+    mockData({ clustersError: { message: "boom" } });
+    renderApps();
+    await screen.findByText("No applications yet");
+    expect(createButton()).toBeEnabled();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("shows viewers no notice, since they can't create apps", async () => {
+    role = "viewer";
+    mockData({ clusters: [] });
+    renderApps();
+    await screen.findByText("No applications yet");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });
 

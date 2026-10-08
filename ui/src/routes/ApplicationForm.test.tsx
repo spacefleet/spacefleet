@@ -27,7 +27,7 @@ const mockApi = api as unknown as {
   PATCH: ReturnType<typeof vi.fn>;
 };
 
-const runner = { id: "cluster-2", name: "ci" };
+const runner = { id: "cluster-2", name: "ci", runs_jobs: true };
 
 const existingApp = {
   id: "app-1",
@@ -110,6 +110,33 @@ describe("ApplicationForm create mode", () => {
 
     expect(await screen.findByText("boom")).toBeInTheDocument();
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("offers only clusters that run jobs as the runner", async () => {
+    const idle = { id: "cluster-3", name: "edge", runs_jobs: false };
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/clusters")
+        return Promise.resolve({ data: [runner, idle], error: undefined });
+      return Promise.resolve({ data: [], error: undefined });
+    });
+    renderCreate();
+
+    expect(await screen.findByRole("option", { name: "ci" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "edge" })).toBeNull();
+  });
+
+  it("explains a missing runner and blocks the create", async () => {
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/clusters")
+        return Promise.resolve({ data: [], error: undefined });
+      return Promise.resolve({ data: [], error: undefined });
+    });
+    renderCreate();
+
+    expect(
+      await screen.findByText("Register a cluster to create applications"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
   });
 });
 

@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
+import { RunnerRequiredNotice } from "../components/RunnerRequiredNotice";
 
 type CreateRequest = components["schemas"]["ApplicationCreateRequest"];
 type UpdateRequest = components["schemas"]["ApplicationUpdateRequest"];
@@ -22,6 +23,8 @@ export type ImportSeed = { clusterId: string; release: HelmRelease };
 // app-level fields: a name and the runner cluster. The deploy steps — and their
 // per-component target cluster + namespace — are built afterwards in the
 // workflow builder. The runner is fixed at registration, so it's read-only on edit.
+// Only clusters that run jobs can be a runner; with none, the form explains
+// what to set up instead of offering an empty dropdown.
 export function ApplicationForm() {
   const { appId } = useParams();
   const editing = Boolean(appId);
@@ -39,6 +42,9 @@ export function ApplicationForm() {
   const [runnerClusterId, setRunnerClusterId] = useState("");
 
   const [clusters, setClusters] = useState<Cluster[]>([]);
+  // Set once the cluster list loads successfully: only a known list gates
+  // creation, so a failed load still leaves the form usable.
+  const [clustersLoaded, setClustersLoaded] = useState(false);
 
   // In edit mode we must load the existing app before the form is meaningful.
   const [loading, setLoading] = useState(editing);
@@ -48,8 +54,9 @@ export function ApplicationForm() {
 
   useEffect(() => {
     void (async () => {
-      const { data } = await api.GET("/api/clusters");
+      const { data, error } = await api.GET("/api/clusters");
       setClusters(data ?? []);
+      setClustersLoaded(!error);
     })();
   }, [currentOrg?.id]);
 
@@ -77,6 +84,8 @@ export function ApplicationForm() {
 
   const clusterName = (id: string) =>
     clusters.find((c) => c.id === id)?.name ?? id;
+  const runners = clusters.filter((c) => c.runs_jobs);
+  const needsRunner = !editing && clustersLoaded && runners.length === 0;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -151,6 +160,10 @@ export function ApplicationForm() {
         builder afterwards.
       </p>
 
+      {needsRunner && (
+        <RunnerRequiredNotice clusters={clusters} className="mt-6" />
+      )}
+
       {loading ? (
         <p className="mt-6 text-sm text-neutral-500">Loading…</p>
       ) : loadError ? (
@@ -191,7 +204,7 @@ export function ApplicationForm() {
                 className="w-full border border-neutral-300 px-3 py-2 text-sm"
               >
                 <option value="">Select a cluster…</option>
-                {clusters.map((c) => (
+                {runners.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
@@ -208,7 +221,7 @@ export function ApplicationForm() {
           <div className="flex items-center gap-3">
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || needsRunner}
               className="bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
             >
               {submitting

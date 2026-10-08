@@ -23,9 +23,9 @@ const mockApi = api as unknown as {
 
 // Render the list inside a router, with a stand-in detail route so a row click
 // can be observed landing on /admin/clusters/:clusterId.
-function renderClusters() {
+function renderClusters(path = "/admin/clusters") {
   return render(
-    <MemoryRouter initialEntries={["/admin/clusters"]}>
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/admin/clusters" element={<Clusters />} />
         <Route
@@ -128,5 +128,20 @@ describe("Clusters", () => {
     expect(
       screen.getByText(/Spacefleet is running in this cluster/),
     ).toBeInTheDocument();
+  });
+
+  it("opens the registration dialog on arrival via ?register=1", async () => {
+    mockApi.GET.mockResolvedValue({ data: [], error: undefined });
+    renderClusters("/admin/clusters?register=1");
+
+    expect(
+      await screen.findByRole("heading", { name: "Add cluster" }),
+    ).toBeInTheDocument();
+
+    // The param is consumed on open, so closing the dialog keeps it closed.
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(
+      screen.queryByRole("heading", { name: "Add cluster" }),
+    ).not.toBeInTheDocument();
   });
 });
