@@ -188,15 +188,15 @@ export function ClusterDetail() {
         <div className="mt-6 space-y-6">
           <Overview cluster={cluster} />
 
-          {/* All-in-one management view: Capabilities and Jobs sit side by side
-              on wide screens and stack on narrow ones. Capabilities owns the
-              full access report (including run_jobs), so the Jobs panel hides
-              its embedded copy to avoid showing it twice. */}
+          {/* All-in-one management view: Capabilities and Runner sit side by
+              side on wide screens and stack on narrow ones. Capabilities owns
+              the full access report (including run_jobs), so the Runner panel
+              hides its embedded copy to avoid showing it twice. */}
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-2 xl:items-start">
             <ClusterCapabilities clusterId={cluster.id} />
             <div className="border border-neutral-200 bg-white">
               <h2 className="border-b border-neutral-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
-                Jobs
+                Runner
               </h2>
               <TektonPanel
                 clusterId={cluster.id}

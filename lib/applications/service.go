@@ -248,7 +248,7 @@ func (s *Service) validate(ctx context.Context, orgID uuid.UUID, p CreateParams)
 	}
 	// The runner must be designated to run jobs (Tekton enabled).
 	if runner.Edges.Tekton == nil || !runner.Edges.Tekton.Enabled {
-		return validationErr("runner cluster is not configured to run jobs (enable Tekton on it first)")
+		return validationErr("this cluster is not set up as a runner (set it up from its Runner panel under Admin → Clusters first)")
 	}
 	return nil
 }

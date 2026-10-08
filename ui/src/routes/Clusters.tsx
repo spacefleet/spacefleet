@@ -21,7 +21,7 @@ type Cluster = components["schemas"]["Cluster"];
 // Clusters is the Admin › Clusters page: it lists the clusters registered
 // to the current organization and opens a dialog to register more. Each row is
 // a way into the cluster's detail page (/admin/clusters/:id) — that's where
-// every per-cluster action now lives (capabilities, jobs, delete). The
+// every per-cluster action now lives (capabilities, runner, delete). The
 // list itself just shows identity and live connection status. Linking here
 // with ?register=1 opens the dialog on arrival. It is the first
 // org-scoped resource — the X-Organization-ID header is attached automatically
@@ -142,7 +142,7 @@ export function Clusters() {
                 <th className="px-4 py-2 font-medium">Name</th>
                 <th className="px-4 py-2 font-medium">Connection</th>
                 <th className="px-4 py-2 font-medium">Status</th>
-                <th className="px-4 py-2 font-medium">Jobs</th>
+                <th className="px-4 py-2 font-medium">Runner</th>
                 <th className="px-4 py-2 font-medium">Version</th>
               </tr>
             </thead>
@@ -172,7 +172,7 @@ export function Clusters() {
                     />
                   </td>
                   <td className="px-4 py-3">
-                    <JobsBadge runsJobs={c.runs_jobs} />
+                    <RunnerBadge runsJobs={c.runs_jobs} />
                   </td>
                   <td className="px-4 py-3 text-neutral-600">
                     {c.k8s_version || "—"}
@@ -200,20 +200,21 @@ export function Clusters() {
   );
 }
 
-// JobsBadge shows whether a cluster is designated to run jobs. This is plain
-// info, not a connection state — so it reads as understated neutral text (with
-// a small icon) rather than a colored status chip like the connection badge,
-// which would otherwise be easy to confuse with it. It says "Jobs enabled"
-// (the cluster is eligible to run jobs, not necessarily running one right now)
-// and shows nothing at all when jobs aren't enabled.
-function JobsBadge({ runsJobs }: { runsJobs: boolean }) {
+// RunnerBadge shows whether a cluster is set up as a runner (applications can
+// run their workflow jobs on it). This is plain info, not a connection state —
+// so it reads as understated neutral text (with a small icon) rather than a
+// colored status chip like the connection badge, which would otherwise be easy
+// to confuse with it. Under the "Runner" column it says "Enabled" (the cluster
+// is eligible to run jobs, not necessarily running one right now) and shows
+// nothing at all when it isn't a runner.
+function RunnerBadge({ runsJobs }: { runsJobs: boolean }) {
   if (!runsJobs) {
     return null;
   }
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-neutral-600">
       <Play className="h-3.5 w-3.5 text-neutral-400" />
-      Jobs enabled
+      Enabled
     </span>
   );
 }

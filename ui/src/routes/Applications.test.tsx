@@ -21,7 +21,7 @@ const mockApi = api as unknown as {
   PUT: ReturnType<typeof vi.fn>;
 };
 
-// A cluster that can be an application's runner (job running turned on).
+// A cluster that can be an application's runner (set up as a runner).
 const runnerCluster = { id: "c1", name: "ci", runs_jobs: true };
 
 // The page loads apps, groups, and clusters together (Promise.all); route GET by
@@ -172,11 +172,11 @@ describe("Applications runner prerequisite", () => {
     expect(await screen.findByText("clusters page")).toBeInTheDocument();
   });
 
-  it("asks to turn on job running when no cluster runs jobs", async () => {
+  it("asks to set up a runner when no cluster is one", async () => {
     mockData({ clusters: [{ ...runnerCluster, runs_jobs: false }] });
     renderApps();
     expect(
-      await screen.findByText("Turn on job running to create applications"),
+      await screen.findByText("Set up a runner to create applications"),
     ).toBeInTheDocument();
     expect(createButton()).toBeDisabled();
     expect(
@@ -184,7 +184,7 @@ describe("Applications runner prerequisite", () => {
     ).toHaveAttribute("href", "/admin/clusters");
   });
 
-  it("shows no notice once a cluster runs jobs", async () => {
+  it("shows no notice once a cluster is a runner", async () => {
     mockData({});
     renderApps();
     await screen.findByText("No applications yet");

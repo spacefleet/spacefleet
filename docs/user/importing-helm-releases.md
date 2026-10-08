@@ -37,9 +37,9 @@ stored another way (for example with a ConfigMap or SQL backend) won't appear.
 2. Spacefleet opens the application form, pre-filled from the live release:
    - **Name**, **target namespace**, and **target cluster** are taken from the
      release.
-   - Choose a **runner cluster** — a job-running (Tekton-enabled) cluster that
-     will run this application's deploys, previews, and uninstalls. (See
-     [Running jobs in a cluster](running-jobs.md).)
+   - Choose a **runner cluster** — a cluster set up as a runner (with Tekton)
+     that will run this application's deploys, previews, and uninstalls. (See
+     [Runner clusters](running-jobs.md).)
 3. Select **Import release**.
 
 The application is created as an **imported** application — nothing is deployed,

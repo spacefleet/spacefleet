@@ -401,9 +401,9 @@ workflow, stage by stage:
   what a deploy would change before you run it.
 - **Uninstall** — remove every component's release from its cluster.
 
-Runs execute on the application's **runner cluster** — a job-running
-(Tekton-enabled) cluster. (See [Running jobs in a cluster](running-jobs.md) for
-how to designate one.) Only one run can be in progress for an application at a
+Runs execute on the application's **runner cluster** — a cluster set up to run
+workflow jobs (with Tekton). (See [Runner clusters](running-jobs.md) for how to
+set one up.) Only one run can be in progress for an application at a
 time; starting a second while one is still going is refused, so two runs never
 fight over the same releases.
 

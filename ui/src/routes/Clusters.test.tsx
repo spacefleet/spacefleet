@@ -74,7 +74,7 @@ describe("Clusters", () => {
     expect(screen.getByText("v1.30.1")).toBeInTheDocument();
   });
 
-  it("flags clusters that are designated to run jobs", async () => {
+  it("flags clusters that are set up as runners", async () => {
     mockApi.GET.mockResolvedValue({
       data: [
         oneCluster,
@@ -85,8 +85,11 @@ describe("Clusters", () => {
     renderClusters();
 
     await screen.findByText("ci");
-    // The job-enabled cluster is flagged; the other shows nothing for jobs.
-    expect(screen.getByText("Jobs enabled")).toBeInTheDocument();
+    // The runner cluster is flagged; the other shows nothing in that column.
+    expect(
+      screen.getByRole("columnheader", { name: "Runner" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Enabled")).toHaveLength(1);
   });
 
   it("re-probes connectivity on load and drops the manual Test button", async () => {

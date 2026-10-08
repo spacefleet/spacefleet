@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TektonPanel } from "./TektonPanel";
@@ -50,7 +50,7 @@ beforeEach(() => {
 });
 
 describe("TektonPanel", () => {
-  it("shows not-set-up status and turns on job running via the switch", async () => {
+  it("installs Tekton only after the install is confirmed in a dialog", async () => {
     mockApi.GET.mockResolvedValue({ data: status(), error: undefined });
     mockApi.POST.mockResolvedValue({
       data: status({ enabled: true, status: "installing", status_message: "queued for install" }),
@@ -58,21 +58,127 @@ describe("TektonPanel", () => {
     });
     render(<TektonPanel clusterId="c1" canEdit />);
 
-    const sw = await screen.findByRole("switch", {
-      name: /Run jobs on this cluster/,
-    });
-    expect(sw).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Set up as runner" }),
+    );
+    expect(screen.getByText("Off")).toBeInTheDocument();
     expect(mockApi.GET).toHaveBeenCalledWith("/api/clusters/{id}/tekton", {
       params: { path: { id: "c1" } },
     });
-    await userEvent.click(sw);
+    // The click only opens the dialog, which spells out the cluster-wide
+    // footprint — nothing is sent yet.
+    const dialog = screen.getByRole("dialog", {
+      name: /Install Tekton and set up this runner/,
+    });
+    expect(within(dialog).getByText(/Tekton Pipelines v0\.68\.0/)).toBeInTheDocument();
+    expect(within(dialog).getByText("spacefleet-jobs")).toBeInTheDocument();
+    expect(mockApi.POST).not.toHaveBeenCalled();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Install Tekton" }),
+    );
     expect(mockApi.POST).toHaveBeenCalledWith("/api/clusters/{id}/tekton/enable", {
       params: { path: { id: "c1" } },
     });
-    expect(await screen.findByText("Setting up job running…")).toBeInTheDocument();
+    expect(await screen.findByText("Setting up runner…")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("shows an installed, job-running cluster with its engine details", async () => {
+  it("leaves the cluster untouched when the dialog is cancelled", async () => {
+    mockApi.GET.mockResolvedValue({ data: status(), error: undefined });
+    render(<TektonPanel clusterId="c1" canEdit />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Set up as runner" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    // Escape closes it too.
+    await userEvent.click(screen.getByRole("button", { name: "Set up as runner" }));
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(mockApi.POST).not.toHaveBeenCalled();
+  });
+
+  it("keeps the dialog open with the error when setup fails", async () => {
+    mockApi.GET.mockResolvedValue({ data: status(), error: undefined });
+    mockApi.POST.mockResolvedValue({
+      data: undefined,
+      error: { message: "cluster unreachable" },
+    });
+    render(<TektonPanel clusterId="c1" canEdit />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Set up as runner" }),
+    );
+    const dialog = screen.getByRole("dialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Install Tekton" }),
+    );
+    expect(await within(dialog).findByText("cluster unreachable")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Install Tekton" })).toBeEnabled();
+  });
+
+  it("uses an existing install as a runner without installing anything", async () => {
+    mockApi.GET.mockResolvedValue({
+      data: status({
+        status: "installed",
+        present: true,
+        controller_ready: true,
+        detected_version: "v0.68.0",
+      }),
+      error: undefined,
+    });
+    mockApi.POST.mockResolvedValue({
+      data: status({ enabled: true, status: "installed", present: true }),
+      error: undefined,
+    });
+    render(<TektonPanel clusterId="c1" canEdit />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Use as runner" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "Use this cluster as a runner" });
+    expect(within(dialog).getByText(/nothing new is installed/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Use as runner" }));
+    expect(mockApi.POST).toHaveBeenCalledWith("/api/clusters/{id}/tekton/enable", {
+      params: { path: { id: "c1" } },
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("stops using the cluster as a runner behind a dialog that says Tekton stays installed", async () => {
+    mockApi.GET.mockResolvedValue({
+      data: status({
+        enabled: true,
+        status: "installed",
+        present: true,
+        controller_ready: true,
+        managed: true,
+        detected_version: "v0.68.0",
+      }),
+      error: undefined,
+    });
+    mockApi.POST.mockResolvedValue({
+      data: status({ enabled: false, status: "installed", present: true, managed: true }),
+      error: undefined,
+    });
+    render(<TektonPanel clusterId="c1" canEdit />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Stop using as runner" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "Stop using this cluster as a runner" });
+    expect(within(dialog).getByText(/Tekton stays installed/)).toBeInTheDocument();
+    expect(mockApi.POST).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Stop using as runner" }));
+    expect(mockApi.POST).toHaveBeenCalledWith("/api/clusters/{id}/tekton/disable", {
+      params: { path: { id: "c1" } },
+    });
+  });
+
+  it("shows an installed runner cluster with its engine details", async () => {
     mockApi.GET.mockResolvedValue({
       data: status({
         enabled: true,
@@ -85,9 +191,10 @@ describe("TektonPanel", () => {
     });
     render(<TektonPanel clusterId="c1" canEdit />);
 
+    expect(await screen.findByText("On")).toBeInTheDocument();
     expect(
-      await screen.findByRole("switch", { name: /Run jobs on this cluster/ }),
-    ).toHaveAttribute("aria-checked", "true");
+      screen.getByRole("button", { name: "Stop using as runner" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Tekton v0.68.0")).toBeInTheDocument();
     // There is no longer a run-a-job action in the panel.
     expect(
@@ -102,7 +209,7 @@ describe("TektonPanel", () => {
     });
     const { rerender } = render(<TektonPanel clusterId="c1" canEdit />);
     // Initial load lands first (as in production: GET, then the stream connects).
-    await screen.findByText("Setting up job running…");
+    await screen.findByText("Setting up runner…");
 
     // A live progress update arrives over the stream.
     mockStream.mockReturnValue({
@@ -123,12 +230,13 @@ describe("TektonPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("disables the switch for viewers", async () => {
+  it("shows viewers the runner state without the button", async () => {
     mockApi.GET.mockResolvedValue({ data: status(), error: undefined });
     render(<TektonPanel clusterId="c1" canEdit={false} />);
+    expect(await screen.findByText("Off")).toBeInTheDocument();
     expect(
-      await screen.findByRole("switch", { name: /Run jobs on this cluster/ }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: /runner/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("offers Upgrade when the server reports a newer pinned version", async () => {
@@ -268,7 +376,7 @@ describe("TektonPanel", () => {
     expect(screen.queryByText(/Spacefleet installs/)).not.toBeInTheDocument();
   });
 
-  it("labels an existing install as such even when job running is off", async () => {
+  it("labels an existing install as such even when the cluster is not a runner", async () => {
     mockApi.GET.mockResolvedValue({
       data: status({
         enabled: false,
@@ -282,9 +390,10 @@ describe("TektonPanel", () => {
     });
     render(<TektonPanel clusterId="c1" canEdit />);
     await screen.findByText("Existing install");
+    expect(screen.getByText("Off")).toBeInTheDocument();
     expect(
-      screen.getByRole("switch", { name: /Run jobs on this cluster/ }),
-    ).toHaveAttribute("aria-checked", "false");
+      screen.getByRole("button", { name: "Use as runner" }),
+    ).toBeInTheDocument();
   });
 
   it("labels a Spacefleet-managed install", async () => {

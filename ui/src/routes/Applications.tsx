@@ -125,11 +125,7 @@ export function Applications() {
               type="button"
               onClick={() => navigate("/applications/new")}
               disabled={needsRunner}
-              title={
-                needsRunner
-                  ? "Register a cluster that runs jobs first"
-                  : undefined
-              }
+              title={needsRunner ? "Set up a runner cluster first" : undefined}
               className="inline-flex items-center gap-2 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-black"
             >
               <Plus className="h-4 w-4" />
@@ -200,7 +196,7 @@ export function Applications() {
           </p>
           <p className="mt-1 text-sm text-neutral-500">
             {needsRunner
-              ? "Once a cluster runs jobs, create your first application here."
+              ? "Once a cluster is set up as a runner, create your first application here."
               : "Create your first application, or a group to organize them."}
           </p>
         </div>

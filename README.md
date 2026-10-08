@@ -100,9 +100,9 @@ make worker
 ```
 
 To run a workflow you also need a **runner cluster**: register a Kubernetes
-cluster under Admin → Clusters and enable jobs (Tekton) on it — see
-[Running jobs in a cluster](docs/user/running-jobs.md). A local kind or k3d
-cluster registered by kubeconfig works for development.
+cluster under Admin → Clusters and set it up as a runner (Spacefleet installs
+Tekton on it) — see [Runner clusters](docs/user/running-jobs.md). A local kind
+or k3d cluster registered by kubeconfig works for development.
 
 > **Auth.** Dex is always Spacefleet's identity provider — there's no external
 > or passthrough mode. The SPA logs in against Dex (Authorization Code + PKCE)
@@ -179,7 +179,7 @@ so `make helm-*` run `helm dependency build` for you.
 ## Documentation
 
 - **Users** — [deploy workflows](docs/user/deploy-workflows.md) (components,
-  OpenTofu, runs, approvals, triggers), [running jobs in a cluster](docs/user/running-jobs.md),
+  OpenTofu, runs, approvals, triggers), [runner clusters](docs/user/running-jobs.md),
   [variable interpolation](docs/user/variable-interpolation.md),
   [importing Helm releases](docs/user/importing-helm-releases.md),
   [plan policies](docs/user/policies.md), [notifications](docs/user/notifications.md).

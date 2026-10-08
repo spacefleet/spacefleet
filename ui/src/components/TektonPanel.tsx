@@ -6,6 +6,7 @@ import {
   Loader2,
   ShieldCheck,
   Trash2,
+  X,
 } from "lucide-react";
 import { api } from "../api/client";
 import type { components } from "../api/schema";
@@ -31,11 +32,14 @@ interface Props {
 
 // TektonPanel manages one cluster's job-running setup. It separates two concerns
 // that used to be tangled together:
-//   1. one primary On/Off switch — "Run jobs on this cluster" — which installs
-//      Tekton on demand and designates the cluster as a job runner,
+//   1. the primary runner control — an On/Off "Use this cluster as a runner"
+//      state with a button that installs Tekton on demand and designates the
+//      cluster as a runner (or clears the designation), always behind a confirm
+//      dialog because installing touches the whole cluster,
 //   2. an Engine block: the Tekton install itself (version, provenance, and the
 //      managed-only upgrade/remove lifecycle), kept visually distinct from the
-//      switch so it's clear it's about the install, not the designation.
+//      runner control so it's clear it's about the install, not the
+//      designation.
 // A transient status line above them carries live progress while an install is
 // in flight (or the error on failure). Install/upgrade/uninstall run as
 // background jobs followed live over an SSE stream (no polling).
@@ -53,6 +57,10 @@ export function TektonPanel({
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // The status the runner confirm dialog was opened against (null when
+  // closed). Snapshotted so the dialog's wording and action don't flip when
+  // the confirmed change lands while it is still open.
+  const [runnerConfirm, setRunnerConfirm] = useState<TektonStatus | null>(null);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -114,29 +122,30 @@ export function TektonPanel({
     [load],
   );
 
-  async function onEnable() {
-    setBusy(true);
+  // onEnable/onDisable run from the runner confirm dialog, which shows a
+  // failure itself (so the operator can retry or back out): they return the
+  // error message, or null once the change is applied.
+  async function onEnable(): Promise<string | null> {
     setActionError(null);
     const { data, error } = await api.POST("/api/clusters/{id}/tekton/enable", {
       params: { path: { id: clusterId } },
     });
-    setBusy(false);
-    if (!error && data) settle(data);
-    else if (error)
-      setActionError(error.message ?? "Could not enable job running");
+    if (error)
+      return error.message ?? "Could not set this cluster up as a runner";
+    if (data) settle(data);
+    return null;
   }
 
-  async function onDisable() {
-    setBusy(true);
+  async function onDisable(): Promise<string | null> {
     setActionError(null);
     const { data, error } = await api.POST(
       "/api/clusters/{id}/tekton/disable",
       { params: { path: { id: clusterId } } },
     );
-    setBusy(false);
-    if (!error && data) settle(data);
-    else if (error)
-      setActionError(error.message ?? "Could not turn off job running");
+    if (error)
+      return error.message ?? "Could not stop using this cluster as a runner";
+    if (data) settle(data);
+    return null;
   }
 
   async function onUpgrade() {
@@ -185,171 +194,186 @@ export function TektonPanel({
   const unmanaged = status.present && !status.managed;
 
   return (
-    <div className="divide-y divide-neutral-200">
-      {/* The two sections below stand on their own for steady states; the
+    <>
+      <div className="divide-y divide-neutral-200">
+        {/* The two sections below stand on their own for steady states; the
           status line is only worth its space while a job is in flight (live
           progress) or after a failure (the error). */}
-      {(inFlight || status.status === "failed") && (
-        <StatusLine status={status} />
-      )}
+        {(inFlight || status.status === "failed") && (
+          <StatusLine status={status} />
+        )}
 
-      {/* Action errors render inline and leave the controls in place so the
+        {/* Action errors render inline and leave the controls in place so the
           operator can read the message and retry — distinct from a load error,
           which blanks the panel. */}
-      {actionError && <p className="p-4 text-sm text-red-600">{actionError}</p>}
+        {actionError && (
+          <p className="p-4 text-sm text-red-600">{actionError}</p>
+        )}
 
-      {/* Primary control: the single switch that turns this cluster into a job
-          runner. Flipping it on installs Tekton if needed; off leaves the
-          install in place (stated in the helper text). */}
-      <div className="p-4">
-        <RunJobsSwitch
-          enabled={status.enabled}
-          inFlight={inFlight}
-          disabled={!canEdit || busy || inFlight}
-          onToggle={() => void (status.enabled ? onDisable() : onEnable())}
-        />
-        <p className="mt-2 text-xs text-neutral-500">
-          {status.enabled
-            ? status.present
-              ? "This cluster is designated to run jobs. Turning it off leaves Tekton installed."
-              : "Tekton will be installed on this cluster so it can run jobs."
-            : status.present
-              ? "Turn on to let this cluster run jobs. Tekton is already installed."
-              : "Turn on to install Tekton and let this cluster run jobs."}
-        </p>
-      </div>
-
-      {/* Engine block: the Tekton install itself — distinct from the switch so
-          it's clear this is about the engine (version, provenance, lifecycle),
-          not the run-jobs designation. Hidden entirely until Tekton exists. */}
-      {status.present && (
+        {/* Primary control: turns this cluster into a runner. Turning it on
+          installs Tekton if needed; off leaves the install in place. Either
+          way the button only opens a confirm dialog that spells out the
+          change — installing is a cluster-wide modification that shouldn't
+          happen on a stray click. */}
         <div className="p-4">
-          <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-            Engine
-          </h3>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium text-neutral-900">
-              Tekton {status.detected_version ?? status.installed_version ?? ""}
-            </span>
-            <ProvenanceBadge managed={status.managed} />
-            {updateAvailable && (
-              <span className="inline-flex items-center gap-1 border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
-                <ArrowUpCircle className="h-3.5 w-3.5" />
-                Update available
-              </span>
-            )}
-          </div>
-          <p className="mt-1 text-xs text-neutral-500">
-            {status.controller_ready
-              ? "Controller ready"
-              : "Controller not ready"}
-            {/* The pinned version is the upgrade target Spacefleet manages — only
-                meaningful for a Spacefleet-managed install, not an existing one. */}
-            {!unmanaged && (
-              <>
-                {" · "}Spacefleet installs {status.pinned_version}
-              </>
-            )}
+          <RunnerControl
+            enabled={status.enabled}
+            present={status.present}
+            canEdit={canEdit}
+            disabled={busy || inFlight}
+            onClick={() => setRunnerConfirm(status)}
+          />
+          <p className="mt-2 text-xs text-neutral-500">
+            {status.enabled
+              ? status.present
+                ? "Applications can choose this cluster as their runner. Stopping leaves Tekton installed."
+                : "Tekton will be installed on this cluster so it can act as a runner."
+              : status.present
+                ? "Tekton is already installed. Use this cluster as a runner to let applications run their workflow jobs on it."
+                : "Setting this cluster up as a runner installs Tekton so applications can run their workflow jobs on it."}
           </p>
-          <p className="mt-1 text-xs text-neutral-400">
-            {unmanaged
-              ? "Installed outside Spacefleet."
-              : "Installed by Spacefleet."}
-          </p>
-          {updateAvailable && (
-            <p className="mt-1 text-xs text-amber-700">
-              {versionChange
-                ? `A newer Tekton (${status.pinned_version}) is available.`
-                : "This install differs from what this version of Spacefleet sets up — sync it to bring it up to date."}
-            </p>
-          )}
+        </div>
 
-          {canEdit && (updateAvailable || canRemove) && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+        {/* Engine block: the Tekton install itself — distinct from the runner
+          control so it's clear this is about the engine (version, provenance,
+          lifecycle), not the designation. Hidden entirely until Tekton exists. */}
+        {status.present && (
+          <div className="p-4">
+            <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+              Engine
+            </h3>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-neutral-900">
+                Tekton{" "}
+                {status.detected_version ?? status.installed_version ?? ""}
+              </span>
+              <ProvenanceBadge managed={status.managed} />
               {updateAvailable && (
-                <button
-                  type="button"
-                  onClick={() => void onUpgrade()}
-                  disabled={busy || inFlight}
-                  title={
-                    versionChange
-                      ? `Upgrade to ${status.pinned_version}`
-                      : "Re-apply the managed install so it matches what Spacefleet expects"
-                  }
-                  className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
-                >
+                <span className="inline-flex items-center gap-1 border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
                   <ArrowUpCircle className="h-3.5 w-3.5" />
-                  {versionChange
-                    ? `Upgrade to ${status.pinned_version}`
-                    : "Sync install"}
-                </button>
+                  Update available
+                </span>
               )}
-              {canRemove &&
-                (confirmingDelete ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => void onUninstall()}
-                      disabled={busy || inFlight}
-                      className="inline-flex items-center gap-1.5 bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Confirm remove
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmingDelete(false)}
-                      disabled={busy}
-                      className="inline-flex items-center px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                  </>
-                ) : (
+            </div>
+            <p className="mt-1 text-xs text-neutral-500">
+              {status.controller_ready
+                ? "Controller ready"
+                : "Controller not ready"}
+              {/* The pinned version is the upgrade target Spacefleet manages — only
+                meaningful for a Spacefleet-managed install, not an existing one. */}
+              {!unmanaged && (
+                <>
+                  {" · "}Spacefleet installs {status.pinned_version}
+                </>
+              )}
+            </p>
+            <p className="mt-1 text-xs text-neutral-400">
+              {unmanaged
+                ? "Installed outside Spacefleet."
+                : "Installed by Spacefleet."}
+            </p>
+            {updateAvailable && (
+              <p className="mt-1 text-xs text-amber-700">
+                {versionChange
+                  ? `A newer Tekton (${status.pinned_version}) is available.`
+                  : "This install differs from what this version of Spacefleet sets up — sync it to bring it up to date."}
+              </p>
+            )}
+
+            {canEdit && (updateAvailable || canRemove) && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {updateAvailable && (
                   <button
                     type="button"
-                    onClick={() => setConfirmingDelete(true)}
+                    onClick={() => void onUpgrade()}
                     disabled={busy || inFlight}
-                    title="Remove Tekton from this cluster"
-                    className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    title={
+                      versionChange
+                        ? `Upgrade to ${status.pinned_version}`
+                        : "Re-apply the managed install so it matches what Spacefleet expects"
+                    }
+                    className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Remove Tekton
+                    <ArrowUpCircle className="h-3.5 w-3.5" />
+                    {versionChange
+                      ? `Upgrade to ${status.pinned_version}`
+                      : "Sync install"}
                   </button>
-                ))}
-            </div>
-          )}
-        </div>
-      )}
+                )}
+                {canRemove &&
+                  (confirmingDelete ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void onUninstall()}
+                        disabled={busy || inFlight}
+                        className="inline-flex items-center gap-1.5 bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Confirm remove
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingDelete(false)}
+                        disabled={busy}
+                        className="inline-flex items-center px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingDelete(true)}
+                      disabled={busy || inFlight}
+                      title="Remove Tekton from this cluster"
+                      className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Remove Tekton
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        )}
 
-      {/* Provider plugin cache: a per-cluster volume OpenTofu steps share so
+        {/* Provider plugin cache: a per-cluster volume OpenTofu steps share so
           providers download once. Only meaningful once Tekton is present (the
           claim lives in the jobs namespace the install creates). */}
-      {status.present && (
-        <PluginCacheSection
-          clusterId={clusterId}
-          cache={status.plugin_cache ?? null}
-          canEdit={canEdit}
-          onSaved={settle}
+        {status.present && (
+          <PluginCacheSection
+            clusterId={clusterId}
+            cache={status.plugin_cache ?? null}
+            canEdit={canEdit}
+            onSaved={settle}
+          />
+        )}
+
+        {showCapabilities && (
+          <div className="p-4">
+            <h3 className="pb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+              Readiness
+            </h3>
+            <ClusterCapabilities clusterId={clusterId} bordered={false} />
+          </div>
+        )}
+      </div>
+      {runnerConfirm && (
+        <RunnerDialog
+          status={runnerConfirm}
+          onConfirm={runnerConfirm.enabled ? onDisable : onEnable}
+          onClose={() => setRunnerConfirm(null)}
         />
       )}
-
-      {showCapabilities && (
-        <div className="p-4">
-          <h3 className="pb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-            Readiness
-          </h3>
-          <ClusterCapabilities clusterId={clusterId} bordered={false} />
-        </div>
-      )}
-    </div>
+    </>
   );
 }
 
 // StatusLine surfaces transient state the two sections below can't show on their
 // own: live progress while an install/upgrade/uninstall job is in flight, and
 // the error after a failure. Steady states (running / off / not set up) are
-// already clear from the switch and Engine sections, so the panel doesn't render
+// already clear from the runner and Engine sections, so the panel doesn't render
 // this line for them.
 function StatusLine({ status }: { status: TektonStatus }) {
   const inFlight = IN_FLIGHT.includes(status.status);
@@ -362,7 +386,7 @@ function StatusLine({ status }: { status: TektonStatus }) {
     tone = "text-blue-700";
     headline =
       status.status === "installing"
-        ? "Setting up job running…"
+        ? "Setting up runner…"
         : status.status === "upgrading"
           ? "Upgrading Tekton…"
           : "Removing Tekton…";
@@ -385,45 +409,225 @@ function StatusLine({ status }: { status: TektonStatus }) {
   );
 }
 
-// RunJobsSwitch is the primary control: a labeled on/off switch. rounded-full is
-// the one curve the brand allows, so the toggle reads as a toggle.
-function RunJobsSwitch({
+// RunnerControl is the primary control: the cluster's On/Off runner state
+// and, for editors, the button that opens the confirm dialog to change it.
+// Viewers see only the state. rounded-full is the one curve the brand allows,
+// used for the status dot.
+function RunnerControl({
   enabled,
-  inFlight,
+  present,
+  canEdit,
   disabled,
-  onToggle,
+  onClick,
 }: {
   enabled: boolean;
-  inFlight: boolean;
+  present: boolean;
+  canEdit: boolean;
   disabled: boolean;
-  onToggle: () => void;
+  onClick: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <span className="text-sm font-medium text-neutral-900">
-        Run jobs on this cluster
-      </span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        aria-label="Run jobs on this cluster"
-        onClick={onToggle}
-        disabled={disabled}
-        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-          enabled ? "bg-green-600" : "bg-neutral-300"
-        }`}
-      >
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-medium text-neutral-900">
+          Use this cluster as a runner
+        </span>
         <span
-          className={`inline-flex h-5 w-5 items-center justify-center rounded-full bg-white shadow transition-transform ${
-            enabled ? "translate-x-5" : "translate-x-0.5"
+          className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+            enabled ? "text-green-700" : "text-neutral-500"
           }`}
         >
-          {inFlight && (
-            <Loader2 className="h-3 w-3 animate-spin text-neutral-500" />
-          )}
+          <span
+            className={`h-2 w-2 rounded-full ${
+              enabled ? "bg-green-600" : "bg-neutral-300"
+            }`}
+          />
+          {enabled ? "On" : "Off"}
         </span>
-      </button>
+      </div>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={onClick}
+          disabled={disabled}
+          className={
+            enabled
+              ? "border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              : "bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+          }
+        >
+          {enabled
+            ? "Stop using as runner"
+            : present
+              ? "Use as runner"
+              : "Set up as runner"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// RunnerDialog confirms a change to the runner designation and explains what
+// it will do. The heavy case is setting up a runner where Tekton isn't
+// installed yet: Spacefleet installs Tekton, which adds cluster-scoped
+// resources (CRDs, admission webhooks, RBAC) and new namespaces — so the
+// dialog lists that footprint before anything is applied. Turning on over an
+// existing install, or turning off, only flips the designation; the dialog
+// says so. A failed request keeps the dialog open with the error.
+function RunnerDialog({
+  status,
+  onConfirm,
+  onClose,
+}: {
+  status: TektonStatus;
+  onConfirm: () => Promise<string | null>;
+  onClose: () => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const turningOn = !status.enabled;
+  const installs = turningOn && !status.present;
+  const title = !turningOn
+    ? "Stop using this cluster as a runner"
+    : installs
+      ? "Install Tekton and set up this runner?"
+      : "Use this cluster as a runner";
+  const confirmLabel = !turningOn
+    ? "Stop using as runner"
+    : installs
+      ? "Install Tekton"
+      : "Use as runner";
+
+  // Close on Escape, but not mid-request — the outcome would be lost.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !submitting) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, submitting]);
+
+  async function confirm() {
+    setSubmitting(true);
+    setError(null);
+    const err = await onConfirm();
+    if (err) {
+      setError(err);
+      setSubmitting(false);
+      return;
+    }
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="runner-dialog-title"
+        className="mt-12 w-full max-w-lg border border-neutral-200 bg-white shadow-lg"
+      >
+        <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
+          <h2
+            id="runner-dialog-title"
+            className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight"
+          >
+            {installs && <AlertTriangle className="h-5 w-5 text-amber-600" />}
+            {title}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="text-neutral-400 hover:text-neutral-700 disabled:opacity-50"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-3 px-5 py-4 text-sm text-neutral-600">
+          {installs ? (
+            <>
+              <p>
+                Spacefleet will install Tekton Pipelines {status.pinned_version}{" "}
+                on this cluster so it can act as a runner for applications&apos;
+                workflow jobs. This is a cluster-wide change that adds:
+              </p>
+              <ul className="list-disc space-y-1 pl-5">
+                <li>
+                  Tekton&apos;s controllers and webhook, in the{" "}
+                  <code className="font-mono text-xs">tekton-pipelines</code>{" "}
+                  and{" "}
+                  <code className="font-mono text-xs">
+                    tekton-pipelines-resolvers
+                  </code>{" "}
+                  namespaces
+                </li>
+                <li>
+                  Cluster-scoped custom resource definitions, admission
+                  webhooks, and RBAC roles
+                </li>
+                <li>
+                  A <code className="font-mono text-xs">spacefleet-jobs</code>{" "}
+                  namespace where workflow jobs run
+                </li>
+              </ul>
+              <p className="text-neutral-500">
+                The install runs in the background and its progress shows here.
+                You can remove Tekton later from the Engine section.
+              </p>
+            </>
+          ) : turningOn ? (
+            <>
+              <p>
+                Tekton{" "}
+                {status.detected_version ?? status.installed_version ?? ""} is
+                already installed on this cluster, so nothing new is installed.
+              </p>
+              <p>
+                Applications will be able to choose this cluster as their
+                runner, and their workflow jobs will run here.
+              </p>
+            </>
+          ) : (
+            <>
+              <p>
+                Applications will no longer be able to choose this cluster as
+                their runner. Applications already using it are not changed.
+              </p>
+              <p className="text-neutral-500">
+                Tekton stays installed.
+                {status.managed &&
+                  status.present &&
+                  " To remove it as well, use Remove Tekton in the Engine section."}
+              </p>
+            </>
+          )}
+          {error && <p className="text-red-600">{error}</p>}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-neutral-200 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="text-sm text-neutral-500 hover:text-neutral-900 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void confirm()}
+            disabled={submitting}
+            className="inline-flex items-center gap-1.5 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+          >
+            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

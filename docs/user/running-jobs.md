@@ -1,17 +1,22 @@
-# Running jobs in a cluster
+# Runner clusters
 
-Spacefleet can run jobs — CI/CD steps, Helm releases, and other one-off or
-pipeline work — inside the Kubernetes clusters you've registered. Job running is
-powered by [Tekton](https://tekton.dev/), which Spacefleet installs and manages
-for you.
+A **runner** is a registered Kubernetes cluster where Spacefleet runs your
+applications' workflow jobs — Helm releases, manifest applies, OpenTofu plans
+and applies. Every application picks one runner cluster. Runners are powered by
+[Tekton](https://tekton.dev/), which Spacefleet installs and manages for you.
 
-## Designate a cluster to run jobs
+## Set up a cluster as a runner
 
-1. Open **Providers › Clusters** and find the cluster you want to use.
-2. Select **Jobs** on that cluster's row.
-3. Select **Enable job running**.
+1. Open **Admin › Clusters** and select the cluster you want to use. (The
+   clusters list shows **Enabled** in the **Runner** column for clusters that
+   are already runners.)
+2. In its **Runner** panel, select **Set up as runner** (or **Use as runner**
+   if Tekton is already installed on the cluster).
+3. Review the confirmation, which explains what will change on the cluster,
+   and confirm.
 
-If the cluster doesn't already have Tekton, Spacefleet installs it for you. The
+If the cluster doesn't already have Tekton, Spacefleet installs it for you —
+the confirmation lists what the install adds before anything is applied. The
 panel shows live progress as the install proceeds — you don't need to refresh.
 When it finishes, the status shows **installed** and the controller as ready.
 
@@ -19,19 +24,19 @@ Jobs run in a dedicated `spacefleet-jobs` namespace on the cluster, keeping
 Spacefleet's runs (and the secrets that support them) in one place, out of the
 `default` namespace. Spacefleet creates that namespace when it installs,
 upgrades, or syncs Tekton — an install set up before this namespace was
-introduced shows **Update available** in the Jobs panel (see below). If you
+introduced shows **Update available** in the Runner panel (see below). If you
 installed Tekton yourself, create it once with
 `kubectl create namespace spacefleet-jobs` — runs fail until it exists.
 
-Enabling job running requires credentials that can install cluster-wide
+Setting up a runner requires credentials that can install cluster-wide
 components (custom resource definitions, RBAC, and webhooks) — effectively
 cluster-admin. If the install fails with a permissions error, the status shows
 **failed** with the reason; grant the cluster's credentials the needed access
-and enable again.
+and set it up again.
 
 ## Keep the managed install up to date
 
-The Jobs panel's **Engine** section shows the Tekton install Spacefleet manages
+The Runner panel's **Engine** section shows the Tekton install Spacefleet manages
 on the cluster: its version, that it's managed by Spacefleet, and whether it
 matches what your version of Spacefleet sets up. When it doesn't — a newer
 Tekton version is available, or Spacefleet's install has changed (for example,
@@ -58,7 +63,7 @@ cluster instead: a shared volume in the `spacefleet-jobs` namespace that every
 OpenTofu step on this runner mounts as its plugin cache, so a provider is
 downloaded once per cluster and linked into each run afterwards.
 
-Turn it on from the Jobs panel's **Engine** section, under **Provider plugin
+Turn it on from the Runner panel's **Engine** section, under **Provider plugin
 cache**: choose a size (`20Gi` is plenty for most stacks — a provider is kept
 once per version) and, if the cluster's default storage class cannot be shared
 between nodes, a storage class that supports **ReadWriteMany** (for example an
@@ -81,7 +86,7 @@ Two things to know:
 
 ## Check readiness
 
-The Jobs panel includes a **Readiness** report showing whether the cluster's
+The Runner panel includes a **Readiness** report showing whether the cluster's
 credentials are allowed to run jobs (submit and read Tekton runs). If anything
 is missing, select the capability and use **Generate RBAC** to get a manifest
 you can apply to grant it. (This is the same capability report available from the
@@ -89,7 +94,7 @@ cluster's **Capabilities** view.)
 
 ## Run a job
 
-Once Tekton is installed, select **Run a job** from the Jobs panel. Provide:
+Once Tekton is installed, select **Run a job** from the Runner panel. Provide:
 
 - **Name** — a label for the run.
 - **Image** — the container image the step runs in (for example,
@@ -99,7 +104,9 @@ Once Tekton is installed, select **Run a job** from the Jobs panel. Provide:
 Select **Run job**. The run's status updates live (Pending → Running →
 Succeeded / Failed), and its log output streams in as it runs.
 
-## Stop designating a cluster
+## Stop using a cluster as a runner
 
-Select **Disable** in the Jobs panel to stop using a cluster for jobs. This
-clears the designation only — it does not uninstall Tekton from the cluster.
+Select **Stop using as runner** in the Runner panel and confirm. Applications
+can no longer choose the cluster as their runner; applications already using it
+are not changed. This clears the designation only — it does not uninstall
+Tekton from the cluster.
