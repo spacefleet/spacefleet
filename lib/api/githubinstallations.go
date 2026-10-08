@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -114,6 +115,52 @@ func (s *Server) GetGitHubConnectUrl(ctx context.Context, _ GetGitHubConnectUrlR
 	return GetGitHubConnectUrl200JSONResponse{Url: installURL}, nil
 }
 
+// GetGitHubAuthorizeUrl returns GitHub's OAuth authorize URL for the second
+// leg of the setup-URL connect flow: GitHub has just sent the browser to the
+// App's setup URL with the new installation's id and the connect state, and
+// the code the authorize step returns is what proves the user can access that
+// installation (the setup URL's installation_id alone can be forged). The
+// connect state must be this org's, so a link someone else crafted can't
+// start it; the new state binds the org and the installation, and the
+// redirect lands on /github/callback, which posts the code to
+// CreateGitHubInstallation.
+func (s *Server) GetGitHubAuthorizeUrl(ctx context.Context, req GetGitHubAuthorizeUrlRequestObject) (GetGitHubAuthorizeUrlResponseObject, error) {
+	orgID, aerr, err := s.resolveGitHubInstallationsWrite(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[GetGitHubAuthorizeUrldefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	if s.githubAppClientID == "" {
+		return errResp[GetGitHubAuthorizeUrldefaultJSONResponse](http.StatusServiceUnavailable, "unavailable", "github app is not configured on this deployment"), nil
+	}
+	if s.secretKey == "" {
+		return errResp[GetGitHubAuthorizeUrldefaultJSONResponse](http.StatusBadRequest, "encryption_unavailable", "cannot sign the connect flow without an encryption key — set SPACEFLEET_SECRET_KEY"), nil
+	}
+	if req.Params.InstallationId <= 0 {
+		return errResp[GetGitHubAuthorizeUrldefaultJSONResponse](http.StatusBadRequest, "bad_request", "installation_id must be a positive GitHub installation id"), nil
+	}
+	connect, err := githubapp.VerifyState(s.secretKey, req.Params.State)
+	if err != nil || connect.InstallationID != 0 {
+		return errResp[GetGitHubAuthorizeUrldefaultJSONResponse](http.StatusBadRequest, "bad_request", "invalid or expired connect state; start the GitHub connection again"), nil
+	}
+	if connect.Org != orgID {
+		return errResp[GetGitHubAuthorizeUrldefaultJSONResponse](http.StatusForbidden, "forbidden", "connect state was issued for a different organization"), nil
+	}
+	state, err := githubapp.SignInstallationState(s.secretKey, orgID, req.Params.InstallationId)
+	if err != nil {
+		return nil, err
+	}
+	// The callback route is the App's registered redirect URI. Without an
+	// external URL (route tests) GitHub falls back to the first one registered.
+	redirect := ""
+	if s.externalURL != "" {
+		redirect = strings.TrimRight(s.externalURL, "/") + "/github/callback"
+	}
+	return GetGitHubAuthorizeUrl200JSONResponse{Url: githubapp.AuthorizeURL(s.githubAppClientID, redirect, state)}, nil
+}
+
 // CreateGitHubInstallation records an installation from the connect callback.
 // Two checks gate the attach, and both are required: the state token
 // (signature, expiry, and that it was issued for the current org) proves the
@@ -136,19 +183,34 @@ func (s *Server) CreateGitHubInstallation(ctx context.Context, req CreateGitHubI
 	if s.secretKey == "" {
 		return errResp[CreateGitHubInstallationdefaultJSONResponse](http.StatusBadRequest, "encryption_unavailable", "cannot verify the connect flow without an encryption key — set SPACEFLEET_SECRET_KEY"), nil
 	}
-	stateOrg, err := githubapp.VerifyState(s.secretKey, req.Body.State)
+	state, err := githubapp.VerifyState(s.secretKey, req.Body.State)
 	if err != nil {
 		return errResp[CreateGitHubInstallationdefaultJSONResponse](http.StatusBadRequest, "bad_request", "invalid or expired connect state; start the GitHub connection again"), nil
 	}
-	if stateOrg != orgID {
+	if state.Org != orgID {
 		return errResp[CreateGitHubInstallationdefaultJSONResponse](http.StatusForbidden, "forbidden", "connect state was issued for a different organization"), nil
 	}
-	if req.Body.Code == "" {
-		// No code means GitHub didn't run the user-authorization flow — the App is
-		// missing "Request user authorization (OAuth) during installation".
-		return errResp[CreateGitHubInstallationdefaultJSONResponse](http.StatusBadRequest, "bad_request", "missing authorization code from GitHub; the GitHub App must request user authorization (OAuth) during installation"), nil
+	// The installation comes from the state on the setup-URL flow (it was
+	// bound by authorize-url), or from the callback's query on an App that
+	// requests user authorization during installation. Both may be present;
+	// they must then agree, so a code can't be redirected at another
+	// installation than the one the state was minted for.
+	installationID := state.InstallationID
+	if req.Body.InstallationId != nil {
+		if installationID != 0 && *req.Body.InstallationId != installationID {
+			return errResp[CreateGitHubInstallationdefaultJSONResponse](http.StatusBadRequest, "bad_request", "the installation does not match the connect state; start the GitHub connection again"), nil
+		}
+		installationID = *req.Body.InstallationId
 	}
-	inst, err := s.githubInstallations.Link(ctx, orgID, req.Body.InstallationId, req.Body.Code)
+	if installationID <= 0 {
+		return errResp[CreateGitHubInstallationdefaultJSONResponse](http.StatusBadRequest, "bad_request", "missing installation id from GitHub; start the GitHub connection again"), nil
+	}
+	if req.Body.Code == "" {
+		// No code means GitHub didn't run the user-authorization step, so the
+		// installation's ownership can't be verified.
+		return errResp[CreateGitHubInstallationdefaultJSONResponse](http.StatusBadRequest, "bad_request", "missing authorization code from GitHub; start the GitHub connection again"), nil
+	}
+	inst, err := s.githubInstallations.Link(ctx, orgID, installationID, req.Body.Code)
 	if err != nil {
 		if errors.Is(err, githubinstallations.ErrAppNotConfigured) {
 			return errResp[CreateGitHubInstallationdefaultJSONResponse](http.StatusServiceUnavailable, "unavailable", "github app is not configured on this deployment"), nil

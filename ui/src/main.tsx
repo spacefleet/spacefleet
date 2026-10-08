@@ -26,6 +26,10 @@ const oidcConfig = {
   // from the URL and keeps the router's location in sync. Doing a raw
   // history.replaceState here would desync React Router.
   onSigninCallback: () => {},
+  // Only /auth/callback is a Dex redirect. The provider otherwise treats any
+  // page loaded with ?code=…&state=… as one and fails the sign-in — and
+  // GitHub's OAuth redirect to /github/callback carries exactly those.
+  skipSigninCallback: window.location.pathname !== "/auth/callback",
 };
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

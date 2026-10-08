@@ -102,17 +102,17 @@ config:
     startTLS: true
 
   # GitHub App for pulling Helm charts from private Git repositories. Register
-  # one GitHub App with "Contents: read" repository permission, set its
-  # Callback URL (the "Identifying and authorizing users" section) to
-  # "<your external URL>/github/callback", and enable "Request user
-  # authorization (OAuth) during installation" — the post-install redirect then
-  # lands back in the app with an authorization code it exchanges to verify the
-  # installing user owns the installation. The App ID, slug, and client ID are
-  # non-secret (inline); the private key and client secret are secrets — set
-  # them inline here (they land in the chart's managed env Secret) or, for
-  # GitOps, leave them empty and supply GITHUB_APP_PRIVATE_KEY /
-  # GITHUB_APP_CLIENT_SECRET via config.secrets.envFrom. Leave unset to disable
-  # the feature (the git chart source then supports public repos only).
+  # one GitHub App with "Contents: read" repository permission, set both its
+  # Redirect URI and its Setup URL to "<your external URL>/github/callback",
+  # check "Redirect on update", and leave "Request user authorization (OAuth)
+  # during installation" unchecked (it disables the Setup URL). After an
+  # install the app runs GitHub's authorization step and exchanges the code to
+  # verify the installing user owns the installation. The App ID, slug, and
+  # client ID are non-secret (inline); the private key and client secret are
+  # secrets — set them inline here (they land in the chart's managed env
+  # Secret) or, for GitOps, leave them empty and supply GITHUB_APP_PRIVATE_KEY
+  # / GITHUB_APP_CLIENT_SECRET via config.secrets.envFrom. Leave unset to
+  # disable the feature (the git chart source then supports public repos only).
   github:
     # -- Numeric GitHub App ID. Empty disables the feature.
     appId: ""

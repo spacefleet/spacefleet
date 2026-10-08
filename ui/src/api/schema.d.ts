@@ -1557,11 +1557,11 @@ export interface paths {
         /**
          * Record a GitHub App installation from the connect callback
          * @description Org-scoped, editor or above. Called by the SPA after GitHub redirects
-         *     back from the install flow. The state token (issued by connect-url) is
-         *     verified to bind the installation to the initiating organization, and
-         *     the OAuth authorization code is exchanged to confirm the user who
-         *     completed the install has access to the installation, before it is
-         *     recorded.
+         *     back with an OAuth code. The state token (issued by authorize-url or
+         *     connect-url) is verified to bind the installation to the initiating
+         *     organization, and the OAuth authorization code is exchanged to confirm
+         *     the user who completed the install has access to the installation,
+         *     before it is recorded.
          */
         post: operations["createGitHubInstallation"];
         delete?: never;
@@ -1609,6 +1609,33 @@ export interface paths {
          *     which the create endpoint verifies on the callback.
          */
         get: operations["getGitHubConnectUrl"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/github/installations/authorize-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the GitHub authorize URL that verifies a new installation
+         * @description Org-scoped, editor or above. After an install, GitHub sends the
+         *     browser to the App's setup URL with the new installation's id and the
+         *     state from connect-url; the SPA then redirects to this URL (GitHub's
+         *     OAuth authorize page), which comes back to /github/callback with a
+         *     code proving the user can access the installation. The connect state
+         *     must be valid for the current organization. The returned URL carries a
+         *     fresh state binding the current organization and this installation,
+         *     which the create endpoint verifies.
+         */
+        get: operations["getGitHubAuthorizeUrl"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2660,12 +2687,16 @@ export interface components {
         GitHubInstallationCreateRequest: {
             /**
              * Format: int64
-             * @description The installation id GitHub returned to the connect callback.
+             * @description The installation id GitHub returned to the callback. Omitted when
+             *     the state (from authorize-url) already names the installation; if
+             *     both are sent they must match.
              */
-            installation_id: number;
+            installation_id?: number;
             /**
-             * @description The signed state token issued by connect-url and round-tripped
-             *     through GitHub's redirect; binds the installation to this org.
+             * @description The signed state token round-tripped through GitHub's redirect:
+             *     from authorize-url (binds this org and the installation), or from
+             *     connect-url for an App that requests user authorization during
+             *     installation (binds this org).
              */
             state: string;
             /**
@@ -2677,7 +2708,7 @@ export interface components {
             code: string;
         };
         GitHubConnectUrl: {
-            /** @description The GitHub App install URL to redirect the browser to. */
+            /** @description The GitHub URL (install or authorize) to redirect the browser to. */
             url: string;
         };
         /**
@@ -5793,6 +5824,32 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description The install URL */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubConnectUrl"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getGitHubAuthorizeUrl: {
+        parameters: {
+            query: {
+                /** @description The installation id GitHub passed to the setup URL. */
+                installation_id: number;
+                /** @description The connect-url state GitHub passed to the setup URL. */
+                state: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The authorize URL */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -49,17 +49,22 @@ App** (under the user or organization that should own the App), and set:
 - **Name** — anything, e.g. "Acme Spacefleet".
 - **Homepage URL** — your **plain** deployment URL (e.g.
   `https://spacefleet.example.com`). Cosmetic only.
-- **Callback URL** (in the *"Identifying and authorizing users"* section) —
-  `https://<your external URL>/github/callback`. It must be your
-  `config.externalURL` with `/github/callback` appended. GitHub sends the user
-  here *after they install the App*, and Spacefleet records the installation.
+- **Redirect URI** (in the *"Identifying and authorizing users"* section;
+  older GitHub pages call it *Callback URL*) —
+  `https://<your external URL>/github/callback`: your `config.externalURL` with
+  `/github/callback` appended. After an installation, Spacefleet sends the user
+  through GitHub's authorization page, which comes back here with a code that
+  Spacefleet exchanges to confirm the person really has access to the
+  installation — the check that stops one organization from claiming another
+  organization's installation.
 - **Request user authorization (OAuth) during installation** (same section) —
-  **check it.** This is required: it makes GitHub include an authorization code
-  in the redirect, which Spacefleet exchanges to confirm the person completing
-  the installation really has access to it — that check is what stops one
-  organization from claiming another organization's installation. (With this
-  checked, GitHub disables the separate *Setup URL* field — that's expected;
-  Spacefleet doesn't use it.)
+  **leave it unchecked.** Checking it disables the Setup URL below.
+- **Setup URL** (in the *"Post installation"* section) — the **same**
+  `https://<your external URL>/github/callback`. GitHub sends the user here
+  right after they install the App.
+- **Redirect on update** (same section) — **check it**, so that after someone
+  changes an installation's repositories or permissions on GitHub, they come
+  back to Spacefleet.
 - **Webhook** — optional. Leave it **inactive** unless you want pushes and
   pull requests to trigger runs; see [Run triggers](#run-triggers-webhook)
   below for the settings.
@@ -106,13 +111,11 @@ how Spacefleet confirms, when an installation is connected, that the person
 completing it actually has access to that installation.
 
 > [!IMPORTANT]
-> The `/github/callback` address goes in the App's **Callback URL** field (the
-> *"Identifying and authorizing users"* section), and **Request user
-> authorization (OAuth) during installation** must be checked. The URL must be
-> `config.externalURL` + `/github/callback`. If a user finishes installing on
-> GitHub and lands on a "not found" page or the connection fails, a wrong/empty
-> Callback URL or an unchecked "Request user authorization" box is the usual
-> cause.
+> The App's **Redirect URI** and **Setup URL** must both be
+> `config.externalURL` + `/github/callback`, and **Request user authorization
+> (OAuth) during installation** must be unchecked (it disables the Setup URL).
+> If a user finishes installing on GitHub and lands on a "not found" page or the
+> connection fails, one of these settings is the usual cause.
 
 ## Configure it
 
@@ -185,15 +188,15 @@ Once you've configured the App, the rest is self-service for each organization,
 in the app's UI (under **Admin → GitHub**):
 
 1. An organization admin clicks **Connect GitHub** and is sent to GitHub to
-   install your App, choosing which repositories to grant. As part of the
-   install, GitHub also asks them to authorize the App (the "Request user
-   authorization" setting above).
-2. GitHub returns them to Spacefleet, which records the installation. The
-   handshake is tied both to the organization that started it *and* to the
-   GitHub user who completed the install — Spacefleet verifies that user can
-   actually access the installation before linking it, so an installation can't
-   be claimed by a different organization or by someone passing an installation
-   id they don't own.
+   install your App, choosing which repositories to grant.
+2. GitHub returns them to Spacefleet, which passes them straight through
+   GitHub's authorization page (GitHub asks them to authorize the App the
+   first time only) and then records the installation. The handshake is tied
+   both to the organization that started it *and* to the GitHub user who
+   completed the install — Spacefleet verifies that user can actually access
+   the installation before linking it, so an installation can't be claimed by
+   a different organization or by someone passing an installation id they
+   don't own.
 3. When creating a Git-source application, they select the connected
    installation; deployments from that app can then read the private repository.
 
@@ -265,13 +268,20 @@ only when the App is configured. Click it, install on a test repository, and
 confirm the installation is listed afterward. If it doesn't work:
 
 - **Lands on a "not found" page after installing, or the connection fails** —
-  the App's **Callback URL** doesn't match `config.externalURL` +
-  `/github/callback`. Fix it on the App's GitHub settings page.
-- **"Missing installation details from GitHub" / "missing authorization code"
-  after installing** — the App's **Request user authorization (OAuth) during
-  installation** box isn't checked. Enable it on the App's GitHub settings
-  page; without it GitHub doesn't send the code Spacefleet needs to verify the
-  installation.
+  the App's **Setup URL** or **Redirect URI** doesn't match
+  `config.externalURL` + `/github/callback`. Fix it on the App's GitHub
+  settings page.
+- **GitHub doesn't return to Spacefleet after installing or after changing an
+  installation** — the Setup URL is empty. **Request user authorization
+  (OAuth) during installation** is probably checked, which disables it:
+  uncheck it, set the Setup URL, and check **Redirect on update**.
+- **"Missing installation details from GitHub" after installing** — the
+  installation was started on GitHub rather than from Spacefleet. Start it from
+  **Admin → GitHub → Connect GitHub** so Spacefleet knows which organization
+  it is for.
+- **GitHub says the redirect_uri is not associated with this application** —
+  the **Redirect URI** is missing or different from `config.externalURL` +
+  `/github/callback`.
 - **"github app is not configured" (the button is missing)** — one of
   `appId`/`slug`/`privateKey`/`clientId`/`clientSecret` is empty, or didn't
   reach the pods. Re-check the five values and the `printenv` above.

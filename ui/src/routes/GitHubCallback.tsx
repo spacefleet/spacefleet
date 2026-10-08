@@ -2,58 +2,109 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { api } from "../api/client";
 
-// Landing route for GitHub's post-install redirect (the App's Callback URL
-// points at /github/callback, with "Request user authorization (OAuth) during
-// installation" enabled). GitHub appends
-// ?code=…&installation_id=…&setup_action=…&state=… The state token, issued by
-// connect-url, binds the install back to the initiating organization, and the
-// code lets the backend verify the installing user actually has access to the
-// installation; we POST all three to record it, then hand control back to the
-// app *through React Router* (a raw history.replaceState would desync the
-// router — see AuthCallback).
+// Landing route for every GitHub redirect in the connect flow — the App's
+// Setup URL and its Redirect URI both point here:
+//
+//   1. Connect sends the browser to GitHub's install page with a state token
+//      (connect-url) binding the flow to this organization.
+//   2. GitHub redirects to the Setup URL: ?installation_id=…&setup_action=…
+//      &state=…. That installation_id is only a query parameter, so it can't
+//      be trusted on its own; we continue to GitHub's OAuth authorize page
+//      (authorize-url), which returns a code proving the user can access it.
+//   3. GitHub redirects to the Redirect URI: ?code=…&state=…. We post both to
+//      record the installation, then go to Admin › GitHub.
+//
+// An App that requests user authorization during installation skips step 2:
+// GitHub sends the code with the installation_id straight away. With
+// "Redirect on update", GitHub also comes back here (no state) after an
+// installation's repositories or permissions change; there's nothing to
+// record, so that just returns to Admin › GitHub.
+//
+// Control returns to the app *through React Router* (a raw
+// history.replaceState would desync the router — see AuthCallback).
 export function GitHubCallback() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
-  // Guard against the effect running twice (React 18 StrictMode) and POSTing
-  // the installation twice; the second POST is idempotent server-side, but this
-  // keeps the UX clean.
-  const submitted = useRef(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Guard against the effect running twice (React 18 StrictMode) and posting
+  // or redirecting twice.
+  const started = useRef(false);
 
   useEffect(() => {
-    if (submitted.current) return;
-    submitted.current = true;
+    if (started.current) return;
+    started.current = true;
 
-    const installationIdRaw = params.get("installation_id");
-    const state = params.get("state");
     const code = params.get("code");
-    if (!installationIdRaw || !state || !code) {
-      setError("Missing installation details from GitHub.");
-      return;
-    }
-    const installationId = Number(installationIdRaw);
-    if (!Number.isInteger(installationId)) {
+    const state = params.get("state");
+    const setupAction = params.get("setup_action");
+    const rawId = params.get("installation_id");
+    const installationId = rawId === null ? null : Number(rawId);
+    if (
+      installationId !== null &&
+      !(Number.isInteger(installationId) && installationId > 0)
+    ) {
       setError("Invalid installation id from GitHub.");
       return;
     }
 
-    void (async () => {
-      const { error } = await api.POST("/api/github/installations", {
-        body: { installation_id: installationId, state, code },
-      });
-      if (error) {
-        setError(error.message ?? "Could not record the GitHub installation.");
-        return;
-      }
+    if (code && state) {
+      void (async () => {
+        const { error } = await api.POST("/api/github/installations", {
+          body: {
+            state,
+            code,
+            ...(installationId !== null && { installation_id: installationId }),
+          },
+        });
+        if (error) {
+          setError(error.message ?? "Could not record the GitHub installation.");
+          return;
+        }
+        navigate("/admin/github", { replace: true });
+      })();
+      return;
+    }
+
+    if (setupAction === "request") {
+      setNotice(
+        "GitHub asked an owner of the account to approve the installation. Once it's approved, connect it from Admin › GitHub.",
+      );
+      return;
+    }
+
+    if (installationId !== null && state) {
+      void (async () => {
+        const { data, error } = await api.GET(
+          "/api/github/installations/authorize-url",
+          { params: { query: { installation_id: installationId, state } } },
+        );
+        if (error || !data) {
+          setError(error?.message ?? "Could not continue the GitHub connection.");
+          return;
+        }
+        window.location.href = data.url;
+      })();
+      return;
+    }
+
+    if (setupAction === "update") {
       navigate("/admin/github", { replace: true });
-    })();
+      return;
+    }
+
+    setError(
+      "Missing installation details from GitHub. Start the connection from Admin › GitHub.",
+    );
   }, [params, navigate]);
 
   return (
     <div className="flex h-screen items-center justify-center bg-gray-50">
-      {error ? (
+      {error || notice ? (
         <div className="max-w-md text-center">
-          <p className="text-sm text-red-600">{error}</p>
+          <p className={`text-sm ${error ? "text-red-600" : "text-neutral-700"}`}>
+            {error ?? notice}
+          </p>
           <button
             type="button"
             onClick={() => navigate("/admin/github", { replace: true })}

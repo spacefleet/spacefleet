@@ -269,8 +269,38 @@ func TestSignVerifyStateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("verify: %v", err)
 	}
-	if got != org {
-		t.Errorf("verified org = %v, want %v", got, org)
+	if got.Org != org || got.InstallationID != 0 {
+		t.Errorf("verified = %+v, want org %v and no installation", got, org)
+	}
+}
+
+func TestSignVerifyInstallationState(t *testing.T) {
+	key := testSecretKey()
+	org := uuid.New()
+	state, err := SignInstallationState(key, org, 4242)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	got, err := VerifyState(key, state)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if got.Org != org || got.InstallationID != 4242 {
+		t.Errorf("verified = %+v, want org %v installation 4242", got, org)
+	}
+	if _, err := SignInstallationState(key, org, 0); err == nil {
+		t.Error("expected an error for a missing installation id")
+	}
+}
+
+func TestAuthorizeURL(t *testing.T) {
+	got := AuthorizeURL("Iv1.abc", "https://sf.example.com/github/callback", "s.t")
+	want := "https://github.com/login/oauth/authorize?client_id=Iv1.abc&redirect_uri=https%3A%2F%2Fsf.example.com%2Fgithub%2Fcallback&state=s.t"
+	if got != want {
+		t.Errorf("AuthorizeURL = %s, want %s", got, want)
+	}
+	if got := AuthorizeURL("Iv1.abc", "", "s"); strings.Contains(got, "redirect_uri") {
+		t.Errorf("empty redirect URI should be omitted: %s", got)
 	}
 }
 

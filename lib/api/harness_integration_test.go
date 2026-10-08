@@ -106,6 +106,8 @@ func newHarness(t *testing.T, github githubinstallations.Authenticator) *harness
 		Policies:            policies.NewService(client),
 		SecretKey:           testSecretKey,
 		GitHubAppSlug:       "spacefleet-test",
+		GitHubAppClientID:   "Iv1.test",
+		ExternalURL:         "https://sf.example.com",
 	}
 	return &harness{t: t, client: client, handler: newTestHandler(deps)}
 }

@@ -48,11 +48,13 @@ type Server struct {
 	tofuStateMaxBytes int64
 
 	// githubAppSlug is the operator's GitHub App URL slug, used to build the
-	// install link returned by GetGitHubConnectUrl. secretKey signs the
+	// install link returned by GetGitHubConnectUrl; githubAppClientID builds the
+	// OAuth authorize link returned by GetGitHubAuthorizeUrl. secretKey signs the
 	// short-lived state token that binds that connect flow to the org (the same
-	// base64 key as the credential sealer). Both empty when no App is configured.
-	githubAppSlug string
-	secretKey     string
+	// base64 key as the credential sealer). All empty when no App is configured.
+	githubAppSlug     string
+	githubAppClientID string
+	secretKey         string
 	// githubWebhookSecret verifies GitHub webhook deliveries (run triggers).
 	// Empty leaves the webhook endpoint off.
 	githubWebhookSecret string
@@ -104,6 +106,7 @@ type ServerDeps struct {
 	ExternalURL         string
 	EmailEnabled        bool
 	GitHubAppSlug       string
+	GitHubAppClientID   string
 	GitHubWebhookSecret string
 	SecretKey           string
 	JobQueue            *queue.Client
@@ -135,6 +138,7 @@ func NewServer(d ServerDeps) *Server {
 		externalURL:         d.ExternalURL,
 		emailEnabled:        d.EmailEnabled,
 		githubAppSlug:       d.GitHubAppSlug,
+		githubAppClientID:   d.GitHubAppClientID,
 		githubWebhookSecret: d.GitHubWebhookSecret,
 		secretKey:           d.SecretKey,
 		jobQueue:            d.JobQueue,

@@ -6,15 +6,23 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/spacefleet/spacefleet/ent/membership"
+	"github.com/spacefleet/spacefleet/lib/githubapp"
 )
 
 // createBody builds the connect-callback JSON body, with the OAuth
-// authorization code the fake authenticator accepts.
+// authorization code the fake authenticator accepts. A zero installationID
+// leaves it out (the setup-URL flow, where the state carries it).
 func createBody(installationID int64, state string) string {
-	b, _ := json.Marshal(GitHubInstallationCreateRequest{InstallationId: installationID, State: state, Code: "oauth-code"})
+	req := GitHubInstallationCreateRequest{State: state, Code: "oauth-code"}
+	if installationID != 0 {
+		req.InstallationId = &installationID
+	}
+	b, _ := json.Marshal(req)
 	return string(b)
 }
 
@@ -112,7 +120,8 @@ func TestCreateGitHubInstallationMissingCode(t *testing.T) {
 	h := newHarness(t, fakeGitHubAuth{login: "acme"})
 	token, orgID := h.member("editor", membership.RoleEditor)
 
-	b, _ := json.Marshal(GitHubInstallationCreateRequest{InstallationId: 12345, State: h.signState(orgID)})
+	id := int64(12345)
+	b, _ := json.Marshal(GitHubInstallationCreateRequest{InstallationId: &id, State: h.signState(orgID)})
 	rec := testReq{
 		method: http.MethodPost,
 		path:   "/api/github/installations",
@@ -188,6 +197,123 @@ func TestCreateGitHubInstallationHappyPath(t *testing.T) {
 		t.Fatalf("list: %v", err)
 	} else if len(list) != 1 || list[0].OrganizationID != orgID {
 		t.Fatalf("expected 1 installation scoped to org %s, got %+v", orgID, list)
+	}
+}
+
+// TestGetGitHubAuthorizeUrl: the setup-URL flow's authorize step — an editor
+// presenting their org's connect state gets GitHub's OAuth authorize URL for
+// the App, coming back to this deployment's /github/callback, with a state
+// bound to the org and the installation. Another org's state, an
+// installation-bound state, a missing or garbage state, a bad installation
+// id, and a viewer are all refused.
+func TestGetGitHubAuthorizeUrl(t *testing.T) {
+	h := newHarness(t, fakeGitHubAuth{login: "acme"})
+	token, orgID := h.member("editor", membership.RoleEditor)
+	authorizePath := func(id, state string) string {
+		return "/api/github/installations/authorize-url?" + url.Values{"installation_id": {id}, "state": {state}}.Encode()
+	}
+
+	rec := testReq{
+		method: http.MethodGet,
+		path:   authorizePath("4242", h.signState(orgID)),
+		token:  token,
+		orgID:  orgID.String(),
+	}.do(t, h.handler)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("authorize-url: got %d, want 200\n%s", rec.Code, rec.Body.String())
+	}
+	var got GitHubConnectUrl
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	u, err := url.Parse(got.Url)
+	if err != nil {
+		t.Fatalf("parse %q: %v", got.Url, err)
+	}
+	q := u.Query()
+	if u.Host != "github.com" || u.Path != "/login/oauth/authorize" {
+		t.Errorf("url = %s, want github.com/login/oauth/authorize", got.Url)
+	}
+	if q.Get("client_id") != "Iv1.test" || q.Get("redirect_uri") != "https://sf.example.com/github/callback" {
+		t.Errorf("client_id/redirect_uri = %q/%q", q.Get("client_id"), q.Get("redirect_uri"))
+	}
+	state, err := githubapp.VerifyState(testSecretKey, q.Get("state"))
+	if err != nil || state.Org != orgID || state.InstallationID != 4242 {
+		t.Errorf("state = %+v (%v), want org %s installation 4242", state, err, orgID)
+	}
+
+	bound, err := githubapp.SignInstallationState(testSecretKey, orgID, 4242)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, path string
+		want       int
+	}{
+		{"zero id", authorizePath("0", h.signState(orgID)), http.StatusBadRequest},
+		{"negative id", authorizePath("-1", h.signState(orgID)), http.StatusBadRequest},
+		{"garbage state", authorizePath("4242", "abc.def"), http.StatusBadRequest},
+		{"no state", "/api/github/installations/authorize-url?installation_id=4242", http.StatusBadRequest},
+		{"installation-bound state", authorizePath("4242", bound), http.StatusBadRequest},
+		{"another org's state", authorizePath("4242", h.signState(h.newOrgID())), http.StatusForbidden},
+	} {
+		rec := testReq{method: http.MethodGet, path: tc.path, token: token, orgID: orgID.String()}.do(t, h.handler)
+		if rec.Code != tc.want {
+			t.Errorf("%s: got %d, want %d\n%s", tc.name, rec.Code, tc.want, rec.Body.String())
+		}
+	}
+
+	viewer, viewerOrg := h.member("viewer", membership.RoleViewer)
+	rec = testReq{
+		method: http.MethodGet,
+		path:   authorizePath("4242", h.signState(viewerOrg)),
+		token:  viewer,
+		orgID:  viewerOrg.String(),
+	}.do(t, h.handler)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("viewer: got %d, want 403", rec.Code)
+	}
+}
+
+// TestCreateGitHubInstallationFromAuthorizeState: on the setup-URL flow the
+// callback carries only the code and the authorize state, which names the
+// installation. It links that installation; a body id that disagrees with the
+// state is refused, and a state that names no installation needs a body id.
+func TestCreateGitHubInstallationFromAuthorizeState(t *testing.T) {
+	h := newHarness(t, fakeGitHubAuth{login: "acme"})
+	token, orgID := h.member("editor", membership.RoleEditor)
+	bound, err := githubapp.SignInstallationState(testSecretKey, orgID, 4242)
+	if err != nil {
+		t.Fatal(err)
+	}
+	post := func(body string) *httptest.ResponseRecorder {
+		return testReq{method: http.MethodPost, path: "/api/github/installations", body: body, token: token, orgID: orgID.String()}.do(t, h.handler)
+	}
+
+	if rec := post(createBody(999, bound)); rec.Code != http.StatusBadRequest {
+		t.Fatalf("mismatched installation: got %d, want 400\n%s", rec.Code, rec.Body.String())
+	}
+	if rec := post(createBody(0, h.signState(orgID))); rec.Code != http.StatusBadRequest {
+		t.Fatalf("no installation anywhere: got %d, want 400\n%s", rec.Code, rec.Body.String())
+	}
+	if n, _ := h.client.GitHubInstallation.Query().Count(context.Background()); n != 0 {
+		t.Fatalf("refused requests linked %d installation(s)", n)
+	}
+
+	rec := post(createBody(0, bound))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("state-bound create: got %d, want 201\n%s", rec.Code, rec.Body.String())
+	}
+	var got GitHubInstallation
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.InstallationId != 4242 {
+		t.Errorf("installation_id = %d, want 4242 (from the state)", got.InstallationId)
+	}
+	// The same id in the body as in the state is fine (and idempotent).
+	if rec := post(createBody(4242, bound)); rec.Code != http.StatusCreated {
+		t.Fatalf("matching body id: got %d, want 201\n%s", rec.Code, rec.Body.String())
 	}
 }
 

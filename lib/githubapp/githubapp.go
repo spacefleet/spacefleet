@@ -330,18 +330,31 @@ func (a *Authenticator) do(ctx context.Context, method, url string, out any) err
 const stateTTL = 15 * time.Minute
 
 // stateClaims is the payload bound into the connect state token: the
-// organization that initiated the connect, a nonce, and an expiry.
+// organization that initiated the connect, the installation it is for (zero on
+// the install leg, where none exists yet), a nonce, and an expiry.
 type stateClaims struct {
 	Org   uuid.UUID `json:"org"`
+	Inst  int64     `json:"inst,omitempty"`
 	Nonce string    `json:"nonce"`
 	Exp   int64     `json:"exp"`
 }
 
+// State is what a verified state token carries.
+type State struct {
+	// Org is the organization that started the connect.
+	Org uuid.UUID
+	// InstallationID is the installation the state was minted for by
+	// SignInstallationState; zero for a state from SignState.
+	InstallationID int64
+}
+
 // SignState mints a tamper-evident state token binding a connect flow to the
 // initiating organization, HMAC-SHA256-keyed by the deployment's secret key
-// (the same base64 key as lib/secrets). It is round-tripped through GitHub's
-// install redirect and verified on the callback, proving the same org that
-// initiated the connect is the one completing it.
+// (the same base64 key as lib/secrets). It rides the App install link; an App
+// that requests user authorization during installation sends it back on the
+// callback with the code, proving the same org that initiated the connect is
+// the one completing it. (An App on the setup-URL flow gets a fresh state from
+// SignInstallationState for the authorize step instead.)
 //
 // The state alone does NOT prove the caller owns the claimed installation — it
 // is minted before the installation exists, so it can't bind the installation
@@ -353,11 +366,29 @@ type stateClaims struct {
 // surfaces a clear "set SPACEFLEET_SECRET_KEY" error rather than signing with
 // an empty key.
 func SignState(secretKey string, org uuid.UUID) (string, error) {
+	return signState(secretKey, stateClaims{Org: org})
+}
+
+// SignInstallationState mints the state for the authorize leg of the connect
+// flow: GitHub sends the browser back to the setup URL with the new
+// installation's id, and the app then runs the OAuth authorize step to get a
+// code proving the user can access it. This state rides that authorize
+// redirect and binds the code to both the organization and the installation,
+// so the callback can't be replayed against a different installation.
+func SignInstallationState(secretKey string, org uuid.UUID, installationID int64) (string, error) {
+	if installationID <= 0 {
+		return "", errors.New("githubapp: installation id is required")
+	}
+	return signState(secretKey, stateClaims{Org: org, Inst: installationID})
+}
+
+func signState(secretKey string, claims stateClaims) (string, error) {
 	key, err := decodeKey(secretKey)
 	if err != nil {
 		return "", err
 	}
-	claims := stateClaims{Org: org, Nonce: uuid.NewString(), Exp: time.Now().Add(stateTTL).Unix()}
+	claims.Nonce = uuid.NewString()
+	claims.Exp = time.Now().Add(stateTTL).Unix()
 	payload, err := json.Marshal(claims)
 	if err != nil {
 		return "", err
@@ -367,35 +398,48 @@ func SignState(secretKey string, org uuid.UUID) (string, error) {
 	return body + "." + mac, nil
 }
 
-// VerifyState validates a state token and returns the organization it was
-// issued for. It errors when the token is malformed, the signature doesn't
-// match, or it has expired. The caller must additionally check the returned org
-// equals the current request's org.
-func VerifyState(secretKey, state string) (uuid.UUID, error) {
+// VerifyState validates a state token and returns what it was issued for. It
+// errors when the token is malformed, the signature doesn't match, or it has
+// expired. The caller must additionally check the returned org equals the
+// current request's org.
+func VerifyState(secretKey, state string) (State, error) {
 	key, err := decodeKey(secretKey)
 	if err != nil {
-		return uuid.Nil, err
+		return State{}, err
 	}
 	body, mac, ok := strings.Cut(state, ".")
 	if !ok {
-		return uuid.Nil, errors.New("githubapp: malformed state")
+		return State{}, errors.New("githubapp: malformed state")
 	}
 	expected := signMAC(key, body)
 	if subtle.ConstantTimeCompare([]byte(mac), []byte(expected)) != 1 {
-		return uuid.Nil, errors.New("githubapp: state signature mismatch")
+		return State{}, errors.New("githubapp: state signature mismatch")
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(body)
 	if err != nil {
-		return uuid.Nil, errors.New("githubapp: malformed state payload")
+		return State{}, errors.New("githubapp: malformed state payload")
 	}
 	var claims stateClaims
 	if err := json.Unmarshal(payload, &claims); err != nil {
-		return uuid.Nil, errors.New("githubapp: malformed state payload")
+		return State{}, errors.New("githubapp: malformed state payload")
 	}
 	if time.Now().Unix() > claims.Exp {
-		return uuid.Nil, errors.New("githubapp: state expired")
+		return State{}, errors.New("githubapp: state expired")
 	}
-	return claims.Org, nil
+	return State{Org: claims.Org, InstallationID: claims.Inst}, nil
+}
+
+// AuthorizeURL is GitHub's OAuth authorize page for the App (the web
+// application flow). GitHub sends the browser back to redirectURI with a code
+// and the state; for a user who already authorized the App it redirects
+// straight back without a prompt. An empty redirectURI falls back to the App's
+// first registered redirect URI.
+func AuthorizeURL(clientID, redirectURI, state string) string {
+	q := url.Values{"client_id": {clientID}, "state": {state}}
+	if redirectURI != "" {
+		q.Set("redirect_uri", redirectURI)
+	}
+	return defaultOAuthBaseURL + "/login/oauth/authorize?" + q.Encode()
 }
 
 func decodeKey(secretKey string) ([]byte, error) {

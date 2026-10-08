@@ -129,6 +129,7 @@ func New(cfg *config.Config) (*http.Server, error) {
 		ExternalURL:         cfg.ExternalURL,
 		EmailEnabled:        cfg.EmailEnabled(),
 		GitHubAppSlug:       cfg.GitHubAppSlug,
+		GitHubAppClientID:   cfg.GitHubAppClientID,
 		GitHubWebhookSecret: cfg.GitHubAppWebhookSecret,
 		SecretKey:           cfg.SecretKey,
 		JobQueue:            jobQueue,
