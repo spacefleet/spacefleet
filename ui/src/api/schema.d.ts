@@ -1330,6 +1330,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/policies/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent OpenTofu plan steps to dry-run a policy against
+         * @description Org-scoped, admin only. The organization's most recent succeeded
+         *     OpenTofu plan steps (deploy, uninstall, and preview runs), newest
+         *     first, each with its application, component, and plan counts — the
+         *     picker for `POST /api/policies/test`.
+         */
+        get: operations["listPolicyTestPlans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/policies/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate a policy against a past plan without saving it
+         * @description Org-scoped, admin only. Evaluates the given Rego — as typed, saved or
+         *     not — against one of the organization's past OpenTofu plan steps,
+         *     exactly as the gate would have, and returns the messages it would
+         *     have produced plus the input document it saw. Nothing is stored and
+         *     no run is affected. 400 when the Rego does not compile (with the
+         *     compiler's message); 404 when the step is not one of the
+         *     organization's succeeded plan steps.
+         */
+        post: operations["testPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/policies/{id}": {
         parameters: {
             query?: never;
@@ -2392,10 +2441,55 @@ export interface components {
             blocked: boolean;
             warned: boolean;
         };
+        /** @description One past OpenTofu plan step a policy can be dry-run against. */
+        PolicyTestPlan: {
+            /**
+             * Format: uuid
+             * @description The plan step — what `POST /api/policies/test` takes.
+             */
+            component_run_id: string;
+            /** Format: uuid */
+            run_id: string;
+            /** Format: uuid */
+            application_id: string;
+            application_name: string;
+            component_name: string;
+            action: components["schemas"]["RunAction"];
+            /** Format: date-time */
+            finished_at?: string | null;
+            add: number;
+            change: number;
+            destroy: number;
+            replace: number;
+        };
+        PolicyTestRequest: {
+            /** @description The policy to evaluate (`package spacefleet`, a `deny` rule). */
+            rego: string;
+            /**
+             * Format: uuid
+             * @description The plan step to evaluate it against (from `GET /api/policies/plans`).
+             */
+            component_run_id: string;
+        };
+        /**
+         * @description The dry run's outcome: the messages the policy's `deny` rule
+         *     produced (none means the plan would pass), an evaluation error if
+         *     the policy failed at runtime (a block policy would then block — fail
+         *     closed), and the exact `input` document the policy saw.
+         */
+        PolicyTestResult: {
+            violations: string[];
+            error?: string;
+            input: {
+                [key: string]: unknown;
+            };
+        };
         /**
          * @description How a channel delivers: `email` (needs SMTP configured on the
          *     deployment), `slack` (a Slack incoming webhook URL), or `webhook`
-         *     (any URL, receiving a JSON body with an `X-Spacefleet-Event` header).
+         *     (any URL, receiving a JSON body with an `X-Spacefleet-Event` header
+         *     and, when the channel has a signing secret, an
+         *     `X-Spacefleet-Signature-256` HMAC of the body).
          * @enum {string}
          */
         NotificationChannelKind: "email" | "slack" | "webhook";
@@ -2418,6 +2512,11 @@ export interface components {
             address: string;
             events: components["schemas"]["RunEventKind"][];
             /**
+             * @description Whether a webhook channel signs its deliveries (a signing secret
+             *     is set). The secret itself is never returned.
+             */
+            has_secret: boolean;
+            /**
              * Format: uuid
              * @description The one application the channel is limited to, or null for every application.
              */
@@ -2432,6 +2531,12 @@ export interface components {
             kind: components["schemas"]["NotificationChannelKind"];
             /** @description The email address, or the webhook URL (sealed at rest). */
             target: string;
+            /**
+             * @description Webhook kind only: a signing secret (sealed at rest). When set,
+             *     every delivery carries `X-Spacefleet-Signature-256: sha256=<hex
+             *     HMAC-SHA256 of the body>` for the receiver to verify.
+             */
+            secret?: string;
             events: components["schemas"]["RunEventKind"][];
             /**
              * Format: uuid
@@ -2444,6 +2549,8 @@ export interface components {
             name?: string;
             /** @description A new email address or webhook URL. */
             target?: string;
+            /** @description A new signing secret (webhook kind only), or an empty string to stop signing. */
+            secret?: string;
             events?: components["schemas"]["RunEventKind"][];
             /**
              * @description Set to an application id to limit the channel to it, or to an
@@ -3144,19 +3251,22 @@ export interface components {
         /**
          * @description An OpenTofu (Terraform) component's last recorded state: the outputs
          *     and managed-resource inventory captured by its most recent successful
-         *     apply, and the run that captured them.
+         *     apply, and the run that captured them. Before any apply has recorded
+         *     state the view is returned only when there is a stuck lock to show
+         *     (editors): then `run_id` / `component_run_id` are absent and
+         *     `resources` is empty.
          */
         ComponentState: {
             /**
              * Format: uuid
-             * @description The workflow run whose apply recorded this state.
+             * @description The workflow run whose apply recorded this state; absent when nothing is recorded yet.
              */
-            run_id: string;
+            run_id?: string;
             /**
              * Format: uuid
-             * @description The apply step (component run) that recorded it.
+             * @description The apply step (component run) that recorded it; absent when nothing is recorded yet.
              */
-            component_run_id: string;
+            component_run_id?: string;
             /**
              * Format: date-time
              * @description When that apply step settled.
@@ -3172,6 +3282,47 @@ export interface components {
             /** @description Every resource and data source in the module's state, in state order. */
             resources: components["schemas"]["TofuResource"][];
             drift?: components["schemas"]["DriftStatus"];
+            lock?: components["schemas"]["StateLock"];
+        };
+        /**
+         * @description A state lock the component's most recent run could not acquire — one
+         *     left behind by a run that died mid-operation. Parsed from that failed
+         *     step's "Error acquiring the state lock" message, so `id` is exactly
+         *     what a `force_unlock` state operation needs, and `who` / `created` /
+         *     `operation` say who held it and since when. Present only while the
+         *     component's latest settled step failed on the lock (a later step that
+         *     got through clears it), and only for editors — it names the state's
+         *     location.
+         */
+        StateLock: {
+            /**
+             * Format: uuid
+             * @description The run whose step hit the lock.
+             */
+            run_id: string;
+            /**
+             * Format: uuid
+             * @description That step.
+             */
+            component_run_id: string;
+            /**
+             * Format: date-time
+             * @description When the step failed.
+             */
+            failed_at?: string | null;
+            /** @description The lock id, as printed by OpenTofu. */
+            id: string;
+            /** @description The state's path in the backend. */
+            path?: string;
+            /** @description The operation that took the lock (e.g. OperationTypeApply). */
+            operation?: string;
+            /** @description Who took it (user@host, as OpenTofu recorded it). */
+            who?: string;
+            /** @description The OpenTofu version that took it. */
+            version?: string;
+            /** @description When it was taken, as OpenTofu printed it. */
+            created?: string;
+            info?: string;
         };
         /**
          * @description The result of an OpenTofu component's most recent drift check: whether
@@ -5202,6 +5353,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Policy"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listPolicyTestPlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recent plan steps, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyTestPlan"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    testPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyTestRequest"];
+            };
+        };
+        responses: {
+            /** @description What the policy would have said */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyTestResult"];
                 };
             };
             default: components["responses"]["Error"];

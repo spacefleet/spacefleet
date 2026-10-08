@@ -310,6 +310,7 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		ApplyFlags:         applyFlags,
 		StateOp:            stateOp,
 		Workspace:          node.Config[terraformConfigWorkspace],
+		TFVars:             node.Config[terraformConfigTFVars],
 		PluginCacheDir:     pluginCacheDir,
 	})
 

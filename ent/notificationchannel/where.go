@@ -76,6 +76,11 @@ func EncryptedTarget(v []byte) predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldEQ(FieldEncryptedTarget, v))
 }
 
+// EncryptedSecret applies equality check predicate on the "encrypted_secret" field. It's identical to EncryptedSecretEQ.
+func EncryptedSecret(v []byte) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldEncryptedSecret, v))
+}
+
 // ApplicationID applies equality check predicate on the "application_id" field. It's identical to ApplicationIDEQ.
 func ApplicationID(v uuid.UUID) predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldEQ(FieldApplicationID, v))
@@ -309,6 +314,56 @@ func EncryptedTargetIsNil() predicate.NotificationChannel {
 // EncryptedTargetNotNil applies the NotNil predicate on the "encrypted_target" field.
 func EncryptedTargetNotNil() predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldNotNull(FieldEncryptedTarget))
+}
+
+// EncryptedSecretEQ applies the EQ predicate on the "encrypted_secret" field.
+func EncryptedSecretEQ(v []byte) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldEncryptedSecret, v))
+}
+
+// EncryptedSecretNEQ applies the NEQ predicate on the "encrypted_secret" field.
+func EncryptedSecretNEQ(v []byte) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNEQ(FieldEncryptedSecret, v))
+}
+
+// EncryptedSecretIn applies the In predicate on the "encrypted_secret" field.
+func EncryptedSecretIn(vs ...[]byte) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldIn(FieldEncryptedSecret, vs...))
+}
+
+// EncryptedSecretNotIn applies the NotIn predicate on the "encrypted_secret" field.
+func EncryptedSecretNotIn(vs ...[]byte) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNotIn(FieldEncryptedSecret, vs...))
+}
+
+// EncryptedSecretGT applies the GT predicate on the "encrypted_secret" field.
+func EncryptedSecretGT(v []byte) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldGT(FieldEncryptedSecret, v))
+}
+
+// EncryptedSecretGTE applies the GTE predicate on the "encrypted_secret" field.
+func EncryptedSecretGTE(v []byte) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldGTE(FieldEncryptedSecret, v))
+}
+
+// EncryptedSecretLT applies the LT predicate on the "encrypted_secret" field.
+func EncryptedSecretLT(v []byte) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldLT(FieldEncryptedSecret, v))
+}
+
+// EncryptedSecretLTE applies the LTE predicate on the "encrypted_secret" field.
+func EncryptedSecretLTE(v []byte) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldLTE(FieldEncryptedSecret, v))
+}
+
+// EncryptedSecretIsNil applies the IsNil predicate on the "encrypted_secret" field.
+func EncryptedSecretIsNil() predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldIsNull(FieldEncryptedSecret))
+}
+
+// EncryptedSecretNotNil applies the NotNil predicate on the "encrypted_secret" field.
+func EncryptedSecretNotNil() predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNotNull(FieldEncryptedSecret))
 }
 
 // EventsIsNil applies the IsNil predicate on the "events" field.

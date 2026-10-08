@@ -1,6 +1,7 @@
 package workflows
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -491,12 +492,12 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 			return nodeResult{Status: statusFailed, Err: fmt.Errorf("workflows: component %q: %s", node.Name, reason)}
 		}
 	}
-	// A terraform apply unit that succeeded on a deploy run — or a state
-	// operation's unit — handed the module's `tofu output -json` and resource
-	// inventory back through its handover Secret: read and persist them before
-	// settling the step (so the settled row already carries them), then delete
-	// the spent Secret. Best-effort throughout: a capture failure never fails a
-	// step whose apply succeeded.
+	// A terraform apply unit that succeeded on a deploy or uninstall run — or
+	// a state operation's unit — handed the module's `tofu output -json` and
+	// resource inventory back through its handover Secret: read and persist
+	// them before settling the step (so the settled row already carries them),
+	// then delete the spent Secret. Best-effort throughout: a capture failure
+	// never fails a step whose apply succeeded.
 	if recordsTofuState(a.Action, node) {
 		w.captureTofuOutputs(ctx, a, node, byID, runnerConn, cr.ID)
 	}
@@ -505,15 +506,17 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 }
 
 // recordsTofuState reports whether a succeeded unit hands outputs + inventory
-// back through its handover Secret: a deploy's apply unit, or a state
-// operation's unit (whose state the operation just changed).
+// back through its handover Secret: a deploy's or a destroy's apply unit (a
+// destroy records the emptied outputs and whatever inventory a targeted
+// destroy left, so the State panel reflects it), or a state operation's unit
+// (whose state the operation just changed).
 func recordsTofuState(action string, node GraphNode) bool {
 	if node.Type != TypeTerraform {
 		return false
 	}
 	switch node.Config[terraformConfigCommand] {
 	case terraformCommandApply:
-		return action == ActionDeploy
+		return action == ActionDeploy || action == ActionUninstall
 	case terraformCommandStateOp:
 		return action == ActionStateOp
 	}
@@ -548,6 +551,24 @@ func (w *WorkflowRunWorker) captureTofuOutputs(ctx context.Context, a WorkflowRu
 		log.Printf("worker: workflow run %s: read resources from secret %s: %v", a.WorkflowRunID, name, err)
 	} else if resources, err = normalizeTofuResources(raw); err != nil {
 		log.Printf("worker: workflow run %s: parse resources from secret %s: %v", a.WorkflowRunID, name, err)
+	}
+	// One half captured, the other not (its command failed in the pod): this
+	// row is about to become the component's latest state, so the missing
+	// half is carried forward from the previous record rather than left
+	// empty — otherwise a working `tofu output` would hide the last known
+	// inventory (or vice versa). The authored id is the handover id: the plan
+	// unit's for an apply, the unit's own for a state operation.
+	if (outputs == "") != (resources == "") {
+		if prev, err := w.svc.LatestComponentState(ctx, a.OrgID, a.ApplicationID, planID); err == nil {
+			if outputs == "" {
+				outputs = prev.Outputs
+			}
+			if resources == "" {
+				resources = prev.Resources
+			}
+		} else if !ent.IsNotFound(err) {
+			log.Printf("worker: workflow run %s: read previous state for component %s: %v", a.WorkflowRunID, planID, err)
+		}
 	}
 	if outputs != "" || resources != "" {
 		if err := w.svc.SetComponentRunOutputs(ctx, a.OrgID, crID, outputs, resources); err != nil {
@@ -587,12 +608,15 @@ type tofuResource struct {
 
 // normalizeTofuResources validates and canonicalizes the raw inventory bytes
 // read from the handover Secret into the JSON array persisted on
-// component_runs.resources. Empty input, an empty array, or an array with no
-// addressed records yields "" (nothing to keep); bytes that don't parse as
-// the inventory shape are an error for the caller to log. Records without an
-// address are dropped — the address is the identity everything keys on.
+// component_runs.resources. Empty input (the step captured nothing — its
+// `tofu show` failed) yields "" so the column is left alone and the previous
+// record stands; an empty array, or one with no addressed records, is a real
+// answer — the state manages nothing, e.g. after a destroy — and yields the
+// canonical "[]" so it is recorded as the latest state. Bytes that don't parse
+// as the inventory shape are an error for the caller to log. Records without
+// an address are dropped — the address is the identity everything keys on.
 func normalizeTofuResources(raw []byte) (string, error) {
-	if len(raw) == 0 {
+	if len(bytes.TrimSpace(raw)) == 0 {
 		return "", nil
 	}
 	var records []tofuResource
@@ -606,7 +630,7 @@ func normalizeTofuResources(raw []byte) (string, error) {
 		}
 	}
 	if len(kept) == 0 {
-		return "", nil
+		return emptyTofuResources, nil
 	}
 	b, err := json.Marshal(kept)
 	if err != nil {
@@ -615,13 +639,24 @@ func normalizeTofuResources(raw []byte) (string, error) {
 	return string(b), nil
 }
 
+// The canonical "recorded, and empty" column values: a module with no
+// outputs, a state managing nothing. Distinct from "" (never recorded /
+// capture failed), which every latest-state query skips.
+const (
+	emptyTofuOutputs   = "{}"
+	emptyTofuResources = "[]"
+)
+
 // normalizeTofuOutputs validates and canonicalizes the raw `tofu output -json`
 // bytes read from the handover Secret into the JSON object persisted on
-// component_runs.outputs. Empty input or an empty object yields "" (a module
-// with no outputs is the common case — the column stays empty); bytes that
-// don't parse as tofu's shape are an error for the caller to log.
+// component_runs.outputs. Empty input (nothing captured — `tofu output`
+// failed) yields "" so the column is left alone; an empty object is a real
+// answer (a module with no outputs, or a destroyed one) and yields the
+// canonical "{}" so a downstream reference sees the outputs are gone rather
+// than an older run's values. Bytes that don't parse as tofu's shape are an
+// error for the caller to log.
 func normalizeTofuOutputs(raw []byte) (string, error) {
-	if len(raw) == 0 {
+	if len(bytes.TrimSpace(raw)) == 0 {
 		return "", nil
 	}
 	var outputs map[string]tofuOutput
@@ -629,7 +664,7 @@ func normalizeTofuOutputs(raw []byte) (string, error) {
 		return "", err
 	}
 	if len(outputs) == 0 {
-		return "", nil
+		return emptyTofuOutputs, nil
 	}
 	b, err := json.Marshal(outputs)
 	if err != nil {

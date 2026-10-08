@@ -322,6 +322,21 @@ describe("TektonPanel", () => {
     expect(await screen.findByText("20Gi")).toBeInTheDocument();
     expect(screen.getByText("· nfs")).toBeInTheDocument();
 
+    // Growing resizes in place, keeping the class; the same size is a no-op.
+    const resize = screen.getByRole("button", { name: "Resize" });
+    expect(resize).toBeDisabled();
+    const grown = { ...installed, plugin_cache: { size: "50Gi", storage_class: "nfs" } };
+    mockApi.PUT.mockResolvedValueOnce({ data: grown, error: undefined });
+    mockApi.GET.mockResolvedValue({ data: grown, error: undefined });
+    await userEvent.clear(screen.getByLabelText("New plugin cache size"));
+    await userEvent.type(screen.getByLabelText("New plugin cache size"), "50Gi");
+    await userEvent.click(resize);
+    expect(mockApi.PUT).toHaveBeenLastCalledWith("/api/clusters/{id}/tekton/plugin-cache", {
+      params: { path: { id: "c1" } },
+      body: { size: "50Gi", storage_class: "nfs" },
+    });
+    expect(await screen.findByText("50Gi")).toBeInTheDocument();
+
     mockApi.PUT.mockResolvedValueOnce({ data: installed, error: undefined });
     mockApi.GET.mockResolvedValue({ data: installed, error: undefined });
     await userEvent.click(screen.getByRole("button", { name: "Remove cache" }));

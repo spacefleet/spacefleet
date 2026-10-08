@@ -85,6 +85,19 @@ deny contains msg if {
 }
 ```
 
+## Trying a policy before enabling it
+
+Writing a rule against an input you cannot see is guesswork, so the policy
+editor can **test the Rego as typed against a recent plan**: pick one of
+the organization's recent OpenTofu plans (any deploy, uninstall, or preview
+of the last few runs, shown with its application, component, and counts)
+and press **Test policy**. The result is exactly what the gate would have
+recorded for that plan — the messages the `deny` rule produced, or "no
+violations" — plus **What the policy saw**, the full `input` document, for
+when a rule does not match and you want to check a field. Nothing is saved
+and no run is touched; the policy's enforcement and enabled flag play no
+part. Testing is available to admins, since it reads plan details.
+
 ## Reading the verdict
 
 The plan step of a run shows every policy that was evaluated, its

@@ -750,6 +750,7 @@ func TestPlanTofuWorkspaceAndTFVars(t *testing.T) {
 			terraformConfigBackend:      tofu.BackendS3,
 			terraformConfigWorkspace:    "prod",
 			terraformConfigExposeTFVars: "true",
+			terraformConfigTFVars:       `{"replicas": 3, "tags": {"team": "core"}}`,
 		},
 	}
 	req, err := w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: node}, nil)
@@ -759,18 +760,25 @@ func TestPlanTofuWorkspaceAndTFVars(t *testing.T) {
 	if !strings.Contains(req.Spec.Script, "tofu init -input=false -no-color\ntofu workspace select -or-create=true 'prod'\n") {
 		t.Errorf("script must select the workspace after init\n---\n%s", req.Spec.Script)
 	}
+	if !strings.Contains(req.Spec.Script, "cat > spacefleet.auto.tfvars.json <<'EOF'\n{\"replicas\":3,\"tags\":{\"team\":\"core\"}}\nEOF\n") {
+		t.Errorf("script must write the typed inputs as an auto tfvars file\n---\n%s", req.Spec.Script)
+	}
 	if req.Spec.Env["TF_VAR_region"] != "eu-west-1" || req.Spec.SecretEnv["TF_VAR_db_password"] != "x" {
 		t.Errorf("TF_VAR_ inputs missing: env=%v secret=%v", req.Spec.Env, req.Spec.SecretEnv)
 	}
 
 	delete(node.Config, terraformConfigWorkspace)
 	delete(node.Config, terraformConfigExposeTFVars)
+	delete(node.Config, terraformConfigTFVars)
 	req, err = w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, map[uuid.UUID]GraphNode{planID: node}, nil)
 	if err != nil {
 		t.Fatalf("planTofu (defaults): %v", err)
 	}
 	if strings.Contains(req.Spec.Script, "workspace") {
 		t.Errorf("no workspace must emit no workspace line\n---\n%s", req.Spec.Script)
+	}
+	if strings.Contains(req.Spec.Script, "tfvars") {
+		t.Errorf("no typed inputs must emit no tfvars file\n---\n%s", req.Spec.Script)
 	}
 	if _, ok := req.Spec.Env["TF_VAR_region"]; ok || req.Spec.Env["region"] != "eu-west-1" {
 		t.Errorf("TF_VAR_ mapping must be off by default: %v", req.Spec.Env)

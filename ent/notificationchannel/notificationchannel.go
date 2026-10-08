@@ -26,6 +26,8 @@ const (
 	FieldAddress = "address"
 	// FieldEncryptedTarget holds the string denoting the encrypted_target field in the database.
 	FieldEncryptedTarget = "encrypted_target"
+	// FieldEncryptedSecret holds the string denoting the encrypted_secret field in the database.
+	FieldEncryptedSecret = "encrypted_secret"
 	// FieldEvents holds the string denoting the events field in the database.
 	FieldEvents = "events"
 	// FieldApplicationID holds the string denoting the application_id field in the database.
@@ -64,6 +66,7 @@ var Columns = []string{
 	FieldKind,
 	FieldAddress,
 	FieldEncryptedTarget,
+	FieldEncryptedSecret,
 	FieldEvents,
 	FieldApplicationID,
 	FieldCreatedAt,

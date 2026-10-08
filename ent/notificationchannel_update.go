@@ -71,6 +71,18 @@ func (_u *NotificationChannelUpdate) ClearEncryptedTarget() *NotificationChannel
 	return _u
 }
 
+// SetEncryptedSecret sets the "encrypted_secret" field.
+func (_u *NotificationChannelUpdate) SetEncryptedSecret(v []byte) *NotificationChannelUpdate {
+	_u.mutation.SetEncryptedSecret(v)
+	return _u
+}
+
+// ClearEncryptedSecret clears the value of the "encrypted_secret" field.
+func (_u *NotificationChannelUpdate) ClearEncryptedSecret() *NotificationChannelUpdate {
+	_u.mutation.ClearEncryptedSecret()
+	return _u
+}
+
 // SetEvents sets the "events" field.
 func (_u *NotificationChannelUpdate) SetEvents(v []string) *NotificationChannelUpdate {
 	_u.mutation.SetEvents(v)
@@ -204,6 +216,12 @@ func (_u *NotificationChannelUpdate) sqlSave(ctx context.Context) (_node int, er
 	if _u.mutation.EncryptedTargetCleared() {
 		_spec.ClearField(notificationchannel.FieldEncryptedTarget, field.TypeBytes)
 	}
+	if value, ok := _u.mutation.EncryptedSecret(); ok {
+		_spec.SetField(notificationchannel.FieldEncryptedSecret, field.TypeBytes, value)
+	}
+	if _u.mutation.EncryptedSecretCleared() {
+		_spec.ClearField(notificationchannel.FieldEncryptedSecret, field.TypeBytes)
+	}
 	if value, ok := _u.mutation.Events(); ok {
 		_spec.SetField(notificationchannel.FieldEvents, field.TypeJSON, value)
 	}
@@ -304,6 +322,18 @@ func (_u *NotificationChannelUpdateOne) SetEncryptedTarget(v []byte) *Notificati
 // ClearEncryptedTarget clears the value of the "encrypted_target" field.
 func (_u *NotificationChannelUpdateOne) ClearEncryptedTarget() *NotificationChannelUpdateOne {
 	_u.mutation.ClearEncryptedTarget()
+	return _u
+}
+
+// SetEncryptedSecret sets the "encrypted_secret" field.
+func (_u *NotificationChannelUpdateOne) SetEncryptedSecret(v []byte) *NotificationChannelUpdateOne {
+	_u.mutation.SetEncryptedSecret(v)
+	return _u
+}
+
+// ClearEncryptedSecret clears the value of the "encrypted_secret" field.
+func (_u *NotificationChannelUpdateOne) ClearEncryptedSecret() *NotificationChannelUpdateOne {
+	_u.mutation.ClearEncryptedSecret()
 	return _u
 }
 
@@ -469,6 +499,12 @@ func (_u *NotificationChannelUpdateOne) sqlSave(ctx context.Context) (_node *Not
 	}
 	if _u.mutation.EncryptedTargetCleared() {
 		_spec.ClearField(notificationchannel.FieldEncryptedTarget, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.EncryptedSecret(); ok {
+		_spec.SetField(notificationchannel.FieldEncryptedSecret, field.TypeBytes, value)
+	}
+	if _u.mutation.EncryptedSecretCleared() {
+		_spec.ClearField(notificationchannel.FieldEncryptedSecret, field.TypeBytes)
 	}
 	if value, ok := _u.mutation.Events(); ok {
 		_spec.SetField(notificationchannel.FieldEvents, field.TypeJSON, value)

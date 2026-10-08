@@ -43,12 +43,22 @@ func TestNotificationChannels(t *testing.T) {
 	}
 	id := extractID(t, rec.Body.Bytes())
 	rec = testReq{method: http.MethodPost, path: "/api/notification-channels", token: adminTok, orgID: orgID.String(), body: `{"name":"slack","kind":"slack","target":"https://hooks.slack.com/services/T/B/secret","events":["awaiting_approval"]}`}.do(t, h.handler)
-	if rec.Code != http.StatusCreated || strings.Contains(rec.Body.String(), "secret") || !strings.Contains(rec.Body.String(), `"address":"hooks.slack.com"`) {
+	if rec.Code != http.StatusCreated || strings.Contains(rec.Body.String(), "T/B/secret") || !strings.Contains(rec.Body.String(), `"address":"hooks.slack.com"`) {
 		t.Errorf("slack create got %d / leaks the URL\n%s", rec.Code, rec.Body.String())
+	}
+	// A signed webhook: has_secret is reported, the secret itself never is;
+	// a secret on any other kind is refused.
+	rec = testReq{method: http.MethodPost, path: "/api/notification-channels", token: adminTok, orgID: orgID.String(), body: `{"name":"hook","kind":"webhook","target":"https://example.com/hooks/sf","secret":"hunter2","events":["run_failed"]}`}.do(t, h.handler)
+	if rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), `"has_secret":true`) || strings.Contains(rec.Body.String(), "hunter2") {
+		t.Errorf("signed webhook create got %d / leaks the secret\n%s", rec.Code, rec.Body.String())
+	}
+	rec = testReq{method: http.MethodPost, path: "/api/notification-channels", token: adminTok, orgID: orgID.String(), body: `{"name":"signed-mail","kind":"email","target":"a@example.com","secret":"x","events":["run_failed"]}`}.do(t, h.handler)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("secret on email got %d, want 400\n%s", rec.Code, rec.Body.String())
 	}
 
 	rec = testReq{method: http.MethodGet, path: "/api/notification-channels", token: editorTok, orgID: orgID.String()}.do(t, h.handler)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ops@example.com"`) || strings.Contains(rec.Body.String(), "secret") {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ops@example.com"`) || strings.Contains(rec.Body.String(), "T/B/secret") || strings.Contains(rec.Body.String(), "hunter2") || !strings.Contains(rec.Body.String(), `"has_secret":false`) {
 		t.Errorf("list got %d\n%s", rec.Code, rec.Body.String())
 	}
 	rec = testReq{method: http.MethodPatch, path: "/api/notification-channels/" + id, token: adminTok, orgID: orgID.String(), body: `{"events":["awaiting_approval"],"application_id":""}`}.do(t, h.handler)

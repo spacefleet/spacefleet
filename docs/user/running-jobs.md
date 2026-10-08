@@ -63,9 +63,11 @@ cache**: choose a size (`20Gi` is plenty for most stacks — a provider is kept
 once per version) and, if the cluster's default storage class cannot be shared
 between nodes, a storage class that supports **ReadWriteMany** (for example an
 NFS- or file-store-backed class). The volume is created right away; OpenTofu
-steps start using it on their next run. To change the size or class, remove
-the cache and set it up again — a claim cannot be resized or re-classed in
-place.
+steps start using it on their next run. The cache can **grow** in place
+(enter a larger size and press **Resize**) when its storage class allows
+volume expansion; to make it smaller or move it to another storage class,
+remove the cache and set it up again — a claim cannot shrink or change
+class.
 
 Two things to know:
 

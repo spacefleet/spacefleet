@@ -114,7 +114,9 @@ func (s *Server) SetClusterTektonPluginCache(ctx context.Context, req SetCluster
 		switch {
 		case ent.IsNotFound(err):
 			return errResp[SetClusterTektonPluginCachedefaultJSONResponse](http.StatusNotFound, "not_found", "cluster not found"), nil
-		case errors.Is(err, clusters.ErrInvalidPluginCache):
+		case errors.Is(err, clusters.ErrInvalidPluginCache),
+			errors.Is(err, tekton.ErrPluginCacheClassImmutable),
+			errors.Is(err, tekton.ErrPluginCacheShrink):
 			return errResp[SetClusterTektonPluginCachedefaultJSONResponse](http.StatusBadRequest, "bad_request", err.Error()), nil
 		}
 		status, code, msg := nodesFetchError(err)

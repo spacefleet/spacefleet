@@ -539,6 +539,7 @@ var (
 		{Name: "kind", Type: field.TypeEnum, Enums: []string{"email", "slack", "webhook"}},
 		{Name: "address", Type: field.TypeString},
 		{Name: "encrypted_target", Type: field.TypeBytes, Nullable: true},
+		{Name: "encrypted_secret", Type: field.TypeBytes, Nullable: true},
 		{Name: "events", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -553,13 +554,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "notification_channels_organizations_organization",
-				Columns:    []*schema.Column{NotificationChannelsColumns[8]},
+				Columns:    []*schema.Column{NotificationChannelsColumns[9]},
 				RefColumns: []*schema.Column{OrganizationsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "notification_channels_applications_application",
-				Columns:    []*schema.Column{NotificationChannelsColumns[9]},
+				Columns:    []*schema.Column{NotificationChannelsColumns[10]},
 				RefColumns: []*schema.Column{ApplicationsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -568,12 +569,12 @@ var (
 			{
 				Name:    "notificationchannel_organization_id",
 				Unique:  false,
-				Columns: []*schema.Column{NotificationChannelsColumns[8]},
+				Columns: []*schema.Column{NotificationChannelsColumns[9]},
 			},
 			{
 				Name:    "notificationchannel_organization_id_name",
 				Unique:  true,
-				Columns: []*schema.Column{NotificationChannelsColumns[8], NotificationChannelsColumns[1]},
+				Columns: []*schema.Column{NotificationChannelsColumns[9], NotificationChannelsColumns[1]},
 			},
 		},
 	}

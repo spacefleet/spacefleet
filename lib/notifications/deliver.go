@@ -64,11 +64,16 @@ func (w *DeliverWorker) Work(ctx context.Context, job *river.Job[DeliverArgs]) e
 	if err != nil {
 		return err
 	}
-	return w.deliver(ctx, ch, target, a.Event)
+	secret, err := w.Service.secret(ch)
+	if err != nil {
+		return err
+	}
+	return w.deliver(ctx, ch, target, secret, a.Event)
 }
 
-// deliver sends one event to a resolved destination.
-func (w *DeliverWorker) deliver(ctx context.Context, ch *ent.NotificationChannel, target string, ev workflows.Event) error {
+// deliver sends one event to a resolved destination; secret, when set,
+// signs a webhook delivery.
+func (w *DeliverWorker) deliver(ctx context.Context, ch *ent.NotificationChannel, target, secret string, ev workflows.Event) error {
 	switch ch.Kind {
 	case notificationchannel.KindEmail:
 		if w.Sender == nil {
@@ -78,17 +83,18 @@ func (w *DeliverWorker) deliver(ctx context.Context, ch *ent.NotificationChannel
 		msg.To = target
 		return w.Sender.Send(ctx, msg)
 	case notificationchannel.KindSlack:
-		return w.post(ctx, target, ev.Kind, map[string]any{"text": RenderSlack(ev)})
+		return w.post(ctx, target, "", ev.Kind, map[string]any{"text": RenderSlack(ev)})
 	case notificationchannel.KindWebhook:
-		return w.post(ctx, target, ev.Kind, RenderWebhook(ev))
+		return w.post(ctx, target, secret, ev.Kind, RenderWebhook(ev))
 	default:
 		return fmt.Errorf("notifications: unknown channel kind %q", ch.Kind)
 	}
 }
 
-// post sends a JSON payload to a webhook URL; a non-2xx response is an
-// error (River retries).
-func (w *DeliverWorker) post(ctx context.Context, target, kind string, payload any) error {
+// post sends a JSON payload to a webhook URL, signed under secret when one
+// is set (SignatureHeader over the exact bytes sent); a non-2xx response is
+// an error (River retries).
+func (w *DeliverWorker) post(ctx context.Context, target, secret, kind string, payload any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -100,6 +106,9 @@ func (w *DeliverWorker) post(ctx context.Context, target, kind string, payload a
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Spacefleet")
 	req.Header.Set("X-Spacefleet-Event", kind)
+	if secret != "" {
+		req.Header.Set(SignatureHeader, Sign(secret, body))
+	}
 	client := w.HTTP
 	if client == nil {
 		client = &http.Client{Timeout: 15 * time.Second}

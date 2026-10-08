@@ -2,6 +2,7 @@ package tekton
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -37,13 +38,35 @@ func TestEnsurePluginCache(t *testing.T) {
 		t.Errorf("labels = %v", pvc.Labels)
 	}
 
-	// Idempotent: a re-ensure with different settings leaves the claim alone.
+	// Idempotent: the same settings are a no-op; an empty class keeps the
+	// existing one.
+	for _, class := range []string{"nfs", ""} {
+		if err := ensurePluginCache(ctx, cs, "sf-jobs", "20Gi", class); err != nil {
+			t.Fatalf("re-ensure (class %q): %v", class, err)
+		}
+	}
+	// Growing resizes the claim in place (volume expansion); shrinking and a
+	// different class are refused with the user-facing sentinels, leaving
+	// the claim untouched.
 	if err := ensurePluginCache(ctx, cs, "sf-jobs", "50Gi", ""); err != nil {
-		t.Fatalf("second ensure: %v", err)
+		t.Fatalf("grow: %v", err)
 	}
 	pvc, _ = cs.CoreV1().PersistentVolumeClaims("sf-jobs").Get(ctx, PluginCacheClaim, metav1.GetOptions{})
-	if got := pvc.Spec.Resources.Requests[corev1.ResourceStorage]; got.String() != "20Gi" {
-		t.Errorf("an existing claim must not be changed, size = %s", got.String())
+	if got := pvc.Spec.Resources.Requests[corev1.ResourceStorage]; got.String() != "50Gi" {
+		t.Errorf("grow: size = %s, want 50Gi", got.String())
+	}
+	if *pvc.Spec.StorageClassName != "nfs" {
+		t.Errorf("grow must keep the class, got %q", *pvc.Spec.StorageClassName)
+	}
+	if err := ensurePluginCache(ctx, cs, "sf-jobs", "10Gi", ""); !errors.Is(err, ErrPluginCacheShrink) {
+		t.Errorf("shrink: err = %v, want ErrPluginCacheShrink", err)
+	}
+	if err := ensurePluginCache(ctx, cs, "sf-jobs", "50Gi", "efs"); !errors.Is(err, ErrPluginCacheClassImmutable) {
+		t.Errorf("re-class: err = %v, want ErrPluginCacheClassImmutable", err)
+	}
+	pvc, _ = cs.CoreV1().PersistentVolumeClaims("sf-jobs").Get(ctx, PluginCacheClaim, metav1.GetOptions{})
+	if got := pvc.Spec.Resources.Requests[corev1.ResourceStorage]; got.String() != "50Gi" || *pvc.Spec.StorageClassName != "nfs" {
+		t.Errorf("a refused change must leave the claim alone: %s %q", got.String(), *pvc.Spec.StorageClassName)
 	}
 
 	if err := ensurePluginCache(ctx, cs, "sf-jobs", "lots", ""); err == nil {

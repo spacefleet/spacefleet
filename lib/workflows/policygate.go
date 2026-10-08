@@ -10,7 +10,10 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/spacefleet/spacefleet/ent"
+	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/planpolicy"
+	"github.com/spacefleet/spacefleet/ent/predicate"
+	"github.com/spacefleet/spacefleet/ent/workflowrun"
 	"github.com/spacefleet/spacefleet/lib/policy"
 	"github.com/spacefleet/spacefleet/lib/tofu"
 )
@@ -78,12 +81,7 @@ func (w *WorkflowRunWorker) evaluatePolicies(ctx context.Context, a WorkflowRunA
 	if err == nil {
 		startedBy = run.StartedBy
 	}
-	in := policy.Input{
-		Application: policy.Ref{ID: app.ID.String(), Name: app.Name},
-		Component:   policy.Ref{ID: node.ComponentID.String(), Name: strings.TrimSuffix(node.Name, tofuPlanNameSuffix)},
-		Run:         policy.RunInput{ID: a.WorkflowRunID.String(), Action: a.Action, StartedBy: startedBy},
-		Plan:        policy.NewPlanInput(plan),
-	}
+	in := policyInput(app, node.ComponentID, node.Name, policy.RunInput{ID: a.WorkflowRunID.String(), Action: a.Action, StartedBy: startedBy}, plan)
 	verdict := policy.Evaluate(ctx, policies, in)
 	if raw, err := json.Marshal(verdict); err == nil {
 		if err := w.svc.SetComponentRunPolicy(ctx, a.OrgID, crID, string(raw)); err != nil {
@@ -94,6 +92,111 @@ func (w *WorkflowRunWorker) evaluatePolicies(ctx context.Context, a WorkflowRunA
 		return false, ""
 	}
 	return true, "blocked by policy: " + verdictSummary(verdict)
+}
+
+// policyInput assembles the document a policy sees for one plan step — the
+// single place the contract is built, shared by the gate and the dry run
+// (PolicyInputFor). The component name is the authored one (the plan unit's
+// display suffix trimmed).
+func policyInput(app *ent.Application, componentID uuid.UUID, componentName string, run policy.RunInput, plan tofu.Plan) policy.Input {
+	return policy.Input{
+		Application: policy.Ref{ID: app.ID.String(), Name: app.Name},
+		Component:   policy.Ref{ID: componentID.String(), Name: strings.TrimSuffix(componentName, tofuPlanNameSuffix)},
+		Run:         run,
+		Plan:        policy.NewPlanInput(plan),
+	}
+}
+
+// PlanStep is a settled OpenTofu plan step with the run and application it
+// belongs to — what a policy dry run evaluates against.
+type PlanStep struct {
+	Step *ent.ComponentRun
+	Run  *ent.WorkflowRun
+	App  *ent.Application
+}
+
+// PolicyInputFor builds the policy input for a plan step exactly as the
+// gate did when the step settled (same parser, same contract), so a dry
+// run against a past plan answers "what would this policy have said".
+func PolicyInputFor(ps PlanStep) policy.Input {
+	run := policy.RunInput{ID: ps.Run.ID.String(), Action: string(ps.Run.Action), StartedBy: ps.Run.StartedBy}
+	return policyInput(ps.App, ps.Step.ComponentID, ps.Step.Name, run, tofu.ParsePlan(ps.Step.Logs))
+}
+
+// planStepActions are the run actions whose OpenTofu plan units pass the
+// policy gate (policyGateApplies) — the steps a dry run may target.
+var planStepActions = []workflowrun.Action{workflowrun.ActionDeploy, workflowrun.ActionUninstall, workflowrun.ActionPreview}
+
+// ComponentName is the authored component's name — the plan unit's display
+// suffix trimmed — the same name the policy input carries.
+func (ps PlanStep) ComponentName() string {
+	return strings.TrimSuffix(ps.Step.Name, tofuPlanNameSuffix)
+}
+
+// planStepPredicates select the organization's succeeded OpenTofu plan
+// units: the run action must be one the gate covers, and the step must be
+// the plan unit expandExecutionNodes produced (its name carries the plan
+// suffix; the apply unit's carries the apply suffix; a state-op unit is
+// excluded by its run action). Recognising the unit by its own snapshot
+// name — not by whether the authored component still exists — keeps plans
+// of since-removed components available.
+func planStepPredicates(orgID uuid.UUID) []predicate.ComponentRun {
+	return []predicate.ComponentRun{
+		componentrun.OrganizationID(orgID),
+		componentrun.TypeEQ(TypeTerraform),
+		componentrun.NameHasSuffix(tofuPlanNameSuffix),
+		componentrun.StatusEQ(componentrun.StatusSucceeded),
+		componentrun.HasWorkflowRunWith(workflowrun.OrganizationID(orgID), workflowrun.ActionIn(planStepActions...)),
+	}
+}
+
+// RecentPlanSteps returns the organization's most recent succeeded OpenTofu
+// plan steps (newest first, at most limit), each with its run and
+// application, for picking a plan to dry-run a policy against. Org-scoped.
+func (s *Service) RecentPlanSteps(ctx context.Context, orgID uuid.UUID, limit int) ([]PlanStep, error) {
+	rows, err := s.ent.ComponentRun.Query().
+		Where(append(planStepPredicates(orgID), componentrun.LogsNEQ(""))...).
+		WithWorkflowRun(func(q *ent.WorkflowRunQuery) { q.WithApplication() }).
+		Order(ent.Desc(componentrun.FieldFinishedAt)).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return planSteps(rows), nil
+}
+
+// PlanStep returns one succeeded OpenTofu plan step of the organization
+// with its run and application, or ent's NotFoundError when the id names
+// anything else (another org's step, an apply unit, a failed plan).
+func (s *Service) PlanStep(ctx context.Context, orgID, componentRunID uuid.UUID) (PlanStep, error) {
+	cr, err := s.ent.ComponentRun.Query().
+		Where(append(planStepPredicates(orgID), componentrun.ID(componentRunID))...).
+		WithWorkflowRun(func(q *ent.WorkflowRunQuery) { q.WithApplication() }).
+		Only(ctx)
+	if err != nil {
+		return PlanStep{}, err
+	}
+	steps := planSteps([]*ent.ComponentRun{cr})
+	if len(steps) == 0 {
+		return PlanStep{}, &ent.NotFoundError{}
+	}
+	return steps[0], nil
+}
+
+// planSteps pairs each row with its loaded run and application, dropping a
+// row whose run or application is gone (an application delete cascades, so
+// this is defensive), preserving order.
+func planSteps(rows []*ent.ComponentRun) []PlanStep {
+	out := make([]PlanStep, 0, len(rows))
+	for _, cr := range rows {
+		run := cr.Edges.WorkflowRun
+		if run == nil || run.Edges.Application == nil {
+			continue
+		}
+		out = append(out, PlanStep{Step: cr, Run: run, App: run.Edges.Application})
+	}
+	return out
 }
 
 // verdictSummary renders the blocking policies' first messages for a step's

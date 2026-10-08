@@ -11671,6 +11671,7 @@ type NotificationChannelMutation struct {
 	kind                *notificationchannel.Kind
 	address             *string
 	encrypted_target    *[]byte
+	encrypted_secret    *[]byte
 	events              *[]string
 	appendevents        []string
 	created_at          *time.Time
@@ -11982,6 +11983,55 @@ func (m *NotificationChannelMutation) ResetEncryptedTarget() {
 	delete(m.clearedFields, notificationchannel.FieldEncryptedTarget)
 }
 
+// SetEncryptedSecret sets the "encrypted_secret" field.
+func (m *NotificationChannelMutation) SetEncryptedSecret(b []byte) {
+	m.encrypted_secret = &b
+}
+
+// EncryptedSecret returns the value of the "encrypted_secret" field in the mutation.
+func (m *NotificationChannelMutation) EncryptedSecret() (r []byte, exists bool) {
+	v := m.encrypted_secret
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEncryptedSecret returns the old "encrypted_secret" field's value of the NotificationChannel entity.
+// If the NotificationChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationChannelMutation) OldEncryptedSecret(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEncryptedSecret is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEncryptedSecret requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEncryptedSecret: %w", err)
+	}
+	return oldValue.EncryptedSecret, nil
+}
+
+// ClearEncryptedSecret clears the value of the "encrypted_secret" field.
+func (m *NotificationChannelMutation) ClearEncryptedSecret() {
+	m.encrypted_secret = nil
+	m.clearedFields[notificationchannel.FieldEncryptedSecret] = struct{}{}
+}
+
+// EncryptedSecretCleared returns if the "encrypted_secret" field was cleared in this mutation.
+func (m *NotificationChannelMutation) EncryptedSecretCleared() bool {
+	_, ok := m.clearedFields[notificationchannel.FieldEncryptedSecret]
+	return ok
+}
+
+// ResetEncryptedSecret resets all changes to the "encrypted_secret" field.
+func (m *NotificationChannelMutation) ResetEncryptedSecret() {
+	m.encrypted_secret = nil
+	delete(m.clearedFields, notificationchannel.FieldEncryptedSecret)
+}
+
 // SetEvents sets the "events" field.
 func (m *NotificationChannelMutation) SetEvents(s []string) {
 	m.events = &s
@@ -12256,7 +12306,7 @@ func (m *NotificationChannelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NotificationChannelMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 10)
 	if m.organization != nil {
 		fields = append(fields, notificationchannel.FieldOrganizationID)
 	}
@@ -12271,6 +12321,9 @@ func (m *NotificationChannelMutation) Fields() []string {
 	}
 	if m.encrypted_target != nil {
 		fields = append(fields, notificationchannel.FieldEncryptedTarget)
+	}
+	if m.encrypted_secret != nil {
+		fields = append(fields, notificationchannel.FieldEncryptedSecret)
 	}
 	if m.events != nil {
 		fields = append(fields, notificationchannel.FieldEvents)
@@ -12302,6 +12355,8 @@ func (m *NotificationChannelMutation) Field(name string) (ent.Value, bool) {
 		return m.Address()
 	case notificationchannel.FieldEncryptedTarget:
 		return m.EncryptedTarget()
+	case notificationchannel.FieldEncryptedSecret:
+		return m.EncryptedSecret()
 	case notificationchannel.FieldEvents:
 		return m.Events()
 	case notificationchannel.FieldApplicationID:
@@ -12329,6 +12384,8 @@ func (m *NotificationChannelMutation) OldField(ctx context.Context, name string)
 		return m.OldAddress(ctx)
 	case notificationchannel.FieldEncryptedTarget:
 		return m.OldEncryptedTarget(ctx)
+	case notificationchannel.FieldEncryptedSecret:
+		return m.OldEncryptedSecret(ctx)
 	case notificationchannel.FieldEvents:
 		return m.OldEvents(ctx)
 	case notificationchannel.FieldApplicationID:
@@ -12380,6 +12437,13 @@ func (m *NotificationChannelMutation) SetField(name string, value ent.Value) err
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetEncryptedTarget(v)
+		return nil
+	case notificationchannel.FieldEncryptedSecret:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEncryptedSecret(v)
 		return nil
 	case notificationchannel.FieldEvents:
 		v, ok := value.([]string)
@@ -12442,6 +12506,9 @@ func (m *NotificationChannelMutation) ClearedFields() []string {
 	if m.FieldCleared(notificationchannel.FieldEncryptedTarget) {
 		fields = append(fields, notificationchannel.FieldEncryptedTarget)
 	}
+	if m.FieldCleared(notificationchannel.FieldEncryptedSecret) {
+		fields = append(fields, notificationchannel.FieldEncryptedSecret)
+	}
 	if m.FieldCleared(notificationchannel.FieldEvents) {
 		fields = append(fields, notificationchannel.FieldEvents)
 	}
@@ -12464,6 +12531,9 @@ func (m *NotificationChannelMutation) ClearField(name string) error {
 	switch name {
 	case notificationchannel.FieldEncryptedTarget:
 		m.ClearEncryptedTarget()
+		return nil
+	case notificationchannel.FieldEncryptedSecret:
+		m.ClearEncryptedSecret()
 		return nil
 	case notificationchannel.FieldEvents:
 		m.ClearEvents()
@@ -12493,6 +12563,9 @@ func (m *NotificationChannelMutation) ResetField(name string) error {
 		return nil
 	case notificationchannel.FieldEncryptedTarget:
 		m.ResetEncryptedTarget()
+		return nil
+	case notificationchannel.FieldEncryptedSecret:
+		m.ResetEncryptedSecret()
 		return nil
 	case notificationchannel.FieldEvents:
 		m.ResetEvents()

@@ -272,7 +272,21 @@ const (
 	// root-module input variable from — so the Variables feature doubles as
 	// the module's inputs. See deploy.RunInputs.ExposeTFVars.
 	terraformConfigExposeTFVars = "expose_tf_vars"
+	// terraformConfigTFVars is an optional JSON object of typed root-module
+	// input variables (name → any JSON value), written into the module as
+	// spacefleet.auto.tfvars.json before every command — so a list, map, or
+	// object input is authored as JSON rather than as HCL-in-a-string, and an
+	// import resolves the same values a plan does. Validated as an object
+	// whose keys are OpenTofu identifiers (tfVarNameRe). The file lands in
+	// the rendered script, so this is for configuration, never secrets:
+	// sensitive inputs go through Variables + expose_tf_vars (mounted from a
+	// Secret). Not redacted.
+	terraformConfigTFVars = "tfvars"
 )
+
+// tfVarNameRe is an OpenTofu identifier — what a root-module `variable`
+// block can be named, and so what a tfvars key may be.
+var tfVarNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
 
 // workspaceRe bounds a workspace name to what every backend accepts as a key
 // segment: letters, digits, '-', '_' and '.', at most 90 characters (the
@@ -347,6 +361,16 @@ func validateTerraformConfig(n ComponentInput) error {
 			return fmt.Errorf("%w: node %q (terraform) the %s state backend requires %q in %s", ErrInvalidConfig, n.Name, backend, key, terraformConfigBackendConfig)
 		}
 	}
+	// A secret never belongs in backend_config: the object is rendered into
+	// the run's script (visible to editors and to anyone who can read
+	// TaskRuns on the runner) and snapshotted onto every run. Each backend
+	// reads the same setting from an environment variable, which a sensitive
+	// Variable delivers from a mounted Secret — point there instead.
+	for key, envName := range backendSecretKeys[backend] {
+		if _, set := backendCfg[key]; set {
+			return fmt.Errorf("%w: node %q (terraform) %s %q is a secret and cannot be stored in the backend settings; add a sensitive variable named %s to the component instead", ErrInvalidConfig, n.Name, terraformConfigBackendConfig, key, envName)
+		}
+	}
 	// The OpenTofu line is optional (empty = the default line) but must be a
 	// supported one, so an unknown value 400s at write time instead of failing
 	// in the worker.
@@ -395,6 +419,20 @@ func validateTerraformConfig(n ComponentInput) error {
 	default:
 		return fmt.Errorf("%w: node %q (terraform) %s must be \"true\" or \"false\"", ErrInvalidConfig, n.Name, terraformConfigExposeTFVars)
 	}
+	// Typed inputs: a JSON object keyed by variable name. Any JSON value is a
+	// valid input (OpenTofu type-checks it against the declaration at plan
+	// time); the key must be a name a variable block could carry.
+	if raw := strings.TrimSpace(n.Config[terraformConfigTFVars]); raw != "" {
+		var vars map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(raw), &vars); err != nil || vars == nil {
+			return fmt.Errorf("%w: node %q (terraform) %s must be a JSON object of variable name to value", ErrInvalidConfig, n.Name, terraformConfigTFVars)
+		}
+		for name := range vars {
+			if !tfVarNameRe.MatchString(name) {
+				return fmt.Errorf("%w: node %q (terraform) %s key %q is not a valid variable name", ErrInvalidConfig, n.Name, terraformConfigTFVars, name)
+			}
+		}
+	}
 	return nil
 }
 
@@ -406,6 +444,32 @@ var backendRequiredKeys = map[string][]string{
 	tofu.BackendS3:    {"bucket", "key", s3BackendKeyRegion},
 	tofu.BackendGCS:   {"bucket", "prefix"},
 	tofu.BackendAzure: {"storage_account_name", "container_name", "key"},
+}
+
+// backendSecretKeys lists, per backend, the backend_config settings that are
+// secrets — refused at write time — each with the environment variable the
+// backend reads the same value from, so the error can point the author at a
+// sensitive Variable of that name (mounted from a Secret, never in the
+// script). Non-secret key *names* (s3 kms_key_id, gcs kms_encryption_key)
+// stay allowed.
+var backendSecretKeys = map[string]map[string]string{
+	tofu.BackendS3: {
+		"access_key": "AWS_ACCESS_KEY_ID",
+		"secret_key": "AWS_SECRET_ACCESS_KEY",
+		"token":      "AWS_SESSION_TOKEN",
+	},
+	tofu.BackendGCS: {
+		"encryption_key": "GOOGLE_ENCRYPTION_KEY",
+		"credentials":    "GOOGLE_CREDENTIALS",
+		"access_token":   "GOOGLE_OAUTH_ACCESS_TOKEN",
+	},
+	tofu.BackendAzure: {
+		"access_key":                  "ARM_ACCESS_KEY",
+		"sas_token":                   "ARM_SAS_TOKEN",
+		"client_secret":               "ARM_CLIENT_SECRET",
+		"client_certificate_password": "ARM_CLIENT_CERTIFICATE_PASSWORD",
+		"oidc_token":                  "ARM_OIDC_TOKEN",
+	},
 }
 
 // supportedBackends renders the supported backend names for the validation

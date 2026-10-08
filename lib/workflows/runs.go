@@ -908,6 +908,29 @@ func (s *Service) LatestComponentState(ctx context.Context, orgID, appID, compon
 		First(ctx)
 }
 
+// LatestSettledStep returns the most recent settled (succeeded or failed)
+// execution unit of an OpenTofu component — its plan or state-op unit
+// (authored id) or its apply unit (derived id), across every run action of
+// the application — or ent's NotFoundError when none has settled. The API
+// reads a failed step's logs for the state lock it could not acquire: a lock
+// is stuck only while the component's latest attempt still trips over it,
+// so the newest settled step is the one that decides. Org-scoped.
+func (s *Service) LatestSettledStep(ctx context.Context, orgID, appID, componentID uuid.UUID) (*ent.ComponentRun, error) {
+	return s.ent.ComponentRun.Query().
+		Where(
+			componentrun.OrganizationID(orgID),
+			componentrun.ComponentIDIn(deriveApplyID(componentID), componentID),
+			componentrun.StatusIn(componentrun.StatusSucceeded, componentrun.StatusFailed),
+			componentrun.FinishedAtNotNil(),
+			componentrun.HasWorkflowRunWith(
+				workflowrun.OrganizationID(orgID),
+				workflowrun.ApplicationID(appID),
+			),
+		).
+		Order(ent.Desc(componentrun.FieldFinishedAt)).
+		First(ctx)
+}
+
 // LatestDriftCheck returns the most recent settled drift-check step for an
 // OpenTofu component — the plan unit (authored id) of the latest succeeded
 // or failed `drift` run — or ent's NotFoundError when the component has never

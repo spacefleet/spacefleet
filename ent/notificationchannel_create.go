@@ -56,6 +56,12 @@ func (_c *NotificationChannelCreate) SetEncryptedTarget(v []byte) *NotificationC
 	return _c
 }
 
+// SetEncryptedSecret sets the "encrypted_secret" field.
+func (_c *NotificationChannelCreate) SetEncryptedSecret(v []byte) *NotificationChannelCreate {
+	_c.mutation.SetEncryptedSecret(v)
+	return _c
+}
+
 // SetEvents sets the "events" field.
 func (_c *NotificationChannelCreate) SetEvents(v []string) *NotificationChannelCreate {
 	_c.mutation.SetEvents(v)
@@ -262,6 +268,10 @@ func (_c *NotificationChannelCreate) createSpec() (*NotificationChannel, *sqlgra
 		_spec.SetField(notificationchannel.FieldEncryptedTarget, field.TypeBytes, value)
 		_node.EncryptedTarget = &value
 	}
+	if value, ok := _c.mutation.EncryptedSecret(); ok {
+		_spec.SetField(notificationchannel.FieldEncryptedSecret, field.TypeBytes, value)
+		_node.EncryptedSecret = &value
+	}
 	if value, ok := _c.mutation.Events(); ok {
 		_spec.SetField(notificationchannel.FieldEvents, field.TypeJSON, value)
 		_node.Events = value
@@ -399,6 +409,24 @@ func (u *NotificationChannelUpsert) UpdateEncryptedTarget() *NotificationChannel
 // ClearEncryptedTarget clears the value of the "encrypted_target" field.
 func (u *NotificationChannelUpsert) ClearEncryptedTarget() *NotificationChannelUpsert {
 	u.SetNull(notificationchannel.FieldEncryptedTarget)
+	return u
+}
+
+// SetEncryptedSecret sets the "encrypted_secret" field.
+func (u *NotificationChannelUpsert) SetEncryptedSecret(v []byte) *NotificationChannelUpsert {
+	u.Set(notificationchannel.FieldEncryptedSecret, v)
+	return u
+}
+
+// UpdateEncryptedSecret sets the "encrypted_secret" field to the value that was provided on create.
+func (u *NotificationChannelUpsert) UpdateEncryptedSecret() *NotificationChannelUpsert {
+	u.SetExcluded(notificationchannel.FieldEncryptedSecret)
+	return u
+}
+
+// ClearEncryptedSecret clears the value of the "encrypted_secret" field.
+func (u *NotificationChannelUpsert) ClearEncryptedSecret() *NotificationChannelUpsert {
+	u.SetNull(notificationchannel.FieldEncryptedSecret)
 	return u
 }
 
@@ -553,6 +581,27 @@ func (u *NotificationChannelUpsertOne) UpdateEncryptedTarget() *NotificationChan
 func (u *NotificationChannelUpsertOne) ClearEncryptedTarget() *NotificationChannelUpsertOne {
 	return u.Update(func(s *NotificationChannelUpsert) {
 		s.ClearEncryptedTarget()
+	})
+}
+
+// SetEncryptedSecret sets the "encrypted_secret" field.
+func (u *NotificationChannelUpsertOne) SetEncryptedSecret(v []byte) *NotificationChannelUpsertOne {
+	return u.Update(func(s *NotificationChannelUpsert) {
+		s.SetEncryptedSecret(v)
+	})
+}
+
+// UpdateEncryptedSecret sets the "encrypted_secret" field to the value that was provided on create.
+func (u *NotificationChannelUpsertOne) UpdateEncryptedSecret() *NotificationChannelUpsertOne {
+	return u.Update(func(s *NotificationChannelUpsert) {
+		s.UpdateEncryptedSecret()
+	})
+}
+
+// ClearEncryptedSecret clears the value of the "encrypted_secret" field.
+func (u *NotificationChannelUpsertOne) ClearEncryptedSecret() *NotificationChannelUpsertOne {
+	return u.Update(func(s *NotificationChannelUpsert) {
+		s.ClearEncryptedSecret()
 	})
 }
 
@@ -882,6 +931,27 @@ func (u *NotificationChannelUpsertBulk) UpdateEncryptedTarget() *NotificationCha
 func (u *NotificationChannelUpsertBulk) ClearEncryptedTarget() *NotificationChannelUpsertBulk {
 	return u.Update(func(s *NotificationChannelUpsert) {
 		s.ClearEncryptedTarget()
+	})
+}
+
+// SetEncryptedSecret sets the "encrypted_secret" field.
+func (u *NotificationChannelUpsertBulk) SetEncryptedSecret(v []byte) *NotificationChannelUpsertBulk {
+	return u.Update(func(s *NotificationChannelUpsert) {
+		s.SetEncryptedSecret(v)
+	})
+}
+
+// UpdateEncryptedSecret sets the "encrypted_secret" field to the value that was provided on create.
+func (u *NotificationChannelUpsertBulk) UpdateEncryptedSecret() *NotificationChannelUpsertBulk {
+	return u.Update(func(s *NotificationChannelUpsert) {
+		s.UpdateEncryptedSecret()
+	})
+}
+
+// ClearEncryptedSecret clears the value of the "encrypted_secret" field.
+func (u *NotificationChannelUpsertBulk) ClearEncryptedSecret() *NotificationChannelUpsertBulk {
+	return u.Update(func(s *NotificationChannelUpsert) {
+		s.ClearEncryptedSecret()
 	})
 }
 

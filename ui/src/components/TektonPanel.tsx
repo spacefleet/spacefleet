@@ -466,6 +466,7 @@ function PluginCacheSection({
 }) {
   const [size, setSize] = useState("20Gi");
   const [storageClass, setStorageClass] = useState("");
+  const [newSize, setNewSize] = useState(cache?.size ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -505,15 +506,47 @@ function PluginCacheSection({
             )}
           </span>
           {canEdit && (
-            <button
-              type="button"
-              onClick={() => void save({ size: "" })}
-              disabled={busy}
-              className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Remove cache
-            </button>
+            <>
+              <form
+                className="flex items-end gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void save({
+                    size: newSize.trim(),
+                    storage_class: cache.storage_class || undefined,
+                  });
+                }}
+              >
+                <input
+                  type="text"
+                  aria-label="New plugin cache size"
+                  value={newSize}
+                  onChange={(e) => setNewSize(e.target.value)}
+                  className="w-24 border border-neutral-300 px-2 py-1.5 font-mono text-sm text-neutral-900"
+                />
+                <button
+                  type="submit"
+                  disabled={busy || newSize.trim() === "" || newSize.trim() === cache.size}
+                  className="border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  Resize
+                </button>
+              </form>
+              <button
+                type="button"
+                onClick={() => void save({ size: "" })}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Remove cache
+              </button>
+              <p className="basis-full text-xs text-neutral-500">
+                The cache can grow in place when its storage class allows volume
+                expansion. To shrink it or change the class, remove it and set
+                it up again.
+              </p>
+            </>
           )}
         </div>
       ) : canEdit ? (

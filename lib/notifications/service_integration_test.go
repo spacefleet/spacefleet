@@ -65,12 +65,20 @@ func TestChannelsAndDispatch(t *testing.T) {
 
 	var received []map[string]any
 	var receivedKinds []string
+	var receivedSigs []string
 	hook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		var body map[string]any
 		_ = json.Unmarshal(b, &body)
 		received = append(received, body)
 		receivedKinds = append(receivedKinds, r.Header.Get("X-Spacefleet-Event"))
+		// A signed delivery must verify against the exact bytes received.
+		if sig := r.Header.Get(SignatureHeader); sig != "" {
+			if !VerifySignature("hook-secret", b, sig) {
+				t.Errorf("signature %q does not verify for body %s", sig, b)
+			}
+			receivedSigs = append(receivedSigs, sig)
+		}
 		if strings.HasSuffix(r.URL.Path, "/fail") {
 			http.Error(w, "nope", http.StatusBadGateway)
 		}
@@ -88,9 +96,19 @@ func TestChannelsAndDispatch(t *testing.T) {
 	if slack.Address != strings.TrimPrefix(hook.URL, "http://") || slack.EncryptedTarget == nil || slack.ApplicationID != app.ID {
 		t.Errorf("slack row = %+v", slack)
 	}
-	generic, err := svc.Create(ctx, org.ID, CreateParams{Name: "hook", Kind: KindWebhook, Target: hook.URL + "/generic", Events: []string{workflows.EventDriftDetected}})
+	generic, err := svc.Create(ctx, org.ID, CreateParams{Name: "hook", Kind: KindWebhook, Target: hook.URL + "/generic", Secret: "hook-secret", Events: []string{workflows.EventDriftDetected}})
 	if err != nil {
 		t.Fatalf("create webhook: %v", err)
+	}
+	if generic.EncryptedSecret == nil {
+		t.Error("the signing secret must be sealed onto the row")
+	}
+	if got, _ := svc.secret(generic); got != "hook-secret" {
+		t.Errorf("unsealed secret = %q", got)
+	}
+	// A secret is a webhook-only setting.
+	if _, err := svc.Create(ctx, org.ID, CreateParams{Name: "signed-slack", Kind: KindSlack, Target: hook.URL, Secret: "x", Events: []string{workflows.EventRunFailed}}); !IsValidation(err) {
+		t.Errorf("secret on slack: err = %v, want validation", err)
 	}
 	if _, err := svc.Create(ctx, org.ID, CreateParams{Name: "ops", Kind: KindEmail, Target: "x@example.com", Events: []string{workflows.EventRunFailed}}); !ent.IsConstraintError(err) {
 		t.Errorf("duplicate name: err = %v, want constraint", err)
@@ -155,10 +173,27 @@ func TestChannelsAndDispatch(t *testing.T) {
 	if err := w.Work(ctx, &river.Job[DeliverArgs]{Args: DeliverArgs{ChannelID: generic.ID, OrgID: org.ID, Event: drift}}); err != nil {
 		t.Fatalf("deliver webhook: %v", err)
 	}
+	if len(receivedSigs) != 1 {
+		t.Errorf("the signed webhook must carry one signature, got %v", receivedSigs)
+	}
 	if err := w.Work(ctx, &river.Job[DeliverArgs]{Args: DeliverArgs{ChannelID: slack.ID, OrgID: org.ID, Event: ev}}); err != nil {
 		t.Fatalf("deliver slack: %v", err)
 	}
-	if len(received) != 2 || receivedKinds[0] != workflows.EventDriftDetected || received[0]["headline"] != "web: drift detected on 1 resource" || !strings.Contains(received[1]["text"].(string), "*web: deploy run failed*") {
+	if len(receivedSigs) != 1 {
+		t.Errorf("an unsigned channel must not carry a signature, got %v", receivedSigs)
+	}
+	// Clearing the secret stops signing.
+	noSecret := ""
+	if generic, err = svc.Update(ctx, org.ID, generic.ID, UpdateParams{Secret: &noSecret}); err != nil || (generic.EncryptedSecret != nil && len(*generic.EncryptedSecret) > 0) {
+		t.Errorf("clear secret: row=%+v err=%v", generic, err)
+	}
+	if err := w.Work(ctx, &river.Job[DeliverArgs]{Args: DeliverArgs{ChannelID: generic.ID, OrgID: org.ID, Event: drift}}); err != nil {
+		t.Fatalf("deliver unsigned webhook: %v", err)
+	}
+	if len(receivedSigs) != 1 {
+		t.Errorf("after clearing the secret deliveries must be unsigned, got %v", receivedSigs)
+	}
+	if len(received) != 3 || receivedKinds[0] != workflows.EventDriftDetected || received[0]["headline"] != "web: drift detected on 1 resource" || !strings.Contains(received[1]["text"].(string), "*web: deploy run failed*") {
 		t.Errorf("received = %v kinds=%v", received, receivedKinds)
 	}
 	failTarget := hook.URL + "/fail"

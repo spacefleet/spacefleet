@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Bell, Plus, Send, Trash2, X } from "lucide-react";
+import { Bell, KeyRound, Plus, Send, Trash2, X } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
@@ -38,6 +38,7 @@ export function Notifications() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [signing, setSigning] = useState<Channel | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -142,13 +143,31 @@ export function Notifications() {
                 <tr key={ch.id} className="border-b border-neutral-100 last:border-0">
                   <td className="px-4 py-3 font-medium text-neutral-900">{ch.name}</td>
                   <td className="px-4 py-3 text-neutral-600">{KIND_LABELS[ch.kind]}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-neutral-600">{ch.address}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-neutral-600">
+                    {ch.address}
+                    {ch.has_secret && (
+                      <span className="ml-2 border border-neutral-300 px-1 py-0.5 font-sans text-[10px] uppercase tracking-wide text-neutral-500">
+                        signed
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-neutral-600">
                     {ch.events.map((e) => EVENT_LABEL[e] ?? e).join(", ")}
                   </td>
                   <td className="px-4 py-3 text-neutral-600">{appName(ch.application_id)}</td>
                   {isAdmin && (
                     <td className="px-4 py-3 text-right">
+                      {ch.kind === "webhook" && (
+                        <button
+                          type="button"
+                          onClick={() => setSigning(ch)}
+                          title={ch.has_secret ? "Rotate or remove the signing secret" : "Set a signing secret"}
+                          aria-label={`Signing secret for ${ch.name}`}
+                          className="mr-1 p-1 text-neutral-400 hover:text-neutral-900"
+                        >
+                          <KeyRound className="h-4 w-4" />
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => void onTest(ch)}
@@ -176,6 +195,21 @@ export function Notifications() {
         )}
       </div>
 
+      {signing && (
+        <SigningSecretDialog
+          channel={signing}
+          onClose={() => setSigning(null)}
+          onSaved={(ch) => {
+            setChannels((cs) => cs.map((x) => (x.id === ch.id ? ch : x)));
+            setSigning(null);
+            setNotice(
+              ch.has_secret
+                ? `Deliveries to ${ch.name} are now signed with the new secret.`
+                : `Deliveries to ${ch.name} are no longer signed.`,
+            );
+          }}
+        />
+      )}
       {adding && (
         <AddChannelDialog
           apps={apps}
@@ -205,6 +239,7 @@ function AddChannelDialog({
   const [name, setName] = useState("");
   const [kind, setKind] = useState<Kind>("email");
   const [target, setTarget] = useState("");
+  const [secret, setSecret] = useState("");
   const [events, setEvents] = useState<EventKind[]>(["awaiting_approval", "run_failed", "drift_detected"]);
   const [appId, setAppId] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -223,6 +258,7 @@ function AddChannelDialog({
         kind,
         target: target.trim(),
         events,
+        ...(kind === "webhook" && secret.trim() ? { secret: secret.trim() } : {}),
         ...(appId ? { application_id: appId } : {}),
       },
     });
@@ -306,6 +342,24 @@ function AddChannelDialog({
               </span>
             )}
           </label>
+          {kind === "webhook" && (
+            <label className="flex flex-col gap-1 text-xs text-neutral-600">
+              Signing secret (optional)
+              <input
+                type="text"
+                aria-label="Signing secret"
+                value={secret}
+                placeholder="a shared secret your receiver checks"
+                onChange={(e) => setSecret(e.target.value)}
+                className="border border-neutral-300 px-2 py-1.5 font-mono text-sm text-neutral-900 placeholder:font-sans placeholder:text-neutral-400"
+              />
+              <span className="text-neutral-500">
+                When set, every delivery carries an X-Spacefleet-Signature-256
+                header (HMAC-SHA256 of the body) so your receiver can verify it
+                came from here. Stored encrypted, never shown again.
+              </span>
+            </label>
+          )}
           <fieldset className="flex flex-col gap-1 text-xs text-neutral-600">
             <legend>Events</legend>
             {EVENTS.map((e) => (
@@ -355,6 +409,106 @@ function AddChannelDialog({
           >
             {submitting ? "Saving…" : "Save channel"}
           </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// SigningSecretDialog sets, rotates, or removes a webhook channel's signing
+// secret. The current secret is never shown (it is sealed server-side);
+// saving a new one replaces it from the next delivery on, and "Stop
+// signing" clears it — the API takes an empty string for that.
+function SigningSecretDialog({
+  channel,
+  onClose,
+  onSaved,
+}: {
+  channel: Channel;
+  onClose: () => void;
+  onSaved: (ch: Channel) => void;
+}) {
+  const [secret, setSecret] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async (value: string) => {
+    setSubmitting(true);
+    setError(null);
+    const { data, error } = await api.PATCH("/api/notification-channels/{id}", {
+      params: { path: { id: channel.id } },
+      body: { secret: value },
+    });
+    setSubmitting(false);
+    if (error || !data) {
+      setError(error?.message ?? "Could not update the signing secret");
+      return;
+    }
+    onSaved(data);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save(secret.trim());
+        }}
+        className="w-full max-w-md border border-neutral-200 bg-white p-5 shadow-lg"
+      >
+        <div className="flex items-start justify-between">
+          <h2 className="text-base font-semibold">Signing secret for {channel.name}</h2>
+          <button type="button" onClick={onClose} aria-label="Close" className="p-1 text-neutral-400 hover:text-neutral-900">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="mt-1 text-sm text-neutral-600">
+          {channel.has_secret
+            ? "Deliveries are signed. Enter a new secret to rotate it — the current one cannot be shown — or stop signing altogether."
+            : "Deliveries are not signed. Set a secret and every delivery will carry an X-Spacefleet-Signature-256 header your receiver can verify."}
+        </p>
+        <label className="mt-4 flex flex-col gap-1 text-xs text-neutral-600">
+          New signing secret
+          <input
+            type="text"
+            aria-label="New signing secret"
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+            placeholder="a shared secret your receiver checks"
+            className="border border-neutral-300 px-2 py-1.5 font-mono text-sm text-neutral-900 placeholder:font-sans placeholder:text-neutral-400"
+            autoFocus
+          />
+        </label>
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        <div className="mt-5 flex items-center justify-between gap-2">
+          {channel.has_secret ? (
+            <button
+              type="button"
+              onClick={() => void save("")}
+              disabled={submitting}
+              className="border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+            >
+              Stop signing
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || secret.trim() === ""}
+              className="bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+            >
+              {submitting ? "Saving…" : channel.has_secret ? "Rotate secret" : "Start signing"}
+            </button>
+          </div>
         </div>
       </form>
     </div>

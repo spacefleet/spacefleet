@@ -212,6 +212,34 @@ describe("terraform inputs and workspace", () => {
     await user.type(screen.getByPlaceholderText("default"), "prod");
     expect(latest!.config.workspace).toBe("prod");
   });
+
+  it("stores the typed inputs as config.tfvars and flags JSON the server would reject", () => {
+    let latest: EditableComponent | null = null;
+    render(
+      <Harness
+        initial={makeComponent()}
+        onComponent={(c) => {
+          latest = c;
+        }}
+      />,
+    );
+    const field = screen.getByLabelText("Input variables");
+    fireEvent.change(field, { target: { value: '{"replicas": 3' } });
+    expect(latest!.config.tfvars).toBe('{"replicas": 3');
+    expect(screen.getByText("Not valid JSON.")).toBeInTheDocument();
+
+    fireEvent.change(field, { target: { value: '["a"]' } });
+    expect(screen.getByText(/Must be a JSON object/)).toBeInTheDocument();
+
+    fireEvent.change(field, { target: { value: '{"1st": "x"}' } });
+    expect(screen.getByText('"1st" is not a valid variable name.')).toBeInTheDocument();
+
+    fireEvent.change(field, {
+      target: { value: '{"replicas": 3, "tags": {"team": "core"}}' },
+    });
+    expect(latest!.config.tfvars).toBe('{"replicas": 3, "tags": {"team": "core"}}');
+    expect(screen.queryByText(/Not valid JSON|Must be a JSON object|not a valid variable name/)).not.toBeInTheDocument();
+  });
 });
 
 describe("terraform state backends", () => {
@@ -293,5 +321,32 @@ describe("approval policy", () => {
     await user.click(screen.getByRole("checkbox", { name: /different approver/ }));
     fireEvent.change(screen.getByLabelText("Approval timeout (minutes)"), { target: { value: "" } });
     expect(latest!.approval_policy).toBeNull();
+  });
+});
+
+describe("terraform backend extras", () => {
+  it("stores the GCS KMS key and the Azure AD auth flag in backend_config", async () => {
+    const user = userEvent.setup();
+    let latest: EditableComponent | null = null;
+    render(
+      <Harness
+        initial={makeComponent({
+          config: { backend: "gcs", backend_config: JSON.stringify({ bucket: "b", prefix: "p" }) },
+        })}
+        onComponent={(c) => {
+          latest = c;
+        }}
+      />,
+    );
+    await user.type(screen.getByLabelText("GCS KMS key"), "projects/p/k");
+    expect(JSON.parse(latest!.config.backend_config)).toEqual({ bucket: "b", prefix: "p", kms_encryption_key: "projects/p/k" });
+
+    await user.selectOptions(screen.getByLabelText("State backend"), "azurerm");
+    const aad = screen.getByLabelText("Use Azure AD authentication");
+    expect(aad).not.toBeChecked();
+    await user.click(aad);
+    expect(JSON.parse(latest!.config.backend_config)).toEqual({ use_azuread_auth: "true" });
+    await user.click(aad);
+    expect(latest!.config.backend_config).toBe("");
   });
 });

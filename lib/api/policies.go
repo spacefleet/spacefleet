@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -9,6 +10,8 @@ import (
 
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/lib/policies"
+	"github.com/spacefleet/spacefleet/lib/policy"
+	"github.com/spacefleet/spacefleet/lib/tofu"
 	"github.com/spacefleet/spacefleet/lib/workflows"
 )
 
@@ -195,6 +198,99 @@ func toAPIPolicy(p *ent.PlanPolicy) Policy {
 		out.ApplicationId = &id
 	}
 	return out
+}
+
+// ListPolicyTestPlans lists recent OpenTofu plan steps an admin can dry-run
+// a policy against. Admin only: the list carries plan headlines (counts),
+// which sit behind the editor gate elsewhere, and policy authoring is an
+// admin concern anyway.
+func (s *Server) ListPolicyTestPlans(ctx context.Context, _ ListPolicyTestPlansRequestObject) (ListPolicyTestPlansResponseObject, error) {
+	orgID, aerr, err := s.resolvePoliciesWrite(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[ListPolicyTestPlansdefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	if s.workflows == nil {
+		return errResp[ListPolicyTestPlansdefaultJSONResponse](http.StatusServiceUnavailable, "unavailable", "workflows service not configured"), nil
+	}
+	steps, err := s.workflows.RecentPlanSteps(ctx, orgID, policyTestPlanLimit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PolicyTestPlan, 0, len(steps))
+	for _, ps := range steps {
+		p := tofu.ParsePlan(ps.Step.Logs)
+		out = append(out, PolicyTestPlan{
+			ComponentRunId:  ps.Step.ID,
+			RunId:           ps.Run.ID,
+			ApplicationId:   ps.App.ID,
+			ApplicationName: ps.App.Name,
+			ComponentName:   ps.ComponentName(),
+			Action:          RunAction(ps.Run.Action),
+			FinishedAt:      ps.Step.FinishedAt,
+			Add:             p.Add,
+			Change:          p.Change,
+			Destroy:         p.Destroy,
+			Replace:         p.Replace,
+		})
+	}
+	return ListPolicyTestPlans200JSONResponse(out), nil
+}
+
+// policyTestPlanLimit bounds the dry-run plan picker: recent plans are the
+// useful ones, and each row parses a plan from its logs.
+const policyTestPlanLimit = 25
+
+// TestPolicy evaluates a Rego policy — as typed, not yet saved — against a
+// past plan step, exactly as the gate would have: it answers "what would
+// this policy have said about that plan" without enabling anything. Admin
+// only. The Rego must compile (400 with the compiler's message, as on
+// create); the step must be one of the organization's succeeded OpenTofu
+// plan steps (404 otherwise).
+func (s *Server) TestPolicy(ctx context.Context, req TestPolicyRequestObject) (TestPolicyResponseObject, error) {
+	orgID, aerr, err := s.resolvePoliciesWrite(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[TestPolicydefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	if s.workflows == nil {
+		return errResp[TestPolicydefaultJSONResponse](http.StatusServiceUnavailable, "unavailable", "workflows service not configured"), nil
+	}
+	if req.Body == nil {
+		return errResp[TestPolicydefaultJSONResponse](http.StatusBadRequest, "bad_request", "request body is required"), nil
+	}
+	rego := req.Body.Rego
+	if strings.TrimSpace(rego) == "" {
+		return errResp[TestPolicydefaultJSONResponse](http.StatusBadRequest, "bad_request", "rego is required"), nil
+	}
+	if err := policy.Compile(rego); err != nil {
+		return errResp[TestPolicydefaultJSONResponse](http.StatusBadRequest, "bad_request", err.Error()), nil
+	}
+	ps, err := s.workflows.PlanStep(ctx, orgID, req.Body.ComponentRunId)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return errResp[TestPolicydefaultJSONResponse](http.StatusNotFound, "not_found", "no such OpenTofu plan step in this organization"), nil
+		}
+		return nil, err
+	}
+	in := workflows.PolicyInputFor(ps)
+	verdict := policy.Evaluate(ctx, []policy.Policy{{ID: "test", Name: "test", Rego: rego, Enforcement: policy.EnforcementBlock}}, in)
+	r := verdict.Results[0]
+	violations := r.Violations
+	if violations == nil {
+		violations = []string{}
+	}
+	// The input the policy saw, as a plain object: the same document the
+	// docs describe, so an author can see what a rule matched against.
+	var input map[string]interface{}
+	if raw, err := json.Marshal(in); err == nil {
+		_ = json.Unmarshal(raw, &input)
+	}
+	return TestPolicy200JSONResponse(PolicyTestResult{Violations: violations, Error: optStr(r.Error), Input: input}), nil
 }
 
 // toAPIPolicyVerdict maps a plan step's recorded verdict; nil when none.

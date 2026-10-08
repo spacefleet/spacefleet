@@ -105,14 +105,15 @@ func TestNormalizeTofuOutputs(t *testing.T) {
 		t.Errorf("subnet_ids value = %s, want the list to survive as raw JSON", outputs["subnet_ids"].Value)
 	}
 
-	for name, in := range map[string][]byte{
-		"nil":          nil,
-		"empty":        []byte(""),
-		"empty object": []byte("{}"),
-	} {
+	// Nothing captured (an empty file — `tofu output` failed) leaves the
+	// column alone; a genuinely empty result is recorded canonically.
+	for name, in := range map[string][]byte{"nil": nil, "empty": []byte(""), "blank": []byte("\n")} {
 		if got, err := normalizeTofuOutputs(in); err != nil || got != "" {
 			t.Errorf("%s: = (%q, %v), want (\"\", nil)", name, got, err)
 		}
+	}
+	if got, err := normalizeTofuOutputs([]byte("{}")); err != nil || got != "{}" {
+		t.Errorf("empty object: = (%q, %v), want (\"{}\", nil)", got, err)
 	}
 
 	for name, in := range map[string][]byte{
@@ -127,7 +128,8 @@ func TestNormalizeTofuOutputs(t *testing.T) {
 
 // TestNormalizeTofuResources: a valid inventory round-trips (module-qualified
 // addresses and raw ids intact), records without an address are dropped,
-// empties yield "" (no column write), and a non-array shape — e.g. the
+// nothing-captured yields "" (no column write) while an empty inventory is
+// recorded as "[]" (the state after a destroy), and a non-array shape — e.g. the
 // outputs object landing under the wrong key — is an error, never persisted.
 func TestNormalizeTofuResources(t *testing.T) {
 	t.Parallel()
@@ -143,9 +145,14 @@ func TestNormalizeTofuResources(t *testing.T) {
 	if len(back) != 2 || back[0].Address != "module.net.aws_vpc.main" || string(back[0].ID) != `"vpc-1"` || string(back[1].ID) != "null" {
 		t.Errorf("normalized = %s", got)
 	}
-	for _, empty := range [][]byte{nil, []byte(`[]`), []byte(`[{"address":""}]`)} {
-		if got, err := normalizeTofuResources(empty); err != nil || got != "" {
-			t.Errorf("%q: got %q, %v; want empty", empty, got, err)
+	for _, none := range [][]byte{nil, []byte(""), []byte(" \n")} {
+		if got, err := normalizeTofuResources(none); err != nil || got != "" {
+			t.Errorf("%q: got %q, %v; want nothing to write", none, got, err)
+		}
+	}
+	for _, empty := range [][]byte{[]byte(`[]`), []byte(`[{"address":""}]`)} {
+		if got, err := normalizeTofuResources(empty); err != nil || got != "[]" {
+			t.Errorf("%q: got %q, %v; want the canonical empty inventory", empty, got, err)
 		}
 	}
 	if _, err := normalizeTofuResources([]byte(`{"vpc_id":{"value":"x"}}`)); err == nil {

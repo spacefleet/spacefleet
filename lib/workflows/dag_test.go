@@ -771,4 +771,53 @@ func TestValidateTerraformConfig_WorkspaceAndTFVars(t *testing.T) {
 	if err := validateTerraformConfig(node(map[string]string{terraformConfigExposeTFVars: "yes"})); !errors.Is(err, ErrInvalidConfig) {
 		t.Errorf("expose_tf_vars yes: err = %v, want ErrInvalidConfig", err)
 	}
+	// Typed inputs: any JSON object keyed by identifiers; not an object, or
+	// a key no variable block could carry, is rejected.
+	for _, v := range []string{"", " \n", "{}", `{"region":"eu-west-1","replicas":3,"tags":{"a":"b"},"cidrs":["10.0.0.0/8"],"_x-y":null}`} {
+		if err := validateTerraformConfig(node(map[string]string{terraformConfigTFVars: v})); err != nil {
+			t.Errorf("tfvars %q: unexpected error %v", v, err)
+		}
+	}
+	for _, v := range []string{"null", "[]", `"x"`, "{", `{"1st":"x"}`, `{"a b":"x"}`, `{"":"x"}`} {
+		if err := validateTerraformConfig(node(map[string]string{terraformConfigTFVars: v})); !errors.Is(err, ErrInvalidConfig) {
+			t.Errorf("tfvars %q: err = %v, want ErrInvalidConfig", v, err)
+		}
+	}
+}
+
+// TestValidateTerraformConfig_BackendSecrets: a secret-bearing backend
+// setting (an S3 access key, a GCS customer-supplied encryption key, an
+// Azure account key) is refused with a pointer to the sensitive Variable the
+// backend reads instead — the backend_config object lands in the run's
+// script. Key *names* (kms_key_id, kms_encryption_key) stay allowed.
+func TestValidateTerraformConfig_BackendSecrets(t *testing.T) {
+	t.Parallel()
+	node := func(backend, backendCfg string) ComponentInput {
+		return ComponentInput{ID: uuid.New(), Name: "infra", Type: TypeTerraform, Config: map[string]string{
+			"repo_url": "https://github.com/org/infra.git", "path": ".",
+			terraformConfigBackend:       backend,
+			terraformConfigBackendConfig: backendCfg,
+		}}
+	}
+	for _, tc := range []struct{ backend, cfg, want string }{
+		{tofu.BackendS3, `{"bucket":"b","key":"k","region":"r","secret_key":"x"}`, "AWS_SECRET_ACCESS_KEY"},
+		{tofu.BackendS3, `{"bucket":"b","key":"k","region":"r","access_key":""}`, "AWS_ACCESS_KEY_ID"},
+		{tofu.BackendGCS, `{"bucket":"b","prefix":"p","encryption_key":"a2V5"}`, "GOOGLE_ENCRYPTION_KEY"},
+		{tofu.BackendAzure, `{"storage_account_name":"s","container_name":"c","key":"k","access_key":"x"}`, "ARM_ACCESS_KEY"},
+		{tofu.BackendAzure, `{"storage_account_name":"s","container_name":"c","key":"k","sas_token":"x"}`, "ARM_SAS_TOKEN"},
+	} {
+		err := validateTerraformConfig(node(tc.backend, tc.cfg))
+		if !errors.Is(err, ErrInvalidConfig) || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s %s: err = %v, want ErrInvalidConfig naming %s", tc.backend, tc.cfg, err, tc.want)
+		}
+	}
+	for _, tc := range []struct{ backend, cfg string }{
+		{tofu.BackendS3, `{"bucket":"b","key":"k","region":"r","kms_key_id":"arn:aws:kms:...","encrypt":"true"}`},
+		{tofu.BackendGCS, `{"bucket":"b","prefix":"p","kms_encryption_key":"projects/p/locations/l/keyRings/r/cryptoKeys/k"}`},
+		{tofu.BackendAzure, `{"storage_account_name":"s","container_name":"c","key":"k","use_azuread_auth":"true"}`},
+	} {
+		if err := validateTerraformConfig(node(tc.backend, tc.cfg)); err != nil {
+			t.Errorf("%s %s: unexpected error %v", tc.backend, tc.cfg, err)
+		}
+	}
 }

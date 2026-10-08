@@ -54,6 +54,10 @@ func TestStateOpSnapshot(t *testing.T) {
 	if !recordsTofuState(ActionStateOp, n) || recordsTofuState(ActionDeploy, n) {
 		t.Error("a state-op unit records state only on a state_op run")
 	}
+	applyUnit := GraphNode{Type: TypeTerraform, Config: map[string]string{terraformConfigCommand: terraformCommandApply}}
+	if !recordsTofuState(ActionDeploy, applyUnit) || !recordsTofuState(ActionUninstall, applyUnit) || recordsTofuState(ActionPreview, applyUnit) {
+		t.Error("an apply unit records state on deploy and on destroy, never on a preview")
+	}
 }
 
 // TestStateOpOf proves the run-row decode: nothing for other actions, the

@@ -35,6 +35,11 @@ func (NotificationChannel) Fields() []ent.Field {
 		field.String("address"),
 		// The sealed webhook URL (slack, webhook); nil for email.
 		field.Bytes("encrypted_target").Optional().Nillable().Sensitive(),
+		// The sealed signing secret of a webhook channel: when set, every
+		// delivery carries an HMAC-SHA256 of its body in
+		// X-Spacefleet-Signature-256 so the receiver can verify it came from
+		// this deployment. nil = unsigned. Webhook kind only.
+		field.Bytes("encrypted_secret").Optional().Nillable().Sensitive(),
 		// The event kinds this channel receives (notifications.Event* values).
 		field.JSON("events", []string{}).Optional(),
 		// Optional: limit the channel to one application (uuid.Nil = every

@@ -146,7 +146,7 @@ func TestScriptApplyDeployUsesPlanfile(t *testing.T) {
 		"tofu output -json > sf-outputs.json",
 		// ... and the resource inventory: the state reduced in-pod by jq to
 		// address/type/id records, never the full state.
-		"tofu show -json | jq -c '" + resourcesFilter + "' > sf-resources.json || echo '[]' > sf-resources.json",
+		"tofu show -json | jq -c '" + resourcesFilter + "' > sf-resources.json || : > sf-resources.json",
 		"kubectl create secret generic 'tfplan-run1-plan1' --namespace 'default' --from-file=outputs=sf-outputs.json --from-file=resources=sf-resources.json --dry-run=client -o yaml | kubectl apply --namespace 'default' -f -",
 	}
 	for _, w := range wantContains {
@@ -200,12 +200,21 @@ func TestScriptApplyUninstallAppliesDestroyPlanfile(t *testing.T) {
 	if strings.Contains(s, "-auto-approve") {
 		t.Error("uninstall apply must not auto-approve a fresh plan")
 	}
-	// A destroy hands back no outputs, so it keeps the in-script Secret cleanup.
-	if strings.Contains(s, "tofu output") || strings.Contains(s, "sf-outputs.json") {
-		t.Errorf("destroy apply must not capture outputs\n---\n%s", s)
+	// A destroy records what is left (the emptied outputs, the remaining
+	// inventory) exactly as a deploy does, so the component's recorded state
+	// stops showing resources that no longer exist; the worker deletes the
+	// Secret after reading it.
+	for _, w := range []string{
+		"tofu output -json > sf-outputs.json || : > sf-outputs.json",
+		"tofu show -json | jq -c",
+		"--from-file=outputs=sf-outputs.json --from-file=resources=sf-resources.json",
+	} {
+		if !strings.Contains(s, w) {
+			t.Errorf("destroy apply must capture the outputs and inventory (missing %q)\n---\n%s", w, s)
+		}
 	}
-	if !strings.Contains(s, "kubectl delete secret 'tfplan-run1-plan1' --namespace 'default' --ignore-not-found || true") {
-		t.Errorf("destroy apply must delete the spent planfile Secret in-script\n---\n%s", s)
+	if strings.Contains(s, "kubectl delete secret") {
+		t.Errorf("destroy apply must leave the Secret for the worker to read\n---\n%s", s)
 	}
 }
 
@@ -272,7 +281,7 @@ func TestScriptDeployApplyOutputsCaptureIsBestEffort(t *testing.T) {
 		Namespace:          "default",
 		PlanArtifactSecret: "tfplan-run1-plan1",
 	})
-	if !strings.Contains(s, "tofu output -json > sf-outputs.json || echo '{}' > sf-outputs.json") {
+	if !strings.Contains(s, "tofu output -json > sf-outputs.json || : > sf-outputs.json") {
 		t.Errorf("output capture must tolerate failure\n---\n%s", s)
 	}
 	if !strings.Contains(s, "-f - || echo 'warning: failed to store outputs' >&2") {
@@ -284,8 +293,10 @@ func TestScriptDeployApplyOutputsCaptureIsBestEffort(t *testing.T) {
 		t.Errorf("outputs must not be echoed to the step logs\n---\n%s", s)
 	}
 	// Likewise the state: only the jq-reduced inventory is written, to a file,
-	// and a reduction failure yields an empty inventory rather than a failed step.
-	if !strings.Contains(s, "> sf-resources.json || echo '[]' > sf-resources.json") {
+	// and a reduction failure yields an EMPTY file (nothing captured — the
+	// worker keeps the previous record) rather than a failed step or a bogus
+	// "manages nothing" inventory.
+	if !strings.Contains(s, "> sf-resources.json || : > sf-resources.json") {
 		t.Errorf("resource capture must tolerate failure\n---\n%s", s)
 	}
 	if strings.Contains(s, "tofu show -json\n") || strings.Contains(s, "tofu show -json >") {
@@ -740,6 +751,52 @@ func TestScriptWorkspace(t *testing.T) {
 	a.Command, a.Action, a.Workspace = CommandPlan, ActionDeploy, ""
 	if s := Script(a); strings.Contains(s, "workspace") {
 		t.Errorf("no workspace must emit no workspace line\n---\n%s", s)
+	}
+}
+
+// TestScriptTFVars: the typed inputs are written into the module as a
+// compact auto-loaded tfvars file right after the cd — before init and any
+// command, for a plan, an apply, a drift check, and a state operation alike
+// — through a quoted heredoc (no shell expansion), and no file is written
+// when none are set.
+func TestScriptTFVars(t *testing.T) {
+	t.Parallel()
+	base := Apply{
+		RepoURL: "r", Path: "p", Backend: BackendS3, Namespace: "sf-jobs",
+		BackendConfig:      map[string]string{"bucket": "b", "key": "k", "region": "r"},
+		PlanArtifactSecret: "tfplan-run1-comp1",
+		TFVars:             "{\n  \"replicas\": 3,\n  \"tags\": {\"team\": \"core $(whoami)\"},\n  \"cidrs\": [\"10.0.0.0/8\"]\n}",
+	}
+	want := "cd '/src/p'\ncat > spacefleet.auto.tfvars.json <<'EOF'\n{\"replicas\":3,\"tags\":{\"team\":\"core $(whoami)\"},\"cidrs\":[\"10.0.0.0/8\"]}\nEOF\n"
+	cases := []struct {
+		name string
+		mut  func(a *Apply)
+	}{
+		{"plan", func(a *Apply) { a.Command, a.Action = CommandPlan, ActionDeploy }},
+		{"apply", func(a *Apply) { a.Command, a.Action = CommandApply, ActionDeploy }},
+		{"drift", func(a *Apply) { a.Command, a.Action, a.PlanArtifactSecret = CommandPlan, ActionDrift, "" }},
+		{"state op", func(a *Apply) {
+			a.Command, a.Action = CommandStateOp, ActionStateOp
+			a.StateOp = &StateOp{Operation: StateOpImport, Address: "a.b", ImportID: "i"}
+		}},
+	}
+	for _, tc := range cases {
+		a := base
+		tc.mut(&a)
+		s := Script(a)
+		if !strings.Contains(s, want) {
+			t.Errorf("%s: tfvars file must be written right after the cd\n---\n%s", tc.name, s)
+		}
+		if strings.Index(s, "tfvars.json") > strings.Index(s, "tofu init") {
+			t.Errorf("%s: tfvars file must be written before init\n---\n%s", tc.name, s)
+		}
+	}
+	for _, none := range []string{"", " \n\t"} {
+		a := base
+		a.Command, a.Action, a.TFVars = CommandPlan, ActionDeploy, none
+		if s := Script(a); strings.Contains(s, "tfvars") {
+			t.Errorf("no typed inputs (%q) must emit no tfvars file\n---\n%s", none, s)
+		}
 	}
 }
 

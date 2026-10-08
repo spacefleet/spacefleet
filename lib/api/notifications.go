@@ -76,6 +76,9 @@ func (s *Server) CreateNotificationChannel(ctx context.Context, req CreateNotifi
 		Target: req.Body.Target,
 		Events: eventKinds(req.Body.Events),
 	}
+	if req.Body.Secret != nil {
+		p.Secret = *req.Body.Secret
+	}
 	if req.Body.ApplicationId != nil {
 		p.ApplicationID = *req.Body.ApplicationId
 	}
@@ -100,7 +103,7 @@ func (s *Server) UpdateNotificationChannel(ctx context.Context, req UpdateNotifi
 	if req.Body == nil {
 		return errResp[UpdateNotificationChanneldefaultJSONResponse](http.StatusBadRequest, "bad_request", "request body is required"), nil
 	}
-	p := notifications.UpdateParams{Name: req.Body.Name, Target: req.Body.Target}
+	p := notifications.UpdateParams{Name: req.Body.Name, Target: req.Body.Target, Secret: req.Body.Secret}
 	if req.Body.Events != nil {
 		ev := eventKinds(*req.Body.Events)
 		p.Events = &ev
@@ -211,6 +214,7 @@ func toAPINotificationChannel(ch *ent.NotificationChannel) NotificationChannel {
 		Kind:      NotificationChannelKind(ch.Kind),
 		Address:   ch.Address,
 		Events:    events,
+		HasSecret: ch.EncryptedSecret != nil && len(*ch.EncryptedSecret) > 0,
 		CreatedAt: ch.CreatedAt,
 		UpdatedAt: ch.UpdatedAt,
 	}

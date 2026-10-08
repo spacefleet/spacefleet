@@ -236,6 +236,68 @@ func TestWorkCapturesTofuOutputs(t *testing.T) {
 	}
 }
 
+// TestWorkCarriesForwardHalfCapturedState: when an apply's capture brings
+// back only one half (here `tofu show` failed, so the resources file is
+// empty), the row that becomes the component's latest state carries the
+// other half forward from the previous record — a working `tofu output`
+// must not hide the last known inventory. With nothing previously recorded
+// the missing half simply stays empty.
+func TestWorkCarriesForwardHalfCapturedState(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	tf := addTerraformComponent(t, client, org.ID, app.ID, "infra")
+	w := newTestWorker(client, succeedingFuncs())
+	w.deleteHandover = func(context.Context, k8s.Connection, string, string) error { return nil }
+
+	// First run: `tofu output` fails (empty file), the inventory is captured.
+	const inventory = `[{"address":"aws_s3_bucket.data","mode":"managed","type":"aws_s3_bucket","name":"data","provider":"aws","id":"acme-data"}]`
+	w.captureHandover = func(_ context.Context, _ k8s.Connection, _, _, key string) ([]byte, error) {
+		if key == tofu.ResourcesKey {
+			return []byte(inventory), nil
+		}
+		return nil, nil
+	}
+	run1, args1 := beginRun(t, svc, org.ID, app.ID)
+	if err := w.Work(ctx, workerJob(args1, 1, 3)); err != nil {
+		t.Fatalf("Work 1: %v", err)
+	}
+	first := componentRunFor(t, client, run1.ID, deriveApplyID(tf.ID))
+	if first.Outputs != "" || first.Resources == "" {
+		t.Fatalf("first apply outputs/resources = %q/%q, want none/inventory", first.Outputs, first.Resources)
+	}
+
+	// Second run: the outputs come back, `tofu show` fails this time.
+	const outputs = `{"namespace":{"sensitive":false,"type":"string","value":"customer-a"}}`
+	w.captureHandover = func(_ context.Context, _ k8s.Connection, _, _, key string) ([]byte, error) {
+		if key == tofu.OutputsKey {
+			return []byte(outputs), nil
+		}
+		return []byte("\n"), nil
+	}
+	run2, args2 := beginRun(t, svc, org.ID, app.ID)
+	if err := w.Work(ctx, workerJob(args2, 1, 3)); err != nil {
+		t.Fatalf("Work 2: %v", err)
+	}
+	second := componentRunFor(t, client, run2.ID, deriveApplyID(tf.ID))
+	if second.Outputs == "" {
+		t.Fatal("second apply has no outputs persisted")
+	}
+	if second.Resources != first.Resources {
+		t.Errorf("second apply resources = %q, want the first run's inventory carried forward", second.Resources)
+	}
+	latest, err := svc.LatestComponentState(ctx, org.ID, app.ID, tf.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest.ID != second.ID || latest.Resources != first.Resources {
+		t.Errorf("latest state = run %s resources %q, want the second apply carrying the inventory", latest.WorkflowRunID, latest.Resources)
+	}
+}
+
 // TestResolveComponentOutputs: the ${{ components.* }} lookup behind the
 // planner — the referencing run's own succeeded-with-outputs row wins over a
 // newer run's outputs; a run without one (a preview, a skipped upstream) falls

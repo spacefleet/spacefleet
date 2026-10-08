@@ -130,6 +130,84 @@ describe("ComponentStatePanel", () => {
     expect(await screen.findByText("run page")).toBeInTheDocument();
   });
 
+  it("shows a stuck lock and prefills the force-unlock operation for an editor", async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        run_id: "run-9",
+        component_run_id: "cr-9",
+        resources: [],
+        lock: {
+          run_id: "run-10",
+          component_run_id: "cr-10",
+          failed_at: "2026-09-03T11:00:00Z",
+          id: "6ea66d5f-8c3c-4d0d-8ecf-1d0e7a3f1c0f",
+          who: "root@pod",
+          created: "2026-09-03 10:59:00 +0000 UTC",
+          operation: "OperationTypeApply",
+        },
+      },
+      error: undefined,
+      response: { status: 200 },
+    });
+    mockPost.mockResolvedValue({
+      data: { id: "run-42", action: "state_op", status: "pending" },
+      error: undefined,
+    });
+    renderPanel(true);
+    expect(await screen.findByText("State is locked.")).toBeInTheDocument();
+    expect(screen.getByText("root@pod")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /The run on/ })).toHaveAttribute(
+      "href",
+      "/applications/app-1/runs/run-10",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Release this lock…" }));
+    expect(screen.getByLabelText("State operation")).toHaveValue("force_unlock");
+    expect(screen.getByLabelText("Lock id")).toHaveValue("6ea66d5f-8c3c-4d0d-8ecf-1d0e7a3f1c0f");
+    const start = screen.getByRole("button", { name: "Start for approval" });
+    expect(start).toBeEnabled();
+    fireEvent.click(start);
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith(
+        "/api/applications/{id}/components/{componentId}/state-ops",
+        {
+          params: { path: { id: "app-1", componentId: "comp-1" } },
+          body: { operation: "force_unlock", lock_id: "6ea66d5f-8c3c-4d0d-8ecf-1d0e7a3f1c0f" },
+        },
+      ),
+    );
+    expect(await screen.findByText("run page")).toBeInTheDocument();
+  });
+
+  it("shows a stuck lock before the first apply, with nothing recorded", async () => {
+    mockGet.mockResolvedValue({
+      data: { resources: [], lock: { run_id: "run-10", component_run_id: "cr-10", id: "lock-1" } },
+      error: undefined,
+      response: { status: 200 },
+    });
+    renderPanel(true);
+    expect(await screen.findByText("State is locked.")).toBeInTheDocument();
+    expect(screen.getByText(/Nothing recorded yet/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "this run" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Release this lock…" })).toBeInTheDocument();
+  });
+
+  it("shows a stuck lock to a viewer without the release button", async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        run_id: "run-9",
+        component_run_id: "cr-9",
+        resources: [],
+        lock: { run_id: "run-10", component_run_id: "cr-10", id: "lock-1" },
+      },
+      error: undefined,
+      response: { status: 200 },
+    });
+    renderPanel(false);
+    expect(await screen.findByText("State is locked.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Release this lock…" })).not.toBeInTheDocument();
+  });
+
   it("starts a per-component destroy only after confirming, and goes to its run", async () => {
     mockGet.mockResolvedValue({
       data: undefined,

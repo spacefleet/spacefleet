@@ -79,9 +79,12 @@ func validationErr(format string, args ...any) error {
 // CreateParams describes a channel to create. Target is the destination —
 // an email address, or a webhook URL (sealed).
 type CreateParams struct {
-	Name          string
-	Kind          string
-	Target        string
+	Name   string
+	Kind   string
+	Target string
+	// Secret, for a webhook channel, signs every delivery (HMAC-SHA256 of
+	// the body in X-Spacefleet-Signature-256). Sealed; empty = unsigned.
+	Secret        string
 	Events        []string
 	ApplicationID uuid.UUID
 }
@@ -90,8 +93,10 @@ type CreateParams struct {
 // re-seals the URL (or replaces the email address); ApplicationID set to
 // uuid.Nil clears the application limit.
 type UpdateParams struct {
-	Name          *string
-	Target        *string
+	Name   *string
+	Target *string
+	// Secret replaces the signing secret; an empty string removes it.
+	Secret        *string
 	Events        *[]string
 	ApplicationID *uuid.UUID
 }
@@ -123,6 +128,10 @@ func (s *Service) Create(ctx context.Context, orgID uuid.UUID, p CreateParams) (
 	if err != nil {
 		return nil, err
 	}
+	sealedSecret, err := s.prepareSecret(p.Kind, p.Secret)
+	if err != nil {
+		return nil, err
+	}
 	create := s.ent.NotificationChannel.Create().
 		SetOrganizationID(orgID).
 		SetName(strings.TrimSpace(p.Name)).
@@ -131,6 +140,9 @@ func (s *Service) Create(ctx context.Context, orgID uuid.UUID, p CreateParams) (
 		SetEvents(p.Events)
 	if sealed != nil {
 		create.SetEncryptedTarget(sealed)
+	}
+	if sealedSecret != nil {
+		create.SetEncryptedSecret(sealedSecret)
 	}
 	if p.ApplicationID != uuid.Nil {
 		if err := s.assertApp(ctx, orgID, p.ApplicationID); err != nil {
@@ -168,6 +180,17 @@ func (s *Service) Update(ctx context.Context, orgID, id uuid.UUID, p UpdateParam
 		upd.SetAddress(address)
 		if sealed != nil {
 			upd.SetEncryptedTarget(sealed)
+		}
+	}
+	if p.Secret != nil {
+		sealedSecret, err := s.prepareSecret(string(ch.Kind), *p.Secret)
+		if err != nil {
+			return nil, err
+		}
+		if sealedSecret == nil {
+			upd.ClearEncryptedSecret()
+		} else {
+			upd.SetEncryptedSecret(sealedSecret)
 		}
 	}
 	if p.ApplicationID != nil {
@@ -256,6 +279,44 @@ func (s *Service) prepareTarget(kind, target string) (address string, sealed []b
 	default:
 		return "", nil, validationErr("kind must be %s, %s, or %s", KindEmail, KindSlack, KindWebhook)
 	}
+}
+
+// maxSecretLen bounds a signing secret: a shared key, never a document.
+const maxSecretLen = 256
+
+// prepareSecret validates a webhook signing secret and returns it sealed —
+// nil for none. Only a webhook channel signs: Slack verifies nothing, and
+// email has no body to sign.
+func (s *Service) prepareSecret(kind, secret string) ([]byte, error) {
+	secret = strings.TrimSpace(secret)
+	if secret == "" {
+		return nil, nil
+	}
+	if kind != KindWebhook {
+		return nil, validationErr("a signing secret applies to webhook channels only")
+	}
+	if len(secret) > maxSecretLen {
+		return nil, validationErr("secret is too long (at most %d characters)", maxSecretLen)
+	}
+	if s.sealer == nil {
+		return nil, secrets.ErrDisabled
+	}
+	return s.sealer.Seal([]byte(secret))
+}
+
+// secret returns the channel's unsealed signing secret, "" when it has none.
+func (s *Service) secret(ch *ent.NotificationChannel) (string, error) {
+	if ch.EncryptedSecret == nil || len(*ch.EncryptedSecret) == 0 {
+		return "", nil
+	}
+	if s.sealer == nil {
+		return "", secrets.ErrDisabled
+	}
+	raw, err := s.sealer.Open(*ch.EncryptedSecret)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
 }
 
 // target returns the channel's destination: the address for email, the

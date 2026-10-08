@@ -7,7 +7,12 @@ import { ResourcesTable } from "./ResourcesTable";
 
 type ComponentState = components["schemas"]["ComponentState"];
 type DriftStatus = components["schemas"]["DriftStatus"];
+type StateLock = components["schemas"]["StateLock"];
 type StateOperationKind = components["schemas"]["StateOperationKind"];
+
+// A prefilled operation — what the lock box hands the Operations form when
+// the user clicks "Release this lock".
+type OperationPrefill = { kind: StateOperationKind; values: Record<string, string> };
 
 // ComponentStatePanel is an OpenTofu component's persistent "what do I own"
 // view: the outputs and the managed-resource inventory its last successful
@@ -29,6 +34,7 @@ export function ComponentStatePanel({
   const [empty, setEmpty] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"resources" | "outputs">("resources");
+  const [prefill, setPrefill] = useState<OperationPrefill | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,7 +69,7 @@ export function ComponentStatePanel({
         <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
           State
         </h2>
-        {state && (
+        {state?.run_id && (
           <p className="text-xs text-neutral-500">
             Recorded by{" "}
             <Link
@@ -83,6 +89,17 @@ export function ComponentStatePanel({
       </p>
 
       {state?.drift && <DriftLine appId={appId} drift={state.drift} />}
+      {state?.lock && (
+        <LockBox
+          appId={appId}
+          lock={state.lock}
+          onRelease={
+            canEdit
+              ? () => setPrefill({ kind: "force_unlock", values: { lock_id: state.lock!.id } })
+              : undefined
+          }
+        />
+      )}
 
       {error ? (
         <p className="text-sm text-red-600">{error}</p>
@@ -93,6 +110,13 @@ export function ComponentStatePanel({
         </p>
       ) : !state ? (
         <p className="text-sm text-neutral-500">Loading…</p>
+      ) : !state.run_id ? (
+        // A state view with no recorded apply: it exists only to carry the
+        // lock box above.
+        <p className="text-sm text-neutral-500">
+          Nothing recorded yet — deploy this component successfully to see the
+          resources it manages and its outputs here.
+        </p>
       ) : (
         <>
           <div className="mb-3 flex items-center gap-4 border-b border-neutral-200">
@@ -131,7 +155,9 @@ export function ComponentStatePanel({
         </>
       )}
 
-      {canEdit && <StateOperations appId={appId} componentId={componentId} />}
+      {canEdit && (
+        <StateOperations appId={appId} componentId={componentId} prefill={prefill} />
+      )}
       {canEdit && <ScopedRuns appId={appId} componentId={componentId} />}
     </div>
   );
@@ -318,15 +344,25 @@ const STATE_OPS: {
 function StateOperations({
   appId,
   componentId,
+  prefill,
 }: {
   appId: string;
   componentId: string;
+  // Set by the lock box: selects the operation and fills its fields (each
+  // new prefill object re-applies, so clicking "Release" twice works).
+  prefill?: OperationPrefill | null;
 }) {
   const navigate = useNavigate();
   const [kind, setKind] = useState<StateOperationKind>("rm");
   const [values, setValues] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!prefill) return;
+    setKind(prefill.kind);
+    setValues(prefill.values);
+    setError(null);
+  }, [prefill]);
   const op = STATE_OPS.find((o) => o.kind === kind) ?? STATE_OPS[0];
   const complete = op.fields.every((f) => (values[f.name] ?? "").trim() !== "");
 
@@ -405,6 +441,78 @@ function StateOperations({
       <p className="mt-2 text-xs text-neutral-500">{op.hint}</p>
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
     </form>
+  );
+}
+
+// LockBox says the state is locked: the component's latest run could not
+// acquire the state lock, so nothing will get through until it is released.
+// It shows what OpenTofu recorded about the lock — who took it and when, so
+// the user can judge whether that run is really dead — and, for editors,
+// prefills the force-unlock operation with the lock id (the part people
+// otherwise copy out of the logs by hand).
+function LockBox({
+  appId,
+  lock,
+  onRelease,
+}: {
+  appId: string;
+  lock: StateLock;
+  onRelease?: () => void;
+}) {
+  return (
+    <div className="mb-3 border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+      <p>
+        <span className="font-medium">State is locked.</span>{" "}
+        <Link
+          to={`/applications/${appId}/runs/${lock.run_id}`}
+          className="underline-offset-2 hover:underline"
+        >
+          {lock.failed_at
+            ? `The run on ${new Date(lock.failed_at).toLocaleString()}`
+            : "The latest run"}
+        </Link>{" "}
+        could not acquire the state lock, so no plan, apply, or drift check
+        will get through until it is released.
+      </p>
+      <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-xs">
+        <dt className="font-sans text-red-800">Lock id</dt>
+        <dd className="break-all">{lock.id}</dd>
+        {lock.who && (
+          <>
+            <dt className="font-sans text-red-800">Held by</dt>
+            <dd className="break-all">{lock.who}</dd>
+          </>
+        )}
+        {lock.created && (
+          <>
+            <dt className="font-sans text-red-800">Since</dt>
+            <dd>{lock.created}</dd>
+          </>
+        )}
+        {lock.operation && (
+          <>
+            <dt className="font-sans text-red-800">Operation</dt>
+            <dd>{lock.operation}</dd>
+          </>
+        )}
+      </dl>
+      {onRelease && (
+        <p className="mt-2">
+          <button
+            type="button"
+            onClick={onRelease}
+            className="border border-red-300 bg-white px-3 py-1 text-sm text-red-800 hover:bg-red-100"
+          >
+            Release this lock…
+          </button>{" "}
+          <span className="text-xs text-red-800">
+            fills in the force-unlock operation below; it still waits for
+            approval. Only release a lock whose run is definitely no longer
+            running.
+          </span>
+        </p>
+      )}
+    </div>
   );
 }
 

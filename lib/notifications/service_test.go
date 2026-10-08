@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/spacefleet/spacefleet/lib/secrets"
@@ -82,5 +83,23 @@ func TestValidateEvents(t *testing.T) {
 		if err := validateEvents(in); !IsValidation(err) {
 			t.Errorf("%s: err = %v, want validation", name, err)
 		}
+	}
+}
+
+// TestSign: the header value is a hex HMAC-SHA256 under the "sha256=" scheme
+// (GitHub-compatible), verifies in constant time, and rejects a different
+// secret or a tampered body.
+func TestSign(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"headline":"x"}`)
+	sig := Sign("s3cret", body)
+	if !strings.HasPrefix(sig, "sha256=") || len(sig) != len("sha256=")+64 {
+		t.Errorf("sig = %q", sig)
+	}
+	if !VerifySignature("s3cret", body, sig) {
+		t.Error("a signature must verify under its own secret")
+	}
+	if VerifySignature("other", body, sig) || VerifySignature("s3cret", []byte(`{"headline":"y"}`), sig) {
+		t.Error("a different secret or body must not verify")
 	}
 }

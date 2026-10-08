@@ -7,6 +7,8 @@ import type { components } from "../api/schema";
 type Policy = components["schemas"]["Policy"];
 type Enforcement = components["schemas"]["PolicyEnforcement"];
 type Application = components["schemas"]["Application"];
+type TestPlan = components["schemas"]["PolicyTestPlan"];
+type TestResult = components["schemas"]["PolicyTestResult"];
 
 const EXAMPLE = `package spacefleet
 
@@ -190,6 +192,125 @@ export function Policies() {
   );
 }
 
+// PolicyDryRun evaluates the Rego as typed against one of the
+// organization's recent OpenTofu plans — the way to see what a rule would
+// have said before enabling it. Nothing is saved: the result is the
+// messages the deny rule produced (or none), an evaluation error, and the
+// input document the policy saw, for authors chasing a field name.
+function PolicyDryRun({ rego }: { rego: string }) {
+  const [plans, setPlans] = useState<TestPlan[]>([]);
+  const [planId, setPlanId] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<TestResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { data } = await api.GET("/api/policies/plans");
+      if (cancelled) return;
+      const list = data ?? [];
+      setPlans(list);
+      setPlanId((cur) => cur || list[0]?.component_run_id || "");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const run = async () => {
+    setTesting(true);
+    setError(null);
+    setResult(null);
+    const { data, error } = await api.POST("/api/policies/test", {
+      body: { rego, component_run_id: planId },
+    });
+    setTesting(false);
+    if (error || !data) {
+      setError(error?.message ?? "Could not test the policy");
+      return;
+    }
+    setResult(data);
+  };
+
+  const label = (p: TestPlan) => {
+    const counts = `+${p.add} ~${p.change} -${p.destroy}${p.replace ? ` ±${p.replace}` : ""}`;
+    const when = p.finished_at ? new Date(p.finished_at).toLocaleString() : "";
+    return `${p.application_name} / ${p.component_name} · ${p.action} · ${counts}${when ? ` · ${when}` : ""}`;
+  };
+
+  return (
+    <div className="border border-neutral-200 bg-neutral-50 p-3">
+      <p className="text-xs font-medium text-neutral-700">Try it against a recent plan</p>
+      {plans.length === 0 ? (
+        <p className="mt-1 text-xs text-neutral-500">
+          No OpenTofu plans have run yet — once one has, you can check what this
+          policy would have said about it here.
+        </p>
+      ) : (
+        <div className="mt-2 flex flex-wrap items-end gap-2">
+          <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-neutral-600">
+            Plan
+            <select
+              aria-label="Plan to test against"
+              value={planId}
+              onChange={(e) => {
+                setPlanId(e.target.value);
+                setResult(null);
+              }}
+              className="min-w-0 border border-neutral-300 bg-white px-2 py-1.5 text-sm text-neutral-900"
+            >
+              {plans.map((p) => (
+                <option key={p.component_run_id} value={p.component_run_id}>
+                  {label(p)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => void run()}
+            disabled={testing || rego.trim() === "" || planId === ""}
+            className="border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-100 disabled:opacity-50"
+          >
+            {testing ? "Testing…" : "Test policy"}
+          </button>
+        </div>
+      )}
+      {error && <p className="mt-2 whitespace-pre-wrap text-xs text-red-600">{error}</p>}
+      {result && (
+        <div className="mt-2 text-sm">
+          {result.error ? (
+            <p className="text-red-700">
+              <span className="font-medium">Evaluation error</span> — a block policy would
+              fail the plan: <span className="font-mono text-xs">{result.error}</span>
+            </p>
+          ) : result.violations.length === 0 ? (
+            <p className="text-emerald-800">No violations — this plan would pass.</p>
+          ) : (
+            <div className="text-red-800">
+              <p className="font-medium">
+                {result.violations.length} violation{result.violations.length === 1 ? "" : "s"}
+              </p>
+              <ul className="mt-1 list-disc pl-5 font-mono text-xs">
+                {result.violations.map((v, i) => (
+                  <li key={i}>{v}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <details className="mt-2 text-xs text-neutral-600">
+            <summary className="cursor-pointer">What the policy saw</summary>
+            <pre className="mt-1 max-h-64 overflow-auto border border-neutral-200 bg-white p-2 font-mono text-[11px] leading-relaxed">
+              {JSON.stringify(result.input, null, 2)}
+            </pre>
+          </details>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // PolicyDialog creates or edits a policy: name, description, Rego source,
 // enforcement, and an optional application. The Rego is compiled
 // server-side on save; a compiler error is shown beneath the editor.
@@ -319,6 +440,7 @@ function PolicyDialog({
               className="border border-neutral-300 px-2 py-1.5 font-mono text-xs leading-relaxed text-neutral-900"
             />
           </label>
+          {!readOnly && <PolicyDryRun rego={rego} />}
         </div>
         {error && <p className="mt-3 whitespace-pre-wrap text-sm text-red-600">{error}</p>}
         <div className="mt-5 flex justify-end gap-2">

@@ -1674,6 +1674,55 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/policies/plans:
+    get:
+      summary: Recent OpenTofu plan steps to dry-run a policy against
+      description: |
+        Org-scoped, admin only. The organization's most recent succeeded
+        OpenTofu plan steps (deploy, uninstall, and preview runs), newest
+        first, each with its application, component, and plan counts — the
+        picker for `POST /api/policies/test`.
+      operationId: listPolicyTestPlans
+      responses:
+        "200":
+          description: Recent plan steps, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PolicyTestPlan"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /api/policies/test:
+    post:
+      summary: Evaluate a policy against a past plan without saving it
+      description: |
+        Org-scoped, admin only. Evaluates the given Rego — as typed, saved or
+        not — against one of the organization's past OpenTofu plan steps,
+        exactly as the gate would have, and returns the messages it would
+        have produced plus the input document it saw. Nothing is stored and
+        no run is affected. 400 when the Rego does not compile (with the
+        compiler's message); 404 when the step is not one of the
+        organization's succeeded plan steps.
+      operationId: testPolicy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyTestRequest"
+      responses:
+        "200":
+          description: What the policy would have said
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyTestResult"
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/policies/{id}:
     get:
       summary: Get a plan policy
@@ -3327,12 +3376,79 @@ components:
         warned:
           type: boolean
 
+    PolicyTestPlan:
+      type: object
+      description: One past OpenTofu plan step a policy can be dry-run against.
+      required: [component_run_id, run_id, application_id, application_name, component_name, action, add, change, destroy, replace]
+      properties:
+        component_run_id:
+          type: string
+          format: uuid
+          description: The plan step — what `POST /api/policies/test` takes.
+        run_id:
+          type: string
+          format: uuid
+        application_id:
+          type: string
+          format: uuid
+        application_name:
+          type: string
+        component_name:
+          type: string
+        action:
+          $ref: "#/components/schemas/RunAction"
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        add:
+          type: integer
+        change:
+          type: integer
+        destroy:
+          type: integer
+        replace:
+          type: integer
+
+    PolicyTestRequest:
+      type: object
+      required: [rego, component_run_id]
+      properties:
+        rego:
+          type: string
+          description: The policy to evaluate (`package spacefleet`, a `deny` rule).
+        component_run_id:
+          type: string
+          format: uuid
+          description: The plan step to evaluate it against (from `GET /api/policies/plans`).
+
+    PolicyTestResult:
+      type: object
+      description: |
+        The dry run's outcome: the messages the policy's `deny` rule
+        produced (none means the plan would pass), an evaluation error if
+        the policy failed at runtime (a block policy would then block — fail
+        closed), and the exact `input` document the policy saw.
+      required: [violations, input]
+      properties:
+        violations:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
+        input:
+          type: object
+          additionalProperties: true
+
     NotificationChannelKind:
       type: string
       description: |
         How a channel delivers: `email` (needs SMTP configured on the
         deployment), `slack` (a Slack incoming webhook URL), or `webhook`
-        (any URL, receiving a JSON body with an `X-Spacefleet-Event` header).
+        (any URL, receiving a JSON body with an `X-Spacefleet-Event` header
+        and, when the channel has a signing secret, an
+        `X-Spacefleet-Signature-256` HMAC of the body).
       enum: [email, slack, webhook]
 
     RunEventKind:
@@ -3345,7 +3461,7 @@ components:
 
     NotificationChannel:
       type: object
-      required: [id, name, kind, address, events, created_at, updated_at]
+      required: [id, name, kind, address, events, has_secret, created_at, updated_at]
       properties:
         id:
           type: string
@@ -3363,6 +3479,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RunEventKind"
+        has_secret:
+          type: boolean
+          description: |
+            Whether a webhook channel signs its deliveries (a signing secret
+            is set). The secret itself is never returned.
         application_id:
           type: string
           format: uuid
@@ -3386,6 +3507,12 @@ components:
         target:
           type: string
           description: The email address, or the webhook URL (sealed at rest).
+        secret:
+          type: string
+          description: |
+            Webhook kind only: a signing secret (sealed at rest). When set,
+            every delivery carries `X-Spacefleet-Signature-256: sha256=<hex
+            HMAC-SHA256 of the body>` for the receiver to verify.
         events:
           type: array
           minItems: 1
@@ -3406,6 +3533,9 @@ components:
         target:
           type: string
           description: A new email address or webhook URL.
+        secret:
+          type: string
+          description: A new signing secret (webhook kind only), or an empty string to stop signing.
         events:
           type: array
           minItems: 1
@@ -4354,17 +4484,20 @@ components:
       description: |
         An OpenTofu (Terraform) component's last recorded state: the outputs
         and managed-resource inventory captured by its most recent successful
-        apply, and the run that captured them.
-      required: [run_id, component_run_id, resources]
+        apply, and the run that captured them. Before any apply has recorded
+        state the view is returned only when there is a stuck lock to show
+        (editors): then `run_id` / `component_run_id` are absent and
+        `resources` is empty.
+      required: [resources]
       properties:
         run_id:
           type: string
           format: uuid
-          description: The workflow run whose apply recorded this state.
+          description: The workflow run whose apply recorded this state; absent when nothing is recorded yet.
         component_run_id:
           type: string
           format: uuid
-          description: The apply step (component run) that recorded it.
+          description: The apply step (component run) that recorded it; absent when nothing is recorded yet.
         recorded_at:
           type: string
           format: date-time
@@ -4384,6 +4517,55 @@ components:
             $ref: "#/components/schemas/TofuResource"
         drift:
           $ref: "#/components/schemas/DriftStatus"
+        lock:
+          $ref: "#/components/schemas/StateLock"
+
+    StateLock:
+      type: object
+      description: |
+        A state lock the component's most recent run could not acquire — one
+        left behind by a run that died mid-operation. Parsed from that failed
+        step's "Error acquiring the state lock" message, so `id` is exactly
+        what a `force_unlock` state operation needs, and `who` / `created` /
+        `operation` say who held it and since when. Present only while the
+        component's latest settled step failed on the lock (a later step that
+        got through clears it), and only for editors — it names the state's
+        location.
+      required: [run_id, component_run_id, id]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+          description: The run whose step hit the lock.
+        component_run_id:
+          type: string
+          format: uuid
+          description: That step.
+        failed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the step failed.
+        id:
+          type: string
+          description: The lock id, as printed by OpenTofu.
+        path:
+          type: string
+          description: The state's path in the backend.
+        operation:
+          type: string
+          description: The operation that took the lock (e.g. OperationTypeApply).
+        who:
+          type: string
+          description: Who took it (user@host, as OpenTofu recorded it).
+        version:
+          type: string
+          description: The OpenTofu version that took it.
+        created:
+          type: string
+          description: When it was taken, as OpenTofu printed it.
+        info:
+          type: string
 
     DriftStatus:
       type: object

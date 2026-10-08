@@ -89,10 +89,31 @@ older one, so treat a downgrade as one-way unless you know otherwise.
 
 ### Input variables
 
-Your [variables](variable-interpolation.md) — at the group, application, and
-component level — already reach every component job as environment
-variables. For an OpenTofu component, turn on **Expose variables as OpenTofu
-inputs** and each one is also passed as a root-module input: a variable named
+There are two ways to feed a module its inputs, and they combine.
+
+**Typed inputs.** The component's **Input variables** field takes a JSON
+object of variable name to value:
+
+```json
+{
+  "region": "eu-west-1",
+  "replicas": 3,
+  "tags": { "team": "core" },
+  "cidrs": ["10.0.0.0/8"]
+}
+```
+
+It is written into the module as an auto-loaded `tfvars` file before every
+plan, apply, drift check, and import, so a list, map, or object is authored
+as JSON rather than squeezed into a string, and an import resolves the same
+values a plan does. The editor flags JSON that would be rejected as you type.
+This is configuration, not a place for secrets: the file travels with the
+run's script. Put secrets in sensitive Variables instead (next).
+
+**Variables as inputs.** Your [variables](variable-interpolation.md) — at
+the group, application, and component level — already reach every component
+job as environment variables. Turn on **Expose variables as OpenTofu inputs**
+and each one is also passed as a root-module input: a variable named
 `region` becomes `var.region`, exactly as if `TF_VAR_region` had been set.
 Precedence is the usual one (a component variable beats an application one,
 which beats a group one), a sensitive variable stays sensitive on the way
@@ -100,8 +121,9 @@ in, and the value must be valid for the input's declared type — a string is
 passed as-is, while a list, map, or object is written as HCL (for example
 `["a", "b"]`). Variables the module does not declare are ignored.
 
-This is the recommended way to feed a module its inputs. Plan flags such as
-`-var=env=prod` still work for one-off overrides.
+When both set the same input, the typed input wins over the exposed
+variable, and a `-var` plan flag wins over both — OpenTofu's usual order.
+Plan flags such as `-var=env=prod` remain available for one-off overrides.
 
 ### Workspaces
 
@@ -125,8 +147,8 @@ existing state file there is adopted in place):
 | Backend | Settings |
 | --- | --- |
 | **Amazon S3** | bucket, state key, region; optionally a DynamoDB lock table and server-side encryption (SSE-S3 or a KMS key) |
-| **Google Cloud Storage** | bucket and a prefix (the folder the state lives under) |
-| **Azure Blob Storage** | storage account, container, and the state file's blob name; optionally the account's resource group |
+| **Google Cloud Storage** | bucket and a prefix (the folder the state lives under); optionally a Cloud KMS key to encrypt the state with |
+| **Azure Blob Storage** | storage account, container, and the state file's blob name; optionally the account's resource group, and whether to authenticate with the credential's Azure AD identity instead of the account keys |
 
 Attach a **cloud credential** of the matching cloud for the run to sign in
 with — the same credential serves both the state backend and your module's
@@ -138,6 +160,16 @@ bound to the jobs namespace.
 
 Each component needs its own state key or prefix — or its own
 [workspace](#workspaces) on a shared one.
+
+Backend settings are configuration, not a place for secrets: they are part
+of the run and visible to anyone who can read it. A setting that is a
+secret — an S3 access key, a customer-supplied Cloud Storage encryption
+key, an Azure storage account key or SAS token — is refused when you save.
+Each backend reads the same value from an environment variable instead, so
+add it as a **sensitive** [variable](variable-interpolation.md) on the
+component under that name (for example `GOOGLE_ENCRYPTION_KEY`,
+`ARM_ACCESS_KEY`, `AWS_SECRET_ACCESS_KEY`); the error names the one to use.
+Key *names* such as an S3 or Cloud KMS key are fine in the settings.
 
 ### State locking
 
@@ -238,6 +270,11 @@ You can see the inventory in two places:
 
 A long inventory can be filtered by address, type, provider, or id.
 
+A destroy records state too: after a successful **Uninstall**, or a
+per-component destroy, the inventory shows what is left — nothing after a
+full destroy, the survivors after a targeted one — so the panel never keeps
+listing resources that are gone.
+
 ### Drift detection
 
 Infrastructure changes outside of OpenTofu — someone resizes an instance in
@@ -284,6 +321,15 @@ workflow builder, under **Operations** (editor or above):
 | Import existing infrastructure | `tofu import` | resource address and the provider's id |
 | Release a stuck state lock | `tofu force-unlock` | the lock id from the "Error acquiring the state lock" message |
 
+You rarely need to hunt for a lock id. When the component's latest run
+failed because the state was locked, the **State** panel says **State is
+locked** and shows what OpenTofu recorded about the lock — its id, who took
+it, and when — with a link to the run that hit it. **Release this lock…**
+fills in the force-unlock operation with that id. Check first that the run
+holding the lock is really gone: releasing a lock under a run that is still
+applying can corrupt the state. The notice clears as soon as a later run
+gets through.
+
 These are the only four; there is no free-form command. Each starts a
 **State operation** run of a single step that is **always** parked for
 approval first: the run shows the exact command that will run, and an editor
@@ -310,7 +356,9 @@ of the workflow — use **Destroy and targeted runs** on the component's
   component's own approval setting: the run shows the destroy plan, with
   the resources about to go listed first, and an editor or admin approves
   to destroy or rejects to keep everything. The button asks you to confirm
-  before the run starts.
+  before the run starts. Once it applies, the component's recorded state
+  is refreshed: an empty inventory after a full destroy, the survivors
+  after a targeted one.
 - **Deploy this component** plans and applies only this module. It keeps the
   component's own approval gate and policy.
 

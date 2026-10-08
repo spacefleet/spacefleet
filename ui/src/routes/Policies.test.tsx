@@ -27,9 +27,24 @@ const policy = {
   updated_at: "2026-09-08T00:00:00Z",
 };
 
-function mockLists(policies: unknown[]) {
+const plan = {
+  component_run_id: "cr-1",
+  run_id: "run-1",
+  application_id: "app-1",
+  application_name: "web",
+  component_name: "infra",
+  action: "deploy",
+  finished_at: "2026-09-08T10:00:00Z",
+  add: 1,
+  change: 0,
+  destroy: 1,
+  replace: 0,
+};
+
+function mockLists(policies: unknown[], plans: unknown[] = []) {
   mockApi.GET.mockImplementation((path: string) => {
     if (path === "/api/policies") return Promise.resolve({ data: policies, error: undefined });
+    if (path === "/api/policies/plans") return Promise.resolve({ data: plans, error: undefined });
     if (path === "/api/applications")
       return Promise.resolve({ data: [{ id: "app-1", name: "web" }], error: undefined });
     return Promise.resolve({ data: undefined, error: undefined });
@@ -90,6 +105,38 @@ describe("Policies", () => {
     );
     expect(await screen.findByText("cap")).toBeInTheDocument();
     expect(screen.getByText("web")).toBeInTheDocument();
+  });
+
+  it("tests the Rego as typed against a recent plan without saving", async () => {
+    mockLists([], [plan]);
+    mockApi.POST.mockImplementation((path: string) => {
+      if (path === "/api/policies/test")
+        return Promise.resolve({
+          data: {
+            violations: ["aws_db_instance.main would be destroyed"],
+            input: { plan: { destroy: 1 } },
+          },
+          error: undefined,
+        });
+      return Promise.resolve({ data: undefined, error: { message: "unexpected" } });
+    });
+    renderPage();
+    await screen.findByText("No policies yet");
+    fireEvent.click(screen.getByRole("button", { name: "Add policy" }));
+    const picker = await screen.findByLabelText("Plan to test against");
+    expect(picker).toHaveTextContent("web / infra · deploy · +1 ~0 -1");
+    fireEvent.change(screen.getByLabelText("Rego"), { target: { value: "package spacefleet\n" } });
+    fireEvent.click(screen.getByRole("button", { name: "Test policy" }));
+    await waitFor(() =>
+      expect(mockApi.POST).toHaveBeenCalledWith("/api/policies/test", {
+        body: { rego: "package spacefleet\n", component_run_id: "cr-1" },
+      }),
+    );
+    expect(await screen.findByText("1 violation")).toBeInTheDocument();
+    expect(screen.getByText("aws_db_instance.main would be destroyed")).toBeInTheDocument();
+    expect(screen.getByText("What the policy saw")).toBeInTheDocument();
+    // Nothing was saved.
+    expect(mockApi.POST).not.toHaveBeenCalledWith("/api/policies", expect.anything());
   });
 
   it("shows the compiler's message when the Rego is refused", async () => {

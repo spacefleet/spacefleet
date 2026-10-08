@@ -42,6 +42,21 @@ A webhook URL is a secret: it is stored encrypted and never shown again —
 the list shows only its host. Deleting and re-adding a channel is the way to
 change a URL you no longer have.
 
+### Verifying webhook deliveries
+
+Give a webhook channel a **signing secret** and every delivery carries an
+`X-Spacefleet-Signature-256` header: `sha256=` followed by the hex
+HMAC-SHA256 of the request body under that secret — the same scheme GitHub
+uses for its `X-Hub-Signature-256` header, so any verifier written for that
+works unchanged. Compute the HMAC over the raw body bytes exactly as
+received and compare it to the header in constant time; reject anything
+that does not match. The secret is stored encrypted and never shown again;
+a channel with one is marked **signed** in the list. Without a secret,
+deliveries are unsigned. To rotate a secret, or to stop signing, use the
+key icon on the channel's row: a new secret takes effect from the next
+delivery, so update the receiver first if it rejects unsigned or
+mis-signed requests.
+
 Each channel subscribes to any combination of the three events and covers
 either **all applications** in the organization or **one application**.
 Use **Send a test** on a channel to confirm it reaches its destination.

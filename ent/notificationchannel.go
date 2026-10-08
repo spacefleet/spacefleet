@@ -31,6 +31,8 @@ type NotificationChannel struct {
 	Address string `json:"address,omitempty"`
 	// EncryptedTarget holds the value of the "encrypted_target" field.
 	EncryptedTarget *[]byte `json:"-"`
+	// EncryptedSecret holds the value of the "encrypted_secret" field.
+	EncryptedSecret *[]byte `json:"-"`
 	// Events holds the value of the "events" field.
 	Events []string `json:"events,omitempty"`
 	// ApplicationID holds the value of the "application_id" field.
@@ -83,7 +85,7 @@ func (*NotificationChannel) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case notificationchannel.FieldEncryptedTarget, notificationchannel.FieldEvents:
+		case notificationchannel.FieldEncryptedTarget, notificationchannel.FieldEncryptedSecret, notificationchannel.FieldEvents:
 			values[i] = new([]byte)
 		case notificationchannel.FieldName, notificationchannel.FieldKind, notificationchannel.FieldAddress:
 			values[i] = new(sql.NullString)
@@ -141,6 +143,12 @@ func (_m *NotificationChannel) assignValues(columns []string, values []any) erro
 				return fmt.Errorf("unexpected type %T for field encrypted_target", values[i])
 			} else if value != nil {
 				_m.EncryptedTarget = value
+			}
+		case notificationchannel.FieldEncryptedSecret:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field encrypted_secret", values[i])
+			} else if value != nil {
+				_m.EncryptedSecret = value
 			}
 		case notificationchannel.FieldEvents:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -227,6 +235,8 @@ func (_m *NotificationChannel) String() string {
 	builder.WriteString(_m.Address)
 	builder.WriteString(", ")
 	builder.WriteString("encrypted_target=<sensitive>")
+	builder.WriteString(", ")
+	builder.WriteString("encrypted_secret=<sensitive>")
 	builder.WriteString(", ")
 	builder.WriteString("events=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Events))

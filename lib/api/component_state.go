@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/google/uuid"
+
 	"github.com/spacefleet/spacefleet/ent"
+	"github.com/spacefleet/spacefleet/lib/tofu"
 )
 
 // GetComponentState returns an OpenTofu component's last recorded state — the
@@ -25,14 +28,26 @@ func (s *Server) GetComponentState(ctx context.Context, req GetComponentStateReq
 	}
 	cr, err := s.workflows.LatestComponentState(ctx, orgID, req.Id, req.ComponentId)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return errResp[GetComponentStatedefaultJSONResponse](http.StatusNotFound, "not_found", "no recorded state for this component"), nil
+		if !ent.IsNotFound(err) {
+			return nil, err
 		}
-		return nil, err
+		// Nothing recorded yet. A stuck lock can still exist — the very
+		// first plan may have died holding it — and it is the one thing
+		// worth showing before any apply, so an editor gets a state view
+		// carrying only the lock; otherwise this is a 404 as before.
+		if canSeeSecrets {
+			if lock, err := s.componentStateLock(ctx, orgID, req.Id, req.ComponentId); err != nil {
+				return nil, err
+			} else if lock != nil {
+				return GetComponentState200JSONResponse(ComponentState{Resources: []TofuResource{}, Lock: lock}), nil
+			}
+		}
+		return errResp[GetComponentStatedefaultJSONResponse](http.StatusNotFound, "not_found", "no recorded state for this component"), nil
 	}
+	runID, crID := cr.WorkflowRunID, cr.ID
 	out := ComponentState{
-		RunId:          cr.WorkflowRunID,
-		ComponentRunId: cr.ID,
+		RunId:          &runID,
+		ComponentRunId: &crID,
 		RecordedAt:     cr.FinishedAt,
 		Outputs:        toAPIComponentRunOutputs(cr.Outputs, canSeeSecrets),
 		Resources:      toAPITofuResources(cr.Resources),
@@ -45,7 +60,53 @@ func (s *Server) GetComponentState(ctx context.Context, req GetComponentStateReq
 	} else if !ent.IsNotFound(err) {
 		return nil, err
 	}
+	// A stuck state lock: the component's latest settled step failed to
+	// acquire it. Read from that step's logs, so gated like the logs
+	// (editor-or-above) — the lock names the state's path in the backend.
+	if canSeeSecrets {
+		if out.Lock, err = s.componentStateLock(ctx, orgID, req.Id, req.ComponentId); err != nil {
+			return nil, err
+		}
+	}
 	return GetComponentState200JSONResponse(out), nil
+}
+
+// componentStateLock returns the lock the component's latest settled step
+// could not acquire, nil when there is none (or no settled step at all).
+func (s *Server) componentStateLock(ctx context.Context, orgID, appID, componentID uuid.UUID) (*StateLock, error) {
+	step, err := s.workflows.LatestSettledStep(ctx, orgID, appID, componentID)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return toAPIStateLock(step), nil
+}
+
+// toAPIStateLock maps a settled step to the lock it could not acquire — nil
+// for a step that succeeded (any lock is released) or that failed for another
+// reason.
+func toAPIStateLock(cr *ent.ComponentRun) *StateLock {
+	if cr.Status != "failed" {
+		return nil
+	}
+	li := tofu.ParseLockInfo(cr.Logs)
+	if li == nil {
+		return nil
+	}
+	return &StateLock{
+		RunId:          cr.WorkflowRunID,
+		ComponentRunId: cr.ID,
+		FailedAt:       cr.FinishedAt,
+		Id:             li.ID,
+		Path:           optStr(li.Path),
+		Operation:      optStr(li.Operation),
+		Who:            optStr(li.Who),
+		Version:        optStr(li.Version),
+		Created:        optStr(li.Created),
+		Info:           optStr(li.Info),
+	}
 }
 
 // toAPIDriftStatus maps a settled drift-check step to the API drift status.

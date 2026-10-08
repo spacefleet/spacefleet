@@ -2,6 +2,7 @@ package tekton
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -77,11 +78,54 @@ func ensurePluginCache(ctx context.Context, cs kubernetes.Interface, namespace, 
 		claim.Spec.StorageClassName = &sc
 	}
 	_, err = cs.CoreV1().PersistentVolumeClaims(namespace).Create(ctx, claim, metav1.CreateOptions{})
-	if err != nil && !apierrors.IsAlreadyExists(err) {
+	if err == nil {
+		return nil
+	}
+	if !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("tekton: create plugin cache claim: %w", err)
+	}
+	// The claim exists: reconcile what can change in place. A claim's
+	// storage class is immutable, so a different class is refused with a
+	// pointer to the remove-and-recreate path (the cache is rebuildable, but
+	// deleting a claim that running steps still mount would hang on the
+	// pvc-protection finalizer, so that stays an explicit user action). The
+	// size can grow through volume expansion when the class allows it — the
+	// only field Kubernetes lets a bound claim change — and never shrink.
+	existing, err := cs.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, PluginCacheClaim, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("tekton: read plugin cache claim: %w", err)
+	}
+	haveClass := ""
+	if existing.Spec.StorageClassName != nil {
+		haveClass = *existing.Spec.StorageClassName
+	}
+	if storageClass != "" && storageClass != haveClass {
+		return fmt.Errorf("%w: the cache uses storage class %q; remove it and set it up again to use %q", ErrPluginCacheClassImmutable, haveClass, storageClass)
+	}
+	have := existing.Spec.Resources.Requests[corev1.ResourceStorage]
+	switch qty.Cmp(have) {
+	case 0:
+		return nil
+	case -1:
+		return fmt.Errorf("%w: the cache is %s; a claim cannot shrink to %s — remove it and set it up again", ErrPluginCacheShrink, have.String(), qty.String())
+	}
+	if existing.Spec.Resources.Requests == nil {
+		existing.Spec.Resources.Requests = corev1.ResourceList{}
+	}
+	existing.Spec.Resources.Requests[corev1.ResourceStorage] = qty
+	if _, err := cs.CoreV1().PersistentVolumeClaims(namespace).Update(ctx, existing, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("tekton: grow plugin cache claim to %s (the storage class must allow volume expansion): %w", qty.String(), err)
 	}
 	return nil
 }
+
+// Errors an in-place plugin cache change can refuse with — user-facing,
+// mapped to a 400 by the API. Both point at remove-and-recreate, the only
+// way to change a claim's class or make it smaller.
+var (
+	ErrPluginCacheClassImmutable = errors.New("tekton: plugin cache storage class cannot change in place")
+	ErrPluginCacheShrink         = errors.New("tekton: plugin cache cannot shrink")
+)
 
 // DeletePluginCache removes the plugin-cache claim from namespace; a missing
 // claim is not an error. The cached providers go with it.

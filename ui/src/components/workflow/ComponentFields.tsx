@@ -827,6 +827,20 @@ function TerraformConfig({
               disabled={disabled}
             />
           </Field>
+          <Field
+            label="KMS key"
+            help="Optional — the Cloud KMS key the state objects are encrypted with (the credential needs Encrypter/Decrypter on it). Leave empty for Google-managed encryption. To use your own raw key instead, add a sensitive variable named GOOGLE_ENCRYPTION_KEY to this component — it must not be stored here."
+          >
+            <input
+              type="text"
+              aria-label="GCS KMS key"
+              className="w-full border border-neutral-300 px-3 py-2 font-mono text-sm"
+              placeholder="projects/p/locations/l/keyRings/r/cryptoKeys/k"
+              value={s3.kms_encryption_key ?? ""}
+              onChange={(e) => setS3("kms_encryption_key", e.target.value)}
+              disabled={disabled}
+            />
+          </Field>
         </>
       )}
 
@@ -887,6 +901,19 @@ function TerraformConfig({
               onChange={(e) => setS3("resource_group_name", e.target.value)}
               disabled={disabled}
             />
+          </Field>
+          <Field help="Authenticate to the storage account with the credential's Azure AD identity (a data-plane role such as Storage Blob Data Contributor) instead of the account's access keys. Use it when key access is disabled on the account.">
+            <label className="flex items-center gap-2 text-sm text-neutral-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-black"
+                aria-label="Use Azure AD authentication"
+                checked={s3.use_azuread_auth === "true"}
+                onChange={(e) => setS3("use_azuread_auth", e.target.checked ? "true" : "")}
+                disabled={disabled}
+              />
+              Use Azure AD authentication for the storage account
+            </label>
           </Field>
         </>
       )}
@@ -1039,6 +1066,16 @@ function TerraformConfig({
         disabled={disabled}
       />
 
+      {/* Typed inputs: a JSON object of variable name → value, written into
+          the module as an auto-loaded tfvars file before every command.
+          Stored verbatim as config.tfvars; the server validates the shape,
+          the editor just flags unparsable JSON as you type. */}
+      <TFVarsEditor
+        value={config.tfvars}
+        onChange={(v) => setConfig("tfvars", v)}
+        disabled={disabled}
+      />
+
       {/* Inputs. The Variables feature already reaches the job as env; this
           opt-in mirrors every resolved variable as TF_VAR_<name> so it
           doubles as the module's input variables. Stored as
@@ -1175,6 +1212,62 @@ function useDraftRows<T>(
     return serialized;
   }
   return [rows, commit];
+}
+
+// tfvarsProblem reports why a typed-inputs value is not a JSON object of
+// variable name → value, or null when it is (or is empty). The same shape
+// the server enforces, checked here so the editor can flag it inline.
+function tfvarsProblem(raw: string): string | null {
+  if (raw.trim() === "") return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return "Not valid JSON.";
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return "Must be a JSON object: { \"name\": value, … }.";
+  }
+  const bad = Object.keys(parsed).find((k) => !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(k));
+  return bad === undefined ? null : `"${bad}" is not a valid variable name.`;
+}
+
+// TFVarsEditor edits the typed root-module inputs of an OpenTofu component:
+// one JSON object (variable name → any JSON value) the run writes into the
+// module as spacefleet.auto.tfvars.json, so lists, maps, and objects are
+// authored as JSON rather than HCL-in-a-string. Stored as-is in
+// config.tfvars (the server validates the object shape); an inline note
+// flags JSON that would be rejected. Configuration only — the file is part of
+// the run's script — so secrets belong in Variables instead.
+function TFVarsEditor({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string | undefined;
+  onChange: (raw: string) => void;
+  disabled: boolean;
+}) {
+  const raw = value ?? "";
+  const problem = tfvarsProblem(raw);
+  return (
+    <Field
+      label="Input variables"
+      help="Optional — a JSON object of variable name to value, passed to the module as an auto-loaded tfvars file before every plan, apply, drift check, and import. Lists, maps, and objects are written as JSON. Plan flags (-var) override these. Not for secrets: mark those sensitive in Variables and expose them below."
+    >
+      <textarea
+        aria-label="Input variables"
+        className="w-full border border-neutral-300 px-3 py-2 font-mono text-sm"
+        rows={4}
+        placeholder={'{\n  "region": "eu-west-1",\n  "replicas": 3,\n  "tags": { "team": "core" }\n}'}
+        value={raw}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        spellCheck={false}
+      />
+      {problem && <p className="mt-1 text-xs text-red-600">{problem}</p>}
+    </Field>
+  );
 }
 
 // FlagsEditor edits an ordered list of CLI flag tokens, serialized to the JSON

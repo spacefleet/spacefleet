@@ -289,11 +289,11 @@ func init() {
 	// notificationchannel.NameValidator is a validator for the "name" field. It is called by the builders before save.
 	notificationchannel.NameValidator = notificationchannelDescName.Validators[0].(func(string) error)
 	// notificationchannelDescCreatedAt is the schema descriptor for created_at field.
-	notificationchannelDescCreatedAt := notificationchannelFields[8].Descriptor()
+	notificationchannelDescCreatedAt := notificationchannelFields[9].Descriptor()
 	// notificationchannel.DefaultCreatedAt holds the default value on creation for the created_at field.
 	notificationchannel.DefaultCreatedAt = notificationchannelDescCreatedAt.Default.(func() time.Time)
 	// notificationchannelDescUpdatedAt is the schema descriptor for updated_at field.
-	notificationchannelDescUpdatedAt := notificationchannelFields[9].Descriptor()
+	notificationchannelDescUpdatedAt := notificationchannelFields[10].Descriptor()
 	// notificationchannel.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	notificationchannel.DefaultUpdatedAt = notificationchannelDescUpdatedAt.Default.(func() time.Time)
 	// notificationchannel.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
