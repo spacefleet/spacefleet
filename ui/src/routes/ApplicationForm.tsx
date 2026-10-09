@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import { RunnerRequiredNotice } from "../components/RunnerRequiredNotice";
+import { SlugInput } from "../components/SlugInput";
 import { githubAppEnabled } from "../lib/appConfig";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
@@ -164,14 +165,14 @@ export function ApplicationForm() {
       <button
         type="button"
         onClick={() => navigate(editing ? `/applications/${appId}` : "/applications")}
-        className="inline-flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-900"
+        className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
       >
         <ArrowLeft className="h-4 w-4" />
         Back
       </button>
 
       <h1 className="mt-3 text-2xl font-bold tracking-tight">{title}</h1>
-      <p className="mt-1 text-sm text-neutral-600">
+      <p className="mt-1 text-sm text-neutral-300">
         An application owns a deploy workflow. Set its name and runner cluster
         here; build the deploy steps — and their targets — in the workflow
         builder afterwards.
@@ -182,34 +183,29 @@ export function ApplicationForm() {
       )}
 
       {loading ? (
-        <p className="mt-6 text-sm text-neutral-500">Loading…</p>
+        <p className="mt-6 text-sm text-neutral-400">Loading…</p>
       ) : loadError ? (
-        <p className="mt-6 text-sm text-red-600">{loadError}</p>
+        <p className="mt-6 text-sm text-red-400">{loadError}</p>
       ) : (
         <form onSubmit={(e) => void onSubmit(e)} className="mt-6 space-y-5">
           <Field label="Name">
-            <input
-              type="text"
+            <SlugInput
               required
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+              onChange={setName}
+              className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
               placeholder="my-app"
-              pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
-              maxLength={63}
-              title={'A slug: lowercase letters, digits, and hyphens (e.g. "my-app")'}
             />
           </Field>
-          <p className="-mt-3 text-xs text-neutral-500">
-            A slug — lowercase letters, digits, and hyphens. It seeds the Helm
-            release names for this app&apos;s components.
+          <p className="-mt-3 text-xs text-neutral-400">
+            Seeds the Helm release names for this app&apos;s components.
           </p>
 
           <Field label="Runner cluster">
             {editing ? (
-              <p className="text-sm text-neutral-700">
+              <p className="text-sm text-neutral-300">
                 {clusterName(runnerClusterId)}
-                <span className="ml-2 text-xs text-neutral-400">
+                <span className="ml-2 text-xs text-neutral-500">
                   (fixed at registration)
                 </span>
               </p>
@@ -218,7 +214,7 @@ export function ApplicationForm() {
                 required
                 value={runnerClusterId}
                 onChange={(e) => setRunnerClusterId(e.target.value)}
-                className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+                className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
               >
                 <option value="">Select a cluster…</option>
                 {runners.map((c) => (
@@ -229,16 +225,16 @@ export function ApplicationForm() {
               </select>
             )}
           </Field>
-          <p className="-mt-3 text-xs text-neutral-500">
+          <p className="-mt-3 text-xs text-neutral-400">
             The runner is the Tekton-enabled cluster the deploy jobs run on.
           </p>
 
           {editing && (
-            <section className="space-y-3 border-t border-neutral-200 pt-5">
-              <h2 className="text-sm font-semibold text-neutral-900">
+            <section className="space-y-3 border-t border-neutral-800 pt-5">
+              <h2 className="text-sm font-semibold text-neutral-100">
                 Triggers
               </h2>
-              <p className="text-xs text-neutral-500">
+              <p className="text-xs text-neutral-400">
                 A push to a branch one of the components tracks (through its
                 connected GitHub installation) starts the chosen run; a pull
                 request against it can start a preview reported back as a
@@ -250,19 +246,19 @@ export function ApplicationForm() {
                 <select
                   value={pushTrigger}
                   onChange={(e) => setPushTrigger(e.target.value as PushTrigger)}
-                  className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+                  className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
                 >
                   <option value="">Nothing</option>
                   <option value="preview">Start a preview</option>
                   <option value="deploy">Start a deploy</option>
                 </select>
               </Field>
-              <label className="flex items-center gap-2 text-sm text-neutral-700">
+              <label className="flex items-center gap-2 text-sm text-neutral-300">
                 <input
                   type="checkbox"
                   checked={prPlans}
                   onChange={(e) => setPrPlans(e.target.checked)}
-                  className="h-3.5 w-3.5 accent-black"
+                  className="h-3.5 w-3.5 accent-white"
                 />
                 Plan pull requests
               </label>
@@ -270,7 +266,7 @@ export function ApplicationForm() {
                 <select
                   value={String(driftInterval)}
                   onChange={(e) => setDriftInterval(Number(e.target.value))}
-                  className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+                  className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
                 >
                   <option value="0">Never</option>
                   <option value="60">Every hour</option>
@@ -279,7 +275,7 @@ export function ApplicationForm() {
                   <option value="10080">Every week</option>
                 </select>
               </Field>
-              <p className="-mt-1 text-xs text-neutral-500">
+              <p className="-mt-1 text-xs text-neutral-400">
                 Refreshes the application on this schedule: a read-only check of
                 every OpenTofu component for changes made outside of OpenTofu.
                 Skipped while another run is in progress.
@@ -287,13 +283,13 @@ export function ApplicationForm() {
             </section>
           )}
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
 
           <div className="flex items-center gap-3">
             <button
               type="submit"
               disabled={submitting || needsRunner}
-              className="bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+              className="bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
             >
               {submitting
                 ? "Saving…"
@@ -308,7 +304,7 @@ export function ApplicationForm() {
               onClick={() =>
                 navigate(editing ? `/applications/${appId}` : "/applications")
               }
-              className="text-sm text-neutral-500 hover:text-neutral-900"
+              className="text-sm text-neutral-400 hover:text-neutral-100"
             >
               Cancel
             </button>
@@ -328,7 +324,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium text-neutral-700">
+      <span className="mb-1 block text-sm font-medium text-neutral-300">
         {label}
       </span>
       {children}

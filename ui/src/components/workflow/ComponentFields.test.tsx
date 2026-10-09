@@ -69,6 +69,9 @@ describe("terraform extra-flags editors", () => {
   it("'+ Add flag' shows a new empty flag box even though blanks aren't stored", async () => {
     let last: EditableComponent | undefined;
     render(<Harness initial={makeComponent()} onComponent={(c) => (last = c)} />);
+    // The flags live in the Advanced section, collapsed until opened.
+    expect(screen.queryByRole("button", { name: "+ Add flag" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^Advanced/ }));
 
     // One editor each for init/plan/apply flags; the first is init.
     const addButtons = screen.getAllByRole("button", { name: "+ Add flag" });
@@ -92,6 +95,10 @@ describe("terraform extra-flags editors", () => {
         onComponent={(c) => (last = c)}
       />,
     );
+    // Collapsed, the Advanced heading counts the flags that are set.
+    const advanced = screen.getByRole("button", { name: /^Advanced/ });
+    expect(advanced).toHaveTextContent("1 flag");
+    await userEvent.click(advanced);
 
     const box = screen.getByRole("textbox", { name: "Flag 1" });
     await userEvent.clear(box);
@@ -188,29 +195,32 @@ describe("helm values-from-git editor", () => {
   });
 });
 
-describe("terraform inputs and workspace", () => {
-  it("stores the TF_VAR opt-in as config.expose_tf_vars and the workspace as config.workspace", async () => {
+describe("terraform workspace", () => {
+  const original = window.appConfig;
+  afterEach(() => {
+    window.appConfig = original;
+  });
+
+  it("is an Advanced setting of a cloud backend, cleared by moving to managed state", async () => {
+    window.appConfig = { ...original, managedStateEnabled: true };
     const user = userEvent.setup();
     let latest: EditableComponent | null = null;
     render(
       <Harness
-        initial={makeComponent()}
+        initial={makeComponent({ config: { backend: "s3" } })}
         onComponent={(c) => {
           latest = c;
         }}
       />,
     );
-    const toggle = screen.getByRole("checkbox", {
-      name: "Expose variables as OpenTofu inputs",
-    });
-    expect(toggle).not.toBeChecked();
-    await user.click(toggle);
-    expect(latest!.config.expose_tf_vars).toBe("true");
-    await user.click(toggle);
-    expect(latest!.config.expose_tf_vars).toBe("");
-
+    await user.click(screen.getByRole("button", { name: /^Advanced/ }));
     await user.type(screen.getByPlaceholderText("default"), "prod");
     expect(latest!.config.workspace).toBe("prod");
+
+    // Managed state takes no workspace: the field goes, and so does the value.
+    await user.selectOptions(screen.getByLabelText("State backend"), "spacefleet");
+    expect(latest!.config.workspace).toBe("");
+    expect(screen.queryByPlaceholderText("default")).not.toBeInTheDocument();
   });
 
   it("stores the typed inputs as config.tfvars and flags JSON the server would reject", () => {
@@ -266,6 +276,13 @@ describe("terraform state backends", () => {
         cloudCredentials={creds}
       />,
     );
+    // The credentials are collapsed; the heading names the one that's set.
+    const credentials = screen.getByRole("button", { name: /^Credentials/ });
+    expect(credentials).toHaveAttribute("aria-expanded", "false");
+    expect(credentials).toHaveTextContent("prod-aws");
+    expect(screen.queryByLabelText("Cloud credential")).not.toBeInTheDocument();
+    await user.click(credentials);
+
     // S3: only the aws credential is offered.
     const credSelect = screen.getByLabelText("Cloud credential");
     expect(credSelect).toHaveTextContent("prod-aws");
@@ -390,7 +407,7 @@ describe("managed state backend", () => {
     expect(latest!.config.backend_config).toBe("");
     expect(latest!.config.cloud_credential_id).toBe("");
     expect(screen.queryByText("The S3 bucket holding the state.")).not.toBeInTheDocument();
-    expect(screen.getByText(/Spacefleet keeps this component's state/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^Credentials/ }));
     const credSelect = screen.getByLabelText("Cloud credential");
     expect(credSelect).toHaveTextContent("prod-aws (AWS)");
     expect(credSelect).toHaveTextContent("prod-gcp (Google Cloud)");

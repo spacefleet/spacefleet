@@ -167,6 +167,9 @@ func (s *Service) ReplaceWorkflowWith(ctx context.Context, orgID, appID uuid.UUI
 	if err := s.validateComponentTargets(ctx, orgID, app, nodes); err != nil {
 		return nil, err
 	}
+	if err := s.resolveInstallations(ctx, orgID, stages); err != nil {
+		return nil, err
+	}
 	if !s.managedState {
 		for _, n := range nodes {
 			if n.Type == TypeTerraform && n.Config[terraformConfigBackend] == tofu.BackendSpacefleet {

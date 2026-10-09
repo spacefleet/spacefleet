@@ -60,9 +60,10 @@ Helm doesn't record on the cluster:
 Set the **release name** to match the live release, and fill in the **values**
 the release was installed with. (Values passed at install time can contain
 secrets; they're stored with the application and shown only to members who can
-edit it.) For a private chart or repository, attach a chart credential or GitHub
-App installation. See [Deploying with workflows](deploy-workflows.md) for the
-full builder walkthrough.
+edit it.) For a private chart in an HTTP repository or OCI registry, attach a
+chart credential; a private GitHub repository needs only its account connected
+to your organization. See [Deploying with workflows](deploy-workflows.md) for
+the full builder walkthrough.
 
 ## Confirm the workflow matches before deploying
 

@@ -25,7 +25,6 @@ type Cluster = components["schemas"]["Cluster"];
 type ChartCredential = components["schemas"]["ChartCredential"];
 type CloudCredential = components["schemas"]["CloudCredential"];
 type GitHubInstallation = components["schemas"]["GitHubInstallation"];
-type Variable = components["schemas"]["Variable"];
 type ComponentOutputKeys = components["schemas"]["ComponentOutputKeys"];
 
 // DraftStage is one stage of the in-memory workflow: its id, display name, and
@@ -170,9 +169,6 @@ interface WorkflowDraftValue {
   backendChange: string | null;
   saving: boolean;
   saved: boolean;
-  // Set when a just-saved component's staged variables couldn't be flushed to
-  // their endpoints (e.g. encryption disabled) — the workflow itself still saved.
-  varFlushError: string | null;
 
   addStage: () => void;
   renameStage: (id: string, name: string) => void;
@@ -206,13 +202,6 @@ interface WorkflowDraftValue {
   ensureProvisional: (id: string, type: ComponentType, stageId: string | null) => void;
   commitComponent: (next: EditableComponent) => void;
   discardNewNode: (id: string) => void;
-
-  // Staged component variables: a not-yet-saved component can't write to its
-  // variable endpoints (the component row doesn't exist yet), so the editor
-  // stages them here, keyed by component id. The next successful workflow save
-  // flushes them to the real create endpoint (see save()).
-  getStagedVars: (componentId: string) => Variable[];
-  setStagedVars: (componentId: string, vars: Variable[]) => void;
 
   save: () => Promise<void>;
   // Re-saves with the backend switch confirmed (see backendChange).
@@ -266,19 +255,12 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     {},
   );
 
-  // Staged component variables for not-yet-saved components, keyed by component
-  // id. A ref (not state): the editor owns the on-screen list, this is just the
-  // durable buffer that survives navigating between editor and builder and is
-  // drained by the next successful save. discardNewNode drops a node's entry.
-  const stagedVarsRef = useRef<Map<string, Variable[]>>(new Map());
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [backendChange, setBackendChange] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [varFlushError, setVarFlushError] = useState<string | null>(null);
 
   // markDirty flags the draft as having unsaved edits and bumps an edit revision.
   // The revision lets a save that resolves after newer edits avoid stamping the
@@ -390,14 +372,10 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
 
   const deleteStage = useCallback(
     (id: string) => {
-      // Drop any staged variables of the removed components so they can't
-      // flush onto a later component that reuses the id.
-      const gone = stages.find((st) => st.id === id);
-      for (const c of gone?.components ?? []) stagedVarsRef.current.delete(c.id);
       setStages((ss) => ss.filter((st) => st.id !== id));
       markDirty();
     },
-    [stages, markDirty],
+    [markDirty],
   );
 
   const moveStage = useCallback(
@@ -504,7 +482,6 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
           components: st.components.filter((c) => c.id !== id),
         })),
       );
-      stagedVarsRef.current.delete(id);
       markDirty();
     },
     [markDirty],
@@ -570,64 +547,8 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
         n.delete(id);
         return n;
       });
-      // Drop any staged variables for the abandoned component so they don't
-      // flush onto some later component that reuses the (random) id.
-      stagedVarsRef.current.delete(id);
     },
     [provisional],
-  );
-
-  // Staged component variables (see the interface): a stable ref-backed buffer,
-  // so reads/writes don't re-render the provider and survive editor⇄builder
-  // navigation. The editor's in-memory VariablesEditor reads/writes these.
-  const getStagedVars = useCallback(
-    (componentId: string): Variable[] =>
-      stagedVarsRef.current.get(componentId) ?? [],
-    [],
-  );
-  const setStagedVars = useCallback((componentId: string, vars: Variable[]) => {
-    if (vars.length === 0) stagedVarsRef.current.delete(componentId);
-    else stagedVarsRef.current.set(componentId, vars);
-  }, []);
-
-  // flushStagedVars POSTs each staged variable for the components a save just
-  // persisted (their ids are in sentIds), then clears the ones that landed.
-  // Failures are kept buffered (so the next save retries) and summarized in
-  // varFlushError — never failing the workflow save, which already succeeded.
-  const flushStagedVars = useCallback(
-    async (sentIds: Set<string>) => {
-      const failures: string[] = [];
-      for (const [componentId, vars] of stagedVarsRef.current) {
-        if (!sentIds.has(componentId)) continue;
-        const remaining: Variable[] = [];
-        for (const v of vars) {
-          const { error } = await api.POST(
-            "/api/applications/{id}/components/{componentId}/variables",
-            {
-              params: { path: { id: appId, componentId } },
-              body: {
-                name: v.name,
-                value: v.value ?? "",
-                sensitive: v.sensitive,
-              },
-            },
-          );
-          if (error) {
-            failures.push(`${v.name}: ${error.message ?? "could not save"}`);
-            remaining.push(v);
-          }
-        }
-        if (remaining.length > 0)
-          stagedVarsRef.current.set(componentId, remaining);
-        else stagedVarsRef.current.delete(componentId);
-      }
-      setVarFlushError(
-        failures.length > 0
-          ? `Some component variables could not be saved — ${failures.join("; ")}`
-          : null,
-      );
-    },
-    [appId],
   );
 
   // Assemble the PUT payload: every stage in order with its committed
@@ -670,12 +591,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     // Only mark clean if no edits landed while this save was in flight; otherwise
     // leave it dirty so the auto-save effect runs again for the newer state.
     if (revision.current === rev) setSaved(true);
-    // The components in this payload now exist server-side, so any variables
-    // staged for them can be flushed to their endpoints.
-    await flushStagedVars(
-      new Set(payload.flatMap((st) => st.components.map((c) => c.id))),
-    );
-  }, [appId, buildPayload, flushStagedVars]);
+  }, [appId, buildPayload]);
   const save = useCallback(() => persist(false), [persist]);
   const confirmBackendChange = useCallback(() => persist(true), [persist]);
 
@@ -708,7 +624,6 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       backendChange,
       saving,
       saved,
-      varFlushError,
       addStage,
       renameStage,
       deleteStage,
@@ -723,8 +638,6 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       ensureProvisional,
       commitComponent,
       discardNewNode,
-      getStagedVars,
-      setStagedVars,
       save,
       confirmBackendChange,
     }),
@@ -746,7 +659,6 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       backendChange,
       saving,
       saved,
-      varFlushError,
       addStage,
       renameStage,
       deleteStage,
@@ -761,8 +673,6 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       ensureProvisional,
       commitComponent,
       discardNewNode,
-      getStagedVars,
-      setStagedVars,
       save,
       confirmBackendChange,
     ],

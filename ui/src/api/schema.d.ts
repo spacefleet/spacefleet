@@ -2825,7 +2825,10 @@ export interface components {
             chart_credential_id?: string | null;
             /**
              * Format: uuid
-             * @description Optional GitHub App installation for a private git source.
+             * @description The GitHub App installation a private git source clones through.
+             *     Resolved on save from the component's github.com repository URL
+             *     (the installation on the account owning it); a sent value is kept
+             *     only when it is one of that account's installations.
              */
             github_installation_id?: string | null;
         };

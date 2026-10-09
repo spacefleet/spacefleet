@@ -30,8 +30,9 @@ what a **Deploy** would apply. Values files pulled from a Git repository (the
 ## `vars.*` — your variables
 
 `${{ vars.NAME }}` inserts the value of the variable `NAME`. Define variables
-on the application's **Variables** page (or on a single component —
-a component's variable overrides an application one of the same name). A
+on the application's **Variables** page (or on a single component's page,
+once it's saved — a component's variable overrides an application one of
+the same name). A
 **sensitive** variable can be referenced like any other; its value is handled
 with the same care as the values themselves and is never shown in run logs or
 to members with view-only access.

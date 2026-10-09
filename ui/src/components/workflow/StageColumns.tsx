@@ -29,12 +29,12 @@ export function ComponentCardContent({
   return (
     <>
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-sm font-medium text-neutral-900">
+        <span className="truncate text-sm font-medium text-neutral-100">
           {component.name || "(unnamed)"}
         </span>
         <span className="flex shrink-0 items-center gap-1.5">
           {isNew && (
-            <span className="text-[10px] uppercase tracking-wide text-neutral-400">
+            <span className="text-[10px] uppercase tracking-wide text-neutral-500">
               new
             </span>
           )}
@@ -42,7 +42,7 @@ export function ComponentCardContent({
             <span title="Requires approval: the run waits for a person before this runs">
               <ShieldCheck
                 aria-label="Requires approval"
-                className="h-3.5 w-3.5 text-violet-600"
+                className="h-3.5 w-3.5 text-violet-400"
               />
             </span>
           )}
@@ -50,7 +50,7 @@ export function ComponentCardContent({
             <span title="Continue on failure: a failure here won't stop the later stages">
               <RefreshCw
                 aria-label="Continues on failure"
-                className="h-3.5 w-3.5 text-amber-600"
+                className="h-3.5 w-3.5 text-amber-400"
               />
             </span>
           )}
@@ -60,7 +60,7 @@ export function ComponentCardContent({
       <div className="mt-1.5 flex min-w-0 items-center gap-2">
         <TypeBadge type={component.type} />
         {summary && (
-          <span className="truncate text-xs text-neutral-500" title={summary}>
+          <span className="truncate text-xs text-neutral-400" title={summary}>
             {summary}
           </span>
         )}
@@ -75,7 +75,7 @@ export function StageConnector() {
   return (
     <div
       aria-hidden="true"
-      className="flex w-6 shrink-0 items-start justify-center pt-4 text-neutral-300"
+      className="flex w-6 shrink-0 items-start justify-center pt-4 text-neutral-600"
     >
       <ChevronRight className="h-4 w-4" />
     </div>
@@ -105,19 +105,19 @@ export function StageColumnsView({
             {i > 0 && <StageConnector />}
             <section
               aria-label={`Stage ${st.name}`}
-              className="flex w-60 shrink-0 flex-col border border-neutral-200 bg-neutral-50"
+              className="flex w-60 shrink-0 flex-col border border-neutral-800 bg-neutral-900/40"
             >
-              <header className="border-b border-neutral-200 px-3 py-2">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+              <header className="bg-neutral-800/60 px-3 py-2">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-500">
                   Stage {i + 1}
                 </p>
-                <h3 className="truncate text-sm font-semibold text-neutral-900">
+                <h3 className="truncate text-sm font-semibold text-neutral-100">
                   {st.name}
                 </h3>
               </header>
               <div className="flex flex-1 flex-col gap-2 p-2">
                 {st.components.length === 0 ? (
-                  <p className="px-1 py-2 text-xs text-neutral-400">
+                  <p className="px-1 py-2 text-xs text-neutral-500">
                     No components.
                   </p>
                 ) : (
@@ -131,7 +131,7 @@ export function StageColumnsView({
                         className={`border px-3 py-2 text-left hover:border-neutral-500 ${
                           status
                             ? componentStatusClasses(status)
-                            : "border-neutral-300 bg-white"
+                            : "border-neutral-700 bg-neutral-900"
                         }`}
                       >
                         <ComponentCardContent

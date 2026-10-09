@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { components } from "../../api/schema";
 import { CHART_SOURCES } from "../chartSources";
 import {
@@ -8,6 +9,7 @@ import {
   tofuNativeLock,
 } from "../../lib/tofuVersions";
 import { managedStateEnabled } from "../../lib/appConfig";
+import { SlugInput } from "../SlugInput";
 import { RepositoryPicker } from "./RepositoryPicker";
 import { outputsRefSnippet } from "./outputsRefs";
 import { RefAutocompleteField } from "./RefAutocompleteField";
@@ -121,8 +123,9 @@ export function ComponentFields({
   const canPickRepo = githubEnabled && installations.length > 0;
 
   // pickRepoInto sets a config repo-URL field to the picked clone URL and, in the
-  // same update, selects the matching GitHub installation on the component — the
-  // whole point of the picker is that the two stay in sync.
+  // same update, the installation it was listed under. The server resolves the
+  // installation from the repository URL on save anyway (so a typed URL works
+  // too); sending the picked one keeps it when an account is connected twice.
   function pickRepoInto(repoUrlKey: string) {
     return (repo: GitHubRepository) =>
       onChange({
@@ -153,24 +156,27 @@ export function ComponentFields({
 
   return (
     <div className="space-y-4">
-      <Field
-        label="Name"
-        help={
-          'A slug: lowercase letters, digits, and hyphens (e.g. "web"). Used in ' +
-          "${{ components.<name>.outputs.* }} references and to seed the release name."
-        }
-      >
-        <input
-          className="w-full border border-neutral-300 px-3 py-2 text-sm"
-          value={component.name}
-          onChange={(e) => set("name", e.target.value)}
-          placeholder="web"
-          pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
-          maxLength={63}
-          title={'A slug: lowercase letters, digits, and hyphens (e.g. "web")'}
-          disabled={disabled}
-        />
-      </Field>
+      <Section title="General">
+        <Field label="Name" help={nameHelp(component.type)}>
+          <SlugInput
+            className="w-full border border-neutral-700 px-3 py-2 text-sm"
+            value={component.name}
+            onChange={(name) => set("name", name)}
+            placeholder="web"
+            disabled={disabled}
+          />
+        </Field>
+        <label className="flex items-center gap-2 text-sm text-neutral-300">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-white"
+            checked={component.continue_on_failure}
+            onChange={(e) => set("continue_on_failure", e.target.checked)}
+            disabled={disabled}
+          />
+          Continue on failure
+        </label>
+      </Section>
 
       {component.type === "helm" ? (
         <HelmConfig
@@ -203,9 +209,9 @@ export function ComponentFields({
         />
       )}
 
-      {/* Credentials. Helm http_repo/oci take a chart credential; git sources
-          (helm git chart, or any git-sourced values, or a manifest) take a
-          GitHub installation for private clones. */}
+      {/* Credentials. Helm http_repo/oci take a chart credential; a private git
+          source needs none here — the server attaches the GitHub installation
+          on the repository's account when the workflow is saved. */}
       {component.type === "helm" &&
         (chartSource === "http_repo" || chartSource === "oci") && (
           <Field
@@ -213,7 +219,7 @@ export function ComponentFields({
             help="Optional — only for a private repo/registry."
           >
             <select
-              className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+              className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
               value={component.chart_credential_id ?? ""}
               onChange={(e) =>
                 set("chart_credential_id", e.target.value || null)
@@ -230,29 +236,6 @@ export function ComponentFields({
           </Field>
         )}
 
-      {githubEnabled && (
-        <Field
-          label="GitHub installation"
-          help="Optional — only for a private Git source."
-        >
-          <select
-            className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
-            value={component.github_installation_id ?? ""}
-            onChange={(e) =>
-              set("github_installation_id", e.target.value || null)
-            }
-            disabled={disabled}
-          >
-            <option value="">None (public repository)</option>
-            {installations.map((inst) => (
-              <option key={inst.id} value={inst.id}>
-                {inst.account_login || inst.installation_id}
-              </option>
-            ))}
-          </select>
-        </Field>
-      )}
-
       {/* Targeting. Helm + manifest deploy to a cluster (required); terraform
           manages cloud infra and has no cluster target, so the fields are hidden
           for it. The namespace is only meaningful for helm — a manifest carries
@@ -263,7 +246,7 @@ export function ComponentFields({
           help="The cluster this component deploys into."
         >
           <select
-            className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+            className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
             value={component.target_cluster_id ?? ""}
             onChange={(e) => set("target_cluster_id", e.target.value || null)}
             disabled={disabled}
@@ -285,7 +268,7 @@ export function ComponentFields({
         >
           <RefAutocompleteField
             as="input"
-            className="w-full border border-neutral-300 px-3 py-2 text-sm"
+            className="w-full border border-neutral-700 px-3 py-2 text-sm"
             value={component.target_namespace}
             onChange={(v) => set("target_namespace", v)}
             context={refContext}
@@ -301,55 +284,46 @@ export function ComponentFields({
         </Field>
       )}
 
-      <label className="flex items-center gap-2 text-sm text-neutral-700">
-        <input
-          type="checkbox"
-          className="h-4 w-4 accent-black"
-          checked={component.continue_on_failure}
-          onChange={(e) => set("continue_on_failure", e.target.checked)}
-          disabled={disabled}
-        />
-        Continue on failure
-      </label>
-
-      {/* Approval gate. An OpenTofu node frames it as an Auto-approve opt-out
-          (gated by default — the run plans, then pauses for a human to review
-          before applying); every other node frames it as an opt-in manual-
-          approval requirement. Both edit the same requires_approval flag. */}
-      {component.type === "terraform" ? (
-        <Field help="Off (the default): the run plans, then pauses for a human to review the plan and approve before applying.">
-          <label className="flex items-center gap-2 text-sm text-neutral-700">
-            <input
-              type="checkbox"
-              className="h-4 w-4 accent-black"
-              checked={!component.requires_approval}
-              onChange={(e) => set("requires_approval", !e.target.checked)}
-              disabled={disabled}
-            />
-            Auto-approve apply
-          </label>
-        </Field>
-      ) : (
-        <Field help="When on, the run pauses at this step until a human approves it.">
-          <label className="flex items-center gap-2 text-sm text-neutral-700">
-            <input
-              type="checkbox"
-              className="h-4 w-4 accent-black"
-              checked={component.requires_approval}
-              onChange={(e) => set("requires_approval", e.target.checked)}
-              disabled={disabled}
-            />
-            Require manual approval
-          </label>
-        </Field>
-      )}
-      {component.requires_approval && (
-        <ApprovalPolicyFields
-          policy={component.approval_policy}
-          onChange={(p) => set("approval_policy", p)}
-          disabled={disabled}
-        />
-      )}
+      <Section title="Approval">
+        {/* Approval gate. An OpenTofu node frames it as an Auto-approve opt-out
+            (gated by default — the run plans, then pauses for a human to review
+            before applying); every other node frames it as an opt-in manual-
+            approval requirement. Both edit the same requires_approval flag. */}
+        {component.type === "terraform" ? (
+          <Field help="Off (the default): the run plans, then pauses for a human to review the plan and approve before applying.">
+            <label className="flex items-center gap-2 text-sm text-neutral-300">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-white"
+                checked={!component.requires_approval}
+                onChange={(e) => set("requires_approval", !e.target.checked)}
+                disabled={disabled}
+              />
+              Auto-approve apply
+            </label>
+          </Field>
+        ) : (
+          <Field help="When on, the run pauses at this step until a human approves it.">
+            <label className="flex items-center gap-2 text-sm text-neutral-300">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-white"
+                checked={component.requires_approval}
+                onChange={(e) => set("requires_approval", e.target.checked)}
+                disabled={disabled}
+              />
+              Require manual approval
+            </label>
+          </Field>
+        )}
+        {component.requires_approval && (
+          <ApprovalPolicyFields
+            policy={component.approval_policy}
+            onChange={(p) => set("approval_policy", p)}
+            disabled={disabled}
+          />
+        )}
+      </Section>
     </div>
   );
 }
@@ -383,7 +357,7 @@ function ApprovalPolicyFields({
     onChange(Object.keys(next).length === 0 ? null : next);
   }
   return (
-    <div className="ml-6 space-y-3 border-l-2 border-neutral-200 pl-4">
+    <div className="ml-6 space-y-3 border-l-2 border-neutral-800 pl-4">
       <Field
         label="Approvers"
         help="Who may approve, by email, comma-separated. Empty lets any editor or admin approve. Anyone with edit access can still reject."
@@ -391,7 +365,7 @@ function ApprovalPolicyFields({
         <input
           type="text"
           aria-label="Approvers"
-          className="w-full border border-neutral-300 px-3 py-2 text-sm"
+          className="w-full border border-neutral-700 px-3 py-2 text-sm"
           placeholder="ops@example.com, sre@example.com"
           value={approversText}
           onChange={(e) => {
@@ -419,7 +393,7 @@ function ApprovalPolicyFields({
           aria-label="Approvals required"
           min={1}
           max={approverCount > 0 ? approverCount : undefined}
-          className="w-24 border border-neutral-300 px-3 py-2 text-sm"
+          className="w-24 border border-neutral-700 px-3 py-2 text-sm"
           value={p.required ?? 1}
           onChange={(e) =>
             update({ required: Math.max(1, Number(e.target.value) || 1) })
@@ -427,10 +401,10 @@ function ApprovalPolicyFields({
           disabled={disabled}
         />
       </Field>
-      <label className="flex items-center gap-2 text-sm text-neutral-700">
+      <label className="flex items-center gap-2 text-sm text-neutral-300">
         <input
           type="checkbox"
-          className="h-4 w-4 accent-black"
+          className="h-4 w-4 accent-white"
           checked={p.require_different_approver ?? false}
           onChange={(e) =>
             update({ require_different_approver: e.target.checked })
@@ -448,7 +422,7 @@ function ApprovalPolicyFields({
           aria-label="Approval timeout (minutes)"
           min={0}
           max={10080}
-          className="w-28 border border-neutral-300 px-3 py-2 text-sm"
+          className="w-28 border border-neutral-700 px-3 py-2 text-sm"
           value={p.timeout_minutes ?? ""}
           onChange={(e) =>
             update({
@@ -489,7 +463,7 @@ function HelmConfig({
     <>
       <Field label="Chart source">
         <select
-          className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+          className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
           value={chartSource}
           onChange={(e) => setConfig("chart_source", e.target.value)}
           disabled={disabled}
@@ -506,17 +480,22 @@ function HelmConfig({
         <Field key={field.key} label={field.label} help={field.help}>
           {/* The git source's repository URL gets the picker; other sources
               (http_repo/oci) point at registries the picker doesn't enumerate. */}
-          {field.key === "repo_url" &&
-            chartSource === "git" &&
-            repoUrlPicker && <div className="mb-1.5">{repoUrlPicker}</div>}
-          <input
-            type="text"
-            className="w-full border border-neutral-300 px-3 py-2 text-sm"
-            placeholder={field.placeholder}
-            value={config[field.key] ?? ""}
-            onChange={(e) => setConfig(field.key, e.target.value)}
-            disabled={disabled}
-          />
+          <WithPicker
+            picker={
+              field.key === "repo_url" && chartSource === "git"
+                ? repoUrlPicker
+                : null
+            }
+          >
+            <input
+              type="text"
+              className="w-full border border-neutral-700 px-3 py-2 text-sm"
+              placeholder={field.placeholder}
+              value={config[field.key] ?? ""}
+              onChange={(e) => setConfig(field.key, e.target.value)}
+              disabled={disabled}
+            />
+          </WithPicker>
         </Field>
       ))}
 
@@ -526,7 +505,7 @@ function HelmConfig({
       >
         <RefAutocompleteField
           as="input"
-          className="w-full border border-neutral-300 px-3 py-2 text-sm"
+          className="w-full border border-neutral-700 px-3 py-2 text-sm"
           placeholder="(defaults to <app>-<component>)"
           value={config.release_name ?? ""}
           onChange={(v) => setConfig("release_name", v)}
@@ -543,7 +522,7 @@ function HelmConfig({
       >
         <RefAutocompleteField
           as="textarea"
-          className="h-32 w-full border border-neutral-300 px-3 py-2 font-mono text-xs"
+          className="h-32 w-full border border-neutral-700 px-3 py-2 font-mono text-xs"
           placeholder={"replicaCount: 2\n"}
           value={config.values ?? ""}
           onChange={(v) => setConfig("values", v)}
@@ -584,20 +563,21 @@ function ManifestConfig({
   return (
     <>
       <Field label="Repository URL">
-        {repoUrlPicker && <div className="mb-1.5">{repoUrlPicker}</div>}
-        <input
-          type="text"
-          className="w-full border border-neutral-300 px-3 py-2 text-sm"
-          placeholder="https://github.com/org/manifests.git"
-          value={config.repo_url ?? ""}
-          onChange={(e) => setConfig("repo_url", e.target.value)}
-          disabled={disabled}
-        />
+        <WithPicker picker={repoUrlPicker}>
+          <input
+            type="text"
+            className="w-full border border-neutral-700 px-3 py-2 text-sm"
+            placeholder="https://github.com/org/manifests.git"
+            value={config.repo_url ?? ""}
+            onChange={(e) => setConfig("repo_url", e.target.value)}
+            disabled={disabled}
+          />
+        </WithPicker>
       </Field>
-      <Field label="Branch or tag" help="Default branch if empty.">
+      <Field label="Branch or tag">
         <input
           type="text"
-          className="w-full border border-neutral-300 px-3 py-2 text-sm"
+          className="w-full border border-neutral-700 px-3 py-2 text-sm"
           placeholder="(default branch)"
           value={config.git_ref ?? ""}
           onChange={(e) => setConfig("git_ref", e.target.value)}
@@ -607,7 +587,7 @@ function ManifestConfig({
       <Field label="Path" help="File or directory to kubectl apply.">
         <input
           type="text"
-          className="w-full border border-neutral-300 px-3 py-2 text-sm"
+          className="w-full border border-neutral-700 px-3 py-2 text-sm"
           placeholder="manifests/prod"
           value={config.path ?? ""}
           onChange={(e) => setConfig("path", e.target.value)}
@@ -675,10 +655,35 @@ function TerraformConfig({
   // The managed option is offered when the server can keep state — or when
   // this component already uses it, so the select never misreports.
   const offerManaged = managed || managedStateEnabled();
+  // What the collapsed Credentials section shows, so a credential that's set
+  // is never hidden behind it.
+  const credentialsSummary = [
+    cloudCredentials.find((c) => c.id === config.cloud_credential_id)?.name,
+    clusters.find((c) => c.id === config.auth_cluster_id)?.name,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  // And for the collapsed Advanced section: the workspace and how many extra
+  // flags are set.
+  const flagCount = [config.init_flags, config.plan_flags, config.apply_flags]
+    .flatMap(parseFlags)
+    .filter((f) => f.trim() !== "").length;
+  const advancedSummary = [
+    !managed && config.workspace ? `workspace ${config.workspace}` : "",
+    flagCount === 0 ? "" : flagCount === 1 ? "1 flag" : `${flagCount} flags`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   // Switching backends clears the settings (their keys differ) and the
-  // credential (a different cloud) — in one change, so none is lost.
+  // credential (a different cloud) — in one change, so none is lost. Managed
+  // state takes no workspace, so moving to it clears that too.
   function setBackend(next: string) {
-    setConfigs({ backend: next, backend_config: "", cloud_credential_id: "" });
+    setConfigs({
+      backend: next,
+      backend_config: "",
+      cloud_credential_id: "",
+      ...(next === "spacefleet" ? { workspace: "" } : {}),
+    });
   }
 
   // setS3 updates one backend setting, dropping emptied keys so the stored
@@ -709,437 +714,412 @@ function TerraformConfig({
 
   return (
     <>
-      <Field label="Repository URL">
-        {repoUrlPicker && <div className="mb-1.5">{repoUrlPicker}</div>}
-        <input
-          type="text"
-          className="w-full border border-neutral-300 px-3 py-2 text-sm"
-          placeholder="https://github.com/org/infra.git"
-          value={config.repo_url ?? ""}
-          onChange={(e) => setConfig("repo_url", e.target.value)}
-          disabled={disabled}
-        />
-      </Field>
-      <Field label="Branch or tag" help="Default branch if empty.">
-        <input
-          type="text"
-          className="w-full border border-neutral-300 px-3 py-2 text-sm"
-          placeholder="(default branch)"
-          value={config.git_ref ?? ""}
-          onChange={(e) => setConfig("git_ref", e.target.value)}
-          disabled={disabled}
-        />
-      </Field>
-      <Field
-        label="Working path"
-        help="Directory holding the OpenTofu files. Repository root if empty."
-      >
-        <input
-          type="text"
-          className="w-full border border-neutral-300 px-3 py-2 text-sm"
-          placeholder="(repository root)"
-          value={config.path ?? ""}
-          onChange={(e) => setConfig("path", e.target.value)}
-          disabled={disabled}
-        />
-      </Field>
+      <Section title="Repository">
+        <Field label="Repository URL">
+          <WithPicker picker={repoUrlPicker}>
+            <input
+              type="text"
+              className="w-full border border-neutral-700 px-3 py-2 text-sm"
+              placeholder="https://github.com/org/infra.git"
+              value={config.repo_url ?? ""}
+              onChange={(e) => setConfig("repo_url", e.target.value)}
+              disabled={disabled}
+            />
+          </WithPicker>
+        </Field>
+        <Field label="Branch or tag">
+          <input
+            type="text"
+            className="w-full border border-neutral-700 px-3 py-2 text-sm"
+            placeholder="(default branch)"
+            value={config.git_ref ?? ""}
+            onChange={(e) => setConfig("git_ref", e.target.value)}
+            disabled={disabled}
+          />
+        </Field>
+        <Field label="Working path">
+          <input
+            type="text"
+            className="w-full border border-neutral-700 px-3 py-2 text-sm"
+            placeholder="(repository root)"
+            value={config.path ?? ""}
+            onChange={(e) => setConfig("path", e.target.value)}
+            disabled={disabled}
+          />
+        </Field>
+      </Section>
+      <Section title="OpenTofu">
+        <Field label="OpenTofu version">
+          <select
+            className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+            value={tofuVersion}
+            onChange={(e) => setConfig("tofu_version", e.target.value)}
+            disabled={disabled}
+          >
+            {/* A stored value outside the supported list (shouldn't happen —
+                the server validates) still renders, so the select never lies
+                about what's saved. */}
+            {!TOFU_VERSIONS.some((v) => v.minor === tofuVersion) && (
+              <option value={tofuVersion}>{tofuVersion} (unsupported)</option>
+            )}
+            {TOFU_VERSIONS.map((v, i) => (
+              <option key={v.minor} value={v.minor}>
+                {v.minor}
+                {i === 0 ? " (latest)" : ""}
+              </option>
+            ))}
+          </select>
+        </Field>
 
-      <Field
-        label="OpenTofu version"
-        help="The OpenTofu release this component runs. 1.10 and newer lock state automatically — no lock table needed."
-      >
-        <select
-          className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
-          value={tofuVersion}
-          onChange={(e) => setConfig("tofu_version", e.target.value)}
-          disabled={disabled}
+        <Field
+          label="State backend"
+          help="Where this component's OpenTofu state lives. Spacefleet configures your module to use it at init (overriding any backend block in code) — to adopt existing state in your cloud, point it at the bucket and key your state is already in."
         >
-          {/* A stored value outside the supported list (shouldn't happen —
-              the server validates) still renders, so the select never lies
-              about what's saved. */}
-          {!TOFU_VERSIONS.some((v) => v.minor === tofuVersion) && (
-            <option value={tofuVersion}>{tofuVersion} (unsupported)</option>
-          )}
-          {TOFU_VERSIONS.map((v, i) => (
-            <option key={v.minor} value={v.minor}>
-              {v.minor}
-              {i === 0 ? " (latest)" : ""}
-            </option>
-          ))}
-        </select>
-      </Field>
+          <select
+            aria-label="State backend"
+            className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+            value={backend}
+            onChange={(e) => setBackend(e.target.value)}
+            disabled={disabled}
+          >
+            {offerManaged && (
+              <option value="spacefleet">Spacefleet (managed)</option>
+            )}
+            <optgroup label="Your cloud">
+              <option value="s3">Amazon S3</option>
+              <option value="gcs">Google Cloud Storage</option>
+              <option value="azurerm">Azure Blob Storage</option>
+            </optgroup>
+          </select>
+        </Field>
 
-      <Field
-        label="State backend"
-        help="Where this component's OpenTofu state lives. Spacefleet configures your module to use it at init (overriding any backend block in code) — to adopt existing state in your cloud, point it at the bucket and key your state is already in."
-      >
-        <select
-          aria-label="State backend"
-          className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
-          value={backend}
-          onChange={(e) => setBackend(e.target.value)}
-          disabled={disabled}
-        >
-          {offerManaged && (
-            <option value="spacefleet">Spacefleet (managed)</option>
-          )}
-          <optgroup label="Your cloud">
-            <option value="s3">Amazon S3</option>
-            <option value="gcs">Google Cloud Storage</option>
-            <option value="azurerm">Azure Blob Storage</option>
-          </optgroup>
-        </select>
-        {managed && (
-          <p className="mt-1.5 text-xs text-neutral-500">
-            Spacefleet keeps this component's state — encrypted, with every
-            version kept — and locks it during runs. Nothing to set up.
-          </p>
-        )}
-      </Field>
-
-      <Field
-        label="Cloud credential"
-        help={
-          managed
-            ? "Optional — a cloud credential for your module's providers. Managed state needs none. Leave empty to use the runner's own identity (an instance role or workload identity)."
-            : `The ${PROVIDER_NAMES[backendProvider]} credential the run signs in with — used for the state backend and your module's ${PROVIDER_NAMES[backendProvider]} providers. Leave empty to use the runner's own identity (an instance role or workload identity).`
-        }
-      >
-        <select
-          aria-label="Cloud credential"
-          className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
-          value={config.cloud_credential_id ?? ""}
-          onChange={(e) => setConfig("cloud_credential_id", e.target.value)}
-          disabled={disabled}
-        >
-          <option value="">(none — use the runner's identity)</option>
-          {matchingCredentials.map((c) => (
-            <option key={c.id} value={c.id}>
-              {managed ? `${c.name} (${PROVIDER_NAMES[c.provider]})` : c.name}
-            </option>
-          ))}
-        </select>
-      </Field>
-
-      {backend === "gcs" && (
-        <>
-          <Field
-            label="Bucket"
-            help="The Cloud Storage bucket holding the state."
-          >
-            <input
-              type="text"
-              aria-label="GCS bucket"
-              className="w-full border border-neutral-300 px-3 py-2 text-sm"
-              placeholder="acme-terraform-state"
-              value={s3.bucket ?? ""}
-              onChange={(e) => setS3("bucket", e.target.value)}
-              disabled={disabled}
-            />
-          </Field>
-          <Field
-            label="Prefix"
-            help="Path prefix of the state within the bucket — must be unique per component. Locking is automatic (the bucket itself locks the state)."
-          >
-            <input
-              type="text"
-              aria-label="GCS prefix"
-              className="w-full border border-neutral-300 px-3 py-2 text-sm"
-              placeholder="envs/prod"
-              value={s3.prefix ?? ""}
-              onChange={(e) => setS3("prefix", e.target.value)}
-              disabled={disabled}
-            />
-          </Field>
-          <Field
-            label="KMS key"
-            help="Optional — the Cloud KMS key the state objects are encrypted with (the credential needs Encrypter/Decrypter on it). Leave empty for Google-managed encryption. To use your own raw key instead, add a sensitive variable named GOOGLE_ENCRYPTION_KEY to this component — it must not be stored here."
-          >
-            <input
-              type="text"
-              aria-label="GCS KMS key"
-              className="w-full border border-neutral-300 px-3 py-2 font-mono text-sm"
-              placeholder="projects/p/locations/l/keyRings/r/cryptoKeys/k"
-              value={s3.kms_encryption_key ?? ""}
-              onChange={(e) => setS3("kms_encryption_key", e.target.value)}
-              disabled={disabled}
-            />
-          </Field>
-        </>
-      )}
-
-      {backend === "azurerm" && (
-        <>
-          <Field
-            label="Storage account"
-            help="The storage account holding the state."
-          >
-            <input
-              type="text"
-              aria-label="Storage account"
-              className="w-full border border-neutral-300 px-3 py-2 text-sm"
-              placeholder="acmetfstate"
-              value={s3.storage_account_name ?? ""}
-              onChange={(e) => setS3("storage_account_name", e.target.value)}
-              disabled={disabled}
-            />
-          </Field>
-          <Field
-            label="Container"
-            help="The blob container within the storage account."
-          >
-            <input
-              type="text"
-              aria-label="Container"
-              className="w-full border border-neutral-300 px-3 py-2 text-sm"
-              placeholder="tfstate"
-              value={s3.container_name ?? ""}
-              onChange={(e) => setS3("container_name", e.target.value)}
-              disabled={disabled}
-            />
-          </Field>
-          <Field
-            label="State key"
-            help="Blob name of the state file in the container — must be unique per component. Locking is automatic (a blob lease)."
-          >
-            <input
-              type="text"
-              aria-label="Azure state key"
-              className="w-full border border-neutral-300 px-3 py-2 text-sm"
-              placeholder="prod.tfstate"
-              value={s3.key ?? ""}
-              onChange={(e) => setS3("key", e.target.value)}
-              disabled={disabled}
-            />
-          </Field>
-          <Field
-            label="Resource group"
-            help="Optional — the resource group of the storage account, when the credential needs it to look the account up."
-          >
-            <input
-              type="text"
-              aria-label="Resource group"
-              className="w-full border border-neutral-300 px-3 py-2 text-sm"
-              placeholder="(optional)"
-              value={s3.resource_group_name ?? ""}
-              onChange={(e) => setS3("resource_group_name", e.target.value)}
-              disabled={disabled}
-            />
-          </Field>
-          <Field help="Authenticate to the storage account with the credential's Azure AD identity (a data-plane role such as Storage Blob Data Contributor) instead of the account's access keys. Use it when key access is disabled on the account.">
-            <label className="flex items-center gap-2 text-sm text-neutral-700">
+        {backend === "gcs" && (
+          <>
+            <Field
+              label="Bucket"
+              help="The Cloud Storage bucket holding the state."
+            >
               <input
-                type="checkbox"
-                className="h-4 w-4 accent-black"
-                aria-label="Use Azure AD authentication"
-                checked={s3.use_azuread_auth === "true"}
-                onChange={(e) => setS3("use_azuread_auth", e.target.checked ? "true" : "")}
+                type="text"
+                aria-label="GCS bucket"
+                className="w-full border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="acme-terraform-state"
+                value={s3.bucket ?? ""}
+                onChange={(e) => setS3("bucket", e.target.value)}
                 disabled={disabled}
               />
-              Use Azure AD authentication for the storage account
-            </label>
-          </Field>
-        </>
-      )}
+            </Field>
+            <Field
+              label="Prefix"
+              help="Path prefix of the state within the bucket — must be unique per component. Locking is automatic (the bucket itself locks the state)."
+            >
+              <input
+                type="text"
+                aria-label="GCS prefix"
+                className="w-full border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="envs/prod"
+                value={s3.prefix ?? ""}
+                onChange={(e) => setS3("prefix", e.target.value)}
+                disabled={disabled}
+              />
+            </Field>
+            <Field
+              label="KMS key"
+              help="Optional — the Cloud KMS key the state objects are encrypted with (the credential needs Encrypter/Decrypter on it). Leave empty for Google-managed encryption. To use your own raw key instead, add a sensitive variable named GOOGLE_ENCRYPTION_KEY to this component — it must not be stored here."
+            >
+              <input
+                type="text"
+                aria-label="GCS KMS key"
+                className="w-full border border-neutral-700 px-3 py-2 font-mono text-sm"
+                placeholder="projects/p/locations/l/keyRings/r/cryptoKeys/k"
+                value={s3.kms_encryption_key ?? ""}
+                onChange={(e) => setS3("kms_encryption_key", e.target.value)}
+                disabled={disabled}
+              />
+            </Field>
+          </>
+        )}
 
-      {backend === "s3" && (
-        <>
-          <Field label="Bucket" help="The S3 bucket holding the state.">
-            <input
-              type="text"
-              className="w-full border border-neutral-300 px-3 py-2 text-sm"
-              placeholder="my-terraform-state"
-              value={s3.bucket ?? ""}
-              onChange={(e) => setS3("bucket", e.target.value)}
-              disabled={disabled}
-            />
-          </Field>
-          <Field
-            label="State key"
-            help="Object path of the state file in the bucket — must be unique per component."
-          >
-            <input
-              type="text"
-              className="w-full border border-neutral-300 px-3 py-2 text-sm"
-              placeholder="envs/prod/terraform.tfstate"
-              value={s3.key ?? ""}
-              onChange={(e) => setS3("key", e.target.value)}
-              disabled={disabled}
-            />
-          </Field>
-          <Field label="Region" help="AWS region of the bucket.">
-            <input
-              type="text"
-              className="w-full border border-neutral-300 px-3 py-2 text-sm"
-              placeholder="us-east-1"
-              value={s3.region ?? ""}
-              onChange={(e) => setS3("region", e.target.value)}
-              disabled={disabled}
-            />
-          </Field>
-          {nativeLock ? (
-            <>
-              <div className="border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-600">
-                <span className="font-medium text-neutral-700">
-                  State locking is automatic.
-                </span>{" "}
-                OpenTofu {tofuVersion} locks state in the bucket itself during
-                every plan and apply, so concurrent runs can't corrupt it —
-                there's nothing to set up.
-              </div>
+        {backend === "azurerm" && (
+          <>
+            <Field
+              label="Storage account"
+              help="The storage account holding the state."
+            >
+              <input
+                type="text"
+                aria-label="Storage account"
+                className="w-full border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="acmetfstate"
+                value={s3.storage_account_name ?? ""}
+                onChange={(e) => setS3("storage_account_name", e.target.value)}
+                disabled={disabled}
+              />
+            </Field>
+            <Field
+              label="Container"
+              help="The blob container within the storage account."
+            >
+              <input
+                type="text"
+                aria-label="Container"
+                className="w-full border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="tfstate"
+                value={s3.container_name ?? ""}
+                onChange={(e) => setS3("container_name", e.target.value)}
+                disabled={disabled}
+              />
+            </Field>
+            <Field
+              label="State key"
+              help="Blob name of the state file in the container — must be unique per component. Locking is automatic (a blob lease)."
+            >
+              <input
+                type="text"
+                aria-label="Azure state key"
+                className="w-full border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="prod.tfstate"
+                value={s3.key ?? ""}
+                onChange={(e) => setS3("key", e.target.value)}
+                disabled={disabled}
+              />
+            </Field>
+            <Field
+              label="Resource group"
+              help="Optional — the resource group of the storage account, when the credential needs it to look the account up."
+            >
+              <input
+                type="text"
+                aria-label="Resource group"
+                className="w-full border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="(optional)"
+                value={s3.resource_group_name ?? ""}
+                onChange={(e) => setS3("resource_group_name", e.target.value)}
+                disabled={disabled}
+              />
+            </Field>
+            <Field help="Authenticate to the storage account with the credential's Azure AD identity (a data-plane role such as Storage Blob Data Contributor) instead of the account's access keys. Use it when key access is disabled on the account.">
+              <label className="flex items-center gap-2 text-sm text-neutral-300">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-white"
+                  aria-label="Use Azure AD authentication"
+                  checked={s3.use_azuread_auth === "true"}
+                  onChange={(e) => setS3("use_azuread_auth", e.target.checked ? "true" : "")}
+                  disabled={disabled}
+                />
+                Use Azure AD authentication for the storage account
+              </label>
+            </Field>
+          </>
+        )}
+
+        {backend === "s3" && (
+          <>
+            <Field label="Bucket" help="The S3 bucket holding the state.">
+              <input
+                type="text"
+                className="w-full border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="my-terraform-state"
+                value={s3.bucket ?? ""}
+                onChange={(e) => setS3("bucket", e.target.value)}
+                disabled={disabled}
+              />
+            </Field>
+            <Field
+              label="State key"
+              help="Object path of the state file in the bucket — must be unique per component."
+            >
+              <input
+                type="text"
+                className="w-full border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="envs/prod/terraform.tfstate"
+                value={s3.key ?? ""}
+                onChange={(e) => setS3("key", e.target.value)}
+                disabled={disabled}
+              />
+            </Field>
+            <Field label="Region" help="AWS region of the bucket.">
+              <input
+                type="text"
+                className="w-full border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="us-east-1"
+                value={s3.region ?? ""}
+                onChange={(e) => setS3("region", e.target.value)}
+                disabled={disabled}
+              />
+            </Field>
+            {nativeLock ? (
+              <>
+                <div className="border border-neutral-800 bg-neutral-800/50 px-3 py-2 text-sm text-neutral-300">
+                  <span className="font-medium text-neutral-300">
+                    State locking is automatic.
+                  </span>{" "}
+                  OpenTofu {tofuVersion} locks state in the bucket itself during
+                  every plan and apply, so concurrent runs can't corrupt it —
+                  there's nothing to set up.
+                </div>
+                <Field
+                  label="DynamoDB lock table"
+                  help="Optional. Only needed while this state is also used outside Spacefleet with DynamoDB locking — both locks are held, so you can migrate off the table safely."
+                >
+                  <input
+                    type="text"
+                    className="w-full border border-neutral-700 px-3 py-2 text-sm"
+                    placeholder="(not needed)"
+                    value={s3.dynamodb_table ?? ""}
+                    onChange={(e) => setS3("dynamodb_table", e.target.value)}
+                    disabled={disabled}
+                  />
+                </Field>
+              </>
+            ) : (
               <Field
                 label="DynamoDB lock table"
-                help="Optional. Only needed while this state is also used outside Spacefleet with DynamoDB locking — both locks are held, so you can migrate off the table safely."
+                help="Recommended. Locks state during plan and apply so concurrent runs can't corrupt it — Spacefleet creates the table if it doesn't exist (with a cloud credential attached; instance-role runs need an existing table). Or pick OpenTofu 1.10+ above for automatic locking with no table at all."
               >
                 <input
                   type="text"
-                  className="w-full border border-neutral-300 px-3 py-2 text-sm"
-                  placeholder="(not needed)"
+                  className="w-full border border-neutral-700 px-3 py-2 text-sm"
+                  placeholder="(no locking)"
                   value={s3.dynamodb_table ?? ""}
                   onChange={(e) => setS3("dynamodb_table", e.target.value)}
                   disabled={disabled}
                 />
               </Field>
-            </>
-          ) : (
-            <Field
-              label="DynamoDB lock table"
-              help="Recommended. Locks state during plan and apply so concurrent runs can't corrupt it — Spacefleet creates the table if it doesn't exist (with a cloud credential attached; instance-role runs need an existing table). Or pick OpenTofu 1.10+ above for automatic locking with no table at all."
-            >
+            )}
+
+            <label className="flex items-center gap-2 text-sm text-neutral-300">
               <input
-                type="text"
-                className="w-full border border-neutral-300 px-3 py-2 text-sm"
-                placeholder="(no locking)"
-                value={s3.dynamodb_table ?? ""}
-                onChange={(e) => setS3("dynamodb_table", e.target.value)}
+                type="checkbox"
+                className="h-4 w-4 accent-white"
+                checked={encrypt}
+                onChange={(e) => setEncrypt(e.target.checked)}
                 disabled={disabled}
               />
-            </Field>
-          )}
+              Encrypt state at rest
+            </label>
+            {encrypt && (
+              <Field
+                label="KMS key"
+                help="Optional. KMS key ARN or ID for SSE-KMS; empty uses SSE-S3 (AES-256)."
+              >
+                <input
+                  type="text"
+                  className="w-full border border-neutral-700 px-3 py-2 text-sm"
+                  placeholder="(SSE-S3)"
+                  value={s3.kms_key_id ?? ""}
+                  onChange={(e) => setS3("kms_key_id", e.target.value)}
+                  disabled={disabled}
+                />
+              </Field>
+            )}
+          </>
+        )}
 
-          <label className="flex items-center gap-2 text-sm text-neutral-700">
-            <input
-              type="checkbox"
-              className="h-4 w-4 accent-black"
-              checked={encrypt}
-              onChange={(e) => setEncrypt(e.target.checked)}
-              disabled={disabled}
-            />
-            Encrypt state at rest
-          </label>
-          {encrypt && (
-            <Field
-              label="KMS key"
-              help="Optional. KMS key ARN or ID for SSE-KMS; empty uses SSE-S3 (AES-256)."
-            >
-              <input
-                type="text"
-                className="w-full border border-neutral-300 px-3 py-2 text-sm"
-                placeholder="(SSE-S3)"
-                value={s3.kms_key_id ?? ""}
-                onChange={(e) => setS3("kms_key_id", e.target.value)}
-                disabled={disabled}
-              />
-            </Field>
-          )}
-        </>
-      )}
-
-      {/* Not a deploy target (terraform hides the target-cluster field): this
-          attaches ready-to-use auth for a registered cluster so the module's
-          kubernetes/helm/kubectl providers work with no provider config in
-          code. Stored as config.auth_cluster_id. */}
-      <Field
-        label="Cluster authentication"
-        help="Optional — gives this run ready-to-use authentication for a registered cluster, for modules that create Kubernetes resources. Leave the provider block in your code unconfigured; the run supplies the connection."
-      >
-        <select
-          className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
-          value={config.auth_cluster_id ?? ""}
-          onChange={(e) => setConfig("auth_cluster_id", e.target.value)}
-          disabled={disabled}
-        >
-          <option value="">(none)</option>
-          {clusters.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </Field>
-
-      <FlagsEditor
-        label="Extra init flags"
-        help="Optional flags appended to tofu init, one per box (e.g. -upgrade, -reconfigure)."
-        value={config.init_flags}
-        onChange={(v) => setConfig("init_flags", v)}
-        disabled={disabled}
-      />
-      <FlagsEditor
-        label="Extra plan flags"
-        help="Optional flags appended to tofu plan, one per box (e.g. -var=env=prod, -target=aws_instance.web). Variables and targets belong here — apply re-uses this reviewed plan."
-        value={config.plan_flags}
-        onChange={(v) => setConfig("plan_flags", v)}
-        disabled={disabled}
-      />
-      <FlagsEditor
-        label="Extra apply flags"
-        help="Optional flags appended to tofu apply, one per box (e.g. -parallelism=20). Apply uses the saved plan, so plan-time flags like -var have no effect here."
-        value={config.apply_flags}
-        onChange={(v) => setConfig("apply_flags", v)}
-        disabled={disabled}
-      />
-
-      {/* Typed inputs: a JSON object of variable name → value, written into
-          the module as an auto-loaded tfvars file before every command.
-          Stored verbatim as config.tfvars; the server validates the shape,
-          the editor just flags unparsable JSON as you type. */}
-      <TFVarsEditor
-        value={config.tfvars}
-        onChange={(v) => setConfig("tfvars", v)}
-        disabled={disabled}
-      />
-
-      {/* Inputs. The Variables feature already reaches the job as env; this
-          opt-in mirrors every resolved variable as TF_VAR_<name> so it
-          doubles as the module's input variables. Stored as
-          config.expose_tf_vars ("true"; "" when off). */}
-      <Field help="When on, every variable this component resolves (group, application, and component level) is also passed to the module as an input: a variable named region becomes var.region. Sensitive variables stay sensitive. Variables the module does not declare are ignored.">
-        <label className="flex items-center gap-2 text-sm text-neutral-700">
-          <input
-            type="checkbox"
-            className="h-4 w-4 accent-black"
-            checked={config.expose_tf_vars === "true"}
-            onChange={(e) =>
-              setConfig("expose_tf_vars", e.target.checked ? "true" : "")
-            }
-            disabled={disabled}
-          />
-          Expose variables as OpenTofu inputs
-        </label>
-      </Field>
-
-      {/* Workspace. Selected (created on first use) after init for every
-          unit of the component, so one module can back several environments
-          as separate components sharing a backend. Stored as
-          config.workspace. */}
-      <Field
-        label="Workspace"
-        help={
-          managed
-            ? "Optional — a separate state for this component, so one module can back several environments. Leave empty for the default. With managed state, terraform.workspace reads \"default\" inside the module."
-            : "Optional — the OpenTofu workspace this component runs in, selected before every plan, apply, drift check, and state operation (created on first use). Leave empty for the default workspace. With the S3 backend a workspace's state lives under env:/<workspace>/ in the bucket."
-        }
-      >
-        <input
-          type="text"
-          className="w-full border border-neutral-300 px-3 py-2 font-mono text-sm"
-          placeholder="default"
-          value={config.workspace ?? ""}
-          onChange={(e) => setConfig("workspace", e.target.value)}
+        {/* Typed inputs: a JSON object of variable name → value, written into
+            the module as an auto-loaded tfvars file before every command.
+            Stored verbatim as config.tfvars; the server validates the shape,
+            the editor just flags unparsable JSON as you type. */}
+        <TFVarsEditor
+          value={config.tfvars}
+          onChange={(v) => setConfig("tfvars", v)}
           disabled={disabled}
         />
-      </Field>
+      </Section>
+      <Section
+        title="Credentials"
+        collapsible
+        summary={credentialsSummary}
+      >
+        <Field
+          label="Cloud credential"
+          help={
+            managed
+              ? "Optional — a cloud credential for your module's providers. Managed state needs none. Leave empty to use the runner's own identity (an instance role or workload identity)."
+              : `The ${PROVIDER_NAMES[backendProvider]} credential the run signs in with — used for the state backend and your module's ${PROVIDER_NAMES[backendProvider]} providers. Leave empty to use the runner's own identity (an instance role or workload identity).`
+          }
+        >
+          <select
+            aria-label="Cloud credential"
+            className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+            value={config.cloud_credential_id ?? ""}
+            onChange={(e) => setConfig("cloud_credential_id", e.target.value)}
+            disabled={disabled}
+          >
+            <option value="">(none — use the runner's identity)</option>
+            {matchingCredentials.map((c) => (
+              <option key={c.id} value={c.id}>
+                {managed ? `${c.name} (${PROVIDER_NAMES[c.provider]})` : c.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {/* Not a deploy target (terraform hides the target-cluster field): this
+            attaches ready-to-use auth for a registered cluster so the module's
+            kubernetes/helm/kubectl providers work with no provider config in
+            code. Stored as config.auth_cluster_id. */}
+        <Field
+          label="Cluster authentication"
+          help="Optional — gives this run ready-to-use authentication for a registered cluster, for modules that create Kubernetes resources. Leave the provider block in your code unconfigured; the run supplies the connection."
+        >
+          <select
+            className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+            value={config.auth_cluster_id ?? ""}
+            onChange={(e) => setConfig("auth_cluster_id", e.target.value)}
+            disabled={disabled}
+          >
+            <option value="">(none)</option>
+            {clusters.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </Section>
+      <Section title="Advanced" collapsible summary={advancedSummary}>
+        {/* Workspace (cloud backends only — managed state takes none). Selected,
+            created on first use, after init for every unit of the component.
+            Stored as config.workspace. */}
+        {!managed && (
+          <Field
+            label="Workspace"
+            help="The OpenTofu workspace to run in, for state that lives in a non-default one or components sharing one bucket and key. Leave empty for the default."
+          >
+            <input
+              type="text"
+              className="w-full border border-neutral-700 px-3 py-2 font-mono text-sm"
+              placeholder="default"
+              value={config.workspace ?? ""}
+              onChange={(e) => setConfig("workspace", e.target.value)}
+              disabled={disabled}
+            />
+          </Field>
+        )}
+        <FlagsEditor
+          label="Extra init flags"
+          help="Optional flags appended to tofu init, one per box (e.g. -upgrade, -reconfigure)."
+          value={config.init_flags}
+          onChange={(v) => setConfig("init_flags", v)}
+          disabled={disabled}
+        />
+        <FlagsEditor
+          label="Extra plan flags"
+          help="Optional flags appended to tofu plan, one per box (e.g. -var=env=prod, -target=aws_instance.web). Variables and targets belong here — apply re-uses this reviewed plan."
+          value={config.plan_flags}
+          onChange={(v) => setConfig("plan_flags", v)}
+          disabled={disabled}
+        />
+        <FlagsEditor
+          label="Extra apply flags"
+          help="Optional flags appended to tofu apply, one per box (e.g. -parallelism=20). Apply uses the saved plan, so plan-time flags like -var have no effect here."
+          value={config.apply_flags}
+          onChange={(v) => setConfig("apply_flags", v)}
+          disabled={disabled}
+        />
+      </Section>
     </>
   );
 }
@@ -1160,14 +1140,14 @@ function OutputRefButtons({
 }) {
   if (disabled || names.length === 0) return null;
   return (
-    <p className="mt-1 text-xs text-neutral-500">
+    <p className="mt-1 text-xs text-neutral-400">
       Insert an output reference:{" "}
       {names.map((name) => (
         <button
           key={name}
           type="button"
           onClick={() => onInsert(outputsRefSnippet(name))}
-          className="mr-1 border border-neutral-300 px-1.5 py-0.5 font-mono text-[11px] text-neutral-700 hover:border-neutral-500 hover:text-black"
+          className="mr-1 border border-neutral-700 px-1.5 py-0.5 font-mono text-[11px] text-neutral-300 hover:border-neutral-500 hover:text-white"
         >
           {name}
         </button>
@@ -1281,11 +1261,11 @@ function TFVarsEditor({
   return (
     <Field
       label="Input variables"
-      help="Optional — a JSON object of variable name to value, passed to the module as an auto-loaded tfvars file before every plan, apply, drift check, and import. Lists, maps, and objects are written as JSON. Plan flags (-var) override these. Not for secrets: mark those sensitive in Variables and expose them below."
+      help="Not for secrets — put those in Variables, marked sensitive."
     >
       <textarea
         aria-label="Input variables"
-        className="w-full border border-neutral-300 px-3 py-2 font-mono text-sm"
+        className="w-full border border-neutral-700 px-3 py-2 font-mono text-sm"
         rows={4}
         placeholder={'{\n  "region": "eu-west-1",\n  "replicas": 3,\n  "tags": { "team": "core" }\n}'}
         value={raw}
@@ -1293,7 +1273,7 @@ function TFVarsEditor({
         disabled={disabled}
         spellCheck={false}
       />
-      {problem && <p className="mt-1 text-xs text-red-600">{problem}</p>}
+      {problem && <p className="mt-1 text-xs text-red-400">{problem}</p>}
     </Field>
   );
 }
@@ -1322,10 +1302,10 @@ function FlagsEditor({
   }
   return (
     <div>
-      <p className="mb-1 text-sm font-medium text-neutral-700">{label}</p>
-      {help && <p className="mb-2 text-xs text-neutral-500">{help}</p>}
+      <p className="mb-1 text-sm font-medium text-neutral-300">{label}</p>
+      {help && <p className="mb-2 text-xs text-neutral-400">{help}</p>}
       {flags.length === 0 ? (
-        <p className="text-xs text-neutral-500">No flags.</p>
+        <p className="text-xs text-neutral-400">No flags.</p>
       ) : (
         <ol className="space-y-2">
           {flags.map((flag, i) => (
@@ -1333,7 +1313,7 @@ function FlagsEditor({
               <input
                 type="text"
                 aria-label={`Flag ${i + 1}`}
-                className="flex-1 border border-neutral-300 px-2 py-1 font-mono text-xs"
+                className="flex-1 border border-neutral-700 px-2 py-1 font-mono text-xs"
                 placeholder="-var=env=prod"
                 value={flag}
                 onChange={(e) =>
@@ -1345,7 +1325,7 @@ function FlagsEditor({
                 <button
                   type="button"
                   onClick={() => emit(flags.filter((_, j) => j !== i))}
-                  className="px-2 text-xs text-neutral-500 hover:text-red-600"
+                  className="px-2 text-xs text-neutral-400 hover:text-red-400"
                 >
                   Remove
                 </button>
@@ -1358,7 +1338,7 @@ function FlagsEditor({
         <button
           type="button"
           onClick={() => emit([...flags, ""])}
-          className="mt-2 text-sm font-medium text-neutral-700 hover:text-black"
+          className="mt-2 text-sm font-medium text-neutral-300 hover:text-white"
         >
           + Add flag
         </button>
@@ -1403,55 +1383,60 @@ function ValuesSourcesEditor({
   }
   return (
     <div>
-      <p className="mb-1 text-sm font-medium text-neutral-700">
+      <p className="mb-1 text-sm font-medium text-neutral-300">
         Values from Git
       </p>
-      <p className="mb-2 text-xs text-neutral-500">
+      <p className="mb-2 text-xs text-neutral-400">
         Optional value files pulled from Git, applied in order before the inline
         values above.
       </p>
       {rows.length === 0 ? (
-        <p className="text-xs text-neutral-500">No git values sources.</p>
+        <p className="text-xs text-neutral-400">No git values sources.</p>
       ) : (
         <ol className="space-y-2">
           {rows.map((src, i) => (
-            <li key={i} className="border border-neutral-200 bg-neutral-50 p-2">
+            <li key={i} className="border border-neutral-800 bg-neutral-800/50 p-2">
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-xs font-medium text-neutral-500">
+                <span className="text-xs font-medium text-neutral-400">
                   Source {i + 1}
                 </span>
                 {!disabled && (
                   <button
                     type="button"
                     onClick={() => emit(rows.filter((_, j) => j !== i))}
-                    className="text-xs text-neutral-500 hover:text-red-600"
+                    className="text-xs text-neutral-400 hover:text-red-400"
                   >
                     Remove
                   </button>
                 )}
               </div>
-              {canPickRepo && !disabled && (
-                <div className="mb-1">
-                  <RepositoryPicker
-                    label="Select repository"
-                    onSelect={(repo) => pickRepo(i, repo)}
+              <div className="mb-1">
+                <WithPicker
+                  picker={
+                    canPickRepo && !disabled ? (
+                      <RepositoryPicker
+                        label="Select repository"
+                        onSelect={(repo) => pickRepo(i, repo)}
+                      />
+                    ) : null
+                  }
+                >
+                  <input
+                    type="text"
+                    aria-label={`Source ${i + 1} repository URL`}
+                    className="w-full border border-neutral-700 px-2 py-1 text-xs"
+                    placeholder="https://github.com/org/config.git"
+                    value={src.repo_url}
+                    onChange={(e) => update(i, "repo_url", e.target.value)}
+                    disabled={disabled}
                   />
-                </div>
-              )}
-              <input
-                type="text"
-                aria-label={`Source ${i + 1} repository URL`}
-                className="mb-1 w-full border border-neutral-300 px-2 py-1 text-xs"
-                placeholder="https://github.com/org/config.git"
-                value={src.repo_url}
-                onChange={(e) => update(i, "repo_url", e.target.value)}
-                disabled={disabled}
-              />
+                </WithPicker>
+              </div>
               <div className="flex gap-1">
                 <input
                   type="text"
                   aria-label={`Source ${i + 1} branch or tag`}
-                  className="w-1/3 border border-neutral-300 px-2 py-1 text-xs"
+                  className="w-1/3 border border-neutral-700 px-2 py-1 text-xs"
                   placeholder="ref"
                   value={src.git_ref ?? ""}
                   onChange={(e) => update(i, "git_ref", e.target.value)}
@@ -1460,7 +1445,7 @@ function ValuesSourcesEditor({
                 <input
                   type="text"
                   aria-label={`Source ${i + 1} values file path`}
-                  className="flex-1 border border-neutral-300 px-2 py-1 text-xs"
+                  className="flex-1 border border-neutral-700 px-2 py-1 text-xs"
                   placeholder="envs/prod/values.yaml"
                   value={src.path}
                   onChange={(e) => update(i, "path", e.target.value)}
@@ -1475,7 +1460,7 @@ function ValuesSourcesEditor({
         <button
           type="button"
           onClick={() => emit([...rows, { repo_url: "", path: "" }])}
-          className="mt-2 text-sm font-medium text-neutral-700 hover:text-black"
+          className="mt-2 text-sm font-medium text-neutral-300 hover:text-white"
         >
           + Add values source
         </button>
@@ -1503,6 +1488,84 @@ function parseBackendConfig(raw: string | undefined): Record<string, string> {
   }
 }
 
+// WithPicker sets a repository URL input beside its picker button, or renders
+// the input alone when the picker isn't available.
+function WithPicker({
+  picker,
+  children,
+}: {
+  picker: ReactNode;
+  children: ReactNode;
+}) {
+  if (!picker) return <>{children}</>;
+  return (
+    <div className="flex gap-2 *:min-w-0">
+      {children}
+      {picker}
+    </div>
+  );
+}
+
+// nameHelp says where a component's name shows up: an OpenTofu component's
+// outputs are referenced by it, and a Helm release is named after it.
+function nameHelp(type: ComponentType): string | undefined {
+  switch (type) {
+    case "terraform":
+      return "Used in ${{ components.<name>.outputs.* }} references.";
+    case "helm":
+      return "Seeds the Helm release name.";
+    default:
+      return undefined;
+  }
+}
+
+// Section groups related fields under a heading, set apart from the fields
+// before it (the first one sits flush with the top of the form). A collapsible section starts closed, its heading a toggle that
+// shows the summary (what's set inside) while closed.
+function Section({
+  title,
+  collapsible = false,
+  summary,
+  children,
+}: {
+  title: string;
+  collapsible?: boolean;
+  summary?: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(!collapsible);
+  const heading = "text-base font-semibold tracking-tight text-neutral-100";
+  return (
+    <section className="space-y-4 pt-6 first:pt-0">
+      {collapsible ? (
+        <h3 className={heading}>
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            className="inline-flex items-center gap-1.5 hover:text-neutral-300"
+          >
+            {open ? (
+              <ChevronDown className="h-4 w-4 text-neutral-500" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-neutral-500" />
+            )}
+            {title}
+            {!open && summary && (
+              <span className="ml-1 text-sm font-normal tracking-normal text-neutral-400">
+                {summary}
+              </span>
+            )}
+          </button>
+        </h3>
+      ) : (
+        <h3 className={heading}>{title}</h3>
+      )}
+      {open && children}
+    </section>
+  );
+}
+
 function Field({
   label,
   help,
@@ -1515,12 +1578,12 @@ function Field({
   return (
     <div>
       {label && (
-        <label className="mb-1 block text-sm font-medium text-neutral-700">
+        <label className="mb-1 block text-sm font-medium text-neutral-300">
           {label}
         </label>
       )}
       {children}
-      {help && <p className="mt-1 text-xs italic text-neutral-500">{help}</p>}
+      {help && <p className="mt-1 text-xs italic text-neutral-400">{help}</p>}
     </div>
   );
 }

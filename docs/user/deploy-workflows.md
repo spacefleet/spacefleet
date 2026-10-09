@@ -27,7 +27,8 @@ the services onto it, then a **Verify** stage with a smoke test.
    - For a **Helm** component, where the chart comes from (an HTTP Helm
      repository, an OCI registry, or a Git repository), the chart name and
      version, the release name, and the **values** to install it with. For a
-     private chart, attach a chart credential or GitHub App installation.
+     private chart in an HTTP repository or OCI registry, attach a chart
+     credential.
    - For a **Manifest** component, the Git repository, branch or tag, and the
      path to the manifests to apply.
    - For an **OpenTofu** component, the Git repository, branch or tag, and the
@@ -36,6 +37,10 @@ the services onto it, then a **Verify** stage with a smoke test.
      (Spacefleet keeps it unless you pick a cloud backend) — and,
      for code that creates Kubernetes resources, optional **cluster
      authentication** — see [OpenTofu components](#opentofu-components).
+   - For any **Git repository**, type its URL or use **Select repository**
+     to pick one your organization's connected GitHub accounts can reach. A
+     private GitHub repository needs nothing else: Spacefleet clones it
+     through the connection to the account that owns it.
    - **Target cluster** and **target namespace** — where a Helm release is
      installed (both required), or the cluster a Manifest component applies to.
      OpenTofu components have no deploy target.
@@ -43,9 +48,9 @@ the services onto it, then a **Verify** stage with a smoke test.
      stop the later stages; the overall run finishes as **partial** instead of
      failed. Leave it off for a component that later stages truly require.
 5. To change the order, drag a component to another place in its stage or into
-   another stage, or use the component's menu to move it up, down, or to the
-   previous or next stage. Only the stage a component is in affects when it
-   runs; its position within the stage is just for reading.
+   another stage. Only the stage a component is in affects when it runs; its
+   position within the stage is just for reading. To delete a component, open
+   it and choose **Delete component**.
 6. Changes save automatically as you make them.
 
 Put a component in a **later stage** than anything it needs. Two components
@@ -123,15 +128,18 @@ This is configuration, not a place for secrets: the file travels with the
 run's script. Put secrets in sensitive Variables instead (next).
 
 **Variables as inputs.** Your [variables](variable-interpolation.md) — at
-the group, application, and component level — already reach every component
-job as environment variables. Turn on **Expose variables as OpenTofu inputs**
-and each one is also passed as a root-module input: a variable named
-`region` becomes `var.region`, exactly as if `TF_VAR_region` had been set.
-Precedence is the usual one (a component variable beats an application one,
-which beats a group one), a sensitive variable stays sensitive on the way
-in, and the value must be valid for the input's declared type — a string is
-passed as-is, while a list, map, or object is written as HCL (for example
-`["a", "b"]`). Variables the module does not declare are ignored.
+the group, application, and component level — reach every component job as
+environment variables, and an OpenTofu component also receives each one as
+a root-module input: a variable named `region` becomes `var.region`, exactly
+as if `TF_VAR_region` had been set. There is nothing to turn on, and
+variables the module does not declare are ignored. Precedence is the usual
+one (a component variable beats an application one, which beats a group
+one), a sensitive variable stays sensitive on the way in, and the value must
+be valid for the input's declared type — a string is passed as-is, while a
+list, map, or object is written as HCL (for example `["a", "b"]`). A
+variable that shares its name with an input the module declares sets that
+input, overriding the input's default, so name variables meant for other
+components accordingly.
 
 When both set the same input, the typed input wins over the exposed
 variable, and a `-var` plan flag wins over both — OpenTofu's usual order.
@@ -139,21 +147,21 @@ Plan flags such as `-var=env=prod` remain available for one-off overrides.
 
 ### Workspaces
 
-One module can back several environments without duplicating the code: give
-each component a **Workspace** (`staging`, `prod`, …) and it is selected —
-created on first use — before every plan, apply, drift check, and state
-operation of that component. Each workspace has its own state under the
-component's backend: with the Amazon S3 backend, a workspace's state lives
-at `env:/<workspace>/<state key>` in the bucket, while the default workspace
-(no name) stays at the state key itself. So two components can share one
-bucket and key and still keep separate state, as long as their workspaces
-differ.
+With a cloud state backend, a component can run in an OpenTofu **Workspace**
+(under **Advanced**): it is selected — created on first use — before every
+plan, apply, drift check, and state operation of that component, and your
+module reads its name as `terraform.workspace`. Each workspace has its own
+state under the backend: with the Amazon S3 backend, a workspace's state
+lives at `env:/<workspace>/<state key>` in the bucket, while the default
+workspace (no name) stays at the state key itself. Use it to adopt state
+that already lives in a named workspace, or to let several components share
+one bucket and key while keeping separate state.
 
-With [Spacefleet-managed state](#state-backend), every component already has
-its own state, and a workspace gives it another, separate one. OpenTofu's own
-workspace feature isn't used there, so inside your module
-`terraform.workspace` always reads `default` — pass the environment name as
-an [input variable](#input-variables) if your code needs it.
+[Spacefleet-managed state](#state-backend) has no workspaces: every
+component already has its own state, so one module backs several
+environments simply as several components. Inside your module
+`terraform.workspace` reads `default` — pass the environment name as an
+[input variable](#input-variables) if your code needs it.
 
 ### State backend
 
@@ -471,8 +479,8 @@ part of the application's settings: open the application, choose
   counts for each OpenTofu step and a link to the run. Pull requests from
   forks are never planned.
 
-A component **tracks** a branch when it is attached to a connected GitHub
-installation, its repository is the one the event came from, and either its
+A component **tracks** a branch when its repository is the one the event
+came from, that repository's GitHub account is connected, and either its
 git ref is that branch or it has no git ref and the branch is the
 repository's default. Any component tracking the branch triggers the whole
 workflow run, exactly as if you had clicked the action; the run shows what

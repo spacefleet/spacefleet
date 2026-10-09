@@ -12,11 +12,9 @@ export type VariablesScope =
   | { kind: "app"; appId: string }
   | { kind: "component"; appId: string; componentId: string };
 
-// VariablesBackend is the read/write seam the editor talks to. The default
-// (apiBackend) hits the real per-scope endpoints; a not-yet-saved component
-// swaps in an in-memory one (stagedBackend) so its variables can be authored
-// inline and flushed once the component exists server-side. Each call returns a
-// normalized { data, error } so the editor's JSX is identical either way.
+// VariablesBackend is the read/write seam the editor talks to: apiBackend hits
+// the real per-scope endpoints. Each call returns a normalized { data, error }
+// so the editor's JSX is identical for every scope.
 export interface VariablesBackend {
   list(): Promise<{ data: Variable[]; error: string | null }>;
   create(input: {
@@ -154,49 +152,6 @@ export function apiBackend(scope: VariablesScope): VariablesBackend {
       return {
         error: res.error ? (res.error.message ?? "Could not delete variable") : null,
       };
-    },
-  };
-}
-
-// stagedBackend is an in-memory VariablesBackend for a not-yet-persisted
-// component: add/replace/delete operate on a list held by the caller (the
-// workflow draft), so a brand-new component's variables can be authored before
-// the component exists server-side. The plaintext value is held on the staged
-// row (masked in the UI for a sensitive one) only until the workflow save
-// flushes these rows to the real create endpoint.
-export function stagedBackend(
-  get: () => Variable[],
-  set: (vars: Variable[]) => void,
-): VariablesBackend {
-  return {
-    async list() {
-      return { data: get(), error: null };
-    },
-    async create(input) {
-      const now = new Date().toISOString();
-      const v: Variable = {
-        id: crypto.randomUUID(),
-        name: input.name,
-        sensitive: input.sensitive,
-        // The plaintext is kept on the row so the flush can POST it; a sensitive
-        // one is masked in the row UI (which keys off `sensitive`, not `value`).
-        value: input.value,
-        created_at: now,
-        updated_at: now,
-      };
-      set([...get(), v]);
-      return { data: v, error: null };
-    },
-    async update(id, value) {
-      const next = get().map((v) =>
-        v.id === id ? { ...v, value, updated_at: new Date().toISOString() } : v,
-      );
-      set(next);
-      return { data: next.find((v) => v.id === id) ?? null, error: null };
-    },
-    async remove(id) {
-      set(get().filter((v) => v.id !== id));
-      return { error: null };
     },
   };
 }

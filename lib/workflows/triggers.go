@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/url"
 	"sort"
 	"strings"
 
@@ -439,31 +438,8 @@ func componentSourcedFrom(c *ent.Component, repo string) bool {
 // given full name (owner/name), case-insensitively, for the https, ssh, and
 // scp-like forms with or without a trailing .git.
 func RepoMatches(repoURL, fullName string) bool {
-	if repoURL == "" || fullName == "" {
-		return false
-	}
-	var host, path string
-	if i := strings.Index(repoURL, "://"); i >= 0 {
-		u, err := url.Parse(repoURL)
-		if err != nil {
-			return false
-		}
-		host, path = u.Hostname(), u.Path
-	} else if i := strings.Index(repoURL, ":"); i >= 0 && !strings.Contains(repoURL[:i], "/") {
-		// scp-like: git@github.com:owner/name.git
-		host, path = repoURL[:i], repoURL[i+1:]
-		if at := strings.LastIndex(host, "@"); at >= 0 {
-			host = host[at+1:]
-		}
-	} else {
-		return false
-	}
-	if !strings.EqualFold(host, "github.com") {
-		return false
-	}
-	path = strings.Trim(path, "/")
-	path = strings.TrimSuffix(path, ".git")
-	return strings.EqualFold(path, fullName)
+	path := githubRepoPath(repoURL)
+	return path != "" && strings.EqualFold(path, fullName)
 }
 
 // withGitRef returns a copy of a config map with git_ref set to ref, never

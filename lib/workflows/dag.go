@@ -206,12 +206,6 @@ const (
 	// keys a workspace's state under env:/<workspace>/<key>. Validated as a
 	// safe token (workspaceRe). Not a secret — not redacted.
 	terraformConfigWorkspace = "workspace"
-	// terraformConfigExposeTFVars ("true"/"false", default off) additionally
-	// exports every variable the component resolves (group / app / component
-	// levels merged) as TF_VAR_<name>, the environment form OpenTofu reads a
-	// root-module input variable from — so the Variables feature doubles as
-	// the module's inputs. See deploy.RunInputs.ExposeTFVars.
-	terraformConfigExposeTFVars = "expose_tf_vars"
 	// terraformConfigTFVars is an optional JSON object of typed root-module
 	// input variables (name → any JSON value), written into the module as
 	// spacefleet.auto.tfvars.json before every command — so a list, map, or
@@ -219,8 +213,8 @@ const (
 	// import resolves the same values a plan does. Validated as an object
 	// whose keys are OpenTofu identifiers (tfVarNameRe). The file lands in
 	// the rendered script, so this is for configuration, never secrets:
-	// sensitive inputs go through Variables + expose_tf_vars (mounted from a
-	// Secret). Not redacted.
+	// sensitive inputs go through Variables, which every OpenTofu component
+	// also receives as TF_VAR_ inputs (mounted from a Secret). Not redacted.
 	terraformConfigTFVars = "tfvars"
 )
 
@@ -299,15 +293,15 @@ func validateTerraformConfig(n ComponentInput) error {
 	}
 	// Managed state has no settings: Spacefleet owns the address, the lock,
 	// and the credentials, so anything in backend_config would be ignored at
-	// best — refuse it rather than let an author think it applies. Its
-	// workspace becomes a path segment of the state address, so the two
-	// names a path treats specially are refused too.
+	// best — refuse it rather than let an author think it applies. Nor does
+	// it take a workspace: every component already has its own state, and
+	// the `http` backend has no workspaces, so the module would never see one.
 	if backend == tofu.BackendSpacefleet {
 		if len(backendCfg) > 0 {
 			return fmt.Errorf("%w: node %q (terraform) the %s state backend takes no %s; Spacefleet manages every setting", ErrInvalidConfig, n.Name, backend, terraformConfigBackendConfig)
 		}
-		if ws := n.Config[terraformConfigWorkspace]; ws == "." || ws == ".." {
-			return fmt.Errorf("%w: node %q (terraform) %s %q is not allowed with the %s state backend", ErrInvalidConfig, n.Name, terraformConfigWorkspace, ws, backend)
+		if n.Config[terraformConfigWorkspace] != "" {
+			return fmt.Errorf("%w: node %q (terraform) the %s state backend takes no %s; every component already has its own state", ErrInvalidConfig, n.Name, backend, terraformConfigWorkspace)
 		}
 	}
 	for _, key := range required {
@@ -367,11 +361,6 @@ func validateTerraformConfig(n ComponentInput) error {
 	// script and becomes part of the backend's state key.
 	if ws := n.Config[terraformConfigWorkspace]; ws != "" && !workspaceRe.MatchString(ws) {
 		return fmt.Errorf("%w: node %q (terraform) %s must be 1-90 letters, digits, '-', '_' or '.'", ErrInvalidConfig, n.Name, terraformConfigWorkspace)
-	}
-	switch n.Config[terraformConfigExposeTFVars] {
-	case "", "true", "false":
-	default:
-		return fmt.Errorf("%w: node %q (terraform) %s must be \"true\" or \"false\"", ErrInvalidConfig, n.Name, terraformConfigExposeTFVars)
 	}
 	// Typed inputs: a JSON object keyed by variable name. Any JSON value is a
 	// valid input (OpenTofu type-checks it against the declaration at plan

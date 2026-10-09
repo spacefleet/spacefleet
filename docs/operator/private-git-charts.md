@@ -238,9 +238,9 @@ a stranger's code with the component's credentials. If a delivery seems to
 have no effect, check the App's **Advanced → Recent Deliveries** page on
 GitHub: a `401` means the secret differs between GitHub and Spacefleet, a
 `503` means the secret isn't configured on the pods, and a `200` with
-`"started": 0` means no application matched (the component isn't attached
-to that installation, the repository URL differs, or the branch isn't the
-one the component tracks).
+`"started": 0` means no application matched (no component's repository URL
+names that repository, the installation isn't connected to the organization
+owning the application, or the branch isn't the one the component tracks).
 
 ## Leaving it unconfigured
 

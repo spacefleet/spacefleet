@@ -734,9 +734,9 @@ func TestPlanTofuHandoverFailure(t *testing.T) {
 }
 
 // TestPlanTofuWorkspaceAndTFVars: the planner threads the component's
-// workspace into the script (selected right after init) and, with
-// expose_tf_vars on, asks the resolver to mirror the resolved variables as
-// TF_VAR_ inputs — plain into Env, sensitive into SecretEnv. Off by default.
+// workspace into the script (selected right after init) and always asks the
+// resolver to mirror the resolved variables as TF_VAR_ inputs — plain into
+// Env, sensitive into SecretEnv.
 func TestPlanTofuWorkspaceAndTFVars(t *testing.T) {
 	t.Parallel()
 	runID, planID := uuid.New(), uuid.New()
@@ -748,11 +748,10 @@ func TestPlanTofuWorkspaceAndTFVars(t *testing.T) {
 	node := GraphNode{
 		ID: planID, ComponentID: planID, Name: "net", Type: TypeTerraform,
 		Config: map[string]string{
-			terraformConfigCommand:      terraformCommandPlan,
-			terraformConfigBackend:      tofu.BackendS3,
-			terraformConfigWorkspace:    "prod",
-			terraformConfigExposeTFVars: "true",
-			terraformConfigTFVars:       `{"replicas": 3, "tags": {"team": "core"}}`,
+			terraformConfigCommand:   terraformCommandPlan,
+			terraformConfigBackend:   tofu.BackendS3,
+			terraformConfigWorkspace: "prod",
+			terraformConfigTFVars:    `{"replicas": 3, "tags": {"team": "core"}}`,
 		},
 	}
 	req, err := w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, uuid.Nil, map[uuid.UUID]GraphNode{planID: node}, nil)
@@ -770,7 +769,6 @@ func TestPlanTofuWorkspaceAndTFVars(t *testing.T) {
 	}
 
 	delete(node.Config, terraformConfigWorkspace)
-	delete(node.Config, terraformConfigExposeTFVars)
 	delete(node.Config, terraformConfigTFVars)
 	req, err = w.planTofu(context.Background(), app, node, ActionDeploy, "", runID, uuid.Nil, map[uuid.UUID]GraphNode{planID: node}, nil)
 	if err != nil {
@@ -782,8 +780,8 @@ func TestPlanTofuWorkspaceAndTFVars(t *testing.T) {
 	if strings.Contains(req.Spec.Script, "tfvars") {
 		t.Errorf("no typed inputs must emit no tfvars file\n---\n%s", req.Spec.Script)
 	}
-	if _, ok := req.Spec.Env["TF_VAR_region"]; ok || req.Spec.Env["region"] != "eu-west-1" {
-		t.Errorf("TF_VAR_ mapping must be off by default: %v", req.Spec.Env)
+	if req.Spec.Env["TF_VAR_region"] != "eu-west-1" || req.Spec.Env["region"] != "eu-west-1" {
+		t.Errorf("TF_VAR_ mapping must not need any config: %v", req.Spec.Env)
 	}
 }
 
@@ -861,9 +859,8 @@ func TestPlanTofuManagedState(t *testing.T) {
 	}
 	cfg := func(command string) map[string]string {
 		return map[string]string{
-			terraformConfigCommand:   command,
-			terraformConfigBackend:   tofu.BackendSpacefleet,
-			terraformConfigWorkspace: "prod",
+			terraformConfigCommand: command,
+			terraformConfigBackend: tofu.BackendSpacefleet,
 		}
 	}
 	planNode := GraphNode{ID: planID, ComponentID: planID, Name: "net", Type: TypeTerraform, Config: cfg(terraformCommandPlan)}
@@ -904,7 +901,7 @@ func TestPlanTofuManagedState(t *testing.T) {
 			t.Fatalf("%s: token does not verify: %v", tc.name, err)
 		}
 		want := tofustate.Claims{
-			OrgID: app.OrganizationID, ApplicationID: app.ID, ComponentID: planID, Workspace: "prod",
+			OrgID: app.OrganizationID, ApplicationID: app.ID, ComponentID: planID, Workspace: tofustate.DefaultWorkspace,
 			WorkflowRunID: runID, ComponentRunID: crID, Scope: tc.scope, Expiry: claims.Expiry,
 		}
 		if claims != want {
@@ -919,7 +916,7 @@ func TestPlanTofuManagedState(t *testing.T) {
 		if _, plain := req.Spec.Env[stateEnvPassword]; plain {
 			t.Errorf("%s: the token must not be plain env", tc.name)
 		}
-		addr := tc.base + "/api/tofu/state/" + planID.String() + "/prod"
+		addr := tc.base + "/api/tofu/state/" + planID.String() + "/default"
 		if !strings.Contains(req.Spec.Script, `address        = "`+addr+`"`) {
 			t.Errorf("%s: script lacks address %s\n---\n%s", tc.name, addr, req.Spec.Script)
 		}

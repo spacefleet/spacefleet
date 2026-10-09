@@ -112,9 +112,12 @@ test("stage builder: menus, adding a stage, and moving components", async ({
   expect(names(last[0])).toEqual(["base"]);
   expect(names(last[1])).toEqual(["site", "config"]);
 
-  // The card menu does the same without dragging.
-  await deploy.getByRole("button", { name: "config actions" }).click();
-  await page.getByRole("menuitem", { name: "Move to previous stage" }).click();
+  // And back again, after base in Build.
+  const base = build.locator("[draggable=true]", { hasText: "base" });
+  const baseBox = await base.boundingBox();
+  await deploy.locator("[draggable=true]", { hasText: "config" }).dragTo(base, {
+    targetPosition: { x: 20, y: (baseBox?.height ?? 40) - 4 },
+  });
   await expect
     .poll(() => names(saves[saves.length - 1][0]))
     .toEqual(["base", "config"]);

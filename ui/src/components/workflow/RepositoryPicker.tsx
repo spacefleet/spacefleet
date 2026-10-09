@@ -27,7 +27,7 @@ export function RepositoryPicker({
         type="button"
         onClick={() => setOpen(true)}
         disabled={disabled}
-        className="inline-flex items-center gap-1.5 border border-neutral-300 px-2.5 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border border-neutral-700 px-2.5 py-1.5 text-xs font-medium text-neutral-300 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <GitBranch className="h-3.5 w-3.5" />
         {label}
@@ -99,31 +99,31 @@ function RepositoryPickerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4"
       onClick={onClose}
     >
       <div
-        className="mt-12 flex max-h-[70vh] w-full max-w-lg flex-col border border-neutral-200 bg-white shadow-lg"
+        className="mt-12 flex max-h-[70vh] w-full max-w-lg flex-col border border-neutral-800 bg-neutral-900 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
+        <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
           <h2 className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight">
-            <GitBranch className="h-5 w-5 text-neutral-500" />
+            <GitBranch className="h-5 w-5 text-neutral-400" />
             Select a repository
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-700"
+            className="text-neutral-500 hover:text-neutral-300"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="border-b border-neutral-200 px-5 py-3">
-          <div className="flex items-center gap-2 border border-neutral-300 px-2">
-            <Search className="h-4 w-4 text-neutral-400" />
+        <div className="border-b border-neutral-800 px-5 py-3">
+          <div className="flex items-center gap-2 border border-neutral-700 px-2">
+            <Search className="h-4 w-4 text-neutral-500" />
             <input
               className="w-full py-2 text-sm outline-none"
               placeholder="Search repositories…"
@@ -136,23 +136,23 @@ function RepositoryPickerModal({
 
         <div className="flex-1 overflow-y-auto px-5 py-3">
           {loading ? (
-            <p className="text-sm text-neutral-500">Loading repositories…</p>
+            <p className="text-sm text-neutral-400">Loading repositories…</p>
           ) : error ? (
-            <p className="text-sm text-red-600">{error}</p>
+            <p className="text-sm text-red-400">{error}</p>
           ) : repos.length === 0 ? (
-            <p className="text-sm text-neutral-500">
+            <p className="text-sm text-neutral-400">
               No repositories found. Make sure the GitHub App is installed on the
               repositories you want, then try again.
             </p>
           ) : groups.length === 0 ? (
-            <p className="text-sm text-neutral-500">
+            <p className="text-sm text-neutral-400">
               No repositories match “{query}”.
             </p>
           ) : (
             <div className="space-y-4">
               {groups.map(([account, accountRepos]) => (
                 <div key={account}>
-                  <p className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                  <p className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-400">
                     {account}
                   </p>
                   <ul>
@@ -161,10 +161,10 @@ function RepositoryPickerModal({
                         <button
                           type="button"
                           onClick={() => onSelect(repo)}
-                          className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-neutral-800 hover:bg-neutral-100"
+                          className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-neutral-200 hover:bg-neutral-800"
                         >
                           {repo.private && (
-                            <Lock className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+                            <Lock className="h-3.5 w-3.5 shrink-0 text-neutral-500" />
                           )}
                           <span className="truncate">{repo.full_name}</span>
                         </button>

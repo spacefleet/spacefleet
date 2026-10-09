@@ -285,9 +285,9 @@ type Apply struct {
 	// the script selects it right after `tofu init` (creating it on first
 	// use), so plan, apply, drift, and state operations all address that
 	// workspace's state. Empty keeps the default workspace. The workflow
-	// validation restricts the name to a safe token. BackendSpacefleet
-	// ignores it here: the `http` backend has no workspaces, so the planner
-	// puts the workspace into StateAddress instead.
+	// validation restricts the name to a safe token, and refuses one for
+	// BackendSpacefleet (the `http` backend has no workspaces), which ignores
+	// it here.
 	Workspace string
 	// TFVars, when set, is a JSON object of typed root-module input variables
 	// (name → any JSON value) written into the module as TFVarsFile before
@@ -426,7 +426,7 @@ func Script(a Apply) string {
 	// state operation — addresses the same workspace. The s3 backend keys a
 	// non-default workspace's state under env:/<workspace>/<key>. Managed
 	// state has no OpenTofu workspaces (the `http` backend doesn't support
-	// them): the workspace is part of its address instead.
+	// them), and validation refuses one for it.
 	if a.Workspace != "" && a.Backend != BackendSpacefleet {
 		fmt.Fprintf(&b, "tofu workspace select -or-create=true %s\n", shQuote(a.Workspace))
 	}

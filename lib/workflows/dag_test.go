@@ -692,7 +692,7 @@ func TestValidateTerraformConfig_UseLockfileNeedsNativeLocking(t *testing.T) {
 
 // TestValidateTerraformConfig_WorkspaceAndTFVars: an optional workspace must
 // be a safe token (it is shell-quoted into the script and becomes part of
-// the state key), and expose_tf_vars must be a boolean string.
+// the state key), and typed inputs must be an object keyed by identifiers.
 func TestValidateTerraformConfig_WorkspaceAndTFVars(t *testing.T) {
 	t.Parallel()
 	node := func(extra map[string]string) ComponentInput {
@@ -715,14 +715,6 @@ func TestValidateTerraformConfig_WorkspaceAndTFVars(t *testing.T) {
 		if err := validateTerraformConfig(node(map[string]string{terraformConfigWorkspace: ws})); !errors.Is(err, ErrInvalidConfig) {
 			t.Errorf("workspace %q: err = %v, want ErrInvalidConfig", ws, err)
 		}
-	}
-	for _, v := range []string{"", "true", "false"} {
-		if err := validateTerraformConfig(node(map[string]string{terraformConfigExposeTFVars: v})); err != nil {
-			t.Errorf("expose_tf_vars %q: unexpected error %v", v, err)
-		}
-	}
-	if err := validateTerraformConfig(node(map[string]string{terraformConfigExposeTFVars: "yes"})); !errors.Is(err, ErrInvalidConfig) {
-		t.Errorf("expose_tf_vars yes: err = %v, want ErrInvalidConfig", err)
 	}
 	// Typed inputs: any JSON object keyed by identifiers; not an object, or
 	// a key no variable block could carry, is rejected.
@@ -795,13 +787,9 @@ func TestValidateTerraformConfig_ManagedState(t *testing.T) {
 	if err := validateOneStage([]ComponentInput{managed(map[string]string{terraformConfigBackendConfig: "{}"})}); err != nil {
 		t.Errorf("managed state with an empty settings object: %v", err)
 	}
-	if err := validateOneStage([]ComponentInput{managed(map[string]string{terraformConfigWorkspace: "prod.eu"})}); err != nil {
-		t.Errorf("managed state with a workspace: %v", err)
-	}
 	for name, extra := range map[string]map[string]string{
-		"settings":       {terraformConfigBackendConfig: `{"address":"https://elsewhere"}`},
-		"workspace '.'":  {terraformConfigWorkspace: "."},
-		"workspace '..'": {terraformConfigWorkspace: ".."},
+		"settings":  {terraformConfigBackendConfig: `{"address":"https://elsewhere"}`},
+		"workspace": {terraformConfigWorkspace: "prod"},
 	} {
 		if err := validateOneStage([]ComponentInput{managed(extra)}); !errors.Is(err, ErrInvalidConfig) {
 			t.Errorf("%s: err = %v, want ErrInvalidConfig", name, err)

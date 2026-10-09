@@ -259,9 +259,9 @@ func (w *WorkflowRunWorker) planTofu(ctx context.Context, app *ent.Application, 
 		DynamoDBLockTable:  s3LockTable(node.Config[terraformConfigBackend], backendConfig),
 		DynamoDBLockRegion: backendConfig[s3BackendKeyRegion],
 		PullsChart:         pullsChart,
-		// Opt-in: the component's resolved variables double as the module's
-		// TF_VAR_ inputs (validated at write time to "true"/"false"/"").
-		ExposeTFVars: node.Config[terraformConfigExposeTFVars] == "true",
+		// The component's resolved variables double as the module's TF_VAR_
+		// inputs; OpenTofu ignores any the module doesn't declare.
+		ExposeTFVars: true,
 	})
 	if err != nil {
 		return tekton.RunRequest{}, err
@@ -426,7 +426,9 @@ func (w *WorkflowRunWorker) managedStateAccess(app *ent.Application, node GraphN
 	if recordsTofuState(action, node) {
 		scope = tofustate.ScopeWrite
 	}
-	workspace := tofustate.WorkspaceName(node.Config[terraformConfigWorkspace])
+	// Managed state takes no workspace (validation refuses one): the
+	// component's state is always its default workspace.
+	workspace := tofustate.DefaultWorkspace
 	token, err = m.Signer.Sign(tofustate.Claims{
 		OrgID:          app.OrganizationID,
 		ApplicationID:  app.ID,

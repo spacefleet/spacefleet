@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
+  AlertTriangle,
   ArrowLeft,
   FileCode,
   Layers,
   Package,
   Plus,
   Save,
+  X,
 } from "lucide-react";
 import {
   useWorkflowDraft,
@@ -33,9 +35,9 @@ interface DropTarget {
 // A workflow is an ordered list of stages, shown as columns left to right; the
 // components in a stage run in parallel, and each stage starts once the one
 // before it has finished. Editors rename, reorder, add, and delete stages, add
-// components to a stage, and move components within or between stages (drag
-// and drop, or the card's menu). Clicking a component opens the full-page
-// editor. Every change auto-saves the whole workflow with one PUT. Runs are
+// components to a stage, and drag components within or between stages.
+// Clicking a component opens the full-page editor, which is also where it's
+// deleted. Every change auto-saves the whole workflow with one PUT. Runs are
 // started (and their history viewed) from the application page, not here.
 export function WorkflowBuilder() {
   const { appId = "" } = useParams();
@@ -50,7 +52,6 @@ export function WorkflowBuilder() {
     saveError,
     backendChange,
     confirmBackendChange,
-    varFlushError,
     saving,
     saved,
     addStage,
@@ -59,9 +60,7 @@ export function WorkflowBuilder() {
     moveStage,
     addComponent,
     moveComponent,
-    deleteComponent,
     isProvisional,
-    discardNewNode,
     save,
   } = useWorkflowDraft();
   useDocumentTitle("Workflow", appName);
@@ -101,14 +100,6 @@ export function WorkflowBuilder() {
     endDrag();
   }, [dragId, dropTarget, stages, moveComponent, endDrag]);
 
-  const removeComponent = useCallback(
-    (id: string) => {
-      if (isProvisional(id)) discardNewNode(id);
-      else deleteComponent(id);
-    },
-    [isProvisional, discardNewNode, deleteComponent],
-  );
-
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-3 pb-3">
@@ -116,20 +107,20 @@ export function WorkflowBuilder() {
           <button
             type="button"
             onClick={() => navigate(`/applications/${appId}`)}
-            className="inline-flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-900"
+            className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to application
           </button>
           <h1 className="mt-1 text-xl font-bold tracking-tight">Workflow</h1>
-          <p className="mt-1 text-sm text-neutral-600">
+          <p className="mt-1 text-sm text-neutral-300">
             Stages run left to right, each once the one before it has
             finished. The components in a stage run in parallel.
           </p>
         </div>
         {canEdit && (
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <span className="text-xs text-neutral-400">
+            <span className="text-xs text-neutral-500">
               {saving
                 ? "Saving…"
                 : saved
@@ -141,7 +132,7 @@ export function WorkflowBuilder() {
               onClick={() => void save()}
               disabled={saving}
               title="Changes save automatically — click to save now"
-              className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
             >
               <Save className="h-3.5 w-3.5" />
               {saving ? "Saving…" : "Save"}
@@ -150,46 +141,43 @@ export function WorkflowBuilder() {
         )}
       </div>
 
-      {saveError && <p className="pb-2 text-sm text-red-600">{saveError}</p>}
+      {saveError && <p className="pb-2 text-sm text-red-400">{saveError}</p>}
       {backendChange && (
         <div
           role="alert"
-          className="mb-3 border border-amber-200 bg-amber-50 p-4"
+          className="mb-3 border border-amber-500/30 bg-amber-500/10 p-4"
         >
-          <p className="text-sm font-medium text-amber-900">
+          <p className="text-sm font-medium text-amber-200">
             Not saved — this moves existing OpenTofu state
           </p>
-          <p className="mt-1 text-sm text-amber-800">
+          <p className="mt-1 text-sm text-amber-300">
             A component you changed still manages resources in its current
             state backend. The new backend starts empty, so the next run would
             plan to create everything again. Destroy the resources first (or
             switch the backend back), unless you have already moved the state
             yourself.
           </p>
-          <p className="mt-1 text-xs text-amber-700">{backendChange}</p>
+          <p className="mt-1 text-xs text-amber-300">{backendChange}</p>
           <button
             type="button"
             onClick={() => void confirmBackendChange()}
             disabled={saving}
-            className="mt-3 border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+            className="mt-3 border border-amber-400 bg-neutral-900 px-3 py-1.5 text-sm font-medium text-amber-200 hover:bg-amber-500/15 disabled:opacity-50"
           >
             Switch the backend anyway
           </button>
         </div>
       )}
-      {varFlushError && (
-        <p className="pb-2 text-sm text-amber-700">{varFlushError}</p>
-      )}
 
       {loading ? (
-        <p className="text-sm text-neutral-500">Loading…</p>
+        <p className="text-sm text-neutral-400">Loading…</p>
       ) : error ? (
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm text-red-400">{error}</p>
       ) : (
-        <div className="overflow-x-auto border border-neutral-200 bg-white">
+        <div className="overflow-x-auto border border-neutral-800 bg-neutral-900">
           <div className="flex w-max min-w-full items-start p-4">
             {stages.length === 0 && !canEdit && (
-              <p className="text-sm text-neutral-500">No components yet.</p>
+              <p className="text-sm text-neutral-400">No components yet.</p>
             )}
             {stages.map((stage, i) => (
               <div key={stage.id} className="flex items-start">
@@ -198,8 +186,6 @@ export function WorkflowBuilder() {
                   stage={stage}
                   index={i}
                   stageCount={stages.length}
-                  prevStage={stages[i - 1]}
-                  nextStage={stages[i + 1]}
                   canEdit={canEdit}
                   clusterName={clusterName}
                   isProvisional={isProvisional}
@@ -214,8 +200,6 @@ export function WorkflowBuilder() {
                   onDelete={() => deleteStage(stage.id)}
                   onAdd={(type) => addComponent(stage.id, type)}
                   onOpen={(id) => navigate(`nodes/${id}`)}
-                  onMoveComponent={moveComponent}
-                  onRemoveComponent={removeComponent}
                 />
               </div>
             ))}
@@ -225,7 +209,7 @@ export function WorkflowBuilder() {
                 <button
                   type="button"
                   onClick={addStage}
-                  className="flex h-24 w-48 shrink-0 items-center justify-center gap-1.5 border border-dashed border-neutral-300 text-sm text-neutral-500 hover:border-neutral-500 hover:text-neutral-900"
+                  className="flex h-24 w-48 shrink-0 items-center justify-center gap-1.5 border border-dashed border-neutral-700 text-sm text-neutral-400 hover:border-neutral-500 hover:text-neutral-100"
                 >
                   <Plus className="h-4 w-4" />
                   Add stage
@@ -245,8 +229,6 @@ function StageColumn({
   stage,
   index,
   stageCount,
-  prevStage,
-  nextStage,
   canEdit,
   clusterName,
   isProvisional,
@@ -261,14 +243,10 @@ function StageColumn({
   onDelete,
   onAdd,
   onOpen,
-  onMoveComponent,
-  onRemoveComponent,
 }: {
   stage: DraftStage;
   index: number;
   stageCount: number;
-  prevStage?: DraftStage;
-  nextStage?: DraftStage;
   canEdit: boolean;
   clusterName: (id: string) => string | undefined;
   isProvisional: (id: string) => boolean;
@@ -283,8 +261,6 @@ function StageColumn({
   onDelete: () => void;
   onAdd: (type: EditableComponent["type"]) => void;
   onOpen: (id: string) => void;
-  onMoveComponent: (id: string, toStageId: string, toIndex: number) => void;
-  onRemoveComponent: (id: string) => void;
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const count = stage.components.length;
@@ -302,17 +278,17 @@ function StageColumn({
   return (
     <section
       aria-label={`Stage ${stage.name}`}
-      className="flex w-72 shrink-0 flex-col border border-neutral-200 bg-neutral-50"
+      className="flex w-72 shrink-0 flex-col border border-neutral-800 bg-neutral-900/40"
     >
-      <header className="flex items-start justify-between gap-2 border-b border-neutral-200 px-3 py-2">
+      <header className="flex items-start justify-between gap-2 bg-neutral-800/60 px-3 py-2">
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-neutral-500">
             Stage {index + 1}
           </p>
           {canEdit ? (
             <StageNameInput name={stage.name} onCommit={onRename} />
           ) : (
-            <h2 className="truncate text-sm font-semibold text-neutral-900">
+            <h2 className="truncate text-sm font-semibold text-neutral-100">
               {stage.name}
             </h2>
           )}
@@ -343,31 +319,14 @@ function StageColumn({
       </header>
 
       {confirmingDelete && (
-        <div className="border-b border-red-200 bg-red-50 px-3 py-2">
-          <p className="text-xs text-red-800">
-            Delete “{stage.name}” and its {count}{" "}
-            {count === 1 ? "component" : "components"}?
-          </p>
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setConfirmingDelete(false);
-                onDelete();
-              }}
-              className="bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700"
-            >
-              Delete stage
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirmingDelete(false)}
-              className="border border-neutral-300 bg-white px-2.5 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
+        <DeleteStageDialog
+          stage={stage}
+          onClose={() => setConfirmingDelete(false)}
+          onConfirm={() => {
+            setConfirmingDelete(false);
+            onDelete();
+          }}
+        />
       )}
 
       <div
@@ -380,7 +339,7 @@ function StageColumn({
         className="flex min-h-24 flex-1 flex-col gap-2 p-2"
       >
         {count === 0 && indicatorAt === null && (
-          <p className="px-1 py-2 text-xs text-neutral-400">
+          <p className="px-1 py-2 text-xs text-neutral-500">
             No components yet.
           </p>
         )}
@@ -394,10 +353,6 @@ function StageColumn({
               canEdit={canEdit}
               dragging={dragId === c.id}
               dragActive={dragId != null}
-              canMoveUp={i > 0}
-              canMoveDown={i < count - 1}
-              prevStage={prevStage}
-              nextStage={nextStage}
               onOpen={() => onOpen(c.id)}
               onDragStart={() => onDragStart(c.id)}
               onDragEnd={onDragEnd}
@@ -405,12 +360,6 @@ function StageColumn({
                 const at = after ? i + 1 : i;
                 if (indicatorAt !== at) onDragTarget({ stageId: stage.id, index: at });
               }}
-              onMoveUp={() => onMoveComponent(c.id, stage.id, i - 1)}
-              onMoveDown={() => onMoveComponent(c.id, stage.id, i + 1)}
-              onMoveToStage={(st) =>
-                onMoveComponent(c.id, st.id, st.components.length)
-              }
-              onRemove={() => onRemoveComponent(c.id)}
             />
           </div>
         ))}
@@ -419,11 +368,11 @@ function StageColumn({
       </div>
 
       {canEdit && (
-        <div className="border-t border-neutral-200 p-2">
+        <div className="p-2">
           <Dropdown
             align="left"
             label={`Add a component to ${stage.name}`}
-            triggerClassName="inline-flex items-center gap-1.5 px-1 py-1 text-sm text-neutral-600 hover:text-neutral-900"
+            triggerClassName="inline-flex items-center gap-1.5 px-1 py-1 text-sm text-neutral-300 hover:text-neutral-100"
             trigger={
               <>
                 <Plus className="h-3.5 w-3.5" />
@@ -454,13 +403,101 @@ function StageColumn({
   );
 }
 
-function DropIndicator() {
-  return <div aria-hidden="true" className="mb-2 h-0.5 bg-black" />;
+// DeleteStageDialog confirms deleting a stage that still holds components,
+// since they're deleted with it. (An empty stage is deleted without asking.)
+function DeleteStageDialog({
+  stage,
+  onConfirm,
+  onClose,
+}: {
+  stage: DraftStage;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const count = stage.components.length;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-stage-title"
+        className="mt-12 w-full max-w-lg border border-neutral-800 bg-neutral-900 shadow-lg"
+      >
+        <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
+          <h2
+            id="delete-stage-title"
+            className="inline-flex min-w-0 items-center gap-2 text-lg font-semibold tracking-tight"
+          >
+            <AlertTriangle className="h-5 w-5 shrink-0 text-red-400" />
+            <span className="truncate">Delete {stage.name}</span>
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-neutral-500 hover:text-neutral-300"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-3 px-5 py-4 text-sm text-neutral-300">
+          <p>
+            This removes the stage and its {count}{" "}
+            {count === 1 ? "component" : "components"} from the workflow,
+            along with their variables:
+          </p>
+          <ul className="list-disc space-y-1 pl-5">
+            {stage.components.map((c) => (
+              <li key={c.id} className="font-medium text-neutral-100">
+                {c.name || "(unnamed)"}
+              </li>
+            ))}
+          </ul>
+          <p className="text-neutral-400">
+            Anything they deployed stays as it is, and Spacefleet stops
+            managing it.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-neutral-800 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-neutral-400 hover:text-neutral-100"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+          >
+            Delete stage
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-// BuilderCard is one component in a stage: the card body opens the editor, the
-// whole card is draggable for an editor, and the menu offers the same moves
-// without dragging (and a delete).
+function DropIndicator() {
+  return <div aria-hidden="true" className="mb-2 h-0.5 bg-white" />;
+}
+
+// BuilderCard is one component in a stage: clicking it opens the editor, and
+// an editor drags it to reorder or move it to another stage. Not a <button>:
+// Firefox won't start a drag on one. It's still focusable and opens on
+// Enter/Space.
 function BuilderCard({
   component,
   summary,
@@ -468,18 +505,10 @@ function BuilderCard({
   canEdit,
   dragging,
   dragActive,
-  canMoveUp,
-  canMoveDown,
-  prevStage,
-  nextStage,
   onOpen,
   onDragStart,
   onDragEnd,
   onDragOverHalf,
-  onMoveUp,
-  onMoveDown,
-  onMoveToStage,
-  onRemove,
 }: {
   component: EditableComponent;
   summary: string;
@@ -489,22 +518,23 @@ function BuilderCard({
   // Whether one of the builder's cards is being dragged; drags from outside
   // (a file, text) are ignored.
   dragActive: boolean;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  prevStage?: DraftStage;
-  nextStage?: DraftStage;
   onOpen: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
   onDragOverHalf: (after: boolean) => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  onMoveToStage: (stage: DraftStage) => void;
-  onRemove: () => void;
 }) {
   return (
     <div
+      role="button"
+      tabIndex={0}
       draggable={canEdit}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
       onDragStart={(e) => {
         // Firefox only starts a drag when some data is set.
         e.dataTransfer?.setData("text/plain", component.id);
@@ -519,56 +549,15 @@ function BuilderCard({
         const rect = e.currentTarget.getBoundingClientRect();
         onDragOverHalf(e.clientY > rect.top + rect.height / 2);
       }}
-      className={`flex items-start border border-neutral-300 bg-white ${
-        canEdit ? "cursor-grab" : ""
+      className={`border border-neutral-700 bg-neutral-900 px-3 py-2 text-left hover:bg-neutral-800 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white ${
+        canEdit ? "cursor-grab" : "cursor-pointer"
       } ${dragging ? "opacity-40" : ""}`}
     >
-      {/* Not a <button>: Firefox won't start a drag on one, and the body is
-          most of the card. It's still focusable and opens on Enter/Space. */}
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={onOpen}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onOpen();
-          }
-        }}
-        className="min-w-0 flex-1 px-3 py-2 text-left hover:bg-neutral-50 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-black"
-      >
-        <ComponentCardContent
-          component={component}
-          summary={summary}
-          isNew={isNew}
-        />
-      </div>
-      {canEdit && (
-        <div className="pr-1 pt-1.5">
-          <ActionsMenu
-            label={`${component.name} actions`}
-            items={[
-              { label: "Move up", disabled: !canMoveUp, onSelect: onMoveUp },
-              {
-                label: "Move down",
-                disabled: !canMoveDown,
-                onSelect: onMoveDown,
-              },
-              {
-                label: "Move to previous stage",
-                disabled: !prevStage,
-                onSelect: () => prevStage && onMoveToStage(prevStage),
-              },
-              {
-                label: "Move to next stage",
-                disabled: !nextStage,
-                onSelect: () => nextStage && onMoveToStage(nextStage),
-              },
-              { label: "Delete component", danger: true, onSelect: onRemove },
-            ]}
-          />
-        </div>
-      )}
+      <ComponentCardContent
+        component={component}
+        summary={summary}
+        isNew={isNew}
+      />
     </div>
   );
 }
@@ -620,7 +609,7 @@ function StageNameInput({
           e.currentTarget.blur();
         }
       }}
-      className="-ml-1 w-full border border-transparent bg-transparent px-1 text-sm font-semibold text-neutral-900 hover:border-neutral-300 focus:border-black focus:bg-white focus:outline-none"
+      className="-ml-1 w-full border border-transparent bg-transparent px-1 text-sm font-semibold text-neutral-100 hover:border-neutral-700 focus:border-white focus:bg-neutral-900 focus:outline-none"
     />
   );
 }

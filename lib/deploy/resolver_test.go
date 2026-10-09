@@ -345,12 +345,12 @@ func TestResolve_DynamoLockTable_NoCredential(t *testing.T) {
 	}
 }
 
-// TestResolve_ExposeTFVars confirms the opt-in TF_VAR_ mapping: every
+// TestResolve_ExposeTFVars confirms the TF_VAR_ mapping: every
 // resolved variable is also exported under its TF_VAR_ name in the map its
 // sensitivity puts it in, an explicit TF_VAR_x (in either map) beats the copy
 // derived from x, already-prefixed names are not prefixed twice, the
-// credential-derived AWS_REGION is not mapped, and without the opt-in nothing
-// changes.
+// credential-derived AWS_REGION is not mapped, and without it (a non-OpenTofu
+// component) nothing changes.
 func TestResolve_ExposeTFVars(t *testing.T) {
 	t.Parallel()
 
@@ -408,10 +408,10 @@ func TestResolve_ExposeTFVars(t *testing.T) {
 	in.ExposeTFVars = false
 	out, err = r.Resolve(context.Background(), in)
 	if err != nil {
-		t.Fatalf("Resolve (no opt-in): %v", err)
+		t.Fatalf("Resolve (not exposed): %v", err)
 	}
 	if _, ok := out.Env["TF_VAR_region"]; ok {
-		t.Errorf("without the opt-in no TF_VAR_ copies must be made: %v", out.Env)
+		t.Errorf("unexposed, no TF_VAR_ copies must be made: %v", out.Env)
 	}
 }
 

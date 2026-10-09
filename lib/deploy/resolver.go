@@ -140,7 +140,7 @@ type RunInputs struct {
 	// PullsChart is false only for uninstall (which pulls nothing), so the chart
 	// credential and git token are skipped.
 	PullsChart bool
-	// ExposeTFVars, for a terraform component that opted in, additionally
+	// ExposeTFVars, set for every terraform component, additionally
 	// exports every resolved variable NAME as TF_VAR_NAME — the environment
 	// form OpenTofu reads a root-module input variable from — so the group /
 	// app / component variables become the module's inputs without a tfvars

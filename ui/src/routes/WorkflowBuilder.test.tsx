@@ -352,7 +352,18 @@ describe("WorkflowBuilder", () => {
     expect(screen.queryByText(/isn’t in this workflow/i)).not.toBeInTheDocument();
     expect(screen.getByText(/in stage 2, Apps/)).toBeInTheDocument();
     // It's a terraform component: the OpenTofu working-path field is present.
-    expect(screen.getByText(/holding the OpenTofu files/i)).toBeInTheDocument();
+    expect(screen.getByText("Working path")).toBeInTheDocument();
+    // Variables wait until the component is saved — they're managed on its page.
+    expect(screen.queryByText(/Saved separately from the settings above/)).not.toBeInTheDocument();
+  });
+
+  it("offers a saved component's variables on its page", async () => {
+    defaultGets(twoStages);
+    renderWorkflow();
+    await userEvent.click(await screen.findByText("infra"));
+    expect(
+      await screen.findByText(/Saved separately from the settings above/),
+    ).toBeInTheDocument();
   });
 
   it("offers only OpenTofu components of earlier stages as output references", async () => {
@@ -435,46 +446,27 @@ describe("WorkflowBuilder", () => {
     defaultGets(twoStages);
     renderWorkflow();
     await screen.findByText("release");
-    await userEvent.click(screen.getByRole("button", { name: "Stage Apps actions" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "Delete stage" }));
+    const openDialog = async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Stage Apps actions" }));
+      await userEvent.click(screen.getByRole("menuitem", { name: "Delete stage" }));
+      return screen.getByRole("dialog", { name: "Delete Apps" });
+    };
 
-    // Nothing is gone until the inline confirmation is accepted.
-    expect(screen.getByText(/Delete “Apps” and its 2 components\?/)).toBeInTheDocument();
+    // Nothing is gone until the dialog is confirmed; Escape backs out.
+    let dialog = await openDialog();
+    expect(within(dialog).getByText(/its 2 components/)).toBeInTheDocument();
+    expect(within(dialog).getByText("release")).toBeInTheDocument();
+    expect(within(dialog).getByText("apply")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByText("release")).toBeInTheDocument();
-    await userEvent.click(
-      within(stageColumn("Apps")).getByRole("button", { name: "Delete stage" }),
-    );
+
+    dialog = await openDialog();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete stage" }));
 
     expect(screen.queryByText("release")).not.toBeInTheDocument();
     await waitForPut();
     expect(lastPut().map((s) => s.name)).toEqual(["Infrastructure"]);
-  });
-
-  it("moves a component to the next stage from its menu", async () => {
-    defaultGets(twoStages);
-    renderWorkflow();
-    await screen.findByText("release");
-    await userEvent.click(screen.getByRole("button", { name: "infra actions" }));
-    // It's the only component of the first stage: nothing above or below it,
-    // and no earlier stage.
-    expect(screen.getByRole("menuitem", { name: "Move up" })).toBeDisabled();
-    expect(screen.getByRole("menuitem", { name: "Move to previous stage" })).toBeDisabled();
-    await userEvent.click(screen.getByRole("menuitem", { name: "Move to next stage" }));
-
-    expect(within(stageColumn("Apps")).getByText("infra")).toBeInTheDocument();
-    await waitForPut();
-    expect(lastPut()[0].components).toEqual([]);
-    expect(lastPut()[1].components.map((c) => c.name)).toEqual(["release", "apply", "infra"]);
-  });
-
-  it("reorders components within a stage from the card menu", async () => {
-    defaultGets(twoStages);
-    renderWorkflow();
-    await screen.findByText("release");
-    await userEvent.click(screen.getByRole("button", { name: "release actions" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "Move down" }));
-    await waitForPut();
-    expect(lastPut()[1].components.map((c) => c.name)).toEqual(["apply", "release"]);
   });
 
   it("drags a component into another stage", async () => {
@@ -582,6 +574,7 @@ describe("OpenTofu component editor", () => {
   it("the Cluster authentication select writes auth_cluster_id (not a deploy target)", async () => {
     defaultGets(twoStages);
     await openTerraformEditor();
+    await userEvent.click(screen.getByRole("button", { name: /^Credentials/ }));
 
     const auth = selectWithOption(/^prod$/);
     expect(auth.value).toBe("");
@@ -643,6 +636,7 @@ describe("OpenTofu component editor", () => {
       { id: "cc-gcp", name: "prod-gcp", provider: "gcp", config: {} },
     ]);
     await openTerraformEditor();
+    await userEvent.click(screen.getByRole("button", { name: /^Credentials/ }));
 
     const picker = selectWithOption(/use the runner's identity/i);
     const optionLabels = Array.from(picker.options).map((o) => o.textContent);
