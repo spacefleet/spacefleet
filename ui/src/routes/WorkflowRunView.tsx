@@ -11,7 +11,15 @@ import {
   useParams,
   useSearchParams,
 } from "react-router";
-import { ArrowLeft, Ban, Check, Maximize2, Minimize2, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Ban,
+  Check,
+  Maximize2,
+  Minimize2,
+  Trash2,
+  X,
+} from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import { useObjectStream } from "../lib/useObjectStream";
@@ -21,6 +29,7 @@ import { usePodLogs } from "../lib/usePodLogs";
 import type { components } from "../api/schema";
 import { formatDuration } from "../lib/duration";
 import { DiffView } from "../components/DiffView";
+import { DeleteApplicationDialog } from "../components/DeleteApplicationDialog";
 import { TypeBadge } from "../components/workflow/TypeBadge";
 import {
   ComponentStatusIcon,
@@ -335,6 +344,17 @@ export function WorkflowRunView() {
           {cancelError && (
             <p className="pb-2 text-sm text-red-600">{cancelError}</p>
           )}
+          {canApprove &&
+            run.action === "uninstall" &&
+            run.status === "succeeded" &&
+            !run.scope &&
+            appName && (
+              <DeleteAfterUninstall
+                appId={appId}
+                appName={appName}
+                runId={runId}
+              />
+            )}
 
           {/* The rail of stages → components → steps on the left (above, on a
               narrow screen) and the selected step's pane filling the rest.
@@ -1173,6 +1193,64 @@ function PolicyVerdictBox({ verdict }: { verdict: PolicyVerdict }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+// DeleteAfterUninstall offers the application's delete once its uninstall has
+// succeeded — the second half of the Delete dialog's "Uninstall it first"
+// (which only starts the uninstall: it is an ordinary run and may wait on
+// approvals). Shown only while this uninstall is still the application's
+// latest run; after a later deploy the offer would be wrong.
+function DeleteAfterUninstall({
+  appId,
+  appName,
+  runId,
+}: {
+  appId: string;
+  appName: string;
+  runId: string;
+}) {
+  const navigate = useNavigate();
+  const [isLatest, setIsLatest] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { data } = await api.GET("/api/applications/{id}/runs", {
+        params: { path: { id: appId } },
+      });
+      if (!cancelled) setIsLatest(data?.runs?.[0]?.id === runId);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [appId, runId]);
+
+  if (!isLatest) return null;
+  return (
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border border-neutral-200 bg-white px-4 py-3">
+      <p className="text-sm text-neutral-700">
+        Everything <span className="font-medium">{appName}</span> deployed has
+        been uninstalled. You can delete the application now.
+      </p>
+      <button
+        type="button"
+        onClick={() => setDeleting(true)}
+        className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        Delete application
+      </button>
+      {deleting && (
+        <DeleteApplicationDialog
+          app={{ id: appId, name: appName }}
+          afterUninstall
+          onClose={() => setDeleting(false)}
+          onDeleted={() => navigate("/applications")}
+        />
+      )}
     </div>
   );
 }

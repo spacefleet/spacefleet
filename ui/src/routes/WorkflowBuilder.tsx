@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   FileCode,
   Layers,
-  MoreVertical,
   Package,
   Plus,
   Save,
@@ -14,6 +13,7 @@ import {
   type DraftStage,
 } from "../contexts/WorkflowDraftContext";
 import { Dropdown } from "../components/Dropdown";
+import { ActionsMenu } from "../components/ActionsMenu";
 import {
   ComponentCardContent,
   StageConnector,
@@ -318,10 +318,8 @@ function StageColumn({
           )}
         </div>
         {canEdit && (
-          <Dropdown
+          <ActionsMenu
             label={`Stage ${stage.name} actions`}
-            triggerClassName="p-1 text-neutral-400 hover:text-neutral-900"
-            trigger={<MoreVertical className="h-4 w-4" />}
             items={[
               {
                 label: "Move left",
@@ -547,10 +545,8 @@ function BuilderCard({
       </div>
       {canEdit && (
         <div className="pr-1 pt-1.5">
-          <Dropdown
+          <ActionsMenu
             label={`${component.name} actions`}
-            triggerClassName="p-1 text-neutral-400 hover:text-neutral-900"
-            trigger={<MoreVertical className="h-4 w-4" />}
             items={[
               { label: "Move up", disabled: !canMoveUp, onSelect: onMoveUp },
               {

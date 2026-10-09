@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -108,6 +108,15 @@ function renderDetail() {
     <MemoryRouter initialEntries={["/applications/app-1"]}>
       <Routes>
         <Route path="/applications/:appId" element={<ApplicationDetail />} />
+        <Route path="/applications" element={<div>applications list</div>} />
+        <Route
+          path="/applications/:appId/edit"
+          element={<div>edit application</div>}
+        />
+        <Route
+          path="/applications/:appId/variables"
+          element={<div>variables page</div>}
+        />
         <Route
           path="/applications/:appId/workflow"
           element={<div>workflow builder</div>}
@@ -163,6 +172,49 @@ describe("ApplicationDetail overview", () => {
     expect(await screen.findByText("workflow builder")).toBeInTheDocument();
   });
 
+  it("links the full run history from the latest run, not the workflow card", async () => {
+    renderDetail();
+    await screen.findByText("web");
+    expect(screen.queryByRole("button", { name: /run history/i })).toBeNull();
+    expect(screen.getByRole("link", { name: "View all runs" })).toHaveAttribute(
+      "href",
+      "/runs?application=app-1",
+    );
+  });
+
+  it("leaves trigger settings to the edit form", async () => {
+    renderDetail();
+    await screen.findByText("web");
+    expect(screen.queryByLabelText("On push")).toBeNull();
+    expect(screen.queryByLabelText("Plan pull requests")).toBeNull();
+  });
+
+  it("opens Manage and Variables from the header, with Delete behind the actions menu", async () => {
+    renderDetail();
+    const menu = await screen.findByRole("button", { name: "web actions" });
+    // Variables live on their own page now, not on this one.
+    expect(screen.queryByText("No variables.")).toBeNull();
+
+    await userEvent.click(menu);
+    expect(screen.getAllByRole("menuitem").map((i) => i.textContent)).toEqual([
+      "Delete",
+    ]);
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    expect(
+      screen.getByRole("heading", { name: /delete web/i }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Variables" }));
+    expect(await screen.findByText("variables page")).toBeInTheDocument();
+  });
+
+  it("opens the application's settings from Manage", async () => {
+    renderDetail();
+    await userEvent.click(await screen.findByRole("button", { name: "Manage" }));
+    expect(await screen.findByText("edit application")).toBeInTheDocument();
+  });
+
   it("shows the workflow's stages and components, colored by the latest run", async () => {
     renderDetail();
     const charts = await screen.findByRole("region", { name: "Stage Charts" });
@@ -191,7 +243,7 @@ describe("ApplicationDetail overview", () => {
     expect(await screen.findByText("workflow builder")).toBeInTheDocument();
   });
 
-  it("starts a deploy run and navigates to the run view", async () => {
+  it("opens the Run dialog rather than deploying right away, then deploys from it", async () => {
     mockApi.POST.mockResolvedValue({
       data: { id: "run-9" },
       error: undefined,
@@ -199,7 +251,14 @@ describe("ApplicationDetail overview", () => {
     });
     renderDetail();
     await screen.findByText("web");
-    await userEvent.click(screen.getByRole("button", { name: /^deploy$/i }));
+    // The run options live in the dialog, not on the page.
+    expect(screen.queryByRole("checkbox", { name: /force workload roll/i })).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    expect(mockApi.POST).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog", { name: "Run web" });
+    await userEvent.click(within(dialog).getByRole("button", { name: /^run$/i }));
+
     expect(await screen.findByText("run view")).toBeInTheDocument();
     expect(mockApi.POST).toHaveBeenCalledWith(
       "/api/applications/{id}/runs",
@@ -207,7 +266,7 @@ describe("ApplicationDetail overview", () => {
     );
   });
 
-  it("sends force=true on deploy when the Force workload roll toggle is on", async () => {
+  it("sends force=true when Force workload roll is checked in the Run dialog", async () => {
     mockApi.POST.mockResolvedValue({
       data: { id: "run-9" },
       error: undefined,
@@ -215,10 +274,12 @@ describe("ApplicationDetail overview", () => {
     });
     renderDetail();
     await screen.findByText("web");
+    await userEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    const dialog = screen.getByRole("dialog", { name: "Run web" });
     await userEvent.click(
-      screen.getByRole("checkbox", { name: /force workload roll/i }),
+      within(dialog).getByRole("checkbox", { name: /force workload roll/i }),
     );
-    await userEvent.click(screen.getByRole("button", { name: /^deploy$/i }));
+    await userEvent.click(within(dialog).getByRole("button", { name: /^run$/i }));
     expect(await screen.findByText("run view")).toBeInTheDocument();
     expect(mockApi.POST).toHaveBeenCalledWith(
       "/api/applications/{id}/runs",
@@ -226,7 +287,18 @@ describe("ApplicationDetail overview", () => {
     );
   });
 
-  it("shows an in-progress message on a 409", async () => {
+  it("closes the Run dialog on Cancel without starting anything", async () => {
+    renderDetail();
+    await screen.findByText("web");
+    await userEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    await userEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(mockApi.POST).not.toHaveBeenCalled();
+  });
+
+  it("shows an in-progress message in the Run dialog on a 409", async () => {
     mockApi.POST.mockResolvedValue({
       data: undefined,
       error: { message: "conflict" },
@@ -234,7 +306,23 @@ describe("ApplicationDetail overview", () => {
     });
     renderDetail();
     await screen.findByText("web");
-    await userEvent.click(screen.getByRole("button", { name: /^deploy$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^run$/i }));
+    const dialog = screen.getByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: /^run$/i }));
+    expect(
+      await within(dialog).findByText(/a run is already in progress/i),
+    ).toBeInTheDocument();
+  });
+
+  it("shows an in-progress message on the page when a preview hits a 409", async () => {
+    mockApi.POST.mockResolvedValue({
+      data: undefined,
+      error: { message: "conflict" },
+      response: { status: 409 },
+    });
+    renderDetail();
+    await screen.findByText("web");
+    await userEvent.click(screen.getByRole("button", { name: /^preview$/i }));
     expect(
       await screen.findByText(/a run is already in progress/i),
     ).toBeInTheDocument();
@@ -299,60 +387,63 @@ describe("ApplicationDetail overview", () => {
   });
 });
 
-describe("triggers", () => {
-  it("saves the push trigger and pull-request plans on the application", async () => {
-    mockApi.PATCH.mockResolvedValueOnce({
-      data: { ...app, push_trigger: "deploy" },
-      error: undefined,
-      response: { status: 200 },
-    });
+describe("run row", () => {
+  it("leaves the refresh schedule to Manage", async () => {
     renderDetail();
     await screen.findByText("web");
-    const select = screen.getByLabelText("On push") as HTMLSelectElement;
-    expect(select.value).toBe("");
-    await userEvent.selectOptions(select, "deploy");
-    expect(mockApi.PATCH).toHaveBeenCalledWith(
-      "/api/applications/{id}",
-      expect.objectContaining({ body: { push_trigger: "deploy" } }),
-    );
-    await waitFor(() => expect(select.value).toBe("deploy"));
-
-    mockApi.PATCH.mockResolvedValueOnce({
-      data: { ...app, push_trigger: "deploy", pr_plans: true },
-      error: undefined,
-      response: { status: 200 },
-    });
-    const prPlans = screen.getByLabelText("Plan pull requests") as HTMLInputElement;
-    expect(prPlans.checked).toBe(false);
-    await userEvent.click(prPlans);
-    expect(mockApi.PATCH).toHaveBeenLastCalledWith(
-      "/api/applications/{id}",
-      expect.objectContaining({ body: { pr_plans: true } }),
-    );
-    await waitFor(() => expect(prPlans.checked).toBe(true));
+    expect(screen.queryByLabelText(/refresh schedule|scheduled refresh/i)).toBeNull();
   });
-});
 
-describe("drift schedule", () => {
-  it("saves the drift-check interval on the application and reflects it", async () => {
-    mockApi.PATCH.mockResolvedValue({
-      data: { ...app, drift_interval_minutes: 1440 },
-      error: undefined,
-      response: { status: 200 },
-    });
+  it("has no Uninstall in the run row — it lives in the Delete dialog", async () => {
     renderDetail();
     await screen.findByText("web");
-    const select = screen.getByLabelText("Drift check schedule") as HTMLSelectElement;
-    expect(select.value).toBe("0");
-    await userEvent.selectOptions(select, "1440");
-    expect(mockApi.PATCH).toHaveBeenCalledWith(
-      "/api/applications/{id}",
-      expect.objectContaining({ body: { drift_interval_minutes: 1440 } }),
-    );
-    await waitFor(() => expect(select.value).toBe("1440"));
+    expect(screen.queryByRole("button", { name: /uninstall/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: "More run actions" })).toBeNull();
   });
 
-  it("starts a drift check from the Check drift button", async () => {
+  it("starts an uninstall from the Delete dialog and opens its run instead of deleting", async () => {
+    mockApi.POST.mockResolvedValue({
+      data: { id: "run-9" },
+      error: undefined,
+      response: { status: 202 },
+    });
+    renderDetail();
+    await userEvent.click(await screen.findByRole("button", { name: "web actions" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    const dialog = screen.getByRole("dialog", { name: /delete web/i });
+    // Nothing is preselected: both choices are destructive in their own way.
+    const confirm = within(dialog).getByRole("button", { name: "Delete" });
+    expect(confirm).toBeDisabled();
+
+    await userEvent.click(within(dialog).getByRole("radio", { name: /uninstall it first/i }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Start uninstall" }));
+
+    expect(await screen.findByText("run view")).toBeInTheDocument();
+    expect(mockApi.POST).toHaveBeenCalledWith(
+      "/api/applications/{id}/runs",
+      expect.objectContaining({ body: { action: "uninstall" } }),
+    );
+    expect(mockApi.DELETE).not.toHaveBeenCalled();
+  });
+
+  it("deletes right away when leaving everything running", async () => {
+    mockApi.DELETE.mockResolvedValue({ data: undefined, error: undefined });
+    renderDetail();
+    await userEvent.click(await screen.findByRole("button", { name: "web actions" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    const dialog = screen.getByRole("dialog", { name: /delete web/i });
+    await userEvent.click(within(dialog).getByRole("radio", { name: /leave it running/i }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    expect(await screen.findByText("applications list")).toBeInTheDocument();
+    expect(mockApi.DELETE).toHaveBeenCalledWith(
+      "/api/applications/{id}",
+      expect.objectContaining({ params: { path: { id: "app-1" } } }),
+    );
+    expect(mockApi.POST).not.toHaveBeenCalled();
+  });
+
+  it("starts a drift check from the Refresh button", async () => {
     mockApi.POST.mockResolvedValue({
       data: { id: "run-9" },
       error: undefined,
@@ -360,7 +451,7 @@ describe("drift schedule", () => {
     });
     renderDetail();
     await screen.findByText("web");
-    await userEvent.click(screen.getByRole("button", { name: /check drift/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^refresh$/i }));
     expect(mockApi.POST).toHaveBeenCalledWith(
       "/api/applications/{id}/runs",
       expect.objectContaining({ body: { action: "drift" } }),

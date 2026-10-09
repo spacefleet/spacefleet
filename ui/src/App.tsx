@@ -11,6 +11,7 @@ import { Applications } from "./routes/Applications";
 import { ApplicationForm } from "./routes/ApplicationForm";
 import { ImportApplication } from "./routes/ImportApplication";
 import { ApplicationDetail } from "./routes/ApplicationDetail";
+import { ApplicationVariables } from "./routes/ApplicationVariables";
 import { ApplicationGroupDetail } from "./routes/ApplicationGroupDetail";
 import { WorkflowLayout } from "./routes/WorkflowLayout";
 import { WorkflowBuilder } from "./routes/WorkflowBuilder";
@@ -105,7 +106,7 @@ export function App() {
                   ))}
                 {/* Application create/edit: the full-page form, reached from the
                     Applications leaf's "Create app" button and the detail page's
-                    "Edit" button. "/new" is listed before the ":appId" detail
+                    "Manage" button. "/new" is listed before the ":appId" detail
                     route below so it isn't captured as an app id. */}
                 <Route path="/applications/new" element={<ApplicationForm />} />
                 {/* Import: the discovery step (pick a cluster, list its Helm
@@ -125,6 +126,12 @@ export function App() {
                 <Route
                   path="/applications/:appId/edit"
                   element={<ApplicationForm />}
+                />
+                {/* The application's variables page (the detail page's
+                    "Variables" button). */}
+                <Route
+                  path="/applications/:appId/variables"
+                  element={<ApplicationVariables />}
                 />
                 {/* Workflow builder: a layout route owning the in-memory draft
                     (so unsaved edits survive builder↔editor navigation), with the

@@ -176,9 +176,55 @@ describe("ApplicationForm edit mode", () => {
     await waitFor(() =>
       expect(mockApi.PATCH).toHaveBeenCalledWith("/api/applications/{id}", {
         params: { path: { id: "app-1" } },
-        body: { name: "web2" },
+        body: { name: "web2", push_trigger: "", pr_plans: false, drift_interval_minutes: 0 },
       }),
     );
     expect(navigate).toHaveBeenCalledWith("/applications/app-1");
+  });
+  it("hydrates and saves the run triggers and the refresh schedule", async () => {
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/clusters")
+        return Promise.resolve({ data: [runner], error: undefined });
+      if (path === "/api/applications/{id}")
+        return Promise.resolve({
+          data: {
+            ...existingApp,
+            push_trigger: "preview",
+            pr_plans: false,
+            drift_interval_minutes: 60,
+          },
+          error: undefined,
+        });
+      return Promise.resolve({ data: [], error: undefined });
+    });
+    mockApi.PATCH.mockResolvedValue({ data: existingApp, error: undefined });
+    renderEdit();
+
+    const onPush = (await screen.findByLabelText("On push")) as HTMLSelectElement;
+    expect(onPush.value).toBe("preview");
+    await userEvent.selectOptions(onPush, "deploy");
+    await userEvent.click(screen.getByLabelText("Plan pull requests"));
+    const schedule = screen.getByLabelText("Scheduled refresh") as HTMLSelectElement;
+    expect(schedule.value).toBe("60");
+    await userEvent.selectOptions(schedule, "1440");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mockApi.PATCH).toHaveBeenCalledWith("/api/applications/{id}", {
+        params: { path: { id: "app-1" } },
+        body: {
+          name: "web",
+          push_trigger: "deploy",
+          pr_plans: true,
+          drift_interval_minutes: 1440,
+        },
+      }),
+    );
+  });
+
+  it("shows no triggers when creating an application", async () => {
+    renderCreate();
+    await screen.findByRole("button", { name: "Create" });
+    expect(screen.queryByLabelText("On push")).toBeNull();
   });
 });

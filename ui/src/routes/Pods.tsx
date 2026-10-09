@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { AlertTriangle, Boxes, FileText, MoreVertical, Server } from "lucide-react";
+import { AlertTriangle, Boxes, FileText, Server } from "lucide-react";
 import { api } from "../api/client";
+import { ActionsMenu } from "../components/ActionsMenu";
 import { useOrg } from "../contexts/OrgContext";
 import {
   ALL,
@@ -242,7 +243,18 @@ export function Pods() {
                     className="px-4 py-3"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <RowActions onViewLogs={() => setLogsPod(p)} />
+                    <div className="flex justify-end">
+                      <ActionsMenu
+                        label="Pod actions"
+                        items={[
+                          {
+                            label: "View logs",
+                            icon: <FileText className="h-4 w-4" />,
+                            onSelect: () => setLogsPod(p),
+                          },
+                        ]}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -260,56 +272,6 @@ export function Pods() {
           containers={logsPod.containers.map((c) => c.name)}
           onClose={() => setLogsPod(null)}
         />
-      )}
-    </div>
-  );
-}
-
-// RowActions is the per-row kebab menu: a vertical 3-dot button that opens a
-// small action menu (currently just "View logs"). It manages its own open state
-// and closes on an outside click; clicks are stopped from bubbling so they
-// don't trigger the row's navigate-to-detail handler.
-function RowActions({ onViewLogs }: { onViewLogs: () => void }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
-  return (
-    <div ref={ref} className="relative flex justify-end">
-      <button
-        type="button"
-        aria-label="Pod actions"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((o) => !o);
-        }}
-        className="p-1 text-gray-400 hover:text-gray-900"
-      >
-        <MoreVertical className="h-4 w-4" />
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-10 mt-1 min-w-[9rem] border border-gray-200 bg-white py-1 shadow-lg">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              onViewLogs();
-            }}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-gray-50"
-          >
-            <FileText className="h-4 w-4" />
-            View logs
-          </button>
-        </div>
       )}
     </div>
   );

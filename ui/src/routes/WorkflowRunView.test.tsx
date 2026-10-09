@@ -7,7 +7,7 @@ import { useObjectStream } from "../lib/useObjectStream";
 import { usePodLogs } from "../lib/usePodLogs";
 
 vi.mock("../api/client", () => ({
-  api: { GET: vi.fn(), POST: vi.fn() },
+  api: { GET: vi.fn(), POST: vi.fn(), DELETE: vi.fn() },
 }));
 
 vi.mock("../contexts/OrgContext", () => ({
@@ -25,6 +25,7 @@ vi.mock("../lib/usePodLogs", () => ({
 const mockApi = api as unknown as {
   GET: ReturnType<typeof vi.fn>;
   POST: ReturnType<typeof vi.fn>;
+  DELETE: ReturnType<typeof vi.fn>;
 };
 const mockStream = useObjectStream as unknown as ReturnType<typeof vi.fn>;
 const mockPodLogs = usePodLogs as unknown as ReturnType<typeof vi.fn>;
@@ -93,6 +94,7 @@ function runViewTree(state?: { from: string }, search = "") {
           }
         />
         <Route path="/applications/:appId" element={<div>application page</div>} />
+        <Route path="/applications" element={<div>applications list</div>} />
         <Route path="/runs" element={<div>runs index</div>} />
       </Routes>
     </MemoryRouter>
@@ -203,6 +205,7 @@ beforeEach(() => {
   mockPodLogs.mockImplementation(() => ({ lines: [], status: "idle", ended: false, error: null }));
   mockApi.GET.mockReset();
   mockApi.POST.mockReset();
+  mockApi.DELETE.mockReset();
   mockStream.mockReset();
   mockStream.mockReturnValue({ value: null, status: "connecting", error: null });
 });
@@ -1012,5 +1015,61 @@ describe("WorkflowRunView", () => {
     rerender(runViewTree());
     expect(await screen.findByText("final logs captured")).toBeInTheDocument();
     expect(componentCalls).toBe(2);
+  });
+});
+
+describe("delete after uninstall", () => {
+  const uninstallDetail = { ...runDetail, action: "uninstall", status: "succeeded" };
+
+  function mockUninstall(
+    detail: Record<string, unknown>,
+    latestRunId: string,
+  ) {
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}/runs/{runId}")
+        return Promise.resolve({ data: detail, error: undefined });
+      if (path === "/api/applications/{id}/runs")
+        return Promise.resolve({ data: { runs: [{ id: latestRunId }] }, error: undefined });
+      if (path === "/api/applications/{id}")
+        return Promise.resolve({ data: { id: "app-1", name: "web" }, error: undefined });
+      return Promise.resolve({ data: undefined, error: undefined });
+    });
+  }
+
+  it("offers the delete once the uninstall succeeded, without asking about uninstalling again", async () => {
+    mockUninstall(uninstallDetail, "run-1");
+    mockApi.DELETE.mockResolvedValue({ data: undefined, error: undefined });
+    renderRunView();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete application" }));
+    const dialog = screen.getByRole("dialog", { name: /delete web/i });
+    expect(within(dialog).queryByRole("radio")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    expect(await screen.findByText("applications list")).toBeInTheDocument();
+    expect(mockApi.DELETE).toHaveBeenCalledWith(
+      "/api/applications/{id}",
+      expect.objectContaining({ params: { path: { id: "app-1" } } }),
+    );
+  });
+
+  it("makes no offer once a later run has superseded the uninstall", async () => {
+    mockUninstall(uninstallDetail, "run-2");
+    renderRunView();
+    await screen.findByRole("navigation", { name: "Run steps" });
+    await waitFor(() =>
+      expect(mockApi.GET).toHaveBeenCalledWith("/api/applications/{id}/runs", expect.anything()),
+    );
+    expect(screen.queryByRole("button", { name: "Delete application" })).toBeNull();
+  });
+
+  it("makes no offer for a single component's destroy", async () => {
+    mockUninstall(
+      { ...uninstallDetail, scope: { component_id: compA, component_name: "release" } },
+      "run-1",
+    );
+    renderRunView();
+    await screen.findByRole("navigation", { name: "Run steps" });
+    expect(screen.queryByRole("button", { name: "Delete application" })).toBeNull();
   });
 });

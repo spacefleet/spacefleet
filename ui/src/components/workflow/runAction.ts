@@ -50,3 +50,14 @@ export function runTriggerDescription(t: RunTrigger): string {
   }
   return `Triggered by a push to ${t.branch} on ${t.repo}${sha ? ` (${sha})` : ""}${by}`;
 }
+
+// runStartError is the message for a run that could not start: a 409 means
+// the application already has a run in flight; anything else carries the
+// server's message.
+export function runStartError(
+  error: { message?: string } | undefined,
+  status: number | undefined,
+): string {
+  if (status === 409) return "A run is already in progress for this application.";
+  return error?.message ?? "Could not start the run";
+}

@@ -1,25 +1,30 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import {
   ArrowLeft,
   History,
   Pencil,
   Play,
+  RefreshCw,
+  Settings,
   Trash2,
+  Variable,
   Workflow,
-  Webhook,
 } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import { useObjectStream } from "../lib/useObjectStream";
 import type { components } from "../api/schema";
-import { githubAppEnabled } from "../lib/appConfig";
 import { DeleteApplicationDialog } from "../components/DeleteApplicationDialog";
+import { ActionsMenu } from "../components/ActionsMenu";
+import { RunDialog } from "../components/RunDialog";
 import { RunStatusBadge } from "../components/workflow/status";
-import { runActionLabel } from "../components/workflow/runAction";
+import {
+  runActionLabel,
+  runStartError,
+} from "../components/workflow/runAction";
 import { WorkflowStagesOverview } from "../components/workflow/WorkflowStagesOverview";
 import { StageBar } from "../components/workflow/StageBar";
-import { VariablesEditor } from "../components/VariablesEditor";
 import { formatDuration } from "../lib/duration";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
@@ -27,8 +32,6 @@ type Application = components["schemas"]["Application"];
 type WorkflowRun = components["schemas"]["WorkflowRun"];
 type WorkflowRunDetail = components["schemas"]["WorkflowRunDetail"];
 type RunStatus = components["schemas"]["RunStatus"];
-type RunAction = components["schemas"]["RunAction"];
-type PushTrigger = components["schemas"]["PushTrigger"];
 
 // A run is terminal once it settles; only then is the badge final and the stream
 // closed. Mirrors WorkflowRunView's inFlight gating.
@@ -55,7 +58,7 @@ export function ApplicationDetail() {
   const [deleting, setDeleting] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
-  const [forceRoll, setForceRoll] = useState(false);
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,73 +119,29 @@ export function ApplicationDetail() {
       ? { ...latestRun, ...streamed }
       : latestRun;
 
-  // The scheduled drift-check interval lives on the application; saving it is
-  // a plain PATCH and the returned row replaces the local one.
-  const [savingDrift, setSavingDrift] = useState(false);
-  const setDriftInterval = useCallback(
-    async (minutes: number) => {
-      setSavingDrift(true);
-      setRunError(null);
-      const { data, error } = await api.PATCH("/api/applications/{id}", {
-        params: { path: { id: appId } },
-        body: { drift_interval_minutes: minutes },
-      });
-      setSavingDrift(false);
-      if (error || !data) {
-        setRunError(error?.message ?? "Could not save the drift schedule");
-        return;
-      }
-      setApp(data);
-    },
-    [appId],
-  );
 
-  // Run triggers (what a GitHub push or pull request starts) live on the
-  // application too; each control saves with the same PATCH-and-replace.
-  const [savingTriggers, setSavingTriggers] = useState(false);
-  const saveTriggers = useCallback(
-    async (body: { push_trigger?: PushTrigger; pr_plans?: boolean }) => {
-      setSavingTriggers(true);
-      setRunError(null);
-      const { data, error } = await api.PATCH("/api/applications/{id}", {
-        params: { path: { id: appId } },
-        body,
-      });
-      setSavingTriggers(false);
-      if (error || !data) {
-        setRunError(error?.message ?? "Could not save the triggers");
-        return;
-      }
-      setApp(data);
-    },
-    [appId],
-  );
 
   // Start a run against the saved workflow and jump to its live view. Runs are
   // started from here (not the workflow builder) — the builder only edits the
-  // workflow.
+  // workflow. A deploy goes through the Run dialog (its per-run options) and an
+  // uninstall through the Delete dialog; preview and refresh start straight
+  // from their buttons.
   const startRun = useCallback(
-    async (action: RunAction) => {
+    async (action: "preview" | "drift") => {
       setRunning(true);
       setRunError(null);
-      const body =
-        action === "deploy" ? { action, force: forceRoll } : { action };
       const { data, error, response } = await api.POST(
         "/api/applications/{id}/runs",
-        { params: { path: { id: appId } }, body },
+        { params: { path: { id: appId } }, body: { action } },
       );
       setRunning(false);
       if (error || !data) {
-        if (response?.status === 409) {
-          setRunError("A run is already in progress for this application.");
-        } else {
-          setRunError(error?.message ?? "Could not start the run");
-        }
+        setRunError(runStartError(error, response?.status));
         return;
       }
       navigate(`/applications/${appId}/runs/${data.id}`);
     },
-    [appId, forceRoll, navigate],
+    [appId, navigate],
   );
 
   return (
@@ -216,27 +175,36 @@ export function ApplicationDetail() {
                 </span>
               )}
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => navigate(`/applications/${appId}/variables`)}
+                className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+              >
+                <Variable className="h-3.5 w-3.5" />
+                Variables
+              </button>
               {canEdit && (
                 <>
                   <button
                     type="button"
                     onClick={() => navigate(`/applications/${appId}/edit`)}
-                    title="Edit this application"
                     className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
                   >
-                    <Pencil className="h-3.5 w-3.5" />
-                    Edit
+                    <Settings className="h-3.5 w-3.5" />
+                    Manage
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setDeleting(true)}
-                    title="Delete this application"
-                    className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Delete
-                  </button>
+                  <ActionsMenu
+                    label={`${app.name} actions`}
+                    items={[
+                      {
+                        label: "Delete",
+                        icon: <Trash2 className="h-3.5 w-3.5" />,
+                        danger: true,
+                        onSelect: () => setDeleting(true),
+                      },
+                    ]}
+                  />
                 </>
               )}
             </div>
@@ -253,26 +221,15 @@ export function ApplicationDetail() {
                   Workflow
                 </h2>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => navigate(`/runs?application=${appId}`)}
-                  title="View this application's run history"
-                  className="inline-flex items-center gap-1.5 border border-neutral-300 px-2.5 py-1 text-sm text-neutral-700 hover:bg-neutral-50"
-                >
-                  <History className="h-3.5 w-3.5" />
-                  Run history
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/applications/${appId}/workflow`)}
-                  title="Open the workflow editor"
-                  className="inline-flex items-center gap-1.5 border border-neutral-300 px-2.5 py-1 text-sm text-neutral-700 hover:bg-neutral-50"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  Edit workflow
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => navigate(`/applications/${appId}/workflow`)}
+                title="Open the workflow editor"
+                className="inline-flex items-center gap-1.5 border border-neutral-300 px-2.5 py-1 text-sm text-neutral-700 hover:bg-neutral-50"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Edit workflow
+              </button>
             </div>
             <WorkflowStagesOverview
               appId={appId}
@@ -287,6 +244,16 @@ export function ApplicationDetail() {
                 )}
                 <button
                   type="button"
+                  onClick={() => void startRun("drift")}
+                  disabled={running}
+                  aria-label="Refresh"
+                  title="Refresh: check every OpenTofu component for changes made outside of OpenTofu (a read-only refresh-only plan)"
+                  className="inline-flex items-center justify-center border border-neutral-300 p-2 text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
                   onClick={() => void startRun("preview")}
                   disabled={running}
                   className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
@@ -295,124 +262,35 @@ export function ApplicationDetail() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void startRun("drift")}
-                  disabled={running}
-                  title="Run a read-only refresh-only plan on every OpenTofu component to find changes made outside of OpenTofu"
-                  className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
-                >
-                  Check drift
-                </button>
-                <label
-                  title="Run a drift check automatically on this schedule"
-                  className="inline-flex items-center gap-1.5 text-sm text-neutral-600"
-                >
-                  <span className="text-xs text-neutral-500">every</span>
-                  <select
-                    aria-label="Drift check schedule"
-                    value={String(app.drift_interval_minutes ?? 0)}
-                    onChange={(e) => void setDriftInterval(Number(e.target.value))}
-                    disabled={savingDrift}
-                    className="border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-black focus:outline-none disabled:opacity-50"
-                  >
-                    <option value="0">never</option>
-                    <option value="60">hour</option>
-                    <option value="360">6 hours</option>
-                    <option value="1440">day</option>
-                    <option value="10080">week</option>
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => void startRun("uninstall")}
-                  disabled={running}
-                  className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Uninstall
-                </button>
-                <label
-                  title="Run the deploy's Helm step as a forced upgrade so pods roll even when the rendered manifests are unchanged"
-                  className="inline-flex items-center gap-1.5 text-sm text-neutral-600"
-                >
-                  <input
-                    type="checkbox"
-                    checked={forceRoll}
-                    onChange={(e) => setForceRoll(e.target.checked)}
-                    className="h-3.5 w-3.5 accent-black"
-                  />
-                  Force workload roll
-                </label>
-                <button
-                  type="button"
-                  onClick={() => void startRun("deploy")}
+                  onClick={() => setRunDialogOpen(true)}
                   disabled={running}
                   className="inline-flex items-center gap-1.5 bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
                 >
                   <Play className="h-3.5 w-3.5" />
-                  Deploy
+                  Run
                 </button>
               </div>
             )}
           </div>
 
-          {/* Triggers: what a GitHub push or pull request to a tracked branch
-              starts. Editors only; the operator must have enabled the GitHub
-              App's webhook for deliveries to arrive at all. */}
-          {canEdit && (
-            <div className="mt-6 border border-neutral-200 bg-white">
-              <div className="flex items-center gap-2 border-b border-neutral-200 px-4 py-2">
-                <Webhook className="h-3.5 w-3.5 text-neutral-400" />
+          {/* Latest run (links to the run view; the full history is on the
+              runs page, filtered to this application) */}
+          <div className="mt-6 border border-neutral-200 bg-white">
+            <div className="flex items-center justify-between gap-2 border-b border-neutral-200 px-4 py-2">
+              <div className="flex items-center gap-2">
+                <History className="h-3.5 w-3.5 text-neutral-400" />
                 <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-                  Triggers
+                  Latest run
                 </h2>
               </div>
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 text-sm text-neutral-600">
-                <label className="inline-flex items-center gap-2">
-                  On push
-                  <select
-                    aria-label="On push"
-                    value={app.push_trigger ?? ""}
-                    onChange={(e) =>
-                      void saveTriggers({ push_trigger: e.target.value as PushTrigger })
-                    }
-                    disabled={savingTriggers}
-                    className="border border-neutral-300 bg-white px-2 py-1 text-sm focus:border-black focus:outline-none disabled:opacity-50"
-                  >
-                    <option value="">nothing</option>
-                    <option value="preview">start a preview</option>
-                    <option value="deploy">start a deploy</option>
-                  </select>
-                </label>
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    aria-label="Plan pull requests"
-                    checked={app.pr_plans === true}
-                    onChange={(e) => void saveTriggers({ pr_plans: e.target.checked })}
-                    disabled={savingTriggers}
-                    className="h-3.5 w-3.5 accent-black"
-                  />
-                  Plan pull requests
-                </label>
-                <p className="basis-full text-xs text-neutral-500">
-                  A push to a branch one of the components tracks (through its
-                  connected GitHub installation) starts the chosen run; a pull
-                  request against it can start a preview reported back as a
-                  check.
-                  {!githubAppEnabled() &&
-                    " No GitHub App is configured on this deployment, so nothing will arrive until your operator sets one up."}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Latest run (links to the run view; full history under Run history) */}
-          <div className="mt-6 border border-neutral-200 bg-white">
-            <div className="flex items-center gap-2 border-b border-neutral-200 px-4 py-2">
-              <History className="h-3.5 w-3.5 text-neutral-400" />
-              <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-                Latest run
-              </h2>
+              {displayRun && (
+                <Link
+                  to={`/runs?application=${appId}`}
+                  className="text-xs text-neutral-500 hover:text-neutral-900"
+                >
+                  View all runs
+                </Link>
+              )}
             </div>
             {!displayRun ? (
               <p className="px-4 py-6 text-sm text-neutral-500">
@@ -457,24 +335,23 @@ export function ApplicationDetail() {
             </dl>
           </div>
 
-          {/* Variables (app-level: passed to every component job as env vars) */}
-          <div className="mt-6 border border-neutral-200 bg-white p-4">
-            <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-              Variables
-            </h2>
-            <p className="mb-3 mt-1 text-xs text-neutral-500">
-              Passed to every component job in this application as environment
-              variables. A component can override one of these for its own job.
-              A sensitive value is sealed and never shown again.
-            </p>
-            <VariablesEditor scope={{ kind: "app", appId }} canEdit={canEdit} />
-          </div>
-
+          {runDialogOpen && (
+            <RunDialog
+              app={app}
+              onClose={() => setRunDialogOpen(false)}
+              onStarted={(runId) =>
+                navigate(`/applications/${appId}/runs/${runId}`)
+              }
+            />
+          )}
           {deleting && (
             <DeleteApplicationDialog
               app={app}
               onClose={() => setDeleting(false)}
               onDeleted={() => navigate("/applications")}
+              onUninstallStarted={(runId) =>
+                navigate(`/applications/${appId}/runs/${runId}`)
+              }
             />
           )}
         </>

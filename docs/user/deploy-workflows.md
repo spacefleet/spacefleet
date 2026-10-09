@@ -318,8 +318,8 @@ listing resources that are gone.
 ### Drift detection
 
 Infrastructure changes outside of OpenTofu — someone resizes an instance in
-the console, a bucket is deleted by hand. **Check drift** on the application
-runs a read-only *refresh-only* plan on every OpenTofu component and reports
+the console, a bucket is deleted by hand. **Refresh** (the circular-arrows
+button) on the application runs a drift check: a read-only *refresh-only* plan on every OpenTofu component and reports
 what no longer matches the last apply. Nothing is changed, no planfile is
 saved, and no approval is involved; Helm and Manifest components take no part
 (the action is refused when the application has no OpenTofu component).
@@ -335,12 +335,13 @@ The result appears in three places:
 - Every ordinary plan also reports drift it noticed, above its planned
   actions, since a deploy will reconcile it.
 
-To reconcile drift, run **Deploy**: the plan shows the drifted resources being
+To reconcile drift, start a deploy with **Run**: the plan shows the drifted resources being
 brought back to the configuration (or, if the outside change is what you
 want, change the configuration first).
 
-**On a schedule.** Next to **Check drift**, choose how often a check should run
-on its own — every hour, 6 hours, day, or week (or never). A scheduled check is
+**On a schedule.** In the application's settings (**Manage**), under
+**Triggers**, set **Scheduled refresh** to how often a check should run on its
+own — every hour, 6 hours, day, or week (or never). A scheduled check is
 an ordinary drift run, so it appears in the run history like any other. It is
 skipped while another run of the application is in progress and tried again
 on the next tick, and it never starts while a deploy is waiting for approval.
@@ -419,17 +420,19 @@ These runs are available for OpenTofu components only.
 
 ## Run the workflow
 
-The application page has three run actions. Each one runs the **whole**
-workflow, stage by stage:
+These runs each cover the **whole** workflow, stage by stage:
 
-- **Deploy** — install or upgrade every component on its target cluster. This is
-  the action that changes your clusters. For a Helm step you can turn on the
-  force option so its workloads restart even when the rendered output hasn't
-  changed.
+- **Run** — deploy: install or upgrade every component on its target cluster.
+  This is the action that changes your clusters. **Run** first opens a dialog
+  with the deploy's options — for example **Force workload roll**, which
+  restarts the Helm components' workloads even when their rendered output
+  hasn't changed — and the deploy starts when you confirm.
 - **Preview** — a dry run of the whole workflow. Nothing is applied to any
   cluster; instead each step reports the **diff** it *would* make, so you can see
   what a deploy would change before you run it.
-- **Uninstall** — remove every component's release from its cluster.
+- **Uninstall** — remove every component's release from its cluster and
+  destroy the infrastructure its OpenTofu components manage. You start it
+  when you delete the application (below).
 
 Runs execute on the application's **runner cluster** — a cluster set up to run
 workflow jobs (with Tekton). (See [Runner clusters](running-jobs.md) for how to
@@ -437,11 +440,27 @@ set one up.) Only one run can be in progress for an application at a
 time; starting a second while one is still going is refused, so two runs never
 fight over the same releases.
 
+### Delete an application
+
+Choose **⋮ → Delete** on the application page. Deleting removes the
+application, its workflow, variables, and run history from Spacefleet; it
+never touches what the workflow deployed on its own, so the dialog asks what
+to do about that:
+
+- **Uninstall it first** starts an uninstall run instead of deleting, and
+  opens it. Approval gates still apply: an OpenTofu component that requires
+  approval waits for it before destroying anything. When the uninstall succeeds, its run page
+  offers **Delete application** to finish the job. If it fails or is
+  rejected, nothing is deleted.
+- **Leave it running** deletes the application right away. Everything it
+  deployed stays as it is, and Spacefleet no longer manages it.
+
 ## Triggers
 
 A run can start from GitHub instead of a click, once the operator has
-enabled the GitHub App's webhook (see the operator guide). On the
-application page, under **Triggers**:
+enabled the GitHub App's webhook (see the operator guide). Triggers are
+part of the application's settings: open the application, choose
+**Manage**, and use the **Triggers** section:
 
 - **On push** — what a push to a tracked branch starts: nothing, a
   **preview**, or a **deploy**. Use preview to see every change land as a

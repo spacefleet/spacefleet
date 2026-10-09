@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import { RunnerRequiredNotice } from "../components/RunnerRequiredNotice";
+import { githubAppEnabled } from "../lib/appConfig";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type CreateRequest = components["schemas"]["ApplicationCreateRequest"];
@@ -12,6 +13,7 @@ type UpdateRequest = components["schemas"]["ApplicationUpdateRequest"];
 type ImportRequest = components["schemas"]["ApplicationImportRequest"];
 type HelmRelease = components["schemas"]["HelmRelease"];
 type Cluster = components["schemas"]["Cluster"];
+type PushTrigger = components["schemas"]["PushTrigger"];
 
 // ImportSeed is handed from the discovery step (ImportApplication) via router
 // state: the cluster the release was found on, and the discovered release whose
@@ -41,6 +43,12 @@ export function ApplicationForm() {
 
   const [name, setName] = useState(seedRelease?.name ?? "");
   const [runnerClusterId, setRunnerClusterId] = useState("");
+  // Run triggers (what a GitHub push or pull request starts) — edit mode only:
+  // a new application has no components yet, so nothing could match.
+  const [pushTrigger, setPushTrigger] = useState<PushTrigger>("");
+  const [prPlans, setPrPlans] = useState(false);
+  // Scheduled refresh: minutes between automatic drift checks (0 = never).
+  const [driftInterval, setDriftInterval] = useState(0);
 
   const [clusters, setClusters] = useState<Cluster[]>([]);
   // Set once the cluster list loads successfully: only a known list gates
@@ -77,12 +85,15 @@ export function ApplicationForm() {
       }
       setName(data.name);
       setRunnerClusterId(data.runner_cluster_id);
+      setPushTrigger(data.push_trigger ?? "");
+      setPrPlans(data.pr_plans === true);
+      setDriftInterval(data.drift_interval_minutes ?? 0);
       setLoading(false);
     })();
   }, [editing, appId, currentOrg?.id]);
 
   const title = editing
-    ? "Edit application"
+    ? "Manage application"
     : importing
       ? "Import application"
       : "Create application";
@@ -104,6 +115,9 @@ export function ApplicationForm() {
     if (editing) {
       const body: UpdateRequest = {
         name: name.trim(),
+        push_trigger: pushTrigger,
+        pr_plans: prPlans,
+        drift_interval_minutes: driftInterval,
       };
       const { error } = await api.PATCH("/api/applications/{id}", {
         params: { path: { id: appId! } },
@@ -179,7 +193,7 @@ export function ApplicationForm() {
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full border border-neutral-300 px-3 py-2 text-sm"
+              className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
               placeholder="my-app"
               pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
               maxLength={63}
@@ -204,7 +218,7 @@ export function ApplicationForm() {
                 required
                 value={runnerClusterId}
                 onChange={(e) => setRunnerClusterId(e.target.value)}
-                className="w-full border border-neutral-300 px-3 py-2 text-sm"
+                className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
               >
                 <option value="">Select a cluster…</option>
                 {runners.map((c) => (
@@ -218,6 +232,60 @@ export function ApplicationForm() {
           <p className="-mt-3 text-xs text-neutral-500">
             The runner is the Tekton-enabled cluster the deploy jobs run on.
           </p>
+
+          {editing && (
+            <section className="space-y-3 border-t border-neutral-200 pt-5">
+              <h2 className="text-sm font-semibold text-neutral-900">
+                Triggers
+              </h2>
+              <p className="text-xs text-neutral-500">
+                A push to a branch one of the components tracks (through its
+                connected GitHub installation) starts the chosen run; a pull
+                request against it can start a preview reported back as a
+                check.
+                {!githubAppEnabled() &&
+                  " No GitHub App is configured on this deployment, so nothing will arrive until your operator sets one up."}
+              </p>
+              <Field label="On push">
+                <select
+                  value={pushTrigger}
+                  onChange={(e) => setPushTrigger(e.target.value as PushTrigger)}
+                  className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">Nothing</option>
+                  <option value="preview">Start a preview</option>
+                  <option value="deploy">Start a deploy</option>
+                </select>
+              </Field>
+              <label className="flex items-center gap-2 text-sm text-neutral-700">
+                <input
+                  type="checkbox"
+                  checked={prPlans}
+                  onChange={(e) => setPrPlans(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-black"
+                />
+                Plan pull requests
+              </label>
+              <Field label="Scheduled refresh">
+                <select
+                  value={String(driftInterval)}
+                  onChange={(e) => setDriftInterval(Number(e.target.value))}
+                  className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="0">Never</option>
+                  <option value="60">Every hour</option>
+                  <option value="360">Every 6 hours</option>
+                  <option value="1440">Every day</option>
+                  <option value="10080">Every week</option>
+                </select>
+              </Field>
+              <p className="-mt-1 text-xs text-neutral-500">
+                Refreshes the application on this schedule: a read-only check of
+                every OpenTofu component for changes made outside of OpenTofu.
+                Skipped while another run is in progress.
+              </p>
+            </section>
+          )}
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
