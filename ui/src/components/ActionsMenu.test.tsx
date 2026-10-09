@@ -19,7 +19,7 @@ describe("ActionsMenu", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "web actions" }));
     expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveClass(
-      "text-red-700",
+      "text-red-300",
     );
     await userEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
 

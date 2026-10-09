@@ -69,11 +69,11 @@ export function GitHubInstallations() {
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
             Admin
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">GitHub</h1>
-          <p className="mt-1 text-sm text-neutral-600">
+          <p className="mt-1 text-sm text-neutral-300">
             Connect a GitHub App installation to deploy charts from private Git
             repositories. Attach one to a Git-source application.
           </p>
@@ -83,7 +83,7 @@ export function GitHubInstallations() {
             type="button"
             onClick={() => void onConnect()}
             disabled={connecting}
-            className="inline-flex items-center gap-2 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+            className="inline-flex shrink-0 items-center gap-2 bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
           >
             <Plus className="h-4 w-4" />
             {connecting ? "Connecting…" : "Connect GitHub"}
@@ -92,31 +92,31 @@ export function GitHubInstallations() {
       </div>
 
       {!appEnabled && (
-        <p className="mt-4 border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        <p className="mt-4 border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-300">
           No GitHub App is configured on this deployment. Ask your operator to
           register one to enable pulling charts from private Git repositories.
         </p>
       )}
 
-      <div className="mt-6 border border-neutral-200 bg-white">
+      <div className="mt-6 border border-neutral-800 bg-neutral-900">
         {loading ? (
-          <p className="p-6 text-sm text-neutral-500">Loading…</p>
+          <p className="p-6 text-sm text-neutral-400">Loading…</p>
         ) : error ? (
-          <p className="p-6 text-sm text-red-600">{error}</p>
+          <p className="p-6 text-sm text-red-400">{error}</p>
         ) : installations.length === 0 ? (
           <div className="p-10 text-center">
-            <GitBranch className="mx-auto h-8 w-8 text-neutral-300" />
-            <p className="mt-3 text-sm font-medium text-neutral-700">
+            <GitBranch className="mx-auto h-8 w-8 text-neutral-600" />
+            <p className="mt-3 text-sm font-medium text-neutral-300">
               No GitHub installations yet
             </p>
-            <p className="mt-1 text-sm text-neutral-500">
+            <p className="mt-1 text-sm text-neutral-400">
               Connect one to pull charts from a private Git repository.
             </p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
+              <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
                 <th className="px-4 py-2 font-medium">Account</th>
                 <th className="px-4 py-2 font-medium">Type</th>
                 <th className="px-4 py-2 font-medium">Installation ID</th>
@@ -127,15 +127,15 @@ export function GitHubInstallations() {
               {installations.map((inst) => (
                 <tr
                   key={inst.id}
-                  className="border-b border-neutral-100 last:border-0"
+                  className="border-b border-neutral-800 last:border-0"
                 >
-                  <td className="px-4 py-3 font-medium text-neutral-900">
+                  <td className="px-4 py-3 font-medium text-neutral-100">
                     {inst.account_login || "—"}
                   </td>
-                  <td className="px-4 py-3 text-neutral-600">
+                  <td className="px-4 py-3 text-neutral-300">
                     {inst.account_type || "—"}
                   </td>
-                  <td className="px-4 py-3 font-mono text-neutral-600">
+                  <td className="px-4 py-3 font-mono text-neutral-300">
                     {inst.installation_id}
                   </td>
                   {canEdit && (
@@ -143,7 +143,7 @@ export function GitHubInstallations() {
                       <button
                         type="button"
                         onClick={() => void onDelete(inst)}
-                        className="inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-red-600"
+                        className="inline-flex items-center gap-1 text-xs text-neutral-400 hover:text-red-400"
                         aria-label={`Remove ${inst.account_login || inst.installation_id}`}
                       >
                         <Trash2 className="h-4 w-4" />

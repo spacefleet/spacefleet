@@ -64,13 +64,13 @@ export function ComponentStatePanel({
   );
 
   return (
-    <div className="mt-6 border border-neutral-200 bg-white p-4">
+    <div className="mt-6 border border-neutral-800 bg-neutral-900 p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+        <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
           State
         </h2>
         {state?.run_id && (
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-neutral-400">
             Recorded by{" "}
             <Link
               to={`/applications/${appId}/runs/${state.run_id}`}
@@ -84,7 +84,7 @@ export function ComponentStatePanel({
           </p>
         )}
       </div>
-      <p className="mb-3 mt-1 text-xs text-neutral-500">
+      <p className="mb-3 mt-1 text-xs text-neutral-400">
         What this component manages, as of its last successful apply.
       </p>
 
@@ -102,30 +102,30 @@ export function ComponentStatePanel({
       )}
 
       {error ? (
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm text-red-400">{error}</p>
       ) : empty ? (
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-neutral-400">
           Nothing recorded yet — deploy this component successfully to see the
           resources it manages and its outputs here.
         </p>
       ) : !state ? (
-        <p className="text-sm text-neutral-500">Loading…</p>
+        <p className="text-sm text-neutral-400">Loading…</p>
       ) : !state.run_id ? (
         // A state view with no recorded apply: it exists only to carry the
         // lock box above.
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-neutral-400">
           Nothing recorded yet — deploy this component successfully to see the
           resources it manages and its outputs here.
         </p>
       ) : (
         <>
-          <div className="mb-3 flex items-center gap-4 border-b border-neutral-200">
+          <div className="mb-3 flex items-center gap-4 border-b border-neutral-800">
             <StateTab
               active={tab === "resources"}
               onClick={() => setTab("resources")}
             >
               Resources
-              <span className="text-xs text-neutral-400">
+              <span className="text-xs text-neutral-500">
                 {state.resources.length}
               </span>
             </StateTab>
@@ -134,21 +134,21 @@ export function ComponentStatePanel({
               onClick={() => setTab("outputs")}
             >
               Outputs
-              <span className="text-xs text-neutral-400">
+              <span className="text-xs text-neutral-500">
                 {outputEntries.length}
               </span>
             </StateTab>
           </div>
           {tab === "resources" ? (
-            <div className="max-h-[32rem]">
+            <div className="flex max-h-[32rem] flex-col">
               <ResourcesTable resources={state.resources} />
             </div>
           ) : outputEntries.length > 0 ? (
-            <div className="max-h-[32rem]">
+            <div className="flex max-h-[32rem] flex-col">
               <OutputsTable entries={outputEntries} />
             </div>
           ) : (
-            <p className="text-sm text-neutral-500">
+            <p className="text-sm text-neutral-400">
               This module declares no outputs.
             </p>
           )}
@@ -212,17 +212,17 @@ function ScopedRuns({
   };
 
   return (
-    <div className="mt-6 border-t border-neutral-200 pt-4">
-      <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+    <div className="mt-6 border-t border-neutral-800 pt-4">
+      <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
         Destroy and targeted runs
       </h3>
-      <p className="mb-3 mt-1 text-xs text-neutral-500">
+      <p className="mb-3 mt-1 text-xs text-neutral-400">
         Run just this component, without the rest of the workflow. List
         resource addresses to limit the run to those resources (each becomes
         a <code className="font-mono">-target</code>); leave it empty to
         cover the whole component.
       </p>
-      <label className="flex flex-col gap-1 text-xs text-neutral-600">
+      <label className="flex flex-col gap-1 text-xs text-neutral-300">
         Targets (optional, one per line)
         <textarea
           aria-label="Target addresses"
@@ -233,7 +233,7 @@ function ScopedRuns({
             setTargetsRaw(e.target.value);
             setError(null);
           }}
-          className="border border-neutral-300 bg-white px-2 py-1.5 font-mono text-sm text-neutral-900 placeholder:font-sans placeholder:text-neutral-400"
+          className="border border-neutral-700 bg-neutral-900 px-2 py-1.5 font-mono text-sm text-neutral-100 placeholder:font-sans placeholder:text-neutral-500"
         />
       </label>
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -241,7 +241,7 @@ function ScopedRuns({
           type="button"
           onClick={() => void start("deploy")}
           disabled={submitting !== null}
-          className="bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+          className="bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
         >
           {submitting === "deploy"
             ? "Starting…"
@@ -257,14 +257,14 @@ function ScopedRuns({
               setError(null);
             }}
             disabled={submitting !== null}
-            className="border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+            className="border border-red-500/40 px-3 py-1.5 text-sm text-red-300 hover:bg-red-500/10 disabled:opacity-50"
           >
             {targets.length > 0 ? "Destroy targets…" : "Destroy this component…"}
           </button>
         )}
       </div>
       {confirmDestroy && (
-        <div className="mt-3 border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+        <div className="mt-3 border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
           <p>
             {targets.length > 0
               ? `This plans the destruction of ${targets.length} targeted resource${targets.length === 1 ? "" : "s"}.`
@@ -285,14 +285,14 @@ function ScopedRuns({
               type="button"
               onClick={() => setConfirmDestroy(false)}
               disabled={submitting !== null}
-              className="px-3 py-1.5 text-sm text-neutral-700 hover:bg-white disabled:opacity-50"
+              className="px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-900 disabled:opacity-50"
             >
               Cancel
             </button>
           </div>
         </div>
       )}
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
     </div>
   );
 }
@@ -388,17 +388,17 @@ function StateOperations({
   };
 
   return (
-    <form onSubmit={(e) => void submit(e)} className="mt-6 border-t border-neutral-200 pt-4">
-      <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+    <form onSubmit={(e) => void submit(e)} className="mt-6 border-t border-neutral-800 pt-4">
+      <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
         Operations
       </h3>
-      <p className="mb-3 mt-1 text-xs text-neutral-500">
+      <p className="mb-3 mt-1 text-xs text-neutral-400">
         Guarded state operations. Each starts a run that waits for approval,
         showing the exact command before it touches state, and refreshes the
         recorded state afterwards.
       </p>
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-xs text-neutral-600">
+        <label className="flex flex-col gap-1 text-xs text-neutral-300">
           Operation
           <select
             aria-label="State operation"
@@ -408,7 +408,7 @@ function StateOperations({
               setValues({});
               setError(null);
             }}
-            className="border border-neutral-300 bg-white px-2 py-1.5 text-sm text-neutral-900"
+            className="border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100"
           >
             {STATE_OPS.map((o) => (
               <option key={o.kind} value={o.kind}>
@@ -418,7 +418,7 @@ function StateOperations({
           </select>
         </label>
         {op.fields.map((f) => (
-          <label key={f.name} className="flex min-w-[16rem] flex-1 flex-col gap-1 text-xs text-neutral-600">
+          <label key={f.name} className="flex min-w-[16rem] flex-1 flex-col gap-1 text-xs text-neutral-300">
             {f.label}
             <input
               type="text"
@@ -426,20 +426,20 @@ function StateOperations({
               value={values[f.name] ?? ""}
               placeholder={f.placeholder}
               onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
-              className="border border-neutral-300 bg-white px-2 py-1.5 font-mono text-sm text-neutral-900 placeholder:font-sans placeholder:text-neutral-400"
+              className="border border-neutral-700 bg-neutral-900 px-2 py-1.5 font-mono text-sm text-neutral-100 placeholder:font-sans placeholder:text-neutral-500"
             />
           </label>
         ))}
         <button
           type="submit"
           disabled={!complete || submitting}
-          className="bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+          className="bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
         >
           {submitting ? "Starting…" : "Start for approval"}
         </button>
       </div>
-      <p className="mt-2 text-xs text-neutral-500">{op.hint}</p>
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      <p className="mt-2 text-xs text-neutral-400">{op.hint}</p>
+      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
     </form>
   );
 }
@@ -460,7 +460,7 @@ function LockBox({
   onRelease?: () => void;
 }) {
   return (
-    <div className="mb-3 border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+    <div className="mb-3 border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
       <p>
         <span className="font-medium">State is locked.</span>{" "}
         <Link
@@ -475,23 +475,23 @@ function LockBox({
         will get through until it is released.
       </p>
       <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-xs">
-        <dt className="font-sans text-red-800">Lock id</dt>
+        <dt className="font-sans text-red-300">Lock id</dt>
         <dd className="break-all">{lock.id}</dd>
         {lock.who && (
           <>
-            <dt className="font-sans text-red-800">Held by</dt>
+            <dt className="font-sans text-red-300">Held by</dt>
             <dd className="break-all">{lock.who}</dd>
           </>
         )}
         {lock.created && (
           <>
-            <dt className="font-sans text-red-800">Since</dt>
+            <dt className="font-sans text-red-300">Since</dt>
             <dd>{lock.created}</dd>
           </>
         )}
         {lock.operation && (
           <>
-            <dt className="font-sans text-red-800">Operation</dt>
+            <dt className="font-sans text-red-300">Operation</dt>
             <dd>{lock.operation}</dd>
           </>
         )}
@@ -501,11 +501,11 @@ function LockBox({
           <button
             type="button"
             onClick={onRelease}
-            className="border border-red-300 bg-white px-3 py-1 text-sm text-red-800 hover:bg-red-100"
+            className="border border-red-500/40 bg-neutral-900 px-3 py-1 text-sm text-red-300 hover:bg-red-500/15"
           >
             Release this lock…
           </button>{" "}
-          <span className="text-xs text-red-800">
+          <span className="text-xs text-red-300">
             fills in the force-unlock operation below; it still waits for
             approval. Only release a lock whose run is definitely no longer
             running.
@@ -532,7 +532,7 @@ function DriftLine({ appId, drift }: { appId: string; drift: DriftStatus }) {
   );
   if (drift.status === "failed") {
     return (
-      <p className="mb-3 border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
+      <p className="mb-3 border border-neutral-800 bg-neutral-800/50 px-3 py-2 text-sm text-neutral-300">
         <span className="font-medium">Drift check failed</span> on {runLink}{" "}
         — the verdict is unknown until a check completes.
       </p>
@@ -540,14 +540,14 @@ function DriftLine({ appId, drift }: { appId: string; drift: DriftStatus }) {
   }
   if (!drift.has_drift) {
     return (
-      <p className="mb-3 border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+      <p className="mb-3 border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
         <span className="font-medium">No drift</span> as of {runLink}.
       </p>
     );
   }
   const drifted = drift.drift ?? [];
   return (
-    <div className="mb-3 border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+    <div className="mb-3 border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
       <p>
         <span className="font-medium">
           Drift detected: {drifted.length} resource
@@ -584,8 +584,8 @@ function StateTab({
       onClick={onClick}
       className={`inline-flex items-center gap-2 border-b-2 py-2 text-sm ${
         active
-          ? "border-black font-medium text-neutral-900"
-          : "border-transparent text-neutral-500 hover:text-neutral-900"
+          ? "border-white font-medium text-neutral-100"
+          : "border-transparent text-neutral-400 hover:text-neutral-100"
       }`}
     >
       {children}

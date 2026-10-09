@@ -65,17 +65,17 @@ export function PodLogsModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
       onClick={onClose}
     >
       <div
-        className="flex h-[80vh] w-full max-w-4xl flex-col border border-gray-200 bg-white shadow-xl"
+        className="flex h-[80vh] w-full max-w-4xl flex-col border border-neutral-800 bg-neutral-900 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-4 py-3">
+        <div className="flex items-start justify-between gap-4 border-b border-neutral-800 px-4 py-3">
           <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
               Logs{clusterName ? ` · ${clusterName}` : ""} · {namespace}
             </p>
             <h2 className="truncate text-lg font-bold tracking-tight">{podName}</h2>
@@ -84,22 +84,22 @@ export function PodLogsModal({
             type="button"
             onClick={onClose}
             aria-label="Close logs"
-            className="shrink-0 p-1 text-gray-400 hover:text-gray-900"
+            className="shrink-0 p-1 text-neutral-500 hover:text-neutral-100"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Controls */}
-        <div className="flex flex-wrap items-center gap-4 border-b border-gray-200 px-4 py-2">
+        <div className="flex flex-wrap items-center gap-4 border-b border-neutral-800 px-4 py-2">
           <LogStatus status={status} ended={ended} />
           {containers.length > 1 && (
-            <label className="flex items-center gap-2 text-sm text-gray-600">
+            <label className="flex items-center gap-2 text-sm text-neutral-300">
               Container
               <select
                 value={container}
                 onChange={(e) => setContainer(e.target.value)}
-                className="border border-gray-300 bg-white px-2 py-1 text-sm text-gray-900 focus:border-black focus:outline-none"
+                className="border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-neutral-100 focus:border-white focus:outline-none"
               >
                 {containers.map((c) => (
                   <option key={c} value={c}>
@@ -109,12 +109,12 @@ export function PodLogsModal({
               </select>
             </label>
           )}
-          <label className="ml-auto flex items-center gap-2 text-sm text-gray-600">
+          <label className="ml-auto flex items-center gap-2 text-sm text-neutral-300">
             <input
               type="checkbox"
               checked={wrap}
               onChange={(e) => setWrap(e.target.checked)}
-              className="h-4 w-4 accent-black"
+              className="h-4 w-4 accent-white"
             />
             Wrap
           </label>
@@ -124,12 +124,12 @@ export function PodLogsModal({
         <pre
           ref={scrollRef}
           onScroll={onScroll}
-          className={`m-0 flex-1 overflow-auto bg-neutral-900 p-4 font-mono text-xs leading-relaxed text-neutral-100 ${wrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"}`}
+          className={`m-0 flex-1 overflow-auto bg-black p-4 font-mono text-xs leading-relaxed text-neutral-100 ${wrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"}`}
         >
           {error && lines.length === 0 ? (
             <span className="text-red-400">{error}</span>
           ) : lines.length === 0 ? (
-            <span className="text-neutral-500">
+            <span className="text-neutral-400">
               {status === "live" || ended
                 ? "No log output."
                 : "Connecting…"}
@@ -138,7 +138,7 @@ export function PodLogsModal({
             lines.map((line, i) => <LogLine key={i} line={line} />)
           )}
           {ended && lines.length > 0 && (
-            <div className="mt-2 text-neutral-500">— end of logs —</div>
+            <div className="mt-2 text-neutral-400">— end of logs —</div>
           )}
         </pre>
       </div>
@@ -158,20 +158,20 @@ function LogLine({ line }: { line: string }) {
   const [, ts, rest] = m;
   return (
     <div>
-      <span className="text-neutral-500">{ts}</span> {rest || " "}
+      <span className="text-neutral-400">{ts}</span> {rest || " "}
     </div>
   );
 }
 
 function LogStatus({ status, ended }: { status: StreamStatus; ended: boolean }) {
   if (ended) {
-    return <span className="text-xs font-medium text-gray-500">Ended</span>;
+    return <span className="text-xs font-medium text-neutral-400">Ended</span>;
   }
   const config: Record<StreamStatus, { label: string; dot: string; text: string }> = {
-    live: { label: "Streaming", dot: "bg-green-500", text: "text-gray-600" },
-    connecting: { label: "Connecting…", dot: "bg-gray-400", text: "text-gray-500" },
-    reconnecting: { label: "Reconnecting…", dot: "bg-amber-500", text: "text-amber-700" },
-    error: { label: "Disconnected", dot: "bg-red-500", text: "text-red-700" },
+    live: { label: "Streaming", dot: "bg-green-500", text: "text-neutral-300" },
+    connecting: { label: "Connecting…", dot: "bg-neutral-500", text: "text-neutral-400" },
+    reconnecting: { label: "Reconnecting…", dot: "bg-amber-500", text: "text-amber-300" },
+    error: { label: "Disconnected", dot: "bg-red-500", text: "text-red-300" },
   };
   const c = config[status];
   return (

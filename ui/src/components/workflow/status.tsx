@@ -18,12 +18,12 @@ type ComponentRunStatus = components["schemas"]["ComponentRunStatus"];
 // which means partial).
 export function RunStatusBadge({ status }: { status: RunStatus }) {
   const styles: Record<RunStatus, string> = {
-    pending: "bg-neutral-100 text-neutral-700",
-    running: "bg-blue-100 text-blue-800",
-    succeeded: "bg-green-100 text-green-800",
-    partial: "bg-amber-100 text-amber-800",
-    failed: "bg-red-100 text-red-800",
-    awaiting_approval: "bg-violet-100 text-violet-800",
+    pending: "bg-neutral-800 text-neutral-300",
+    running: "bg-blue-500/15 text-blue-300",
+    succeeded: "bg-green-500/15 text-green-300",
+    partial: "bg-amber-500/15 text-amber-300",
+    failed: "bg-red-500/15 text-red-300",
+    awaiting_approval: "bg-violet-500/15 text-violet-300",
   };
   const Icon: Record<RunStatus, typeof CheckCircle2> = {
     pending: CircleDashed,
@@ -54,17 +54,17 @@ function statusLabel(status: RunStatus | ComponentRunStatus): string {
 export function ComponentStatusIcon({ status }: { status: ComponentRunStatus }) {
   switch (status) {
     case "running":
-      return <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />;
+      return <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />;
     case "succeeded":
-      return <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />;
+      return <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />;
     case "failed":
-      return <XCircle className="h-3.5 w-3.5 text-red-600" />;
+      return <XCircle className="h-3.5 w-3.5 text-red-400" />;
     case "skipped":
-      return <MinusCircle className="h-3.5 w-3.5 text-neutral-400" />;
+      return <MinusCircle className="h-3.5 w-3.5 text-neutral-500" />;
     case "awaiting_approval":
-      return <PauseCircle className="h-3.5 w-3.5 text-violet-600" />;
+      return <PauseCircle className="h-3.5 w-3.5 text-violet-400" />;
     case "pending":
     default:
-      return <CircleDashed className="h-3.5 w-3.5 text-neutral-400" />;
+      return <CircleDashed className="h-3.5 w-3.5 text-neutral-500" />;
   }
 }

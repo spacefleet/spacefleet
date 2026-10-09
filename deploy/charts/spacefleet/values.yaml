@@ -407,6 +407,10 @@ dex:
     allowedOrigins: []
   # -- Token/key lifetimes (Dex `expiry:` passthrough), e.g. {idTokens: 24h}.
   expiry: {}
+  # -- Dex's login-page look (Dex `frontend:` passthrough). Defaults to Dex's
+  # built-in dark theme to match the app; e.g. add issuer/logoURL to rebrand.
+  frontend:
+    theme: dark
 
   # ---- config-change rollout (chart-owned hook, not subchart) ----------------
   # Dex reads its config only at startup, and the subchart only adds a

@@ -126,23 +126,23 @@ export function ApplicationGroupDetail() {
       <button
         type="button"
         onClick={() => navigate("/applications")}
-        className="inline-flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-900"
+        className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to applications
       </button>
 
       {loading ? (
-        <p className="mt-6 text-sm text-neutral-500">Loading…</p>
+        <p className="mt-6 text-sm text-neutral-400">Loading…</p>
       ) : error && !group ? (
-        <p className="mt-6 text-sm text-red-600">{error}</p>
+        <p className="mt-6 text-sm text-red-400">{error}</p>
       ) : !group ? (
-        <p className="mt-6 text-sm text-red-600">Not found</p>
+        <p className="mt-6 text-sm text-red-400">Not found</p>
       ) : (
         <>
           <div className="mt-3 flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
                 Group
               </p>
               {editingName ? (
@@ -161,14 +161,14 @@ export function ApplicationGroupDetail() {
                       }
                     }}
                     maxLength={200}
-                    className="border border-neutral-300 px-2 py-1 text-2xl font-bold tracking-tight focus:border-neutral-900 focus:outline-none"
+                    className="border border-neutral-700 px-2 py-1 text-2xl font-bold tracking-tight focus:border-neutral-100 focus:outline-none"
                   />
                   <button
                     type="button"
                     onClick={() => void saveName()}
                     disabled={savingName}
                     aria-label="Save name"
-                    className="text-neutral-500 hover:text-neutral-900 disabled:opacity-50"
+                    className="text-neutral-400 hover:text-neutral-100 disabled:opacity-50"
                   >
                     {savingName ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
@@ -183,14 +183,14 @@ export function ApplicationGroupDetail() {
                       setName(group.name);
                     }}
                     aria-label="Cancel rename"
-                    className="text-neutral-400 hover:text-neutral-700"
+                    className="text-neutral-500 hover:text-neutral-300"
                   >
                     <X className="h-5 w-5" />
                   </button>
                 </div>
               ) : (
                 <h1 className="mt-1 inline-flex items-center gap-2 break-all text-2xl font-bold tracking-tight">
-                  <Folder className="h-5 w-5 text-neutral-400" />
+                  <Folder className="h-5 w-5 text-neutral-500" />
                   {group.name}
                 </h1>
               )}
@@ -201,7 +201,7 @@ export function ApplicationGroupDetail() {
                   type="button"
                   onClick={() => setEditingName(true)}
                   title="Rename this group"
-                  className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+                  className="inline-flex items-center gap-1.5 border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                   Rename
@@ -210,7 +210,7 @@ export function ApplicationGroupDetail() {
                   type="button"
                   onClick={() => setConfirmDelete(true)}
                   title="Delete this group"
-                  className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
+                  className="inline-flex items-center gap-1.5 border border-red-500/40 px-3 py-1.5 text-sm text-red-300 hover:bg-red-500/10"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   Delete
@@ -219,18 +219,18 @@ export function ApplicationGroupDetail() {
             )}
           </div>
 
-          {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+          {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
 
-          <div className="mt-6 border border-neutral-200 bg-white">
+          <div className="mt-6 border border-neutral-800 bg-neutral-900">
             {members.length === 0 ? (
-              <p className="p-6 text-sm text-neutral-500">
+              <p className="p-6 text-sm text-neutral-400">
                 No applications in this group yet. Move one in from All Apps, or
                 from another group.
               </p>
             ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
+                  <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
                     <th className="px-4 py-2 font-medium">Name</th>
                     <th className="px-4 py-2 font-medium">Origin</th>
                     {canEdit && <th className="px-4 py-2 font-medium">Move</th>}
@@ -241,12 +241,12 @@ export function ApplicationGroupDetail() {
                     <tr
                       key={a.id}
                       onClick={() => navigate(`/applications/${a.id}`)}
-                      className="cursor-pointer border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
+                      className="cursor-pointer border-b border-neutral-800 last:border-0 hover:bg-neutral-800"
                     >
-                      <td className="px-4 py-3 font-medium text-neutral-900">
+                      <td className="px-4 py-3 font-medium text-neutral-100">
                         {a.name}
                       </td>
-                      <td className="px-4 py-3 text-neutral-600">
+                      <td className="px-4 py-3 text-neutral-300">
                         {a.imported ? "Imported" : "Created"}
                       </td>
                       {canEdit && (
@@ -258,7 +258,7 @@ export function ApplicationGroupDetail() {
                               e.stopPropagation();
                               void moveApp(a.id, e.target.value);
                             }}
-                            className="border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-700 focus:border-neutral-900 focus:outline-none"
+                            className="border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-300 focus:border-neutral-100 focus:outline-none"
                           >
                             <option value="">Ungrouped (root)</option>
                             {groups.map((g) => (
@@ -277,11 +277,11 @@ export function ApplicationGroupDetail() {
           </div>
 
           {/* Variables (group-level: the base env vars for every app in the group) */}
-          <div className="mt-6 border border-neutral-200 bg-white p-4">
-            <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+          <div className="mt-6 border border-neutral-800 bg-neutral-900 p-4">
+            <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
               Variables
             </h2>
-            <p className="mb-3 mt-1 text-xs text-neutral-500">
+            <p className="mb-3 mt-1 text-xs text-neutral-400">
               Passed to every component job of every application in this group as
               environment variables. These are the lowest priority — an
               application or one of its components can override one of these for
@@ -294,25 +294,25 @@ export function ApplicationGroupDetail() {
           </div>
 
           {confirmDelete && (
-            <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
-              <div className="mt-12 w-full max-w-lg border border-neutral-200 bg-white shadow-lg">
-                <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
+            <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
+              <div className="mt-12 w-full max-w-lg border border-neutral-800 bg-neutral-900 shadow-lg">
+                <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
                   <h2 className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight">
-                    <AlertTriangle className="h-5 w-5 text-red-600" />
+                    <AlertTriangle className="h-5 w-5 text-red-400" />
                     Delete {group.name}
                   </h2>
                   <button
                     type="button"
                     onClick={() => setConfirmDelete(false)}
                     disabled={deleting}
-                    className="text-neutral-400 hover:text-neutral-700 disabled:opacity-50"
+                    className="text-neutral-500 hover:text-neutral-300 disabled:opacity-50"
                     aria-label="Close"
                   >
                     <X className="h-5 w-5" />
                   </button>
                 </div>
                 <div className="space-y-4 px-5 py-4">
-                  <p className="text-sm text-neutral-600">
+                  <p className="text-sm text-neutral-300">
                     This deletes the group only. Its{" "}
                     {members.length === 1
                       ? "application"
@@ -320,12 +320,12 @@ export function ApplicationGroupDetail() {
                     are not deleted — they move back to the org root (ungrouped).
                   </p>
                 </div>
-                <div className="flex items-center justify-end gap-3 border-t border-neutral-200 px-5 py-4">
+                <div className="flex items-center justify-end gap-3 border-t border-neutral-800 px-5 py-4">
                   <button
                     type="button"
                     onClick={() => setConfirmDelete(false)}
                     disabled={deleting}
-                    className="text-sm text-neutral-500 hover:text-neutral-900 disabled:opacity-50"
+                    className="text-sm text-neutral-400 hover:text-neutral-100 disabled:opacity-50"
                   >
                     Cancel
                   </button>

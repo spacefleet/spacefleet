@@ -43,14 +43,14 @@ export function RunDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="run-dialog-title"
-        className="mt-12 w-full max-w-lg border border-neutral-200 bg-white shadow-lg"
+        className="mt-12 w-full max-w-lg border border-neutral-800 bg-neutral-900 shadow-lg"
       >
-        <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
+        <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
           <h2
             id="run-dialog-title"
             className="text-lg font-semibold tracking-tight"
@@ -61,7 +61,7 @@ export function RunDialog({
             type="button"
             onClick={onClose}
             disabled={starting}
-            className="text-neutral-400 hover:text-neutral-700 disabled:opacity-50"
+            className="text-neutral-500 hover:text-neutral-300 disabled:opacity-50"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
@@ -69,40 +69,40 @@ export function RunDialog({
         </div>
 
         <div className="space-y-4 px-5 py-4">
-          <p className="text-sm text-neutral-600">
+          <p className="text-sm text-neutral-300">
             Deploys the saved workflow: each stage runs in order, the components
             in a stage run in parallel, and any approval gates still apply.
           </p>
           <div>
-            <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-500">
               Options
             </h3>
-            <label className="mt-2 flex items-start gap-2 text-sm text-neutral-700">
+            <label className="mt-2 flex items-start gap-2 text-sm text-neutral-300">
               <input
                 type="checkbox"
                 checked={forceRoll}
                 onChange={(e) => setForceRoll(e.target.checked)}
                 disabled={starting}
-                className="mt-0.5 h-3.5 w-3.5 accent-black"
+                className="mt-0.5 h-3.5 w-3.5 accent-white"
               />
               <span>
                 Force workload roll
-                <span className="block text-xs text-neutral-500">
+                <span className="block text-xs text-neutral-400">
                   Restart the Helm components&apos; workloads even when their
                   rendered manifests are unchanged.
                 </span>
               </span>
             </label>
           </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-neutral-200 px-5 py-4">
+        <div className="flex items-center justify-end gap-3 border-t border-neutral-800 px-5 py-4">
           <button
             type="button"
             onClick={onClose}
             disabled={starting}
-            className="text-sm text-neutral-500 hover:text-neutral-900 disabled:opacity-50"
+            className="text-sm text-neutral-400 hover:text-neutral-100 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -110,7 +110,7 @@ export function RunDialog({
             type="button"
             onClick={() => void start()}
             disabled={starting}
-            className="inline-flex items-center gap-1.5 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
           >
             {starting ? (
               <Loader2 className="h-4 w-4 animate-spin" />

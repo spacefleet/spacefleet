@@ -28,7 +28,7 @@ export function Login() {
   if (auth.isLoading || auth.activeNavigator) {
     return (
       <Centered>
-        <p className="text-sm text-neutral-500">Signing in…</p>
+        <p className="text-sm text-neutral-400">Signing in…</p>
       </Centered>
     );
   }
@@ -37,14 +37,14 @@ export function Login() {
     <Centered>
       <div className="w-full max-w-sm space-y-8">
         <div className="space-y-3 text-center">
-          <img src={icon} alt="" className="mx-auto h-10 w-10" />
-          <h1 className="text-xl font-semibold tracking-tight text-neutral-900">
+          <img src={icon} alt="" className="mx-auto h-10 w-10 invert" />
+          <h1 className="text-xl font-semibold tracking-tight text-neutral-100">
             Sign in to Spacefleet
           </h1>
         </div>
 
         {auth.error && (
-          <p className="text-center text-sm text-red-600">
+          <p className="text-center text-sm text-red-400">
             Sign-in failed: {auth.error.message}
           </p>
         )}
@@ -85,7 +85,7 @@ function SignInButton({
     <button
       type="button"
       onClick={onClick}
-      className="w-full bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800"
+      className="w-full bg-primary px-4 py-2 text-sm font-semibold text-primary-fg hover:bg-primary-hover"
     >
       {children}
     </button>
@@ -94,7 +94,7 @@ function SignInButton({
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen items-center justify-center bg-neutral-50 px-4">
+    <div className="flex h-screen items-center justify-center bg-neutral-950 px-4">
       {children}
     </div>
   );

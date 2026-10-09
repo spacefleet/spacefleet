@@ -19,8 +19,8 @@ export function AuthCallback() {
   }, [auth.isLoading, auth.activeNavigator, navigate]);
 
   return (
-    <div className="flex h-screen items-center justify-center bg-gray-50">
-      <p className="text-sm text-gray-500">Signing in…</p>
+    <div className="flex h-screen items-center justify-center bg-neutral-950">
+      <p className="text-sm text-neutral-400">Signing in…</p>
     </div>
   );
 }

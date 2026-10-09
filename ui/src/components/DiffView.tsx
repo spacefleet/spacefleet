@@ -13,7 +13,7 @@ export function DiffView({
   const lines = diff.replace(/\n$/, "").split("\n");
   return (
     <pre
-      className={`overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-300 ${className}`}
+      className={`overflow-auto bg-black p-3 font-mono text-xs leading-relaxed text-neutral-300 ${className}`}
     >
       {lines.map((line, i) => (
         <div key={i} className={lineClass(line)}>

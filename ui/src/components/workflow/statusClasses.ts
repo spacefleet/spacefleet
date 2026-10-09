@@ -8,18 +8,18 @@ type ComponentRunStatus = components["schemas"]["ComponentRunStatus"];
 export function componentStatusClasses(status: ComponentRunStatus): string {
   switch (status) {
     case "running":
-      return "border-blue-400 bg-blue-50";
+      return "border-blue-400 bg-blue-500/10";
     case "succeeded":
-      return "border-green-500 bg-green-50";
+      return "border-green-500 bg-green-500/10";
     case "failed":
-      return "border-red-500 bg-red-50";
+      return "border-red-500 bg-red-500/10";
     case "skipped":
-      return "border-neutral-200 bg-neutral-50 opacity-60";
+      return "border-neutral-800 bg-neutral-800/50 opacity-60";
     case "awaiting_approval":
-      return "border-violet-400 bg-violet-50";
+      return "border-violet-400 bg-violet-500/10";
     case "pending":
     default:
-      return "border-neutral-300 bg-white";
+      return "border-neutral-700 bg-neutral-900";
   }
 }
 
@@ -35,11 +35,11 @@ export function componentStatusFill(status: ComponentRunStatus): string {
     case "failed":
       return "bg-red-500";
     case "skipped":
-      return "bg-neutral-300";
+      return "bg-neutral-600";
     case "awaiting_approval":
       return "bg-violet-500";
     case "pending":
     default:
-      return "bg-neutral-200";
+      return "bg-neutral-700";
   }
 }

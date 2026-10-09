@@ -23,7 +23,7 @@ export function ActionsMenu({
         label={label}
         items={items}
         align={align}
-        triggerClassName="inline-flex items-center justify-center border border-neutral-300 p-2 text-neutral-700 hover:bg-neutral-50"
+        triggerClassName="inline-flex items-center justify-center border border-neutral-700 p-2 text-neutral-300 hover:bg-neutral-800"
         trigger={<MoreVertical className="h-4 w-4" />}
       />
     </div>

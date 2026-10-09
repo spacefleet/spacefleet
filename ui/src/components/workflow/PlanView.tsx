@@ -14,7 +14,7 @@ type PlanAction = PlanResourceChange["action"];
 export function PlanCounts({ plan }: { plan: PlanSummary }) {
   if (!plan.has_changes) {
     return (
-      <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium bg-neutral-100 text-neutral-600">
+      <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium bg-neutral-800 text-neutral-300">
         no changes
       </span>
     );
@@ -24,11 +24,11 @@ export function PlanCounts({ plan }: { plan: PlanSummary }) {
       className="inline-flex items-center gap-1.5 font-mono text-[11px] font-medium"
       title={planTitle(plan)}
     >
-      <span className="text-emerald-700">+{plan.add}</span>
-      <span className="text-amber-700">~{plan.change}</span>
-      <span className="text-red-700">-{plan.destroy}</span>
+      <span className="text-emerald-300">+{plan.add}</span>
+      <span className="text-amber-300">~{plan.change}</span>
+      <span className="text-red-300">-{plan.destroy}</span>
       {plan.replace > 0 && (
-        <span className="text-red-700" title="destroy and recreate">
+        <span className="text-red-300" title="destroy and recreate">
           ±{plan.replace}
         </span>
       )}
@@ -61,8 +61,8 @@ export function PlanSummaryBar({ plan }: { plan: PlanSummary }) {
       <div
         className={`flex flex-wrap items-center gap-x-4 gap-y-1 border px-3 py-2 text-sm ${
           plan.has_drift
-            ? "border-amber-200 bg-amber-50 text-amber-900"
-            : "border-neutral-200 bg-neutral-50 text-neutral-700"
+            ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+            : "border-neutral-800 bg-neutral-800/50 text-neutral-300"
         }`}
       >
         {plan.has_drift ? (
@@ -83,10 +83,10 @@ export function PlanSummaryBar({ plan }: { plan: PlanSummary }) {
     <div
       className={`flex flex-wrap items-center gap-x-4 gap-y-1 border px-3 py-2 text-sm ${
         !plan.has_changes
-          ? "border-neutral-200 bg-neutral-50 text-neutral-700"
+          ? "border-neutral-800 bg-neutral-800/50 text-neutral-300"
           : destructive
-            ? "border-red-200 bg-red-50 text-red-900"
-            : "border-emerald-200 bg-emerald-50 text-emerald-900"
+            ? "border-red-500/30 bg-red-500/10 text-red-200"
+            : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
       }`}
     >
       {plan.has_drift && (
@@ -131,10 +131,10 @@ export function PlanResourceList({ plan }: { plan: PlanSummary }) {
     <div className="flex flex-col gap-3">
       {drift.length > 0 && (
         <div>
-          <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-amber-700">
+          <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-amber-300">
             Changed outside of OpenTofu
           </p>
-          <ul className="divide-y divide-amber-100 border border-amber-200">
+          <ul className="divide-y divide-amber-500/20 border border-amber-500/30">
             {drift.map((r) => (
               <PlanResourceRow key={"drift:" + r.address} change={r} />
             ))}
@@ -142,7 +142,7 @@ export function PlanResourceList({ plan }: { plan: PlanSummary }) {
         </div>
       )}
       {plan.refresh_only ? null : rows.length === 0 ? (
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-neutral-400">
           {plan.has_changes
             ? "No resource changes (outputs only)."
             : "No resources change."}
@@ -150,11 +150,11 @@ export function PlanResourceList({ plan }: { plan: PlanSummary }) {
       ) : (
         <div>
           {drift.length > 0 && (
-            <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+            <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
               Planned actions
             </p>
           )}
-          <ul className="divide-y divide-neutral-200 border border-neutral-200">
+          <ul className="divide-y divide-neutral-800 border border-neutral-800">
             {rows.map((r) => (
               <PlanResourceRow key={r.address + r.action} change={r} />
             ))}
@@ -177,20 +177,20 @@ function PlanResourceRow({ change }: { change: PlanResourceChange }) {
         disabled={!expandable}
         aria-expanded={expandable ? open : undefined}
         className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
-          expandable ? "hover:bg-neutral-50" : "cursor-default"
+          expandable ? "hover:bg-neutral-800" : "cursor-default"
         }`}
       >
         {expandable ? (
-          <Chevron className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+          <Chevron className="h-3.5 w-3.5 shrink-0 text-neutral-500" />
         ) : (
           <span className="w-3.5 shrink-0" />
         )}
         <ActionBadge action={change.action} />
-        <span className="truncate font-mono text-xs text-neutral-900">
+        <span className="truncate font-mono text-xs text-neutral-100">
           {change.address}
         </span>
         {change.detail && change.action !== "create" && (
-          <span className="ml-auto hidden truncate text-xs text-neutral-500 sm:inline">
+          <span className="ml-auto hidden truncate text-xs text-neutral-400 sm:inline">
             {change.detail}
           </span>
         )}
@@ -225,27 +225,27 @@ function actionStyle(action: PlanAction): {
 } {
   switch (action) {
     case "create":
-      return { symbol: "+", label: "create", className: "bg-emerald-100 text-emerald-800" };
+      return { symbol: "+", label: "create", className: "bg-emerald-500/15 text-emerald-300" };
     case "update":
-      return { symbol: "~", label: "update", className: "bg-amber-100 text-amber-800" };
+      return { symbol: "~", label: "update", className: "bg-amber-500/15 text-amber-300" };
     case "replace":
-      return { symbol: "-/+", label: "replace", className: "bg-red-100 text-red-800" };
+      return { symbol: "-/+", label: "replace", className: "bg-red-500/15 text-red-300" };
     case "delete":
-      return { symbol: "-", label: "destroy", className: "bg-red-100 text-red-800" };
+      return { symbol: "-", label: "destroy", className: "bg-red-500/15 text-red-300" };
     case "read":
-      return { symbol: "<=", label: "read", className: "bg-sky-100 text-sky-800" };
+      return { symbol: "<=", label: "read", className: "bg-sky-500/15 text-sky-300" };
     case "move":
-      return { symbol: "→", label: "move", className: "bg-neutral-100 text-neutral-700" };
+      return { symbol: "→", label: "move", className: "bg-neutral-800 text-neutral-300" };
     case "import":
-      return { symbol: "←", label: "import", className: "bg-sky-100 text-sky-800" };
+      return { symbol: "←", label: "import", className: "bg-sky-500/15 text-sky-300" };
     case "forget":
-      return { symbol: "·", label: "forget", className: "bg-neutral-100 text-neutral-700" };
+      return { symbol: "·", label: "forget", className: "bg-neutral-800 text-neutral-300" };
     case "drift_update":
-      return { symbol: "~", label: "changed", className: "bg-amber-100 text-amber-800" };
+      return { symbol: "~", label: "changed", className: "bg-amber-500/15 text-amber-300" };
     case "drift_delete":
-      return { symbol: "-", label: "deleted", className: "bg-red-100 text-red-800" };
+      return { symbol: "-", label: "deleted", className: "bg-red-500/15 text-red-300" };
     default:
-      return { symbol: "?", label: "other", className: "bg-neutral-100 text-neutral-700" };
+      return { symbol: "?", label: "other", className: "bg-neutral-800 text-neutral-300" };
   }
 }
 

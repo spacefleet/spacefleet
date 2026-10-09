@@ -62,13 +62,13 @@ export function CloudCredentials() {
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
             Admin
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">
             Cloud Credentials
           </h1>
-          <p className="mt-1 text-sm text-neutral-600">
+          <p className="mt-1 text-sm text-neutral-300">
             Cloud provider credentials (AWS, GCP, Azure) used to authenticate to
             a cloud — for cluster registration, private packages in workflows,
             and more. Secrets are encrypted at rest and never shown again.
@@ -78,7 +78,7 @@ export function CloudCredentials() {
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="inline-flex items-center gap-2 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
+            className="inline-flex shrink-0 items-center gap-2 bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover"
           >
             <Plus className="h-4 w-4" />
             Add credential
@@ -86,25 +86,25 @@ export function CloudCredentials() {
         )}
       </div>
 
-      <div className="mt-6 border border-neutral-200 bg-white">
+      <div className="mt-6 border border-neutral-800 bg-neutral-900">
         {loading ? (
-          <p className="p-6 text-sm text-neutral-500">Loading…</p>
+          <p className="p-6 text-sm text-neutral-400">Loading…</p>
         ) : error ? (
-          <p className="p-6 text-sm text-red-600">{error}</p>
+          <p className="p-6 text-sm text-red-400">{error}</p>
         ) : creds.length === 0 ? (
           <div className="p-10 text-center">
-            <KeyRound className="mx-auto h-8 w-8 text-neutral-300" />
-            <p className="mt-3 text-sm font-medium text-neutral-700">
+            <KeyRound className="mx-auto h-8 w-8 text-neutral-600" />
+            <p className="mt-3 text-sm font-medium text-neutral-300">
               No cloud credentials yet
             </p>
-            <p className="mt-1 text-sm text-neutral-500">
+            <p className="mt-1 text-sm text-neutral-400">
               Add one to let Spacefleet authenticate to your cloud account.
             </p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
+              <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
                 <th className="px-4 py-2 font-medium">Name</th>
                 <th className="px-4 py-2 font-medium">Provider</th>
                 <th className="px-4 py-2 font-medium">Details</th>
@@ -115,22 +115,22 @@ export function CloudCredentials() {
               {creds.map((c) => (
                 <tr
                   key={c.id}
-                  className="border-b border-neutral-100 last:border-0"
+                  className="border-b border-neutral-800 last:border-0"
                 >
-                  <td className="px-4 py-3 font-medium text-neutral-900">
+                  <td className="px-4 py-3 font-medium text-neutral-100">
                     {c.name}
                     {c.description && (
-                      <span className="mt-0.5 block text-xs font-normal text-neutral-500">
+                      <span className="mt-0.5 block text-xs font-normal text-neutral-400">
                         {c.description}
                       </span>
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="inline-flex border border-neutral-300 px-2 py-0.5 text-xs font-medium text-neutral-700">
+                    <span className="inline-flex border border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-300">
                       {PROVIDER_LABELS[c.provider]}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-neutral-600">
+                  <td className="px-4 py-3 text-neutral-300">
                     {configSummary(c) || "—"}
                   </td>
                   {canEdit && (
@@ -138,7 +138,7 @@ export function CloudCredentials() {
                       <button
                         type="button"
                         onClick={() => void onDelete(c)}
-                        className="inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-red-600"
+                        className="inline-flex items-center gap-1 text-xs text-neutral-400 hover:text-red-400"
                         aria-label={`Delete ${c.name}`}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -233,17 +233,17 @@ function AddCredentialDialog({
       .every((f) => (fields[f.key] ?? "").trim() !== "");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
-      <div className="mt-12 w-full max-w-lg border border-neutral-200 bg-white shadow-lg">
-        <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
+      <div className="mt-12 w-full max-w-lg border border-neutral-800 bg-neutral-900 shadow-lg">
+        <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
           <h2 className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight">
-            <KeyRound className="h-5 w-5 text-neutral-500" />
+            <KeyRound className="h-5 w-5 text-neutral-400" />
             New cloud credential
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-700"
+            className="text-neutral-500 hover:text-neutral-300"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
@@ -254,7 +254,7 @@ function AddCredentialDialog({
           <Labeled htmlFor="cc-name" label="Name">
             <input
               id="cc-name"
-              className="w-full border border-neutral-300 px-3 py-2 text-sm"
+              className="w-full border border-neutral-700 px-3 py-2 text-sm"
               placeholder="production-aws"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -266,7 +266,7 @@ function AddCredentialDialog({
           <Labeled htmlFor="cc-provider" label="Provider">
             <select
               id="cc-provider"
-              className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+              className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
               value={provider}
               onChange={(e) => onProviderChange(e.target.value as CloudProvider)}
             >
@@ -283,7 +283,7 @@ function AddCredentialDialog({
           >
             <input
               id="cc-description"
-              className="w-full border border-neutral-300 px-3 py-2 text-sm"
+              className="w-full border border-neutral-700 px-3 py-2 text-sm"
               placeholder="Billing account, us-east-1"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -300,7 +300,7 @@ function AddCredentialDialog({
               {f.kind === "textarea" ? (
                 <textarea
                   id={f.key}
-                  className="h-32 w-full border border-neutral-300 px-3 py-2 font-mono text-xs"
+                  className="h-32 w-full border border-neutral-700 px-3 py-2 font-mono text-xs"
                   placeholder={f.placeholder}
                   value={fields[f.key] ?? ""}
                   onChange={(e) => setField(f.key, e.target.value)}
@@ -310,7 +310,7 @@ function AddCredentialDialog({
                 <input
                   id={f.key}
                   type={f.kind === "secret" ? "password" : "text"}
-                  className="w-full border border-neutral-300 px-3 py-2 text-sm"
+                  className="w-full border border-neutral-700 px-3 py-2 text-sm"
                   placeholder={f.placeholder}
                   value={fields[f.key] ?? ""}
                   onChange={(e) => setField(f.key, e.target.value)}
@@ -321,20 +321,20 @@ function AddCredentialDialog({
             </Labeled>
           ))}
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
 
-          <div className="flex items-center justify-end gap-3 border-t border-neutral-200 pt-4">
+          <div className="flex items-center justify-end gap-3 border-t border-neutral-800 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="text-sm text-neutral-500 hover:text-neutral-800"
+              className="text-sm text-neutral-400 hover:text-neutral-200"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!ready || submitting}
-              className="bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+              className="bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
             >
               {submitting ? "Saving…" : "Add credential"}
             </button>
@@ -400,12 +400,12 @@ function Labeled({
     <div>
       <label
         htmlFor={htmlFor}
-        className="mb-1 block text-sm font-medium text-neutral-700"
+        className="mb-1 block text-sm font-medium text-neutral-300"
       >
         {label}
       </label>
       {children}
-      {help && <p className="mt-1 text-xs italic text-neutral-500">{help}</p>}
+      {help && <p className="mt-1 text-xs italic text-neutral-400">{help}</p>}
     </div>
   );
 }

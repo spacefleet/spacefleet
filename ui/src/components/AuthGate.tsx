@@ -17,8 +17,8 @@ export function AuthGate() {
   // placeholder rather than flashing the login screen.
   if (auth.isLoading || auth.activeNavigator) {
     return (
-      <div className="flex h-screen items-center justify-center bg-neutral-50">
-        <p className="text-sm text-neutral-500">Signing in…</p>
+      <div className="flex h-screen items-center justify-center bg-neutral-950">
+        <p className="text-sm text-neutral-400">Signing in…</p>
       </div>
     );
   }

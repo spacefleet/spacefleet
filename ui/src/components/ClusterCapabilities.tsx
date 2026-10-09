@@ -62,16 +62,16 @@ export function ClusterCapabilities({
   }, [load, currentOrg?.id]);
 
   return (
-    <div className={bordered ? "border border-neutral-200 bg-white" : "bg-white"}>
-      <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-2">
-        <h2 className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+    <div className={bordered ? "border border-neutral-800 bg-neutral-900" : "bg-neutral-900"}>
+      <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-2">
+        <h2 className="text-xs font-medium uppercase tracking-wide text-neutral-500">
           Capabilities / Access
         </h2>
         <button
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-900 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 text-xs text-neutral-400 hover:text-neutral-100 disabled:opacity-50"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           Re-check
@@ -79,11 +79,11 @@ export function ClusterCapabilities({
       </div>
 
       {loading ? (
-        <p className="p-4 text-sm text-neutral-500">Checking access…</p>
+        <p className="p-4 text-sm text-neutral-400">Checking access…</p>
       ) : error ? (
-        <p className="p-4 text-sm text-red-600">{error}</p>
+        <p className="p-4 text-sm text-red-400">{error}</p>
       ) : !report ? (
-        <p className="p-4 text-sm text-neutral-500">No capability report.</p>
+        <p className="p-4 text-sm text-neutral-400">No capability report.</p>
       ) : (
         <CapabilityReport clusterId={clusterId} report={report} />
       )}
@@ -118,7 +118,7 @@ function CapabilityReport({
     <div>
       <IdentityLine identity={report.identity} />
       {groups.length === 0 ? (
-        <p className="p-4 text-sm text-neutral-500">
+        <p className="p-4 text-sm text-neutral-400">
           No capabilities reported.
         </p>
       ) : (
@@ -146,11 +146,11 @@ function IdentityLine({
 }) {
   const subject = identity.username || "(unknown subject)";
   return (
-    <p className="border-b border-neutral-100 px-4 py-2 text-xs text-neutral-500">
+    <p className="border-b border-neutral-800 px-4 py-2 text-xs text-neutral-400">
       Resolved identity{" "}
-      <span className="font-mono text-neutral-700">{subject}</span>
+      <span className="font-mono text-neutral-300">{subject}</span>
       {identity.groups.length > 0 && (
-        <span className="text-neutral-400">
+        <span className="text-neutral-500">
           {" "}
           · groups {identity.groups.join(", ")}
         </span>
@@ -171,11 +171,11 @@ function AreaGroup({
   onToggle: (key: string) => void;
 }) {
   return (
-    <div className="border-b border-neutral-100 last:border-0">
-      <h3 className="px-4 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+    <div className="border-b border-neutral-800 last:border-0">
+      <h3 className="px-4 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
         {area}
       </h3>
-      <ul className="divide-y divide-neutral-100">
+      <ul className="divide-y divide-neutral-800">
         {capabilities.map((cap) => (
           <CapabilityRow
             key={cap.key}
@@ -210,24 +210,24 @@ function CapabilityRow({
             checked={checked}
             onChange={onToggle}
             aria-label={`Include ${capability.title}`}
-            className="h-4 w-4 shrink-0 accent-neutral-900"
+            className="h-4 w-4 shrink-0 accent-white"
           />
           {denied ? (
             <button
               type="button"
               onClick={() => setExpanded((e) => !e)}
               aria-expanded={expanded}
-              className="inline-flex items-center gap-1.5 text-sm text-neutral-900 hover:text-neutral-600"
+              className="inline-flex items-center gap-1.5 text-sm text-neutral-100 hover:text-neutral-300"
             >
               {expanded ? (
-                <ChevronDown className="h-4 w-4 text-neutral-400" />
+                <ChevronDown className="h-4 w-4 text-neutral-500" />
               ) : (
-                <ChevronRight className="h-4 w-4 text-neutral-400" />
+                <ChevronRight className="h-4 w-4 text-neutral-500" />
               )}
               {capability.title}
             </button>
           ) : (
-            <span className="pl-[1.375rem] text-sm text-neutral-900">
+            <span className="pl-[1.375rem] text-sm text-neutral-100">
               {capability.title}
             </span>
           )}
@@ -242,28 +242,28 @@ function CapabilityRow({
 
 function MissingRules({ capability }: { capability: Capability }) {
   return (
-    <div className="border-t border-neutral-100 bg-neutral-50 px-4 py-3 pl-10">
-      <p className="text-xs font-medium text-neutral-700">Missing permissions</p>
+    <div className="border-t border-neutral-800 bg-neutral-800/50 px-4 py-3 pl-10">
+      <p className="text-xs font-medium text-neutral-300">Missing permissions</p>
       {capability.missing_rules.length > 0 ? (
         <ul className="mt-2 space-y-1">
           {capability.missing_rules.map((rule, i) => (
             <li
               key={`${rule.resource}-${rule.subresource ?? ""}-${rule.verb}-${i}`}
-              className="font-mono text-[11px] text-neutral-600"
+              className="font-mono text-[11px] text-neutral-300"
             >
               {ruleLabel(rule)}
               {rule.reason && (
-                <span className="text-neutral-400"> — {rule.reason}</span>
+                <span className="text-neutral-500"> — {rule.reason}</span>
               )}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-xs text-neutral-500">
+        <p className="mt-2 text-xs text-neutral-400">
           No specific rules reported.
         </p>
       )}
-      <p className="mt-2 text-xs text-neutral-500">
+      <p className="mt-2 text-xs text-neutral-400">
         Check this capability and use “Generate RBAC” below to grant it.
       </p>
     </div>
@@ -320,9 +320,9 @@ function GenerateRbac({
   }
 
   return (
-    <div className="border-t border-neutral-200 bg-neutral-50 px-4 py-3">
+    <div className="border-t border-neutral-800 bg-neutral-800/50 px-4 py-3">
       <div className="flex items-center justify-between gap-4">
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-neutral-400">
           {count === 0
             ? "Select capabilities to grant, then generate a single manifest."
             : `${count} capabilit${count === 1 ? "y" : "ies"} selected.`}
@@ -331,12 +331,12 @@ function GenerateRbac({
           type="button"
           onClick={() => void generate()}
           disabled={count === 0 || generating}
-          className="shrink-0 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+          className="shrink-0 bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
         >
           {generating ? "Generating…" : "Generate RBAC"}
         </button>
       </div>
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
       {manifest && <ManifestBlock yaml={manifest} />}
     </div>
   );
@@ -358,11 +358,11 @@ function ManifestBlock({ yaml }: { yaml: string }) {
   return (
     <div className="mt-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-neutral-500">Apply this to the cluster:</p>
+        <p className="text-xs text-neutral-400">Apply this to the cluster:</p>
         <button
           type="button"
           onClick={() => void copy()}
-          className="inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-900"
+          className="inline-flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-100"
         >
           {copied ? (
             <>
@@ -377,7 +377,7 @@ function ManifestBlock({ yaml }: { yaml: string }) {
           )}
         </button>
       </div>
-      <code className="mt-1 block max-h-72 overflow-auto whitespace-pre bg-neutral-900 p-3 font-mono text-[11px] text-neutral-100">
+      <code className="mt-1 block max-h-72 overflow-auto whitespace-pre border border-neutral-800 bg-black p-3 font-mono text-[11px] text-neutral-100">
         {yaml}
       </code>
     </div>
@@ -387,14 +387,14 @@ function ManifestBlock({ yaml }: { yaml: string }) {
 function CapabilityBadge({ status }: { status: Capability["status"] }) {
   if (status === "allowed") {
     return (
-      <span className="inline-flex items-center gap-1 bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+      <span className="inline-flex items-center gap-1 bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-300">
         <CheckCircle2 className="h-3.5 w-3.5" />
         Allowed
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+    <span className="inline-flex items-center gap-1 bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-300">
       <XCircle className="h-3.5 w-3.5" />
       Denied
     </span>

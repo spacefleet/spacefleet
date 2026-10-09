@@ -86,20 +86,20 @@ export function ImportApplication() {
       <button
         type="button"
         onClick={() => navigate("/applications")}
-        className="inline-flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-900"
+        className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to applications
       </button>
 
       <div className="mt-3">
-        <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+        <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
           Applications
         </p>
         <h1 className="mt-1 text-2xl font-bold tracking-tight">
           Import existing release
         </h1>
-        <p className="mt-1 text-sm text-neutral-600">
+        <p className="mt-1 text-sm text-neutral-300">
           Find a Helm release already running on one of your clusters and adopt
           it as a managed application. You then build its deploy workflow in
           the workflow builder. Nothing is redeployed.
@@ -108,15 +108,15 @@ export function ImportApplication() {
 
       <form
         onSubmit={discover}
-        className="mt-6 max-w-3xl border border-neutral-200 bg-white p-4"
+        className="mt-6 max-w-3xl border border-neutral-800 bg-neutral-900 p-4"
       >
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex-1">
-            <span className="mb-1 block text-sm font-medium text-neutral-700">
+            <span className="mb-1 block text-sm font-medium text-neutral-300">
               Cluster
             </span>
             <select
-              className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm"
+              className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
               value={clusterId}
               onChange={(e) => setClusterId(e.target.value)}
               required
@@ -130,12 +130,12 @@ export function ImportApplication() {
             </select>
           </label>
           <label className="flex-1">
-            <span className="mb-1 block text-sm font-medium text-neutral-700">
-              Namespace <span className="text-neutral-400">(optional)</span>
+            <span className="mb-1 block text-sm font-medium text-neutral-300">
+              Namespace <span className="text-neutral-500">(optional)</span>
             </span>
             <input
               type="text"
-              className="w-full border border-neutral-300 px-3 py-2 text-sm"
+              className="w-full border border-neutral-700 px-3 py-2 text-sm"
               placeholder="all namespaces"
               value={namespace}
               onChange={(e) => setNamespace(e.target.value)}
@@ -144,24 +144,24 @@ export function ImportApplication() {
           <button
             type="submit"
             disabled={clusterId === "" || loading}
-            className="bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+            className="bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
           >
             {loading ? "Discovering…" : "Discover"}
           </button>
         </div>
       </form>
 
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
 
       {releases !== null && (
-        <div className="mt-6 max-w-3xl border border-neutral-200 bg-white">
+        <div className="mt-6 max-w-3xl border border-neutral-800 bg-neutral-900">
           {releases.length === 0 ? (
             <div className="p-10 text-center">
-              <PackageSearch className="mx-auto h-8 w-8 text-neutral-300" />
-              <p className="mt-3 text-sm font-medium text-neutral-700">
+              <PackageSearch className="mx-auto h-8 w-8 text-neutral-600" />
+              <p className="mt-3 text-sm font-medium text-neutral-300">
                 No Helm releases found
               </p>
-              <p className="mt-1 text-sm text-neutral-500">
+              <p className="mt-1 text-sm text-neutral-400">
                 Nothing to import on this cluster
                 {namespace.trim() ? ` in namespace ${namespace.trim()}` : ""}.
               </p>
@@ -169,7 +169,7 @@ export function ImportApplication() {
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
+                <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
                   <th className="px-4 py-2 font-medium">Release</th>
                   <th className="px-4 py-2 font-medium">Namespace</th>
                   <th className="px-4 py-2 font-medium">Chart</th>
@@ -181,24 +181,24 @@ export function ImportApplication() {
                 {releases.map((r) => (
                   <tr
                     key={`${r.namespace}/${r.name}`}
-                    className="border-b border-neutral-100 last:border-0"
+                    className="border-b border-neutral-800 last:border-0"
                   >
-                    <td className="px-4 py-3 font-medium text-neutral-900">
+                    <td className="px-4 py-3 font-medium text-neutral-100">
                       {r.name}
                     </td>
-                    <td className="px-4 py-3 text-neutral-600">
+                    <td className="px-4 py-3 text-neutral-300">
                       {r.namespace}
                     </td>
-                    <td className="px-4 py-3 text-neutral-600">
+                    <td className="px-4 py-3 text-neutral-300">
                       {r.chart_name}
                       {r.chart_version ? `:${r.chart_version}` : ""}
                     </td>
-                    <td className="px-4 py-3 text-neutral-600">{r.status}</td>
+                    <td className="px-4 py-3 text-neutral-300">{r.status}</td>
                     <td className="px-4 py-3 text-right">
                       <button
                         type="button"
                         onClick={() => importRelease(r)}
-                        className="border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
+                        className="border border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-200 hover:bg-neutral-800"
                       >
                         Import
                       </button>

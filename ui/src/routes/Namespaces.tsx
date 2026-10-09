@@ -70,11 +70,11 @@ export function Namespaces() {
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
             Infrastructure
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">Namespaces</h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-neutral-300">
             The Kubernetes namespaces across your registered clusters, updated
             live.
           </p>
@@ -82,12 +82,12 @@ export function Namespaces() {
         {!clustersLoading && clusters.length > 0 && (
           <div className="flex items-center gap-3">
             {targets.length > 0 && <LiveIndicator status={status} />}
-            <label className="flex items-center gap-2 text-sm text-gray-600">
+            <label className="flex items-center gap-2 text-sm text-neutral-300">
               Cluster
               <select
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
-                className="border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-black focus:outline-none"
+                className="border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100 focus:border-white focus:outline-none"
               >
                 <option value={ALL}>All clusters</option>
                 {clusters.map((c) => (
@@ -103,7 +103,7 @@ export function Namespaces() {
 
       {/* Per-cluster stream failures (e.g. an unreachable cluster). */}
       {errors.length > 0 && (
-        <div className="mt-4 border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+        <div className="mt-4 border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
           {errors.map((e) => (
             <div key={e.cluster} className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -115,21 +115,21 @@ export function Namespaces() {
         </div>
       )}
 
-      <div className="mt-6 border border-gray-200 bg-white">
+      <div className="mt-6 border border-neutral-800 bg-neutral-900">
         {clustersLoading ? (
-          <p className="p-6 text-sm text-gray-500">Loading…</p>
+          <p className="p-6 text-sm text-neutral-400">Loading…</p>
         ) : clustersError ? (
-          <p className="p-6 text-sm text-red-600">{clustersError}</p>
+          <p className="p-6 text-sm text-red-400">{clustersError}</p>
         ) : clusters.length === 0 ? (
           <NoClusters />
         ) : sortedRows.length === 0 && status !== "live" ? (
-          <p className="p-6 text-sm text-gray-500">Connecting…</p>
+          <p className="p-6 text-sm text-neutral-400">Connecting…</p>
         ) : sortedRows.length === 0 ? (
           <NoNamespaces skipped={skipped} />
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-400">
+              <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
                 <th className="px-4 py-2 font-medium">Namespace</th>
                 <th className="px-4 py-2 font-medium">Cluster</th>
                 <th className="px-4 py-2 font-medium">Status</th>
@@ -145,16 +145,16 @@ export function Namespaces() {
                       `/infrastructure/namespaces/${n.clusterId}/${encodeURIComponent(n.name)}`,
                     )
                   }
-                  className="cursor-pointer border-b border-gray-100 last:border-0 hover:bg-gray-50"
+                  className="cursor-pointer border-b border-neutral-800 last:border-0 hover:bg-neutral-800"
                 >
-                  <td className="px-4 py-3 font-medium text-gray-900">
+                  <td className="px-4 py-3 font-medium text-neutral-100">
                     {n.name}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{n.clusterName}</td>
+                  <td className="px-4 py-3 text-neutral-300">{n.clusterName}</td>
                   <td className="px-4 py-3">
                     <NamespaceStatusBadge status={n.status} />
                   </td>
-                  <td className="px-4 py-3 text-gray-600">
+                  <td className="px-4 py-3 text-neutral-300">
                     {nodeAge(n.created_at)}
                   </td>
                 </tr>
@@ -172,23 +172,23 @@ function LiveIndicator({ status }: { status: StreamStatus }) {
     StreamStatus,
     { label: string; dot: string; text: string; pulse: boolean }
   > = {
-    live: { label: "Live", dot: "bg-green-500", text: "text-gray-600", pulse: false },
+    live: { label: "Live", dot: "bg-green-500", text: "text-neutral-300", pulse: false },
     connecting: {
       label: "Connecting…",
-      dot: "bg-gray-400",
-      text: "text-gray-500",
+      dot: "bg-neutral-500",
+      text: "text-neutral-400",
       pulse: true,
     },
     reconnecting: {
       label: "Reconnecting…",
       dot: "bg-amber-500",
-      text: "text-amber-700",
+      text: "text-amber-300",
       pulse: true,
     },
     error: {
       label: "Disconnected",
       dot: "bg-red-500",
-      text: "text-red-700",
+      text: "text-red-300",
       pulse: false,
     },
   };
@@ -206,14 +206,14 @@ function LiveIndicator({ status }: { status: StreamStatus }) {
 function NoClusters() {
   return (
     <div className="p-10 text-center">
-      <Server className="mx-auto h-8 w-8 text-gray-300" />
-      <p className="mt-3 text-sm font-medium text-gray-700">No clusters yet</p>
-      <p className="mt-1 text-sm text-gray-500">
+      <Server className="mx-auto h-8 w-8 text-neutral-600" />
+      <p className="mt-3 text-sm font-medium text-neutral-300">No clusters yet</p>
+      <p className="mt-1 text-sm text-neutral-400">
         Register a Kubernetes cluster to see its namespaces here.
       </p>
       <Link
         to="/admin/clusters"
-        className="mt-4 inline-flex items-center gap-2 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+        className="mt-4 inline-flex items-center gap-2 bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover"
       >
         Go to Clusters
       </Link>
@@ -224,11 +224,11 @@ function NoClusters() {
 function NoNamespaces({ skipped }: { skipped: number }) {
   return (
     <div className="p-10 text-center">
-      <Boxes className="mx-auto h-8 w-8 text-gray-300" />
-      <p className="mt-3 text-sm font-medium text-gray-700">
+      <Boxes className="mx-auto h-8 w-8 text-neutral-600" />
+      <p className="mt-3 text-sm font-medium text-neutral-300">
         No namespaces to show
       </p>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-neutral-400">
         {skipped > 0
           ? `${skipped} cluster${skipped === 1 ? " is" : "s are"} not connected and ${skipped === 1 ? "was" : "were"} skipped — check its connection on the Clusters page.`
           : "This cluster reported no namespaces."}
@@ -240,14 +240,14 @@ function NoNamespaces({ skipped }: { skipped: number }) {
 function NamespaceStatusBadge({ status }: { status: string }) {
   if (namespacePhase(status) === "Terminating") {
     return (
-      <span className="inline-flex items-center gap-1 bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+      <span className="inline-flex items-center gap-1 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300">
         <CircleSlash className="h-3.5 w-3.5" />
         Terminating
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+    <span className="inline-flex items-center gap-1 bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-300">
       Active
     </span>
   );

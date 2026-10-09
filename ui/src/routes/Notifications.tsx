@@ -92,11 +92,11 @@ export function Notifications() {
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
             Admin
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">Notifications</h1>
-          <p className="mt-1 text-sm text-neutral-600">
+          <p className="mt-1 text-sm text-neutral-300">
             Where run events go: a run waiting for approval, a failed run, or
             drift found by a check — by email, to Slack, or to any webhook.
           </p>
@@ -105,7 +105,7 @@ export function Notifications() {
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="inline-flex items-center gap-2 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
+            className="inline-flex shrink-0 items-center gap-2 bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover"
           >
             <Plus className="h-4 w-4" />
             Add channel
@@ -113,25 +113,25 @@ export function Notifications() {
         )}
       </div>
 
-      {notice && <p className="mt-4 text-sm text-emerald-700">{notice}</p>}
+      {notice && <p className="mt-4 text-sm text-emerald-300">{notice}</p>}
 
-      <div className="mt-6 border border-neutral-200 bg-white">
+      <div className="mt-6 border border-neutral-800 bg-neutral-900">
         {loading ? (
-          <p className="p-6 text-sm text-neutral-500">Loading…</p>
+          <p className="p-6 text-sm text-neutral-400">Loading…</p>
         ) : error ? (
-          <p className="p-6 text-sm text-red-600">{error}</p>
+          <p className="p-6 text-sm text-red-400">{error}</p>
         ) : channels.length === 0 ? (
           <div className="p-10 text-center">
-            <Bell className="mx-auto h-8 w-8 text-neutral-300" />
-            <p className="mt-3 text-sm font-medium text-neutral-700">No channels yet</p>
-            <p className="mt-1 text-sm text-neutral-500">
+            <Bell className="mx-auto h-8 w-8 text-neutral-600" />
+            <p className="mt-3 text-sm font-medium text-neutral-300">No channels yet</p>
+            <p className="mt-1 text-sm text-neutral-400">
               Add one to be told when a run needs approval, fails, or finds drift.
             </p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
+              <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
                 <th className="px-4 py-2 font-medium">Name</th>
                 <th className="px-4 py-2 font-medium">Kind</th>
                 <th className="px-4 py-2 font-medium">Destination</th>
@@ -142,21 +142,21 @@ export function Notifications() {
             </thead>
             <tbody>
               {channels.map((ch) => (
-                <tr key={ch.id} className="border-b border-neutral-100 last:border-0">
-                  <td className="px-4 py-3 font-medium text-neutral-900">{ch.name}</td>
-                  <td className="px-4 py-3 text-neutral-600">{KIND_LABELS[ch.kind]}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-neutral-600">
+                <tr key={ch.id} className="border-b border-neutral-800 last:border-0">
+                  <td className="px-4 py-3 font-medium text-neutral-100">{ch.name}</td>
+                  <td className="px-4 py-3 text-neutral-300">{KIND_LABELS[ch.kind]}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-neutral-300">
                     {ch.address}
                     {ch.has_secret && (
-                      <span className="ml-2 border border-neutral-300 px-1 py-0.5 font-sans text-[10px] uppercase tracking-wide text-neutral-500">
+                      <span className="ml-2 border border-neutral-700 px-1 py-0.5 font-sans text-[10px] uppercase tracking-wide text-neutral-400">
                         signed
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-neutral-600">
+                  <td className="px-4 py-3 text-neutral-300">
                     {ch.events.map((e) => EVENT_LABEL[e] ?? e).join(", ")}
                   </td>
-                  <td className="px-4 py-3 text-neutral-600">{appName(ch.application_id)}</td>
+                  <td className="px-4 py-3 text-neutral-300">{appName(ch.application_id)}</td>
                   {isAdmin && (
                     <td className="px-4 py-3 text-right">
                       {ch.kind === "webhook" && (
@@ -165,7 +165,7 @@ export function Notifications() {
                           onClick={() => setSigning(ch)}
                           title={ch.has_secret ? "Rotate or remove the signing secret" : "Set a signing secret"}
                           aria-label={`Signing secret for ${ch.name}`}
-                          className="mr-1 p-1 text-neutral-400 hover:text-neutral-900"
+                          className="mr-1 p-1 text-neutral-500 hover:text-neutral-100"
                         >
                           <KeyRound className="h-4 w-4" />
                         </button>
@@ -175,7 +175,7 @@ export function Notifications() {
                         onClick={() => void onTest(ch)}
                         title="Send a test notification"
                         aria-label={`Test ${ch.name}`}
-                        className="mr-1 p-1 text-neutral-400 hover:text-neutral-900"
+                        className="mr-1 p-1 text-neutral-500 hover:text-neutral-100"
                       >
                         <Send className="h-4 w-4" />
                       </button>
@@ -184,7 +184,7 @@ export function Notifications() {
                         onClick={() => void onDelete(ch)}
                         title="Delete this channel"
                         aria-label={`Delete ${ch.name}`}
-                        className="p-1 text-neutral-400 hover:text-red-600"
+                        className="p-1 text-neutral-500 hover:text-red-400"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -283,29 +283,29 @@ function AddChannelDialog({
   const complete = name.trim() !== "" && target.trim() !== "" && events.length > 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <form
         onSubmit={(e) => void submit(e)}
-        className="w-full max-w-lg border border-neutral-200 bg-white p-6"
+        className="w-full max-w-lg border border-neutral-800 bg-neutral-900 p-6"
       >
         <div className="flex items-start justify-between">
           <h2 className="text-lg font-semibold">Add notification channel</h2>
-          <button type="button" onClick={onClose} aria-label="Close" className="p-1 text-neutral-400 hover:text-neutral-900">
+          <button type="button" onClick={onClose} aria-label="Close" className="p-1 text-neutral-500 hover:text-neutral-100">
             <X className="h-4 w-4" />
           </button>
         </div>
         <div className="mt-4 grid gap-4">
-          <label className="flex flex-col gap-1 text-xs text-neutral-600">
+          <label className="flex flex-col gap-1 text-xs text-neutral-300">
             Name
             <input
               type="text"
               aria-label="Name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="border border-neutral-300 px-2 py-1.5 text-sm text-neutral-900"
+              className="border border-neutral-700 px-2 py-1.5 text-sm text-neutral-100"
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs text-neutral-600">
+          <label className="flex flex-col gap-1 text-xs text-neutral-300">
             Kind
             <select
               aria-label="Kind"
@@ -314,7 +314,7 @@ function AddChannelDialog({
                 setKind(e.target.value as Kind);
                 setTarget("");
               }}
-              className="border border-neutral-300 bg-white px-2 py-1.5 text-sm text-neutral-900"
+              className="border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100"
             >
               {(Object.keys(KIND_LABELS) as Kind[]).map((k) => (
                 <option key={k} value={k}>
@@ -323,7 +323,7 @@ function AddChannelDialog({
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-xs text-neutral-600">
+          <label className="flex flex-col gap-1 text-xs text-neutral-300">
             {targetLabel}
             <input
               type="text"
@@ -331,21 +331,21 @@ function AddChannelDialog({
               value={target}
               placeholder={targetPlaceholder}
               onChange={(e) => setTarget(e.target.value)}
-              className="border border-neutral-300 px-2 py-1.5 font-mono text-sm text-neutral-900 placeholder:font-sans placeholder:text-neutral-400"
+              className="border border-neutral-700 px-2 py-1.5 font-mono text-sm text-neutral-100 placeholder:font-sans placeholder:text-neutral-500"
             />
             {kind !== "email" && (
-              <span className="text-neutral-500">
+              <span className="text-neutral-400">
                 Stored encrypted; only the host is shown afterwards.
               </span>
             )}
             {kind === "email" && (
-              <span className="text-neutral-500">
+              <span className="text-neutral-400">
                 Needs outbound email configured on this deployment.
               </span>
             )}
           </label>
           {kind === "webhook" && (
-            <label className="flex flex-col gap-1 text-xs text-neutral-600">
+            <label className="flex flex-col gap-1 text-xs text-neutral-300">
               Signing secret (optional)
               <input
                 type="text"
@@ -353,38 +353,38 @@ function AddChannelDialog({
                 value={secret}
                 placeholder="a shared secret your receiver checks"
                 onChange={(e) => setSecret(e.target.value)}
-                className="border border-neutral-300 px-2 py-1.5 font-mono text-sm text-neutral-900 placeholder:font-sans placeholder:text-neutral-400"
+                className="border border-neutral-700 px-2 py-1.5 font-mono text-sm text-neutral-100 placeholder:font-sans placeholder:text-neutral-500"
               />
-              <span className="text-neutral-500">
+              <span className="text-neutral-400">
                 When set, every delivery carries an X-Spacefleet-Signature-256
                 header (HMAC-SHA256 of the body) so your receiver can verify it
                 came from here. Stored encrypted, never shown again.
               </span>
             </label>
           )}
-          <fieldset className="flex flex-col gap-1 text-xs text-neutral-600">
+          <fieldset className="flex flex-col gap-1 text-xs text-neutral-300">
             <legend>Events</legend>
             {EVENTS.map((e) => (
-              <label key={e.kind} className="inline-flex items-center gap-2 text-sm text-neutral-700">
+              <label key={e.kind} className="inline-flex items-center gap-2 text-sm text-neutral-300">
                 <input
                   type="checkbox"
                   aria-label={e.label}
                   checked={events.includes(e.kind)}
                   onChange={() => toggle(e.kind)}
-                  className="h-3.5 w-3.5 accent-black"
+                  className="h-3.5 w-3.5 accent-white"
                 />
                 {e.label}
-                <span className="text-xs text-neutral-500">— {e.hint}</span>
+                <span className="text-xs text-neutral-400">— {e.hint}</span>
               </label>
             ))}
           </fieldset>
-          <label className="flex flex-col gap-1 text-xs text-neutral-600">
+          <label className="flex flex-col gap-1 text-xs text-neutral-300">
             Application
             <select
               aria-label="Application"
               value={appId}
               onChange={(e) => setAppId(e.target.value)}
-              className="border border-neutral-300 bg-white px-2 py-1.5 text-sm text-neutral-900"
+              className="border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100"
             >
               <option value="">All applications</option>
               {apps.map((a) => (
@@ -395,19 +395,19 @@ function AddChannelDialog({
             </select>
           </label>
         </div>
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+            className="border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={!complete || submitting}
-            className="bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+            className="bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
           >
             {submitting ? "Saving…" : "Save channel"}
           </button>
@@ -450,26 +450,26 @@ function SigningSecretDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <form
         onSubmit={(e) => {
           e.preventDefault();
           void save(secret.trim());
         }}
-        className="w-full max-w-md border border-neutral-200 bg-white p-5 shadow-lg"
+        className="w-full max-w-md border border-neutral-800 bg-neutral-900 p-5 shadow-lg"
       >
         <div className="flex items-start justify-between">
           <h2 className="text-base font-semibold">Signing secret for {channel.name}</h2>
-          <button type="button" onClick={onClose} aria-label="Close" className="p-1 text-neutral-400 hover:text-neutral-900">
+          <button type="button" onClick={onClose} aria-label="Close" className="p-1 text-neutral-500 hover:text-neutral-100">
             <X className="h-4 w-4" />
           </button>
         </div>
-        <p className="mt-1 text-sm text-neutral-600">
+        <p className="mt-1 text-sm text-neutral-300">
           {channel.has_secret
             ? "Deliveries are signed. Enter a new secret to rotate it — the current one cannot be shown — or stop signing altogether."
             : "Deliveries are not signed. Set a secret and every delivery will carry an X-Spacefleet-Signature-256 header your receiver can verify."}
         </p>
-        <label className="mt-4 flex flex-col gap-1 text-xs text-neutral-600">
+        <label className="mt-4 flex flex-col gap-1 text-xs text-neutral-300">
           New signing secret
           <input
             type="text"
@@ -477,18 +477,18 @@ function SigningSecretDialog({
             value={secret}
             onChange={(e) => setSecret(e.target.value)}
             placeholder="a shared secret your receiver checks"
-            className="border border-neutral-300 px-2 py-1.5 font-mono text-sm text-neutral-900 placeholder:font-sans placeholder:text-neutral-400"
+            className="border border-neutral-700 px-2 py-1.5 font-mono text-sm text-neutral-100 placeholder:font-sans placeholder:text-neutral-500"
             autoFocus
           />
         </label>
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
         <div className="mt-5 flex items-center justify-between gap-2">
           {channel.has_secret ? (
             <button
               type="button"
               onClick={() => void save("")}
               disabled={submitting}
-              className="border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+              className="border border-red-500/40 px-3 py-1.5 text-sm text-red-300 hover:bg-red-500/10 disabled:opacity-50"
             >
               Stop signing
             </button>
@@ -499,14 +499,14 @@ function SigningSecretDialog({
             <button
               type="button"
               onClick={onClose}
-              className="border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+              className="border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting || secret.trim() === ""}
-              className="bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+              className="bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
             >
               {submitting ? "Saving…" : channel.has_secret ? "Rotate secret" : "Start signing"}
             </button>

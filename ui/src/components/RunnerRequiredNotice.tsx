@@ -21,24 +21,24 @@ export function RunnerRequiredNotice({
   return (
     <div
       role="status"
-      className={cn("border border-amber-200 bg-amber-50 p-4", className)}
+      className={cn("border border-amber-500/30 bg-amber-500/10 p-4", className)}
     >
       <div className="flex items-start gap-3">
-        <Server className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+        <Server className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
         <div>
-          <p className="text-sm font-medium text-amber-900">
+          <p className="text-sm font-medium text-amber-200">
             {none
               ? "Register a cluster to create applications"
               : "Set up a runner to create applications"}
           </p>
-          <p className="mt-1 text-sm text-amber-800">
+          <p className="mt-1 text-sm text-amber-300">
             {none
               ? "An application runs its deploy jobs on a runner cluster, and this organization hasn't registered one yet. Register a Kubernetes cluster and set it up as a runner, then come back to create your application."
               : "An application runs its deploy jobs on a runner cluster, but none of this organization's clusters is set up as one yet. Open a cluster and set it up as a runner, then come back to create your application."}
           </p>
           <Link
             to={none ? "/admin/clusters?register=1" : "/admin/clusters"}
-            className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-amber-900 underline-offset-2 hover:underline"
+            className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-amber-200 underline-offset-2 hover:underline"
           >
             {none ? "Register a cluster" : "Go to clusters"}
             <ArrowRight className="h-3.5 w-3.5" />

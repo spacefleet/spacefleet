@@ -124,23 +124,23 @@ export function Pods() {
     <div>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
             Infrastructure
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">Pods</h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-neutral-300">
             The Kubernetes pods across your registered clusters, updated live.
           </p>
         </div>
         {!clustersLoading && clusters.length > 0 && (
           <div className="flex flex-wrap items-center justify-end gap-3">
             {connected.length > 0 && <LiveIndicator status={status} />}
-            <label className="flex items-center gap-2 text-sm text-gray-600">
+            <label className="flex items-center gap-2 text-sm text-neutral-300">
               Cluster
               <select
                 value={clusterFilter}
                 onChange={(e) => setClusterFilter(e.target.value)}
-                className="border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-black focus:outline-none"
+                className="border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100 focus:border-white focus:outline-none"
               >
                 <option value={ALL}>All clusters</option>
                 {clusterChoices.map((c) => (
@@ -150,12 +150,12 @@ export function Pods() {
                 ))}
               </select>
             </label>
-            <label className="flex items-center gap-2 text-sm text-gray-600">
+            <label className="flex items-center gap-2 text-sm text-neutral-300">
               Namespace
               <select
                 value={namespaceFilter}
                 onChange={(e) => setNamespaceFilter(e.target.value)}
-                className="border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:border-black focus:outline-none"
+                className="border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100 focus:border-white focus:outline-none"
               >
                 <option value={ALL}>All namespaces</option>
                 {namespaces.map((ns) => (
@@ -171,7 +171,7 @@ export function Pods() {
 
       {/* Per-cluster stream failures (e.g. an unreachable cluster). */}
       {errors.length > 0 && (
-        <div className="mt-4 border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+        <div className="mt-4 border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
           {errors.map((e) => (
             <div key={e.cluster} className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -183,21 +183,21 @@ export function Pods() {
         </div>
       )}
 
-      <div className="mt-6 border border-gray-200 bg-white">
+      <div className="mt-6 border border-neutral-800 bg-neutral-900">
         {clustersLoading ? (
-          <p className="p-6 text-sm text-gray-500">Loading…</p>
+          <p className="p-6 text-sm text-neutral-400">Loading…</p>
         ) : clustersError ? (
-          <p className="p-6 text-sm text-red-600">{clustersError}</p>
+          <p className="p-6 text-sm text-red-400">{clustersError}</p>
         ) : clusters.length === 0 ? (
           <NoClusters />
         ) : visibleRows.length === 0 && status !== "live" ? (
-          <p className="p-6 text-sm text-gray-500">Connecting…</p>
+          <p className="p-6 text-sm text-neutral-400">Connecting…</p>
         ) : visibleRows.length === 0 ? (
           <NoPods skipped={skipped} filtered={namespaceFilter !== ALL || clusterFilter !== ALL} />
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-400">
+              <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
                 <th className="px-4 py-2 font-medium">Pod</th>
                 <th className="px-4 py-2 font-medium">Namespace</th>
                 <th className="px-4 py-2 font-medium">Cluster</th>
@@ -220,25 +220,25 @@ export function Pods() {
                       `/infrastructure/pods/${p.clusterId}/${encodeURIComponent(p.namespace)}/${encodeURIComponent(p.name)}`,
                     )
                   }
-                  className="cursor-pointer border-b border-gray-100 last:border-0 hover:bg-gray-50"
+                  className="cursor-pointer border-b border-neutral-800 last:border-0 hover:bg-neutral-800"
                 >
-                  <td className="px-4 py-3 font-medium text-gray-900">
+                  <td className="px-4 py-3 font-medium text-neutral-100">
                     {p.name}
                     {p.pod_ip && (
-                      <span className="block text-xs font-normal text-gray-400">
+                      <span className="block text-xs font-normal text-neutral-500">
                         {p.pod_ip}
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{p.namespace}</td>
-                  <td className="px-4 py-3 text-gray-600">{p.clusterName}</td>
+                  <td className="px-4 py-3 text-neutral-300">{p.namespace}</td>
+                  <td className="px-4 py-3 text-neutral-300">{p.clusterName}</td>
                   <td className="px-4 py-3">
                     <PodStatusBadge status={p.status} ready={isReady(p.ready)} />
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{p.ready}</td>
-                  <td className="px-4 py-3 text-gray-600">{p.restarts}</td>
-                  <td className="px-4 py-3 text-gray-600">{p.node_name || "—"}</td>
-                  <td className="px-4 py-3 text-gray-600">{podAge(p.created_at)}</td>
+                  <td className="px-4 py-3 text-neutral-300">{p.ready}</td>
+                  <td className="px-4 py-3 text-neutral-300">{p.restarts}</td>
+                  <td className="px-4 py-3 text-neutral-300">{p.node_name || "—"}</td>
+                  <td className="px-4 py-3 text-neutral-300">{podAge(p.created_at)}</td>
                   <td
                     className="px-4 py-3"
                     onClick={(e) => e.stopPropagation()}
@@ -288,23 +288,23 @@ function LiveIndicator({ status }: { status: StreamStatus }) {
     StreamStatus,
     { label: string; dot: string; text: string; pulse: boolean }
   > = {
-    live: { label: "Live", dot: "bg-green-500", text: "text-gray-600", pulse: false },
+    live: { label: "Live", dot: "bg-green-500", text: "text-neutral-300", pulse: false },
     connecting: {
       label: "Connecting…",
-      dot: "bg-gray-400",
-      text: "text-gray-500",
+      dot: "bg-neutral-500",
+      text: "text-neutral-400",
       pulse: true,
     },
     reconnecting: {
       label: "Reconnecting…",
       dot: "bg-amber-500",
-      text: "text-amber-700",
+      text: "text-amber-300",
       pulse: true,
     },
     error: {
       label: "Disconnected",
       dot: "bg-red-500",
-      text: "text-red-700",
+      text: "text-red-300",
       pulse: false,
     },
   };
@@ -322,14 +322,14 @@ function LiveIndicator({ status }: { status: StreamStatus }) {
 function NoClusters() {
   return (
     <div className="p-10 text-center">
-      <Server className="mx-auto h-8 w-8 text-gray-300" />
-      <p className="mt-3 text-sm font-medium text-gray-700">No clusters yet</p>
-      <p className="mt-1 text-sm text-gray-500">
+      <Server className="mx-auto h-8 w-8 text-neutral-600" />
+      <p className="mt-3 text-sm font-medium text-neutral-300">No clusters yet</p>
+      <p className="mt-1 text-sm text-neutral-400">
         Register a Kubernetes cluster to see its pods here.
       </p>
       <Link
         to="/admin/clusters"
-        className="mt-4 inline-flex items-center gap-2 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+        className="mt-4 inline-flex items-center gap-2 bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover"
       >
         Go to Clusters
       </Link>
@@ -340,9 +340,9 @@ function NoClusters() {
 function NoPods({ skipped, filtered }: { skipped: number; filtered: boolean }) {
   return (
     <div className="p-10 text-center">
-      <Boxes className="mx-auto h-8 w-8 text-gray-300" />
-      <p className="mt-3 text-sm font-medium text-gray-700">No pods to show</p>
-      <p className="mt-1 text-sm text-gray-500">
+      <Boxes className="mx-auto h-8 w-8 text-neutral-600" />
+      <p className="mt-3 text-sm font-medium text-neutral-300">No pods to show</p>
+      <p className="mt-1 text-sm text-neutral-400">
         {filtered
           ? "No pods match the selected filters."
           : skipped > 0
@@ -354,10 +354,10 @@ function NoPods({ skipped, filtered }: { skipped: number; filtered: boolean }) {
 }
 
 const TONE_CLASSES: Record<StatusTone, string> = {
-  good: "bg-green-100 text-green-800",
-  bad: "bg-red-100 text-red-800",
-  warn: "bg-amber-100 text-amber-800",
-  neutral: "bg-gray-100 text-gray-700",
+  good: "bg-green-500/15 text-green-300",
+  bad: "bg-red-500/15 text-red-300",
+  warn: "bg-amber-500/15 text-amber-300",
+  neutral: "bg-neutral-800 text-neutral-300",
 };
 
 function PodStatusBadge({ status, ready }: { status: string; ready: boolean }) {

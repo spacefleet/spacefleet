@@ -10,8 +10,8 @@ export function NoOrganizations() {
   const auth = useAuth();
 
   return (
-    <div className="flex min-h-screen flex-col bg-neutral-50">
-      <header className="flex h-14 shrink-0 items-center bg-black px-4 text-sm text-white">
+    <div className="flex min-h-screen flex-col bg-neutral-950">
+      <header className="flex h-14 shrink-0 items-center border-b border-neutral-800 bg-black px-4 text-sm text-white">
         <span className="font-semibold tracking-tight">Spacefleet</span>
         <div className="ml-auto flex items-center gap-3">
           {auth.user?.profile.email && (
@@ -28,11 +28,11 @@ export function NoOrganizations() {
       </header>
 
       <main className="flex flex-1 items-center justify-center p-8">
-        <div className="w-full max-w-md border border-neutral-200 bg-white p-6">
+        <div className="w-full max-w-md border border-neutral-800 bg-neutral-900 p-6">
           <h1 className="text-2xl font-bold tracking-tight">
             You're not in an organization yet
           </h1>
-          <p className="mt-2 text-sm text-neutral-600">
+          <p className="mt-2 text-sm text-neutral-300">
             You don't belong to any organizations on Spacefleet, and this server
             doesn't allow creating new ones. Ask an existing member to invite you
             to their organization, then sign in again.

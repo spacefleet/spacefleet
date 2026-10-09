@@ -99,22 +99,22 @@ export function GitHubCallback() {
   }, [params, navigate]);
 
   return (
-    <div className="flex h-screen items-center justify-center bg-gray-50">
+    <div className="flex h-screen items-center justify-center bg-neutral-950">
       {error || notice ? (
         <div className="max-w-md text-center">
-          <p className={`text-sm ${error ? "text-red-600" : "text-neutral-700"}`}>
+          <p className={`text-sm ${error ? "text-red-400" : "text-neutral-300"}`}>
             {error ?? notice}
           </p>
           <button
             type="button"
             onClick={() => navigate("/admin/github", { replace: true })}
-            className="mt-4 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
+            className="mt-4 bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover"
           >
             Back to GitHub
           </button>
         </div>
       ) : (
-        <p className="text-sm text-gray-500">Connecting GitHub…</p>
+        <p className="text-sm text-neutral-400">Connecting GitHub…</p>
       )}
     </div>
   );

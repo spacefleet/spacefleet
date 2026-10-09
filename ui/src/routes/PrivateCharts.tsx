@@ -54,13 +54,13 @@ export function PrivateCharts() {
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
             Admin
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">
             Private Charts
           </h1>
-          <p className="mt-1 text-sm text-neutral-600">
+          <p className="mt-1 text-sm text-neutral-300">
             Credentials for pulling private Helm charts. Attach one to an
             application when its chart lives in a private repo or registry.
           </p>
@@ -69,7 +69,7 @@ export function PrivateCharts() {
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="inline-flex items-center gap-2 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
+            className="inline-flex shrink-0 items-center gap-2 bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover"
           >
             <Plus className="h-4 w-4" />
             Add credential
@@ -77,25 +77,25 @@ export function PrivateCharts() {
         )}
       </div>
 
-      <div className="mt-6 border border-neutral-200 bg-white">
+      <div className="mt-6 border border-neutral-800 bg-neutral-900">
         {loading ? (
-          <p className="p-6 text-sm text-neutral-500">Loading…</p>
+          <p className="p-6 text-sm text-neutral-400">Loading…</p>
         ) : error ? (
-          <p className="p-6 text-sm text-red-600">{error}</p>
+          <p className="p-6 text-sm text-red-400">{error}</p>
         ) : creds.length === 0 ? (
           <div className="p-10 text-center">
-            <KeyRound className="mx-auto h-8 w-8 text-neutral-300" />
-            <p className="mt-3 text-sm font-medium text-neutral-700">
+            <KeyRound className="mx-auto h-8 w-8 text-neutral-600" />
+            <p className="mt-3 text-sm font-medium text-neutral-300">
               No chart credentials yet
             </p>
-            <p className="mt-1 text-sm text-neutral-500">
+            <p className="mt-1 text-sm text-neutral-400">
               Add one to pull charts from a private repository or registry.
             </p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
+              <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
                 <th className="px-4 py-2 font-medium">Name</th>
                 <th className="px-4 py-2 font-medium">Username</th>
                 {canEdit && <th className="px-4 py-2" />}
@@ -105,12 +105,12 @@ export function PrivateCharts() {
               {creds.map((c) => (
                 <tr
                   key={c.id}
-                  className="border-b border-neutral-100 last:border-0"
+                  className="border-b border-neutral-800 last:border-0"
                 >
-                  <td className="px-4 py-3 font-medium text-neutral-900">
+                  <td className="px-4 py-3 font-medium text-neutral-100">
                     {c.name}
                   </td>
-                  <td className="px-4 py-3 text-neutral-600">
+                  <td className="px-4 py-3 text-neutral-300">
                     {c.username || "—"}
                   </td>
                   {canEdit && (
@@ -118,7 +118,7 @@ export function PrivateCharts() {
                       <button
                         type="button"
                         onClick={() => void onDelete(c)}
-                        className="inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-red-600"
+                        className="inline-flex items-center gap-1 text-xs text-neutral-400 hover:text-red-400"
                         aria-label={`Delete ${c.name}`}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -182,17 +182,17 @@ function AddCredentialDialog({
   const ready = name.trim() !== "" && password !== "";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
-      <div className="mt-12 w-full max-w-lg border border-gray-200 bg-white shadow-lg">
-        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
+      <div className="mt-12 w-full max-w-lg border border-neutral-800 bg-neutral-900 shadow-lg">
+        <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
           <h2 className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight">
-            <KeyRound className="h-5 w-5 text-gray-500" />
+            <KeyRound className="h-5 w-5 text-neutral-400" />
             New chart credential
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-700"
+            className="text-neutral-500 hover:text-neutral-300"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
@@ -202,7 +202,7 @@ function AddCredentialDialog({
         <form onSubmit={onSubmit} className="space-y-4 px-5 py-4">
           <Labeled label="Name">
             <input
-              className="w-full border border-gray-300 px-3 py-2 text-sm"
+              className="w-full border border-neutral-700 px-3 py-2 text-sm"
               placeholder="docker-hub"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -216,7 +216,7 @@ function AddCredentialDialog({
             help="Used for both HTTP Helm repositories and OCI registries."
           >
             <input
-              className="w-full border border-gray-300 px-3 py-2 text-sm"
+              className="w-full border border-neutral-700 px-3 py-2 text-sm"
               placeholder="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -227,7 +227,7 @@ function AddCredentialDialog({
           <Labeled label="Password" help="Stored encrypted; never shown again.">
             <input
               type="password"
-              className="w-full border border-gray-300 px-3 py-2 text-sm"
+              className="w-full border border-neutral-700 px-3 py-2 text-sm"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -236,20 +236,20 @@ function AddCredentialDialog({
             />
           </Labeled>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
 
-          <div className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
+          <div className="flex items-center justify-end gap-3 border-t border-neutral-800 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="text-sm text-gray-500 hover:text-gray-800"
+              className="text-sm text-neutral-400 hover:text-neutral-200"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!ready || submitting}
-              className="bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+              className="bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
             >
               {submitting ? "Saving…" : "Add credential"}
             </button>
@@ -271,11 +271,11 @@ function Labeled({
 }) {
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium text-gray-700">
+      <label className="mb-1 block text-sm font-medium text-neutral-300">
         {label}
       </label>
       {children}
-      {help && <p className="mt-1 text-xs italic text-gray-500">{help}</p>}
+      {help && <p className="mt-1 text-xs italic text-neutral-400">{help}</p>}
     </div>
   );
 }

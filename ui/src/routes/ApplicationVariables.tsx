@@ -33,19 +33,19 @@ export function ApplicationVariables() {
       <button
         type="button"
         onClick={() => navigate(`/applications/${appId}`)}
-        className="inline-flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-900"
+        className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to application
       </button>
       <h1 className="mt-1 text-xl font-bold tracking-tight">Variables</h1>
-      <p className="mt-1 text-sm text-neutral-600">
+      <p className="mt-1 text-sm text-neutral-300">
         Passed to every component job in{" "}
         {appName ? <span className="font-medium">{appName}</span> : "this application"}{" "}
         as environment variables. A component can override one of these for its
         own job. A sensitive value is sealed and never shown again.
       </p>
-      <div className="mt-6 border border-neutral-200 bg-white p-4">
+      <div className="mt-6 border border-neutral-800 bg-neutral-900 p-4">
         <VariablesEditor scope={{ kind: "app", appId }} canEdit={canEdit} />
       </div>
     </div>

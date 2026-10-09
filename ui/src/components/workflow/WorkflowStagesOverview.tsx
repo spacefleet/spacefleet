@@ -61,15 +61,15 @@ export function WorkflowStagesOverview({
   }, [latestStages]);
 
   if (loading) {
-    return <p className="px-4 py-6 text-sm text-neutral-500">Loading…</p>;
+    return <p className="px-4 py-6 text-sm text-neutral-400">Loading…</p>;
   }
   if (error) {
-    return <p className="px-4 py-6 text-sm text-red-600">{error}</p>;
+    return <p className="px-4 py-6 text-sm text-red-400">{error}</p>;
   }
   const stages = workflow?.stages ?? [];
   if (stages.every((st) => st.components.length === 0)) {
     return (
-      <p className="px-4 py-6 text-sm text-neutral-500">
+      <p className="px-4 py-6 text-sm text-neutral-400">
         No components yet. Open the workflow to add the first one.
       </p>
     );

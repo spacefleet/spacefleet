@@ -275,42 +275,42 @@ export function WorkflowRunView() {
       <button
         type="button"
         onClick={() => navigate(backTo)}
-        className="inline-flex w-fit items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-900"
+        className="inline-flex w-fit items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
       >
         <ArrowLeft className="h-4 w-4" />
         {backLabel}
       </button>
 
       {loading ? (
-        <p className="mt-6 text-sm text-neutral-500">Loading…</p>
+        <p className="mt-6 text-sm text-neutral-400">Loading…</p>
       ) : error || !run ? (
-        <p className="mt-6 text-sm text-red-600">{error ?? "Not found"}</p>
+        <p className="mt-6 text-sm text-red-400">{error ?? "Not found"}</p>
       ) : (
         <>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3 pb-3">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
                 Workflow run
               </p>
               <h1 className="mt-0.5 text-xl font-bold capitalize tracking-tight">
                 {runActionLabel(run.action, run.scope)}
               </h1>
               {run.scope && (
-                <p className="mt-1 text-sm text-neutral-600">
+                <p className="mt-1 text-sm text-neutral-300">
                   {runScopeDescription(run.scope)}
                 </p>
               )}
               {run.trigger && (
-                <p className="mt-1 text-sm text-neutral-600">
+                <p className="mt-1 text-sm text-neutral-300">
                   {runTriggerDescription(run.trigger)}
                 </p>
               )}
               {run.state_op && (
-                <p className="mt-1 text-sm text-neutral-600">
-                  <span className="text-neutral-500">
+                <p className="mt-1 text-sm text-neutral-300">
+                  <span className="text-neutral-400">
                     {stateOpDescription(run.state_op)}
                   </span>{" "}
-                  <code className="bg-neutral-100 px-1.5 py-0.5 font-mono text-xs text-neutral-900">
+                  <code className="bg-neutral-800 px-1.5 py-0.5 font-mono text-xs text-neutral-100">
                     {run.state_op.command}
                   </code>
                 </p>
@@ -323,14 +323,14 @@ export function WorkflowRunView() {
                   onClick={() => void cancel()}
                   disabled={cancelling}
                   title="Cancel this run"
-                  className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 border border-red-500/40 px-3 py-1.5 text-sm text-red-300 hover:bg-red-500/10 disabled:opacity-50"
                 >
                   <Ban className="h-3.5 w-3.5" />
                   {cancelling ? "Cancelling…" : "Cancel run"}
                 </button>
               )}
               <RunStatusBadge status={run.status} />
-              <span className="text-xs text-neutral-500">
+              <span className="text-xs text-neutral-400">
                 started {new Date(run.created_at).toLocaleString()}
                 {run.started_by && <> by {run.started_by}</>} ·{" "}
                 {formatDuration(run.created_at, run.finished_at ?? undefined)}
@@ -339,10 +339,10 @@ export function WorkflowRunView() {
           </div>
 
           {run.message && (
-            <p className="pb-2 text-sm text-neutral-500">{run.message}</p>
+            <p className="pb-2 text-sm text-neutral-400">{run.message}</p>
           )}
           {cancelError && (
-            <p className="pb-2 text-sm text-red-600">{cancelError}</p>
+            <p className="pb-2 text-sm text-red-400">{cancelError}</p>
           )}
           {canApprove &&
             run.action === "uninstall" &&
@@ -359,7 +359,7 @@ export function WorkflowRunView() {
           {/* The rail of stages → components → steps on the left (above, on a
               narrow screen) and the selected step's pane filling the rest.
               Expanding the pane hides the rail. */}
-          <div className="flex min-h-0 flex-1 flex-col border border-neutral-200 md:flex-row">
+          <div className="flex min-h-0 flex-1 flex-col border border-neutral-800 md:flex-row">
             {!expanded && (
               <RunRail
                 stages={stages}
@@ -391,7 +391,7 @@ export function WorkflowRunView() {
                 onToggleExpanded={() => setExpanded((e) => !e)}
               />
             ) : (
-              <p className="p-4 text-sm text-neutral-500">
+              <p className="p-4 text-sm text-neutral-400">
                 This run has no steps.
               </p>
             )}
@@ -512,11 +512,11 @@ function RunRail({
   return (
     <nav
       aria-label="Run steps"
-      className="max-h-56 shrink-0 overflow-y-auto border-b border-neutral-200 bg-neutral-50 pb-2 md:max-h-none md:w-72 md:border-b-0 md:border-r"
+      className="max-h-56 shrink-0 overflow-y-auto border-b border-neutral-800 bg-neutral-800/50 pb-2 md:max-h-none md:w-72 md:border-b-0 md:border-r"
     >
       {stages.map((st, i) => (
         <section key={`${i}-${st.name}`} aria-label={`Stage ${st.name}`}>
-          <h2 className="flex items-center gap-2 px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+          <h2 className="flex items-center gap-2 px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
             <ComponentStatusIcon status={st.status} />
             <span className="truncate">{st.name}</span>
           </h2>
@@ -563,22 +563,28 @@ function RailComponent({
         disabled={!primary}
         aria-current={selected ? "true" : undefined}
         className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
-          selected ? "bg-white font-medium ring-1 ring-inset ring-neutral-300" : "hover:bg-white"
+          selected ? "bg-neutral-900 font-medium ring-1 ring-inset ring-neutral-700" : "hover:bg-neutral-900"
         }`}
       >
         <ComponentStatusIcon status={component.status} />
         <span
           className={`min-w-0 flex-1 truncate ${
             component.status === "skipped"
-              ? "text-neutral-500 line-through"
-              : "text-neutral-900"
+              ? "text-neutral-400 line-through"
+              : "text-neutral-100"
           }`}
         >
           {component.name}
         </span>
-        {plan && <PlanCounts plan={plan} />}
-        <TypeBadge type={component.type as ComponentType} />
-        <span className="w-12 shrink-0 text-right text-xs text-neutral-400">
+        {/* A plan-only row (preview, drift) shows its counts in place of the
+            type badge: the rail is too narrow for both and the name, and the
+            counts already say it is OpenTofu. */}
+        {plan ? (
+          <PlanCounts plan={plan} />
+        ) : (
+          <TypeBadge type={component.type as ComponentType} />
+        )}
+        <span className="w-12 shrink-0 text-right text-xs text-neutral-500">
           {componentElapsed(steps)}
         </span>
       </button>
@@ -594,8 +600,8 @@ function RailComponent({
                   aria-current={on ? "true" : undefined}
                   className={`flex w-full items-center gap-2 py-1 pl-9 pr-3 text-left text-xs ${
                     on
-                      ? "bg-white font-medium ring-1 ring-inset ring-neutral-300"
-                      : "text-neutral-600 hover:bg-white"
+                      ? "bg-neutral-900 font-medium ring-1 ring-inset ring-neutral-700"
+                      : "text-neutral-300 hover:bg-neutral-900"
                   }`}
                 >
                   <ComponentStatusIcon status={s.status} />
@@ -603,7 +609,7 @@ function RailComponent({
                     {stepLabel(s.name)}
                   </span>
                   {s.plan && <PlanCounts plan={s.plan} />}
-                  <span className="w-12 shrink-0 text-right text-neutral-400">
+                  <span className="w-12 shrink-0 text-right text-neutral-500">
                     {elapsed(s.started_at, s.finished_at)}
                   </span>
                 </button>
@@ -785,26 +791,26 @@ function ComponentRunPanel({
   return (
     <section
       aria-label="Selected step"
-      className="flex min-h-0 min-w-0 flex-1 flex-col bg-white"
+      className="flex min-h-0 min-w-0 flex-1 flex-col bg-neutral-900"
     >
-      <div className="flex items-center justify-between gap-2 border-b border-neutral-200 px-4 py-2">
+      <div className="flex items-center justify-between gap-2 border-b border-neutral-800 px-4 py-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
             Component run
           </p>
-          <h2 className="truncate text-sm font-semibold text-neutral-900">
+          <h2 className="truncate text-sm font-semibold text-neutral-100">
             {detail?.name ?? "…"}
           </h2>
           {/* The API types the component-run's type loosely (a string); it
               holds a ComponentType when present. */}
           {detail?.type && <TypeBadge type={detail.type as ComponentType} />}
           {detail && (
-            <span className="text-xs capitalize text-neutral-500">
+            <span className="text-xs capitalize text-neutral-400">
               {detail.status.replace(/_/g, " ")}
             </span>
           )}
           {detail?.approved_by && (
-            <span className="text-xs text-neutral-500">
+            <span className="text-xs text-neutral-400">
               decided by {detail.approved_by}
             </span>
           )}
@@ -819,7 +825,7 @@ function ComponentRunPanel({
                 ? "Shrink the panel and show the run's steps again"
                 : "Expand the panel to fill the view"
             }
-            className="p-1 text-neutral-400 hover:text-neutral-900"
+            className="p-1 text-neutral-500 hover:text-neutral-100"
           >
             {expanded ? (
               <Minimize2 className="h-4 w-4" />
@@ -831,13 +837,13 @@ function ComponentRunPanel({
       </div>
 
       {loading ? (
-        <p className="px-4 py-4 text-sm text-neutral-500">Loading…</p>
+        <p className="px-4 py-4 text-sm text-neutral-400">Loading…</p>
       ) : error || !detail ? (
-        <p className="px-4 py-4 text-sm text-red-600">{error ?? "Not found"}</p>
+        <p className="px-4 py-4 text-sm text-red-400">{error ?? "Not found"}</p>
       ) : (
         <>
           {detail.message && (
-            <p className="border-b border-neutral-100 px-4 py-2 text-sm text-neutral-600">
+            <p className="border-b border-neutral-800 px-4 py-2 text-sm text-neutral-300">
               {detail.message}
             </p>
           )}
@@ -847,13 +853,13 @@ function ComponentRunPanel({
               the resumed state in, which clears awaitingApproval and hides
               these buttons. */}
           {awaitingApproval && (
-            <div className="border-b border-violet-200 bg-violet-50 px-4 py-3">
+            <div className="border-b border-violet-500/30 bg-violet-500/10 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium text-violet-900">
+                  <p className="text-sm font-medium text-violet-200">
                     Awaiting approval
                   </p>
-                  <p className="mt-0.5 text-xs text-violet-800">
+                  <p className="mt-0.5 text-xs text-violet-300">
                     {planRun
                       ? "Review the plan output below, then approve to apply or reject to fail the run."
                       : stateOp
@@ -863,7 +869,7 @@ function ComponentRunPanel({
                   {stateOp && (
                     <code
                       data-testid="state-op-command"
-                      className="mt-1.5 block w-fit bg-white px-2 py-1 font-mono text-xs text-neutral-900 ring-1 ring-violet-200"
+                      className="mt-1.5 block w-fit bg-neutral-900 px-2 py-1 font-mono text-xs text-neutral-100 ring-1 ring-violet-500/30"
                     >
                       {stateOp.command}
                     </code>
@@ -880,7 +886,7 @@ function ComponentRunPanel({
                       type="button"
                       onClick={() => void decide("approve")}
                       disabled={deciding}
-                      className="inline-flex items-center gap-1.5 bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
                     >
                       <Check className="h-3.5 w-3.5" />
                       Approve
@@ -889,20 +895,20 @@ function ComponentRunPanel({
                       type="button"
                       onClick={() => void decide("reject")}
                       disabled={deciding}
-                      className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 border border-red-500/40 px-3 py-1.5 text-sm text-red-300 hover:bg-red-500/10 disabled:opacity-50"
                     >
                       <X className="h-3.5 w-3.5" />
                       Reject
                     </button>
                   </div>
                 ) : (
-                  <p className="text-xs italic text-violet-700">
+                  <p className="text-xs italic text-violet-300">
                     Only an editor or admin can approve this step.
                   </p>
                 )}
               </div>
               {decideError && (
-                <p className="mt-2 text-xs text-red-600">{decideError}</p>
+                <p className="mt-2 text-xs text-red-400">{decideError}</p>
               )}
             </div>
           )}
@@ -917,7 +923,7 @@ function ComponentRunPanel({
               Plan output(/Outputs)/Logs set, so each view spans the whole
               panel; other runs are logs-only with no tab chrome. */}
           {isPreview && (
-            <div className="flex items-center gap-4 border-b border-neutral-200 px-4">
+            <div className="flex items-center gap-4 border-b border-neutral-800 px-4">
               <TabButton active={tab === "diff"} onClick={() => setTab("diff")}>
                 {isDrift ? "Drift" : "Preview diff"}
                 <ChangesBadge
@@ -935,7 +941,7 @@ function ComponentRunPanel({
               ownPlan ||
               outputEntries.length > 0 ||
               hasResources) && (
-              <div className="flex items-center gap-4 border-b border-neutral-200 px-4">
+              <div className="flex items-center gap-4 border-b border-neutral-800 px-4">
                 {planRun && (
                   <TabButton
                     active={tab === "plan"}
@@ -968,7 +974,7 @@ function ComponentRunPanel({
                     onClick={() => setTab("resources")}
                   >
                     Resources
-                    <span className="text-xs text-neutral-400">
+                    <span className="text-xs text-neutral-500">
                       {detail.resources?.length}
                     </span>
                   </TabButton>
@@ -989,7 +995,7 @@ function ComponentRunPanel({
               ) : detail.diff ? (
                 <DiffView diff={detail.diff} className="h-full" />
               ) : (
-                <p className="text-sm text-neutral-500">
+                <p className="text-sm text-neutral-400">
                   {detail.has_changes === false
                     ? isDrift
                       ? "No drift detected."
@@ -1001,13 +1007,13 @@ function ComponentRunPanel({
               )
             ) : planRun && tab === "plan" ? (
               planDetail === null ? (
-                <p className="text-sm text-neutral-500">
+                <p className="text-sm text-neutral-400">
                   Loading plan output from {planRun.name}…
                 </p>
               ) : planDetail.plan ? (
                 <PlanBody plan={planDetail.plan} body={planDetail.diff} />
               ) : (
-                <pre className="h-full w-full overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-100">
+                <pre className="h-full w-full overflow-auto bg-black p-3 font-mono text-xs leading-relaxed text-neutral-100">
                   {planDetail.logs || "No plan output was captured."}
                 </pre>
               )
@@ -1020,7 +1026,7 @@ function ComponentRunPanel({
             ) : live ? (
               <pre
                 data-testid="live-logs"
-                className="h-full w-full overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-100"
+                className="h-full w-full overflow-auto bg-black p-3 font-mono text-xs leading-relaxed text-neutral-100"
               >
                 {liveLogs.lines.length > 0
                   ? liveLogs.lines.join("\n")
@@ -1029,7 +1035,7 @@ function ComponentRunPanel({
                     : "Waiting for output…"}
               </pre>
             ) : (
-              <pre className="h-full w-full overflow-auto bg-neutral-950 p-3 font-mono text-xs leading-relaxed text-neutral-100">
+              <pre className="h-full w-full overflow-auto bg-black p-3 font-mono text-xs leading-relaxed text-neutral-100">
                 {detail.logs ||
                   (liveLogs.lines.length > 0
                     ? liveLogs.lines.join("\n")
@@ -1058,8 +1064,8 @@ function TabButton({
       onClick={onClick}
       className={`inline-flex items-center gap-2 border-b-2 py-2 text-sm ${
         active
-          ? "border-black font-medium text-neutral-900"
-          : "border-transparent text-neutral-500 hover:text-neutral-900"
+          ? "border-white font-medium text-neutral-100"
+          : "border-transparent text-neutral-400 hover:text-neutral-100"
       }`}
     >
       {children}
@@ -1083,7 +1089,7 @@ function PlanBody({ plan, body }: { plan: PlanSummary; body?: string }) {
           <button
             type="button"
             onClick={() => setShowText((s) => !s)}
-            className="text-xs text-neutral-500 underline-offset-2 hover:text-neutral-900 hover:underline"
+            className="text-xs text-neutral-400 underline-offset-2 hover:text-neutral-100 hover:underline"
           >
             {showText ? "Hide full plan text" : "Show full plan text"}
           </button>
@@ -1104,11 +1110,11 @@ function ChangesBadge({
 }) {
   if (hasChanges === undefined) return null;
   return hasChanges ? (
-    <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
+    <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-amber-500/15 text-amber-300">
       {words[0]}
     </span>
   ) : (
-    <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-neutral-100 text-neutral-600">
+    <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-neutral-800 text-neutral-300">
       {words[1]}
     </span>
   );
@@ -1157,7 +1163,7 @@ function ApprovalPolicyLine({
   }
   if (parts.length === 0) return null;
   return (
-    <p data-testid="approval-policy" className="mt-1.5 text-xs text-violet-800">
+    <p data-testid="approval-policy" className="mt-1.5 text-xs text-violet-300">
       {parts.join(" · ")}
     </p>
   );
@@ -1168,10 +1174,10 @@ function ApprovalPolicyLine({
 // warned amber, clean green.
 function PolicyVerdictBox({ verdict }: { verdict: PolicyVerdict }) {
   const tone = verdict.blocked
-    ? "border-red-200 bg-red-50 text-red-900"
+    ? "border-red-500/30 bg-red-500/10 text-red-200"
     : verdict.warned
-      ? "border-amber-200 bg-amber-50 text-amber-900"
-      : "border-emerald-200 bg-emerald-50 text-emerald-900";
+      ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
   const title = verdict.blocked
     ? "Blocked by policy"
     : verdict.warned
@@ -1230,15 +1236,15 @@ function DeleteAfterUninstall({
 
   if (!isLatest) return null;
   return (
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border border-neutral-200 bg-white px-4 py-3">
-      <p className="text-sm text-neutral-700">
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border border-neutral-800 bg-neutral-900 px-4 py-3">
+      <p className="text-sm text-neutral-300">
         Everything <span className="font-medium">{appName}</span> deployed has
         been uninstalled. You can delete the application now.
       </p>
       <button
         type="button"
         onClick={() => setDeleting(true)}
-        className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
+        className="inline-flex items-center gap-1.5 border border-red-500/40 px-3 py-1.5 text-sm text-red-300 hover:bg-red-500/10"
       >
         <Trash2 className="h-3.5 w-3.5" />
         Delete application

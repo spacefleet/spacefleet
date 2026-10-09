@@ -149,28 +149,28 @@ export function ApplicationDetail() {
       <button
         type="button"
         onClick={() => navigate("/applications")}
-        className="inline-flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-900"
+        className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to applications
       </button>
 
       {loading ? (
-        <p className="mt-6 text-sm text-neutral-500">Loading…</p>
+        <p className="mt-6 text-sm text-neutral-400">Loading…</p>
       ) : error || !app ? (
-        <p className="mt-6 text-sm text-red-600">{error ?? "Not found"}</p>
+        <p className="mt-6 text-sm text-red-400">{error ?? "Not found"}</p>
       ) : (
         <>
           <div className="mt-3 flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
                 Applications
               </p>
               <h1 className="mt-1 break-all text-2xl font-bold tracking-tight">
                 {app.name}
               </h1>
               {app.imported && (
-                <span className="mt-2 inline-block border border-neutral-300 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-neutral-500">
+                <span className="mt-2 inline-block border border-neutral-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
                   imported
                 </span>
               )}
@@ -179,7 +179,7 @@ export function ApplicationDetail() {
               <button
                 type="button"
                 onClick={() => navigate(`/applications/${appId}/variables`)}
-                className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+                className="inline-flex items-center gap-1.5 border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
               >
                 <Variable className="h-3.5 w-3.5" />
                 Variables
@@ -189,7 +189,7 @@ export function ApplicationDetail() {
                   <button
                     type="button"
                     onClick={() => navigate(`/applications/${appId}/edit`)}
-                    className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+                    className="inline-flex items-center gap-1.5 border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
                   >
                     <Settings className="h-3.5 w-3.5" />
                     Manage
@@ -213,11 +213,11 @@ export function ApplicationDetail() {
           {/* Workflow: an at-a-glance view of the stages plus the run
               controls. Building/changing the workflow happens on the dedicated
               builder page; runs are started from here. */}
-          <div className="mt-6 border border-neutral-200 bg-white">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 px-4 py-2">
+          <div className="mt-6 border border-neutral-800 bg-neutral-900">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800 px-4 py-2">
               <div className="flex items-center gap-2">
-                <Workflow className="h-3.5 w-3.5 text-neutral-400" />
-                <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+                <Workflow className="h-3.5 w-3.5 text-neutral-500" />
+                <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
                   Workflow
                 </h2>
               </div>
@@ -225,7 +225,7 @@ export function ApplicationDetail() {
                 type="button"
                 onClick={() => navigate(`/applications/${appId}/workflow`)}
                 title="Open the workflow editor"
-                className="inline-flex items-center gap-1.5 border border-neutral-300 px-2.5 py-1 text-sm text-neutral-700 hover:bg-neutral-50"
+                className="inline-flex items-center gap-1.5 border border-neutral-700 px-2.5 py-1 text-sm text-neutral-300 hover:bg-neutral-800"
               >
                 <Pencil className="h-3.5 w-3.5" />
                 Edit workflow
@@ -238,9 +238,9 @@ export function ApplicationDetail() {
               onOpen={() => navigate(`/applications/${appId}/workflow`)}
             />
             {canEdit && (
-              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-neutral-800 px-4 py-3">
                 {runError && (
-                  <p className="mr-auto text-sm text-red-600">{runError}</p>
+                  <p className="mr-auto text-sm text-red-400">{runError}</p>
                 )}
                 <button
                   type="button"
@@ -248,7 +248,7 @@ export function ApplicationDetail() {
                   disabled={running}
                   aria-label="Refresh"
                   title="Refresh: check every OpenTofu component for changes made outside of OpenTofu (a read-only refresh-only plan)"
-                  className="inline-flex items-center justify-center border border-neutral-300 p-2 text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                  className="inline-flex items-center justify-center border border-neutral-700 p-2 text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
                 >
                   <RefreshCw className="h-4 w-4" />
                 </button>
@@ -256,7 +256,7 @@ export function ApplicationDetail() {
                   type="button"
                   onClick={() => void startRun("preview")}
                   disabled={running}
-                  className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
                 >
                   Preview
                 </button>
@@ -264,7 +264,7 @@ export function ApplicationDetail() {
                   type="button"
                   onClick={() => setRunDialogOpen(true)}
                   disabled={running}
-                  className="inline-flex items-center gap-1.5 bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
                 >
                   <Play className="h-3.5 w-3.5" />
                   Run
@@ -275,25 +275,25 @@ export function ApplicationDetail() {
 
           {/* Latest run (links to the run view; the full history is on the
               runs page, filtered to this application) */}
-          <div className="mt-6 border border-neutral-200 bg-white">
-            <div className="flex items-center justify-between gap-2 border-b border-neutral-200 px-4 py-2">
+          <div className="mt-6 border border-neutral-800 bg-neutral-900">
+            <div className="flex items-center justify-between gap-2 border-b border-neutral-800 px-4 py-2">
               <div className="flex items-center gap-2">
-                <History className="h-3.5 w-3.5 text-neutral-400" />
-                <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+                <History className="h-3.5 w-3.5 text-neutral-500" />
+                <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
                   Latest run
                 </h2>
               </div>
               {displayRun && (
                 <Link
                   to={`/runs?application=${appId}`}
-                  className="text-xs text-neutral-500 hover:text-neutral-900"
+                  className="text-xs text-neutral-400 hover:text-neutral-100"
                 >
                   View all runs
                 </Link>
               )}
             </div>
             {!displayRun ? (
-              <p className="px-4 py-6 text-sm text-neutral-500">
+              <p className="px-4 py-6 text-sm text-neutral-400">
                 No runs yet. Build the deploy workflow and start a run.
               </p>
             ) : (
@@ -302,16 +302,16 @@ export function ApplicationDetail() {
                 onClick={() =>
                   navigate(`/applications/${appId}/runs/${displayRun.id}`)
                 }
-                className="flex w-full items-center justify-between px-4 py-3 text-left text-sm hover:bg-neutral-50"
+                className="flex w-full items-center justify-between px-4 py-3 text-left text-sm hover:bg-neutral-800"
               >
                 <span className="flex items-center gap-3">
-                  <span className="capitalize text-neutral-700">
+                  <span className="capitalize text-neutral-300">
                     {runActionLabel(displayRun.action, displayRun.scope)}
                   </span>
                   <RunStatusBadge status={displayRun.status} />
                   <StageBar stages={displayRun.stages} />
                 </span>
-                <span className="text-neutral-500">
+                <span className="text-neutral-400">
                   {new Date(displayRun.created_at).toLocaleString()} ·{" "}
                   {formatDuration(
                     displayRun.created_at,
@@ -323,8 +323,8 @@ export function ApplicationDetail() {
           </div>
 
           {/* Runner (deploy targets live on the individual components) */}
-          <div className="mt-6 border border-neutral-200 bg-white p-4">
-            <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+          <div className="mt-6 border border-neutral-800 bg-neutral-900 p-4">
+            <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
               Runner
             </h2>
             <dl className="mt-3 grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
@@ -363,8 +363,8 @@ export function ApplicationDetail() {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col">
-      <dt className="text-xs text-neutral-400">{label}</dt>
-      <dd className="break-all text-neutral-800">{value || "—"}</dd>
+      <dt className="text-xs text-neutral-500">{label}</dt>
+      <dd className="break-all text-neutral-200">{value || "—"}</dd>
     </div>
   );
 }

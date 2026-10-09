@@ -34,7 +34,7 @@ export function Dropdown({
   items,
   align = "right",
   label,
-  triggerClassName = "inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50",
+  triggerClassName = "inline-flex items-center gap-1.5 border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800",
 }: {
   trigger: ReactNode;
   items: DropdownItem[];
@@ -119,7 +119,7 @@ export function Dropdown({
             ref={menuRef}
             role="menu"
             style={position}
-            className="fixed z-50 min-w-[10rem] border border-neutral-200 bg-white py-1 shadow-md"
+            className="fixed z-50 min-w-[10rem] border border-neutral-700 bg-neutral-900 py-1 shadow-md"
           >
             {items.map((item) => (
               <button
@@ -131,8 +131,8 @@ export function Dropdown({
                   setOpen(false);
                   item.onSelect();
                 }}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent ${
-                  item.danger ? "text-red-700" : "text-neutral-700"
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent ${
+                  item.danger ? "text-red-300" : "text-neutral-300"
                 }`}
               >
                 {item.icon}

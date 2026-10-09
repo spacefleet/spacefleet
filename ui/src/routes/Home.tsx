@@ -67,12 +67,12 @@ export function Home() {
       <h1 className="text-2xl font-bold tracking-tight">
         {currentOrg?.name ?? "No organization"}
       </h1>
-      <p className="mt-1 text-sm text-neutral-600">
+      <p className="mt-1 text-sm text-neutral-300">
         {currentRole ? `You are a${currentRole === "admin" || currentRole === "editor" ? "n" : ""} ${currentRole} here.` : ""}{" "}
         Switch organizations from the menu in the top bar.
       </p>
 
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
 
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
         <StatTile
@@ -96,14 +96,14 @@ export function Home() {
       </div>
 
       {(awaiting.length > 0 || failed.length > 0) && (
-        <div className="mt-6 border border-amber-200 bg-amber-50">
-          <div className="flex items-center gap-2 border-b border-amber-200 px-4 py-2">
-            <AlertTriangle className="h-3.5 w-3.5 text-amber-700" />
-            <h2 className="text-[11px] font-medium uppercase tracking-wide text-amber-800">
+        <div className="mt-6 border border-amber-500/30 bg-amber-500/10">
+          <div className="flex items-center gap-2 border-b border-amber-500/30 px-4 py-2">
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-300" />
+            <h2 className="text-[11px] font-medium uppercase tracking-wide text-amber-300">
               Needs attention
             </h2>
           </div>
-          <ul className="divide-y divide-amber-200/60">
+          <ul className="divide-y divide-amber-500/20">
             {awaiting.map((r) => (
               <RunRow key={r.id} run={r} appName={appName(r.application_id)} note="waiting for approval" onOpen={navigate} />
             ))}
@@ -114,19 +114,19 @@ export function Home() {
         </div>
       )}
 
-      <div className="mt-6 border border-neutral-200 bg-white">
-        <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-2">
-          <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+      <div className="mt-6 border border-neutral-800 bg-neutral-900">
+        <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-2">
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
             Recent runs
           </h2>
-          <Link to="/runs" className="text-xs text-neutral-500 underline-offset-2 hover:underline">
+          <Link to="/runs" className="text-xs text-neutral-400 underline-offset-2 hover:underline">
             All runs
           </Link>
         </div>
         {loading ? (
-          <p className="px-4 py-6 text-sm text-neutral-500">Loading…</p>
+          <p className="px-4 py-6 text-sm text-neutral-400">Loading…</p>
         ) : recent.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-neutral-500">
+          <p className="px-4 py-6 text-sm text-neutral-400">
             No runs yet.{" "}
             {apps.length === 0 ? (
               <>
@@ -140,7 +140,7 @@ export function Home() {
             )}
           </p>
         ) : (
-          <ul className="divide-y divide-neutral-100">
+          <ul className="divide-y divide-neutral-800">
             {recent.map((r) => (
               <RunRow key={r.id} run={r} appName={appName(r.application_id)} note="" onOpen={navigate} />
             ))}
@@ -163,12 +163,12 @@ function StatTile({
   to: string;
 }) {
   return (
-    <Link to={to} className="border border-neutral-200 bg-white px-4 py-3 hover:bg-neutral-50">
-      <p className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+    <Link to={to} className="border border-neutral-800 bg-neutral-900 px-4 py-3 hover:bg-neutral-800">
+      <p className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
         {icon}
         {label}
       </p>
-      <p className="mt-1 text-2xl font-bold tracking-tight text-neutral-900">{value}</p>
+      <p className="mt-1 text-2xl font-bold tracking-tight text-neutral-100">{value}</p>
     </Link>
   );
 }
@@ -189,15 +189,15 @@ function RunRow({
       <button
         type="button"
         onClick={() => onOpen(`/applications/${run.application_id}/runs/${run.id}`)}
-        className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm hover:bg-neutral-50"
+        className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm hover:bg-neutral-800"
       >
         <span className="flex min-w-0 items-center gap-3">
-          <span className="font-medium text-neutral-900">{appName}</span>
-          <span className="capitalize text-neutral-600">{runActionLabel(run.action, run.scope)}</span>
+          <span className="font-medium text-neutral-100">{appName}</span>
+          <span className="capitalize text-neutral-300">{runActionLabel(run.action, run.scope)}</span>
           <RunStatusBadge status={run.status} />
-          {note && <span className="truncate text-xs text-neutral-500">{note}</span>}
+          {note && <span className="truncate text-xs text-neutral-400">{note}</span>}
         </span>
-        <span className="shrink-0 text-xs text-neutral-500">
+        <span className="shrink-0 text-xs text-neutral-400">
           {new Date(run.created_at).toLocaleString()}
         </span>
       </button>

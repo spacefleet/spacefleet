@@ -50,12 +50,12 @@ export function CreateOrganization() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50">
-      <header className="flex h-14 shrink-0 items-center bg-black px-4 text-sm text-white">
+    <div className="flex min-h-screen flex-col bg-neutral-950">
+      <header className="flex h-14 shrink-0 items-center border-b border-neutral-800 bg-black px-4 text-sm text-white">
         <span className="font-semibold tracking-tight">Spacefleet</span>
         <div className="ml-auto flex items-center gap-3">
           {auth.user?.profile.email && (
-            <span className="text-gray-300">{auth.user.profile.email}</span>
+            <span className="text-neutral-300">{auth.user.profile.email}</span>
           )}
           <button
             type="button"
@@ -72,7 +72,7 @@ export function CreateOrganization() {
           <h1 className="text-2xl font-bold tracking-tight">
             {hasOrgs ? "New organization" : "Create your organization"}
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-neutral-300">
             {hasOrgs
               ? "Spin up another organization to switch into."
               : "You need an organization to get started. Everything in Spacefleet lives inside one."}
@@ -80,27 +80,27 @@ export function CreateOrganization() {
 
           <form
             onSubmit={onSubmit}
-            className="mt-6 space-y-3 border border-gray-200 bg-white p-4"
+            className="mt-6 space-y-3 border border-neutral-800 bg-neutral-900 p-4"
           >
             <input
-              className="w-full border border-gray-300 px-3 py-2 text-sm"
+              className="w-full border border-neutral-700 px-3 py-2 text-sm"
               placeholder="Organization name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus
               required
             />
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p className="text-sm text-red-400">{error}</p>}
             <div className="flex items-center gap-3">
               <button
                 type="submit"
-                className="bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                className="bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
                 disabled={!name.trim() || submitting}
               >
                 {submitting ? "Creating…" : "Create organization"}
               </button>
               {hasOrgs && (
-                <Link to="/" className="text-sm text-gray-500 hover:text-gray-800">
+                <Link to="/" className="text-sm text-neutral-400 hover:text-neutral-200">
                   Cancel
                 </Link>
               )}

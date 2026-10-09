@@ -17,12 +17,12 @@ export function Placeholder() {
   return (
     <div>
       {sectionLabel && (
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+        <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
           {sectionLabel}
         </p>
       )}
       <h1 className="mt-1 text-2xl font-bold tracking-tight">{title}</h1>
-      <div className="mt-6 border border-gray-200 bg-white p-6 text-sm text-gray-500">
+      <div className="mt-6 border border-neutral-800 bg-neutral-900 p-6 text-sm text-neutral-400">
         {sectionLabel ? `${sectionLabel} › ${title}` : title} — placeholder.
         Build this page out here.
       </div>

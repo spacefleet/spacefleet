@@ -212,6 +212,23 @@ shadcn/ui is welcome as a starting point — the project is scaffolded for it
 rectangular components; the Tailwind radius scale is overridden to zero in
 [ui/src/index.css](ui/src/index.css) as a safety net. `rounded-full` is fine.
 
+**Brand: a dark UI (there is no light theme).** Use the plain Tailwind
+`neutral` palette with these roles, so new UI matches the rest:
+
+| Role | Classes |
+| --- | --- |
+| Page background | `bg-neutral-950` (the body default; top bar is `bg-black`) |
+| Surfaces: cards, panels, menus, dialogs, inputs | `bg-neutral-900` |
+| Subtle inset panel / hover / selected | `bg-neutral-800/50` / `hover:bg-neutral-800` / `bg-neutral-800` |
+| Borders | `border-neutral-800` (dividers, cards), `border-neutral-700` (inputs, secondary buttons, floating menus) |
+| Text | `text-neutral-100` primary, `text-neutral-300` secondary, `text-neutral-400` muted, `text-neutral-500` faint |
+| Primary button | `bg-primary text-primary-fg hover:bg-primary-hover` — solid blue, a theme token in [index.css](ui/src/index.css); never hand-pick a hue for an action button (focus/active accents are `border-white`) |
+| Code, logs, diffs | `bg-black` |
+| Status tints | `bg-<hue>-500/10`–`/15`, `border-<hue>-500/30`, `text-<hue>-300`/`-400` |
+
+`color-scheme: dark` is set globally, so native controls render dark too. Dex's
+login page uses its built-in dark theme (`frontend.theme`).
+
 ## Dev workflow
 
 ```sh

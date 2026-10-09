@@ -55,7 +55,7 @@ export function NodeDetail() {
       <button
         type="button"
         onClick={() => navigate("/infrastructure/nodes")}
-        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900"
+        className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to nodes
@@ -63,7 +63,7 @@ export function NodeDetail() {
 
       <div className="mt-3 flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
             Infrastructure / Nodes
             {cluster && <> / {cluster.name}</>}
           </p>
@@ -77,14 +77,14 @@ export function NodeDetail() {
       </div>
 
       {loading ? (
-        <p className="mt-6 text-sm text-gray-500">Loading…</p>
+        <p className="mt-6 text-sm text-neutral-400">Loading…</p>
       ) : displayError ? (
-        <div className="mt-6 border border-gray-200 bg-white p-10 text-center">
-          <AlertTriangle className="mx-auto h-8 w-8 text-gray-300" />
-          <p className="mt-3 text-sm font-medium text-gray-700">{displayError}</p>
+        <div className="mt-6 border border-neutral-800 bg-neutral-900 p-10 text-center">
+          <AlertTriangle className="mx-auto h-8 w-8 text-neutral-600" />
+          <p className="mt-3 text-sm font-medium text-neutral-300">{displayError}</p>
           <Link
             to="/infrastructure/nodes"
-            className="mt-4 inline-block text-sm text-gray-600 underline hover:text-gray-900"
+            className="mt-4 inline-block text-sm text-neutral-300 underline hover:text-neutral-100"
           >
             Return to nodes
           </Link>
@@ -147,8 +147,8 @@ export function NodeDetail() {
 // Section is a titled card whose body is a responsive label/value grid.
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="border border-gray-200 bg-white">
-      <h2 className="border-b border-gray-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+    <div className="border border-neutral-800 bg-neutral-900">
+      <h2 className="border-b border-neutral-800 px-4 py-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
         {title}
       </h2>
       <dl className="grid grid-cols-1 gap-x-8 gap-y-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -169,9 +169,9 @@ function Field({
 }) {
   return (
     <div>
-      <dt className="text-xs text-gray-400">{label}</dt>
+      <dt className="text-xs text-neutral-500">{label}</dt>
       <dd
-        className={`mt-0.5 break-all text-sm text-gray-900 ${mono ? "font-mono text-xs" : ""}`}
+        className={`mt-0.5 break-all text-sm text-neutral-100 ${mono ? "font-mono text-xs" : ""}`}
       >
         {value || "—"}
       </dd>
@@ -192,13 +192,13 @@ function ResourcesPanel({
     { label: "Pods", cap: capacity?.pods, alloc: allocatable?.pods },
   ];
   return (
-    <div className="border border-gray-200 bg-white">
-      <h2 className="border-b border-gray-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+    <div className="border border-neutral-800 bg-neutral-900">
+      <h2 className="border-b border-neutral-800 px-4 py-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
         Resources
       </h2>
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+          <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
             <th className="px-4 py-2 font-medium">Resource</th>
             <th className="px-4 py-2 font-medium">Capacity</th>
             <th className="px-4 py-2 font-medium">Allocatable</th>
@@ -206,12 +206,12 @@ function ResourcesPanel({
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.label} className="border-b border-gray-100 last:border-0">
-              <td className="px-4 py-2 font-medium text-gray-900">{r.label}</td>
-              <td className="px-4 py-2 font-mono text-xs text-gray-700">
+            <tr key={r.label} className="border-b border-neutral-800 last:border-0">
+              <td className="px-4 py-2 font-medium text-neutral-100">{r.label}</td>
+              <td className="px-4 py-2 font-mono text-xs text-neutral-300">
                 {r.cap || "—"}
               </td>
-              <td className="px-4 py-2 font-mono text-xs text-gray-700">
+              <td className="px-4 py-2 font-mono text-xs text-neutral-300">
                 {r.alloc || "—"}
               </td>
             </tr>
@@ -224,16 +224,16 @@ function ResourcesPanel({
 
 function ConditionsPanel({ conditions }: { conditions: Node["conditions"] }) {
   return (
-    <div className="border border-gray-200 bg-white">
-      <h2 className="border-b border-gray-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+    <div className="border border-neutral-800 bg-neutral-900">
+      <h2 className="border-b border-neutral-800 px-4 py-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
         Conditions
       </h2>
       {conditions.length === 0 ? (
-        <p className="p-4 text-sm text-gray-500">No conditions reported.</p>
+        <p className="p-4 text-sm text-neutral-400">No conditions reported.</p>
       ) : (
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
+            <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
               <th className="px-4 py-2 font-medium">Type</th>
               <th className="px-4 py-2 font-medium">Status</th>
               <th className="px-4 py-2 font-medium">Reason</th>
@@ -242,11 +242,11 @@ function ConditionsPanel({ conditions }: { conditions: Node["conditions"] }) {
           </thead>
           <tbody>
             {conditions.map((c) => (
-              <tr key={c.type} className="border-b border-gray-100 last:border-0">
-                <td className="px-4 py-2 font-medium text-gray-900">{c.type}</td>
-                <td className="px-4 py-2 text-gray-700">{c.status}</td>
-                <td className="px-4 py-2 text-gray-600">{c.reason || "—"}</td>
-                <td className="px-4 py-2 text-gray-600">{c.message || "—"}</td>
+              <tr key={c.type} className="border-b border-neutral-800 last:border-0">
+                <td className="px-4 py-2 font-medium text-neutral-100">{c.type}</td>
+                <td className="px-4 py-2 text-neutral-300">{c.status}</td>
+                <td className="px-4 py-2 text-neutral-300">{c.reason || "—"}</td>
+                <td className="px-4 py-2 text-neutral-300">{c.message || "—"}</td>
               </tr>
             ))}
           </tbody>
@@ -258,18 +258,18 @@ function ConditionsPanel({ conditions }: { conditions: Node["conditions"] }) {
 
 function TaintsPanel({ taints }: { taints: Node["taints"] }) {
   return (
-    <div className="border border-gray-200 bg-white">
-      <h2 className="border-b border-gray-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+    <div className="border border-neutral-800 bg-neutral-900">
+      <h2 className="border-b border-neutral-800 px-4 py-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
         Taints
       </h2>
       {taints.length === 0 ? (
-        <p className="p-4 text-sm text-gray-500">No taints.</p>
+        <p className="p-4 text-sm text-neutral-400">No taints.</p>
       ) : (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-neutral-800">
           {taints.map((t) => (
             <li
               key={`${t.key}:${t.effect}`}
-              className="px-4 py-2 font-mono text-xs text-gray-700"
+              className="px-4 py-2 font-mono text-xs text-neutral-300"
             >
               {t.key}
               {t.value ? `=${t.value}` : ""}:{t.effect}
@@ -284,19 +284,19 @@ function TaintsPanel({ taints }: { taints: Node["taints"] }) {
 function LabelsPanel({ labels }: { labels: Record<string, string> }) {
   const entries = Object.entries(labels).sort(([a], [b]) => a.localeCompare(b));
   return (
-    <div className="border border-gray-200 bg-white">
-      <h2 className="border-b border-gray-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+    <div className="border border-neutral-800 bg-neutral-900">
+      <h2 className="border-b border-neutral-800 px-4 py-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
         Labels
       </h2>
       {entries.length === 0 ? (
-        <p className="p-4 text-sm text-gray-500">No labels.</p>
+        <p className="p-4 text-sm text-neutral-400">No labels.</p>
       ) : (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-neutral-800">
           {entries.map(([k, v]) => (
             <li key={k} className="flex gap-2 px-4 py-2 font-mono text-xs">
-              <span className="text-gray-500">{k}</span>
-              <span className="text-gray-400">=</span>
-              <span className="break-all text-gray-900">{v}</span>
+              <span className="text-neutral-400">{k}</span>
+              <span className="text-neutral-500">=</span>
+              <span className="break-all text-neutral-100">{v}</span>
             </li>
           ))}
         </ul>
@@ -314,7 +314,7 @@ function NodeStatusBadge({
 }) {
   if (!ready) {
     return (
-      <span className="inline-flex items-center gap-1 bg-red-100 px-2.5 py-1 text-xs font-medium text-red-800">
+      <span className="inline-flex items-center gap-1 bg-red-500/15 px-2.5 py-1 text-xs font-medium text-red-300">
         <XCircle className="h-3.5 w-3.5" />
         NotReady
       </span>
@@ -322,14 +322,14 @@ function NodeStatusBadge({
   }
   if (unschedulable) {
     return (
-      <span className="inline-flex items-center gap-1 bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+      <span className="inline-flex items-center gap-1 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300">
         <AlertTriangle className="h-3.5 w-3.5" />
         Ready,SchedulingDisabled
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 bg-green-100 px-2.5 py-1 text-xs font-medium text-green-800">
+    <span className="inline-flex items-center gap-1 bg-green-500/15 px-2.5 py-1 text-xs font-medium text-green-300">
       <CheckCircle2 className="h-3.5 w-3.5" />
       Ready
     </span>

@@ -127,7 +127,7 @@ export function ClusterDetail() {
       <button
         type="button"
         onClick={() => navigate("/admin/clusters")}
-        className="inline-flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-900"
+        className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to clusters
@@ -135,14 +135,14 @@ export function ClusterDetail() {
 
       <div className="mt-3 flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
             Admin / Clusters
           </p>
           <h1 className="mt-1 break-all text-2xl font-bold tracking-tight">
             {cluster?.name ?? (loading ? "…" : "Cluster")}
           </h1>
           {cluster?.endpoint && (
-            <p className="mt-1 break-all font-mono text-xs text-neutral-400">
+            <p className="mt-1 break-all font-mono text-xs text-neutral-500">
               {cluster.endpoint}
             </p>
           )}
@@ -159,7 +159,7 @@ export function ClusterDetail() {
                 type="button"
                 onClick={() => void onDelete()}
                 disabled={deleting}
-                className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 border border-neutral-700 px-3 py-1.5 text-sm text-red-400 hover:bg-red-500/10 disabled:opacity-50"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 Delete
@@ -170,16 +170,16 @@ export function ClusterDetail() {
       </div>
 
       {loading ? (
-        <p className="mt-6 text-sm text-neutral-500">Loading…</p>
+        <p className="mt-6 text-sm text-neutral-400">Loading…</p>
       ) : error || !cluster ? (
-        <div className="mt-6 border border-neutral-200 bg-white p-10 text-center">
-          <AlertTriangle className="mx-auto h-8 w-8 text-neutral-300" />
-          <p className="mt-3 text-sm font-medium text-neutral-700">
+        <div className="mt-6 border border-neutral-800 bg-neutral-900 p-10 text-center">
+          <AlertTriangle className="mx-auto h-8 w-8 text-neutral-600" />
+          <p className="mt-3 text-sm font-medium text-neutral-300">
             {error ?? "Cluster not found."}
           </p>
           <Link
             to="/admin/clusters"
-            className="mt-4 inline-block text-sm text-neutral-600 underline hover:text-neutral-900"
+            className="mt-4 inline-block text-sm text-neutral-300 underline hover:text-neutral-100"
           >
             Return to clusters
           </Link>
@@ -194,8 +194,8 @@ export function ClusterDetail() {
               hides its embedded copy to avoid showing it twice. */}
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-2 xl:items-start">
             <ClusterCapabilities clusterId={cluster.id} />
-            <div className="border border-neutral-200 bg-white">
-              <h2 className="border-b border-neutral-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
+            <div className="border border-neutral-800 bg-neutral-900">
+              <h2 className="border-b border-neutral-800 px-4 py-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
                 Runner
               </h2>
               <TektonPanel
@@ -215,8 +215,8 @@ export function ClusterDetail() {
 // the last probe found.
 function Overview({ cluster }: { cluster: Cluster }) {
   return (
-    <div className="border border-neutral-200 bg-white">
-      <h2 className="border-b border-neutral-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
+    <div className="border border-neutral-800 bg-neutral-900">
+      <h2 className="border-b border-neutral-800 px-4 py-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
         Overview
       </h2>
       <dl className="grid grid-cols-1 gap-x-8 gap-y-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -238,7 +238,7 @@ function Overview({ cluster }: { cluster: Cluster }) {
         />
       </dl>
       {cluster.status === "error" && cluster.status_message && (
-        <p className="border-t border-neutral-100 px-4 py-3 text-xs text-red-600">
+        <p className="border-t border-neutral-800 px-4 py-3 text-xs text-red-400">
           {cluster.status_message}
         </p>
       )}
@@ -257,9 +257,9 @@ function Field({
 }) {
   return (
     <div>
-      <dt className="text-xs text-neutral-400">{label}</dt>
+      <dt className="text-xs text-neutral-500">{label}</dt>
       <dd
-        className={`mt-0.5 break-all text-sm text-neutral-900 ${mono ? "font-mono text-xs" : ""}`}
+        className={`mt-0.5 break-all text-sm text-neutral-100 ${mono ? "font-mono text-xs" : ""}`}
       >
         {value || "—"}
       </dd>
@@ -281,9 +281,9 @@ function StatusBadge({
   checking?: boolean;
 }) {
   const styles: Record<Cluster["status"], string> = {
-    connected: "bg-green-100 text-green-800",
-    error: "bg-red-100 text-red-800",
-    pending: "bg-neutral-100 text-neutral-700",
+    connected: "bg-green-500/15 text-green-300",
+    error: "bg-red-500/15 text-red-300",
+    pending: "bg-neutral-800 text-neutral-300",
   };
   const Icon = {
     connected: CheckCircle2,

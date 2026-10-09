@@ -63,8 +63,8 @@ export function AcceptInvite() {
   const usable = preview?.status === "pending" && !preview.expired;
 
   return (
-    <div className="flex min-h-screen flex-col bg-neutral-50">
-      <header className="flex h-14 shrink-0 items-center bg-black px-4 text-sm text-white">
+    <div className="flex min-h-screen flex-col bg-neutral-950">
+      <header className="flex h-14 shrink-0 items-center border-b border-neutral-800 bg-black px-4 text-sm text-white">
         <span className="font-semibold tracking-tight">Spacefleet</span>
         <div className="ml-auto flex items-center gap-3">
           {auth.user?.profile.email && (
@@ -81,27 +81,27 @@ export function AcceptInvite() {
       </header>
 
       <main className="flex flex-1 items-center justify-center p-8">
-        <div className="w-full max-w-md border border-neutral-200 bg-white p-6">
+        <div className="w-full max-w-md border border-neutral-800 bg-neutral-900 p-6">
           {loading ? (
-            <p className="text-sm text-neutral-500">Loading invitation…</p>
+            <p className="text-sm text-neutral-400">Loading invitation…</p>
           ) : error && !preview ? (
             <>
               <h1 className="text-xl font-bold tracking-tight">Invitation unavailable</h1>
-              <p className="mt-2 text-sm text-neutral-600">{error}</p>
+              <p className="mt-2 text-sm text-neutral-300">{error}</p>
             </>
           ) : preview ? (
             <>
               <h1 className="text-xl font-bold tracking-tight">
                 Join {preview.organization_name}
               </h1>
-              <p className="mt-2 text-sm text-neutral-600">
+              <p className="mt-2 text-sm text-neutral-300">
                 You've been invited to join{" "}
                 <strong>{preview.organization_name}</strong> as a{" "}
                 <strong>{preview.role}</strong>.
               </p>
 
               {!usable && (
-                <p className="mt-4 border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                <p className="mt-4 border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
                   {preview.status === "accepted"
                     ? "This invitation has already been accepted."
                     : preview.status === "revoked"
@@ -110,21 +110,21 @@ export function AcceptInvite() {
                 </p>
               )}
 
-              {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+              {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
 
               <div className="mt-5 flex items-center gap-3">
                 <button
                   type="button"
                   disabled={!usable || accepting}
                   onClick={() => void onAccept()}
-                  className="bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+                  className="bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
                 >
                   {accepting ? "Joining…" : "Accept invitation"}
                 </button>
                 <button
                   type="button"
                   onClick={() => navigate("/", { replace: true })}
-                  className="text-sm text-neutral-500 hover:text-neutral-800"
+                  className="text-sm text-neutral-400 hover:text-neutral-200"
                 >
                   Not now
                 </button>

@@ -100,11 +100,11 @@ export function Applications() {
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
             Applications
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">All Apps</h1>
-          <p className="mt-1 text-sm text-neutral-600">
+          <p className="mt-1 text-sm text-neutral-300">
             Organize applications into groups, or deploy them directly.
           </p>
         </div>
@@ -116,7 +116,7 @@ export function Applications() {
                 setCreatingGroup(true);
                 setGroupError(null);
               }}
-              className="inline-flex items-center gap-2 border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+              className="inline-flex items-center gap-2 border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-300 hover:bg-neutral-800"
             >
               <FolderPlus className="h-4 w-4" />
               New group
@@ -126,7 +126,7 @@ export function Applications() {
               onClick={() => navigate("/applications/new")}
               disabled={needsRunner}
               title={needsRunner ? "Set up a runner cluster first" : undefined}
-              className="inline-flex items-center gap-2 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-black"
+              className="inline-flex items-center gap-2 bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-primary"
             >
               <Plus className="h-4 w-4" />
               Create app
@@ -140,8 +140,8 @@ export function Applications() {
       )}
 
       {creatingGroup && (
-        <div className="mt-6 border border-neutral-200 bg-white p-4">
-          <label className="block text-xs font-medium uppercase tracking-wide text-neutral-400">
+        <div className="mt-6 border border-neutral-800 bg-neutral-900 p-4">
+          <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500">
             New group name
           </label>
           <div className="mt-2 flex items-center gap-2">
@@ -156,13 +156,13 @@ export function Applications() {
               }}
               placeholder="e.g. Backend services"
               maxLength={200}
-              className="w-full max-w-sm border border-neutral-300 px-3 py-1.5 text-sm focus:border-neutral-900 focus:outline-none"
+              className="w-full max-w-sm border border-neutral-700 px-3 py-1.5 text-sm focus:border-neutral-100 focus:outline-none"
             />
             <button
               type="button"
               onClick={() => void createGroup()}
               disabled={savingGroup || newGroupName.trim() === ""}
-              className="inline-flex items-center gap-1.5 bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
             >
               {savingGroup && <Loader2 className="h-4 w-4 animate-spin" />}
               Create
@@ -173,28 +173,28 @@ export function Applications() {
                 setCreatingGroup(false);
                 setNewGroupName("");
               }}
-              className="text-sm text-neutral-500 hover:text-neutral-900"
+              className="text-sm text-neutral-400 hover:text-neutral-100"
             >
               Cancel
             </button>
           </div>
           {groupError && (
-            <p className="mt-2 text-sm text-red-600">{groupError}</p>
+            <p className="mt-2 text-sm text-red-400">{groupError}</p>
           )}
         </div>
       )}
 
       {loading ? (
-        <p className="mt-6 text-sm text-neutral-500">Loading…</p>
+        <p className="mt-6 text-sm text-neutral-400">Loading…</p>
       ) : error ? (
-        <p className="mt-6 text-sm text-red-600">{error}</p>
+        <p className="mt-6 text-sm text-red-400">{error}</p>
       ) : empty ? (
-        <div className="mt-6 border border-neutral-200 bg-white p-10 text-center">
-          <AppWindow className="mx-auto h-8 w-8 text-neutral-300" />
-          <p className="mt-3 text-sm font-medium text-neutral-700">
+        <div className="mt-6 border border-neutral-800 bg-neutral-900 p-10 text-center">
+          <AppWindow className="mx-auto h-8 w-8 text-neutral-600" />
+          <p className="mt-3 text-sm font-medium text-neutral-300">
             No applications yet
           </p>
-          <p className="mt-1 text-sm text-neutral-500">
+          <p className="mt-1 text-sm text-neutral-400">
             {needsRunner
               ? "Once a cluster is set up as a runner, create your first application here."
               : "Create your first application, or a group to organize them."}
@@ -204,10 +204,10 @@ export function Applications() {
         <>
           {/* Groups (folders) */}
           {groups.length > 0 && (
-            <div className="mt-6 border border-neutral-200 bg-white">
+            <div className="mt-6 border border-neutral-800 bg-neutral-900">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
+                  <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
                     <th className="px-4 py-2 font-medium">Group</th>
                     <th className="px-4 py-2 font-medium">Applications</th>
                   </tr>
@@ -217,15 +217,15 @@ export function Applications() {
                     <tr
                       key={g.id}
                       onClick={() => navigate(`/applications/groups/${g.id}`)}
-                      className="cursor-pointer border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
+                      className="cursor-pointer border-b border-neutral-800 last:border-0 hover:bg-neutral-800"
                     >
-                      <td className="px-4 py-3 font-medium text-neutral-900">
+                      <td className="px-4 py-3 font-medium text-neutral-100">
                         <span className="inline-flex items-center gap-2">
-                          <Folder className="h-4 w-4 text-neutral-400" />
+                          <Folder className="h-4 w-4 text-neutral-500" />
                           {g.name}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-neutral-600">
+                      <td className="px-4 py-3 text-neutral-300">
                         {countFor(g.id)}
                       </td>
                     </tr>
@@ -236,12 +236,12 @@ export function Applications() {
           )}
 
           {/* Ungrouped apps (the org root) */}
-          <div className="mt-6 border border-neutral-200 bg-white">
-            <div className="border-b border-neutral-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
+          <div className="mt-6 border border-neutral-800 bg-neutral-900">
+            <div className="border-b border-neutral-800 px-4 py-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
               {groups.length > 0 ? "Ungrouped" : "Applications"}
             </div>
             {ungrouped.length === 0 ? (
-              <p className="p-6 text-sm text-neutral-500">
+              <p className="p-6 text-sm text-neutral-400">
                 {groups.length > 0
                   ? "Every application is in a group."
                   : "No applications yet."}
@@ -249,7 +249,7 @@ export function Applications() {
             ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
+                  <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
                     <th className="px-4 py-2 font-medium">Name</th>
                     <th className="px-4 py-2 font-medium">Origin</th>
                     {canEdit && groups.length > 0 && (
@@ -262,12 +262,12 @@ export function Applications() {
                     <tr
                       key={a.id}
                       onClick={() => navigate(`/applications/${a.id}`)}
-                      className="cursor-pointer border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
+                      className="cursor-pointer border-b border-neutral-800 last:border-0 hover:bg-neutral-800"
                     >
-                      <td className="px-4 py-3 font-medium text-neutral-900">
+                      <td className="px-4 py-3 font-medium text-neutral-100">
                         {a.name}
                       </td>
-                      <td className="px-4 py-3 text-neutral-600">
+                      <td className="px-4 py-3 text-neutral-300">
                         {a.imported ? "Imported" : "Created"}
                       </td>
                       {canEdit && groups.length > 0 && (
@@ -279,7 +279,7 @@ export function Applications() {
                               e.stopPropagation();
                               void moveApp(a.id, e.target.value);
                             }}
-                            className="border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-700 focus:border-neutral-900 focus:outline-none"
+                            className="border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-300 focus:border-neutral-100 focus:outline-none"
                           >
                             <option value="">Move to…</option>
                             {groups.map((g) => (

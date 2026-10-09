@@ -19,6 +19,10 @@ storage:
 web:
   http: 0.0.0.0:5556
 
+# Dex's built-in dark login theme, to match the app's dark UI.
+frontend:
+  theme: dark
+
 # Skip the consent screen — there's a single trusted dev client.
 oauth2:
   skipApprovalScreen: true

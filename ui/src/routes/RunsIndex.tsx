@@ -138,11 +138,11 @@ export function RunsIndex() {
     <div>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
             Applications
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">Workflow Runs</h1>
-          <p className="mt-1 text-sm text-neutral-600">
+          <p className="mt-1 text-sm text-neutral-300">
             Deploy history across every application, updated live.
           </p>
         </div>
@@ -168,22 +168,22 @@ export function RunsIndex() {
       </div>
 
       {loading ? (
-        <p className="mt-6 text-sm text-neutral-500">Loading…</p>
+        <p className="mt-6 text-sm text-neutral-400">Loading…</p>
       ) : error ? (
-        <p className="mt-6 text-sm text-red-600">{error}</p>
+        <p className="mt-6 text-sm text-red-400">{error}</p>
       ) : runs.length === 0 ? (
-        <p className="mt-6 text-sm text-neutral-500">
+        <p className="mt-6 text-sm text-neutral-400">
           No runs yet. Start one from an application's workflow page.
         </p>
       ) : visibleRuns.length === 0 ? (
-        <p className="mt-6 text-sm text-neutral-500">
+        <p className="mt-6 text-sm text-neutral-400">
           No runs match the selected filters.
         </p>
       ) : (
-        <div className="mt-6 border border-neutral-200 bg-white">
+        <div className="mt-6 border border-neutral-800 bg-neutral-900">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
+              <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
                 <th className="px-4 py-2 font-medium">Application</th>
                 <th className="px-4 py-2 font-medium">Runner cluster</th>
                 <th className="px-4 py-2 font-medium">Action</th>
@@ -206,15 +206,15 @@ export function RunsIndex() {
                       },
                     })
                   }
-                  className="cursor-pointer border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
+                  className="cursor-pointer border-b border-neutral-800 last:border-0 hover:bg-neutral-800"
                 >
-                  <td className="px-4 py-3 font-medium text-neutral-900">
+                  <td className="px-4 py-3 font-medium text-neutral-100">
                     {appsById[r.application_id]?.name ?? "—"}
                   </td>
-                  <td className="px-4 py-3 text-neutral-600">
+                  <td className="px-4 py-3 text-neutral-300">
                     {clusterLabel(runnerClusterId(r), clusterNameById)}
                   </td>
-                  <td className="px-4 py-3 capitalize text-neutral-600">
+                  <td className="px-4 py-3 capitalize text-neutral-300">
                     {runActionLabel(r.action, r.scope)}
                   </td>
                   <td className="px-4 py-3">
@@ -223,10 +223,10 @@ export function RunsIndex() {
                   <td className="px-4 py-3">
                     <StageBar stages={r.stages} />
                   </td>
-                  <td className="px-4 py-3 text-neutral-600">
+                  <td className="px-4 py-3 text-neutral-300">
                     {new Date(r.created_at).toLocaleString()}
                   </td>
-                  <td className="px-4 py-3 text-neutral-600">
+                  <td className="px-4 py-3 text-neutral-300">
                     {formatDuration(r.created_at, r.finished_at ?? undefined)}
                   </td>
                 </tr>
@@ -234,7 +234,7 @@ export function RunsIndex() {
             </tbody>
           </table>
           {runs.length >= 200 && (
-            <p className="border-t border-neutral-100 px-4 py-2 text-xs text-neutral-400">
+            <p className="border-t border-neutral-800 px-4 py-2 text-xs text-neutral-500">
               Showing the {runs.length} most recent runs
               {filtered ? " (filters applied to this set)" : ""}.
             </p>
@@ -282,12 +282,12 @@ function FilterSelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 text-sm text-neutral-600">
+    <label className="flex items-center gap-2 text-sm text-neutral-300">
       {label}
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="border border-neutral-300 bg-white px-2 py-1.5 text-sm text-neutral-900 focus:border-black focus:outline-none"
+        className="border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100 focus:border-white focus:outline-none"
       >
         <option value={ALL}>{allLabel}</option>
         {options.map((o) => (
@@ -305,23 +305,23 @@ function LiveIndicator({ status }: { status: StreamStatus }) {
     StreamStatus,
     { label: string; dot: string; text: string; pulse: boolean }
   > = {
-    live: { label: "Live", dot: "bg-green-500", text: "text-neutral-600", pulse: false },
+    live: { label: "Live", dot: "bg-green-500", text: "text-neutral-300", pulse: false },
     connecting: {
       label: "Connecting…",
-      dot: "bg-neutral-400",
-      text: "text-neutral-500",
+      dot: "bg-neutral-500",
+      text: "text-neutral-400",
       pulse: true,
     },
     reconnecting: {
       label: "Reconnecting…",
       dot: "bg-amber-500",
-      text: "text-amber-700",
+      text: "text-amber-300",
       pulse: true,
     },
     error: {
       label: "Disconnected",
       dot: "bg-red-500",
-      text: "text-red-700",
+      text: "text-red-300",
       pulse: false,
     },
   };

@@ -161,7 +161,7 @@ export function RefAutocompleteField({
         <input type="text" {...shared} />
       )}
       {suggestions.length > 0 && (
-        <ul className="absolute left-0 right-0 top-full z-20 mt-0.5 max-h-56 overflow-auto border border-neutral-300 bg-white shadow-md">
+        <ul className="absolute left-0 right-0 top-full z-20 mt-0.5 max-h-56 overflow-auto border border-neutral-700 bg-neutral-900 shadow-md">
           {suggestions.map((s, i) => (
             <li key={s.label + ":" + i}>
               <button
@@ -174,15 +174,15 @@ export function RefAutocompleteField({
                 className={
                   "flex w-full items-center justify-between gap-3 px-2 py-1 text-left " +
                   (s.disabled
-                    ? "cursor-default text-neutral-400"
+                    ? "cursor-default text-neutral-500"
                     : i === active
-                      ? "bg-neutral-100 text-neutral-900"
-                      : "text-neutral-700 hover:bg-neutral-50")
+                      ? "bg-neutral-800 text-neutral-100"
+                      : "text-neutral-300 hover:bg-neutral-800")
                 }
               >
                 <span className="font-mono text-xs">{s.label}</span>
                 {s.detail && (
-                  <span className="shrink-0 text-[11px] text-neutral-400">
+                  <span className="shrink-0 text-[11px] text-neutral-500">
                     {s.detail}
                   </span>
                 )}

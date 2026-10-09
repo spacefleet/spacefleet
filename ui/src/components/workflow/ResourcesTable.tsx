@@ -27,7 +27,7 @@ export function ResourcesTable({ resources }: { resources: TofuResource[] }) {
 
   if (resources.length === 0) {
     return (
-      <p className="text-sm text-neutral-500">
+      <p className="text-sm text-neutral-400">
         No resources are recorded in this component's state.
       </p>
     );
@@ -35,7 +35,7 @@ export function ResourcesTable({ resources }: { resources: TofuResource[] }) {
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       <div className="flex flex-wrap items-center gap-3">
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-neutral-400">
           {managed} managed resource{managed === 1 ? "" : "s"}
           {data > 0 && (
             <>
@@ -51,14 +51,14 @@ export function ResourcesTable({ resources }: { resources: TofuResource[] }) {
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filter by address, type, provider, or id"
             aria-label="Filter resources"
-            className="ml-auto w-72 border border-neutral-300 px-2 py-1 text-xs focus:border-black focus:outline-none"
+            className="ml-auto w-72 border border-neutral-700 px-2 py-1 text-xs focus:border-white focus:outline-none"
           />
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
+            <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
               <th className="px-2 py-1.5 font-medium">Address</th>
               <th className="px-2 py-1.5 font-medium">Type</th>
               <th className="px-2 py-1.5 font-medium">Provider</th>
@@ -69,8 +69,8 @@ export function ResourcesTable({ resources }: { resources: TofuResource[] }) {
             {rows.map((r) => (
               <tr
                 key={r.address}
-                className={`border-b border-neutral-100 align-top ${
-                  r.mode === "data" ? "text-neutral-500" : "text-neutral-900"
+                className={`border-b border-neutral-800 align-top ${
+                  r.mode === "data" ? "text-neutral-400" : "text-neutral-100"
                 }`}
               >
                 <td className="whitespace-nowrap px-2 py-1.5 font-mono text-xs">
@@ -79,17 +79,17 @@ export function ResourcesTable({ resources }: { resources: TofuResource[] }) {
                 <td className="whitespace-nowrap px-2 py-1.5 font-mono text-xs">
                   {r.type}
                 </td>
-                <td className="whitespace-nowrap px-2 py-1.5 text-xs text-neutral-500">
+                <td className="whitespace-nowrap px-2 py-1.5 text-xs text-neutral-400">
                   {shortProvider(r.provider)}
                 </td>
                 <td className="break-all px-2 py-1.5 font-mono text-xs">
-                  {formatId(r.id) || <span className="text-neutral-400">—</span>}
+                  {formatId(r.id) || <span className="text-neutral-500">—</span>}
                 </td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-2 py-3 text-xs text-neutral-500">
+                <td colSpan={4} className="px-2 py-3 text-xs text-neutral-400">
                   No resources match "{filter}".
                 </td>
               </tr>

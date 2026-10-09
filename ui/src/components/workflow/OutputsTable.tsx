@@ -25,7 +25,7 @@ export function OutputsTable({
     <div className="h-full overflow-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
+          <tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500">
             <th className="px-2 py-1.5 font-medium">Output</th>
             <th className="w-full px-2 py-1.5 font-medium">Value</th>
           </tr>
@@ -40,18 +40,18 @@ export function OutputsTable({
               output.value !== undefined &&
               output.value !== null;
             return (
-              <tr key={name} className="border-b border-neutral-100 align-top">
-                <td className="whitespace-nowrap px-2 py-1.5 font-mono text-xs text-neutral-900">
+              <tr key={name} className="border-b border-neutral-800 align-top">
+                <td className="whitespace-nowrap px-2 py-1.5 font-mono text-xs text-neutral-100">
                   {name}
                 </td>
                 <td className="px-2 py-1.5">
                   <span className="inline-flex items-center gap-2">
                     {masked ? (
-                      <span className="font-mono text-xs text-neutral-400">
+                      <span className="font-mono text-xs text-neutral-500">
                         ••••••••
                       </span>
                     ) : (
-                      <span className="break-all font-mono text-xs text-neutral-900">
+                      <span className="break-all font-mono text-xs text-neutral-100">
                         {formatOutputValue(output.value)}
                       </span>
                     )}
@@ -67,7 +67,7 @@ export function OutputsTable({
                             ? "Reveal this sensitive value"
                             : "Mask this value again"
                         }
-                        className="p-0.5 text-neutral-400 hover:text-neutral-900"
+                        className="p-0.5 text-neutral-500 hover:text-neutral-100"
                       >
                         {masked ? (
                           <Eye className="h-3.5 w-3.5" />

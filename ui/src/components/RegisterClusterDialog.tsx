@@ -57,17 +57,17 @@ export function RegisterClusterDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
-      <div className="mt-12 w-full max-w-lg border border-gray-200 bg-white shadow-lg">
-        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
+      <div className="mt-12 w-full max-w-lg border border-neutral-800 bg-neutral-900 shadow-lg">
+        <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
           <h2 className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight">
-            <Server className="h-5 w-5 text-gray-500" />
+            <Server className="h-5 w-5 text-neutral-400" />
             Add cluster
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-700"
+            className="text-neutral-500 hover:text-neutral-300"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
@@ -77,7 +77,7 @@ export function RegisterClusterDialog({
         <form onSubmit={onSubmit} className="space-y-4 px-5 py-4">
           <Labeled label="Name">
             <input
-              className="w-full border border-gray-300 px-3 py-2 text-sm"
+              className="w-full border border-neutral-700 px-3 py-2 text-sm"
               placeholder="production"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -88,7 +88,7 @@ export function RegisterClusterDialog({
 
           <Labeled label="Connection method">
             <select
-              className="w-full border border-gray-300 bg-white px-3 py-2 text-sm"
+              className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
               value={method}
               onChange={(e) => {
                 setMethod(e.target.value as ConnectionMethod);
@@ -102,14 +102,14 @@ export function RegisterClusterDialog({
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-gray-500">{selected.description}</p>
+            <p className="mt-1 text-xs text-neutral-400">{selected.description}</p>
           </Labeled>
 
           {selected.fields.map((field) =>
             field.type === "checkbox" ? (
               <label
                 key={field.key as string}
-                className="flex items-center gap-2 text-sm text-gray-700"
+                className="flex items-center gap-2 text-sm text-neutral-300"
               >
                 <input
                   type="checkbox"
@@ -127,7 +127,7 @@ export function RegisterClusterDialog({
               >
                 {field.type === "textarea" ? (
                   <textarea
-                    className="h-28 w-full border border-gray-300 px-3 py-2 font-mono text-xs"
+                    className="h-28 w-full border border-neutral-700 px-3 py-2 font-mono text-xs"
                     placeholder={field.placeholder}
                     value={String(values[field.key as string] ?? "")}
                     onChange={(e) => setField(field.key as string, e.target.value)}
@@ -136,7 +136,7 @@ export function RegisterClusterDialog({
                 ) : (
                   <input
                     type={field.type === "secret" ? "password" : "text"}
-                    className="w-full border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full border border-neutral-700 px-3 py-2 text-sm"
                     placeholder={field.placeholder}
                     value={String(values[field.key as string] ?? "")}
                     onChange={(e) => setField(field.key as string, e.target.value)}
@@ -147,20 +147,20 @@ export function RegisterClusterDialog({
             ),
           )}
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
 
-          <div className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
+          <div className="flex items-center justify-end gap-3 border-t border-neutral-800 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="text-sm text-gray-500 hover:text-gray-800"
+              className="text-sm text-neutral-400 hover:text-neutral-200"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!name.trim() || submitting}
-              className="bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+              className="bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
             >
               {submitting ? "Registering…" : "Register & test"}
             </button>
@@ -184,13 +184,13 @@ function Labeled({
 }) {
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium text-gray-700">
+      <label className="mb-1 block text-sm font-medium text-neutral-300">
         {label}
       </label>
       {children}
-      {help && <p className="mt-1 text-xs italic text-gray-500">{help}</p>}
+      {help && <p className="mt-1 text-xs italic text-neutral-400">{help}</p>}
       {command && (
-        <code className="mt-1 block overflow-x-auto whitespace-pre bg-gray-100 px-2 py-1 font-mono text-[11px] text-gray-700">
+        <code className="mt-1 block overflow-x-auto whitespace-pre bg-neutral-800 px-2 py-1 font-mono text-[11px] text-neutral-300">
           {command}
         </code>
       )}

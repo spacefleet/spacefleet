@@ -53,7 +53,7 @@ export function NamespaceDetail() {
       <button
         type="button"
         onClick={() => navigate("/infrastructure/namespaces")}
-        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900"
+        className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to namespaces
@@ -61,7 +61,7 @@ export function NamespaceDetail() {
 
       <div className="mt-3 flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
             Infrastructure / Namespaces
             {cluster && <> / {cluster.name}</>}
           </p>
@@ -73,14 +73,14 @@ export function NamespaceDetail() {
       </div>
 
       {loading ? (
-        <p className="mt-6 text-sm text-gray-500">Loading…</p>
+        <p className="mt-6 text-sm text-neutral-400">Loading…</p>
       ) : displayError ? (
-        <div className="mt-6 border border-gray-200 bg-white p-10 text-center">
-          <AlertTriangle className="mx-auto h-8 w-8 text-gray-300" />
-          <p className="mt-3 text-sm font-medium text-gray-700">{displayError}</p>
+        <div className="mt-6 border border-neutral-800 bg-neutral-900 p-10 text-center">
+          <AlertTriangle className="mx-auto h-8 w-8 text-neutral-600" />
+          <p className="mt-3 text-sm font-medium text-neutral-300">{displayError}</p>
           <Link
             to="/infrastructure/namespaces"
-            className="mt-4 inline-block text-sm text-gray-600 underline hover:text-gray-900"
+            className="mt-4 inline-block text-sm text-neutral-300 underline hover:text-neutral-100"
           >
             Return to namespaces
           </Link>
@@ -109,8 +109,8 @@ export function NamespaceDetail() {
 // Section is a titled card whose body is a responsive label/value grid.
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="border border-gray-200 bg-white">
-      <h2 className="border-b border-gray-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+    <div className="border border-neutral-800 bg-neutral-900">
+      <h2 className="border-b border-neutral-800 px-4 py-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
         {title}
       </h2>
       <dl className="grid grid-cols-1 gap-x-8 gap-y-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -123,8 +123,8 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function Field({ label, value }: { label: string; value?: string }) {
   return (
     <div>
-      <dt className="text-xs text-gray-400">{label}</dt>
-      <dd className="mt-0.5 break-all text-sm text-gray-900">{value || "—"}</dd>
+      <dt className="text-xs text-neutral-500">{label}</dt>
+      <dd className="mt-0.5 break-all text-sm text-neutral-100">{value || "—"}</dd>
     </div>
   );
 }
@@ -132,19 +132,19 @@ function Field({ label, value }: { label: string; value?: string }) {
 function LabelsPanel({ labels }: { labels: Record<string, string> }) {
   const entries = Object.entries(labels).sort(([a], [b]) => a.localeCompare(b));
   return (
-    <div className="border border-gray-200 bg-white">
-      <h2 className="border-b border-gray-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+    <div className="border border-neutral-800 bg-neutral-900">
+      <h2 className="border-b border-neutral-800 px-4 py-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
         Labels
       </h2>
       {entries.length === 0 ? (
-        <p className="p-4 text-sm text-gray-500">No labels.</p>
+        <p className="p-4 text-sm text-neutral-400">No labels.</p>
       ) : (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-neutral-800">
           {entries.map(([k, v]) => (
             <li key={k} className="flex gap-2 px-4 py-2 font-mono text-xs">
-              <span className="text-gray-500">{k}</span>
-              <span className="text-gray-400">=</span>
-              <span className="break-all text-gray-900">{v}</span>
+              <span className="text-neutral-400">{k}</span>
+              <span className="text-neutral-500">=</span>
+              <span className="break-all text-neutral-100">{v}</span>
             </li>
           ))}
         </ul>
@@ -156,14 +156,14 @@ function LabelsPanel({ labels }: { labels: Record<string, string> }) {
 function NamespaceStatusBadge({ status }: { status: string }) {
   if (namespacePhase(status) === "Terminating") {
     return (
-      <span className="inline-flex items-center gap-1 bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+      <span className="inline-flex items-center gap-1 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300">
         <CircleSlash className="h-3.5 w-3.5" />
         Terminating
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 bg-green-100 px-2.5 py-1 text-xs font-medium text-green-800">
+    <span className="inline-flex items-center gap-1 bg-green-500/15 px-2.5 py-1 text-xs font-medium text-green-300">
       Active
     </span>
   );

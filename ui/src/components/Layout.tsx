@@ -12,8 +12,8 @@ export function Layout() {
   const email = auth.user?.profile.email;
 
   return (
-    <div className="flex h-screen flex-col bg-gray-50">
-      <header className="flex h-14 shrink-0 items-center gap-3 bg-black px-4 text-white">
+    <div className="flex h-screen flex-col bg-neutral-950">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-neutral-800 bg-black px-4 text-white">
         <Link to="/" className="flex items-center gap-2" aria-label="Home">
           <img src={icon} alt="Spacefleet" className="h-7 w-7 invert" />
           <span className="text-sm font-semibold tracking-tight">Spacefleet</span>
@@ -23,7 +23,7 @@ export function Layout() {
         <OrgSwitcher />
 
         <div className="ml-auto flex items-center gap-3 text-sm">
-          {email && <span className="text-gray-300">{email}</span>}
+          {email && <span className="text-neutral-300">{email}</span>}
           {/* Local sign-out: clear the stored tokens. Dex doesn't advertise
               an end_session_endpoint, so we don't RP-initiate logout — after
               removeUser the session is gone and AuthGate routes to the /login
@@ -92,9 +92,9 @@ function OrgSwitcher() {
       {open && (
         <div
           role="menu"
-          className="absolute left-0 top-full z-20 mt-1 w-64 border border-gray-200 bg-white py-1 text-gray-900 shadow-lg"
+          className="absolute left-0 top-full z-20 mt-1 w-64 border border-neutral-700 bg-neutral-900 py-1 text-neutral-100 shadow-lg"
         >
-          <p className="px-3 py-1 text-xs font-medium uppercase tracking-wide text-gray-400">
+          <p className="px-3 py-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
             Organizations
           </p>
           {memberships.map((m) => {
@@ -108,27 +108,27 @@ function OrgSwitcher() {
                   setCurrentOrg(m.organization.id);
                   setOpen(false);
                 }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-800"
               >
                 <Check
-                  className={`h-4 w-4 shrink-0 ${isCurrent ? "text-black" : "text-transparent"}`}
+                  className={`h-4 w-4 shrink-0 ${isCurrent ? "text-white" : "text-transparent"}`}
                   aria-hidden
                 />
                 <span className="truncate">{m.organization.name}</span>
-                <span className="ml-auto text-xs text-gray-400">{m.role}</span>
+                <span className="ml-auto text-xs text-neutral-500">{m.role}</span>
               </button>
             );
           })}
           {orgCreationEnabled() && (
             <>
-              <div className="my-1 border-t border-gray-100" />
+              <div className="my-1 border-t border-neutral-800" />
               <Link
                 to="/organizations/new"
                 role="menuitem"
                 onClick={() => setOpen(false)}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-800"
               >
-                <Plus className="h-4 w-4 shrink-0 text-gray-500" aria-hidden />
+                <Plus className="h-4 w-4 shrink-0 text-neutral-400" aria-hidden />
                 Create organization
               </Link>
             </>

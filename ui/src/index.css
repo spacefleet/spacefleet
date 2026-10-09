@@ -1,5 +1,31 @@
 @import "tailwindcss";
 
+/* Brand: the primary action colour (bg-primary text-primary-fg
+   hover:bg-primary-hover), a solid blue with white text. Statuses only ever
+   use hues as faint tints and outlines, so a solid blue button stays distinct
+   from the blue "running" status; violet is avoided because Approve sits on the
+   violet awaiting-approval banner. Change it here, nowhere else. */
+@theme {
+  --color-primary: var(--color-blue-600);
+  --color-primary-hover: var(--color-blue-500);
+  --color-primary-fg: var(--color-white);
+}
+
+/* Brand: a dark UI. There is no light theme — pages are drawn on neutral-950,
+   with neutral-900 surfaces (cards, panels, menus, inputs) and neutral-800
+   borders; primary actions use the brand colour above. `color-scheme` makes
+   native controls (scrollbars, checkboxes, date pickers, select menus) dark
+   too, and the body colours are the fallback for anything left unstyled. */
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  body {
+    background-color: var(--color-neutral-950);
+    color: var(--color-neutral-100);
+  }
+}
+
 /* Brand: sharp corners across the app. Override Tailwind's radius scale to
    zero so every `rounded-*` utility (including those baked into shadcn/ui
    generated components) resolves to a square corner. `rounded-full` keeps
@@ -23,7 +49,7 @@
    Longhands only, so `bg-*` utilities still set the background colour. */
 select:not([multiple]):not([size]) {
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a3a3a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-position: right 0.5rem center;
   background-repeat: no-repeat;
   background-size: 1rem 1rem;

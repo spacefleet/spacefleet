@@ -174,10 +174,10 @@ export function TektonPanel({
   }
 
   if (loadError) {
-    return <p className="p-4 text-sm text-red-600">{loadError}</p>;
+    return <p className="p-4 text-sm text-red-400">{loadError}</p>;
   }
   if (!status) {
-    return <p className="p-4 text-sm text-neutral-500">Loading…</p>;
+    return <p className="p-4 text-sm text-neutral-400">Loading…</p>;
   }
 
   // Update/delete act only on a Spacefleet-managed install. The server compares
@@ -195,7 +195,7 @@ export function TektonPanel({
 
   return (
     <>
-      <div className="divide-y divide-neutral-200">
+      <div className="divide-y divide-neutral-800">
         {/* The two sections below stand on their own for steady states; the
           status line is only worth its space while a job is in flight (live
           progress) or after a failure (the error). */}
@@ -207,7 +207,7 @@ export function TektonPanel({
           operator can read the message and retry — distinct from a load error,
           which blanks the panel. */}
         {actionError && (
-          <p className="p-4 text-sm text-red-600">{actionError}</p>
+          <p className="p-4 text-sm text-red-400">{actionError}</p>
         )}
 
         {/* Primary control: turns this cluster into a runner. Turning it on
@@ -223,7 +223,7 @@ export function TektonPanel({
             disabled={busy || inFlight}
             onClick={() => setRunnerConfirm(status)}
           />
-          <p className="mt-2 text-xs text-neutral-500">
+          <p className="mt-2 text-xs text-neutral-400">
             {status.enabled
               ? status.present
                 ? "Applications can choose this cluster as their runner. Stopping leaves Tekton installed."
@@ -239,23 +239,23 @@ export function TektonPanel({
           lifecycle), not the designation. Hidden entirely until Tekton exists. */}
         {status.present && (
           <div className="p-4">
-            <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+            <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
               Engine
             </h3>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-neutral-900">
+              <span className="text-sm font-medium text-neutral-100">
                 Tekton{" "}
                 {status.detected_version ?? status.installed_version ?? ""}
               </span>
               <ProvenanceBadge managed={status.managed} />
               {updateAvailable && (
-                <span className="inline-flex items-center gap-1 border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+                <span className="inline-flex items-center gap-1 border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-300">
                   <ArrowUpCircle className="h-3.5 w-3.5" />
                   Update available
                 </span>
               )}
             </div>
-            <p className="mt-1 text-xs text-neutral-500">
+            <p className="mt-1 text-xs text-neutral-400">
               {status.controller_ready
                 ? "Controller ready"
                 : "Controller not ready"}
@@ -267,13 +267,13 @@ export function TektonPanel({
                 </>
               )}
             </p>
-            <p className="mt-1 text-xs text-neutral-400">
+            <p className="mt-1 text-xs text-neutral-500">
               {unmanaged
                 ? "Installed outside Spacefleet."
                 : "Installed by Spacefleet."}
             </p>
             {updateAvailable && (
-              <p className="mt-1 text-xs text-amber-700">
+              <p className="mt-1 text-xs text-amber-300">
                 {versionChange
                   ? `A newer Tekton (${status.pinned_version}) is available.`
                   : "This install differs from what this version of Spacefleet sets up — sync it to bring it up to date."}
@@ -292,7 +292,7 @@ export function TektonPanel({
                         ? `Upgrade to ${status.pinned_version}`
                         : "Re-apply the managed install so it matches what Spacefleet expects"
                     }
-                    className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
                   >
                     <ArrowUpCircle className="h-3.5 w-3.5" />
                     {versionChange
@@ -316,7 +316,7 @@ export function TektonPanel({
                         type="button"
                         onClick={() => setConfirmingDelete(false)}
                         disabled={busy}
-                        className="inline-flex items-center px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                        className="inline-flex items-center px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
                       >
                         Cancel
                       </button>
@@ -327,7 +327,7 @@ export function TektonPanel({
                       onClick={() => setConfirmingDelete(true)}
                       disabled={busy || inFlight}
                       title="Remove Tekton from this cluster"
-                      className="inline-flex items-center gap-1.5 border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 border border-red-500/40 px-3 py-1.5 text-sm text-red-300 hover:bg-red-500/10 disabled:opacity-50"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       Remove Tekton
@@ -352,7 +352,7 @@ export function TektonPanel({
 
         {showCapabilities && (
           <div className="p-4">
-            <h3 className="pb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+            <h3 className="pb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
               Readiness
             </h3>
             <ClusterCapabilities clusterId={clusterId} bordered={false} />
@@ -378,12 +378,12 @@ export function TektonPanel({
 function StatusLine({ status }: { status: TektonStatus }) {
   const inFlight = IN_FLIGHT.includes(status.status);
   let Icon = AlertTriangle;
-  let tone = "text-red-700";
+  let tone = "text-red-300";
   let headline = "Setup failed";
 
   if (inFlight) {
     Icon = Loader2;
-    tone = "text-blue-700";
+    tone = "text-blue-300";
     headline =
       status.status === "installing"
         ? "Setting up runner…"
@@ -401,7 +401,7 @@ function StatusLine({ status }: { status: TektonStatus }) {
         <span className="text-sm font-medium">{headline}</span>
       </div>
       {status.status_message && (
-        <p className="mt-1 pl-7 text-xs text-neutral-500">
+        <p className="mt-1 pl-7 text-xs text-neutral-400">
           {status.status_message}
         </p>
       )}
@@ -429,17 +429,17 @@ function RunnerControl({
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
       <div className="flex items-center gap-3">
-        <span className="text-sm font-medium text-neutral-900">
+        <span className="text-sm font-medium text-neutral-100">
           Use this cluster as a runner
         </span>
         <span
           className={`inline-flex items-center gap-1.5 text-xs font-medium ${
-            enabled ? "text-green-700" : "text-neutral-500"
+            enabled ? "text-green-300" : "text-neutral-400"
           }`}
         >
           <span
             className={`h-2 w-2 rounded-full ${
-              enabled ? "bg-green-600" : "bg-neutral-300"
+              enabled ? "bg-green-600" : "bg-neutral-600"
             }`}
           />
           {enabled ? "On" : "Off"}
@@ -452,8 +452,8 @@ function RunnerControl({
           disabled={disabled}
           className={
             enabled
-              ? "border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
-              : "bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+              ? "border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+              : "bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
           }
         >
           {enabled
@@ -521,33 +521,33 @@ function RunnerDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="runner-dialog-title"
-        className="mt-12 w-full max-w-lg border border-neutral-200 bg-white shadow-lg"
+        className="mt-12 w-full max-w-lg border border-neutral-800 bg-neutral-900 shadow-lg"
       >
-        <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
+        <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
           <h2
             id="runner-dialog-title"
             className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight"
           >
-            {installs && <AlertTriangle className="h-5 w-5 text-amber-600" />}
+            {installs && <AlertTriangle className="h-5 w-5 text-amber-400" />}
             {title}
           </h2>
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="text-neutral-400 hover:text-neutral-700 disabled:opacity-50"
+            className="text-neutral-500 hover:text-neutral-300 disabled:opacity-50"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="space-y-3 px-5 py-4 text-sm text-neutral-600">
+        <div className="space-y-3 px-5 py-4 text-sm text-neutral-300">
           {installs ? (
             <>
               <p>
@@ -574,7 +574,7 @@ function RunnerDialog({
                   namespace where workflow jobs run
                 </li>
               </ul>
-              <p className="text-neutral-500">
+              <p className="text-neutral-400">
                 The install runs in the background and its progress shows here.
                 You can remove Tekton later from the Engine section.
               </p>
@@ -597,7 +597,7 @@ function RunnerDialog({
                 Applications will no longer be able to choose this cluster as
                 their runner. Applications already using it are not changed.
               </p>
-              <p className="text-neutral-500">
+              <p className="text-neutral-400">
                 Tekton stays installed.
                 {status.managed &&
                   status.present &&
@@ -605,15 +605,15 @@ function RunnerDialog({
               </p>
             </>
           )}
-          {error && <p className="text-red-600">{error}</p>}
+          {error && <p className="text-red-400">{error}</p>}
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-neutral-200 px-5 py-4">
+        <div className="flex items-center justify-end gap-3 border-t border-neutral-800 px-5 py-4">
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="text-sm text-neutral-500 hover:text-neutral-900 disabled:opacity-50"
+            className="text-sm text-neutral-400 hover:text-neutral-100 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -621,7 +621,7 @@ function RunnerDialog({
             type="button"
             onClick={() => void confirm()}
             disabled={submitting}
-            className="inline-flex items-center gap-1.5 bg-black px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
           >
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
             {confirmLabel}
@@ -637,7 +637,7 @@ function RunnerDialog({
 // (Spacefleet never touches it). Shown only when Tekton is actually present.
 function ProvenanceBadge({ managed }: { managed: boolean }) {
   return (
-    <span className="inline-flex items-center gap-1 border border-neutral-300 px-2 py-0.5 text-xs font-medium text-neutral-600">
+    <span className="inline-flex items-center gap-1 border border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-300">
       {managed ? (
         <>
           <ShieldCheck className="h-3.5 w-3.5" />
@@ -691,22 +691,22 @@ function PluginCacheSection({
 
   return (
     <div className="p-4">
-      <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+      <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
         Provider plugin cache
       </h3>
-      <p className="mt-1 text-xs text-neutral-500">
+      <p className="mt-1 text-xs text-neutral-400">
         A shared volume OpenTofu steps on this cluster use as their provider
         plugin cache, so a provider is downloaded once per cluster instead of
         once per run.
       </p>
       {cache ? (
         <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
-          <span className="text-neutral-900">
+          <span className="text-neutral-100">
             <span className="font-medium">{cache.size}</span>
             {cache.storage_class ? (
-              <span className="text-neutral-500"> · {cache.storage_class}</span>
+              <span className="text-neutral-400"> · {cache.storage_class}</span>
             ) : (
-              <span className="text-neutral-500"> · default storage class</span>
+              <span className="text-neutral-400"> · default storage class</span>
             )}
           </span>
           {canEdit && (
@@ -726,12 +726,12 @@ function PluginCacheSection({
                   aria-label="New plugin cache size"
                   value={newSize}
                   onChange={(e) => setNewSize(e.target.value)}
-                  className="w-24 border border-neutral-300 px-2 py-1.5 font-mono text-sm text-neutral-900"
+                  className="w-24 border border-neutral-700 px-2 py-1.5 font-mono text-sm text-neutral-100"
                 />
                 <button
                   type="submit"
                   disabled={busy || newSize.trim() === "" || newSize.trim() === cache.size}
-                  className="border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                  className="border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
                 >
                   Resize
                 </button>
@@ -740,12 +740,12 @@ function PluginCacheSection({
                 type="button"
                 onClick={() => void save({ size: "" })}
                 disabled={busy}
-                className="inline-flex items-center gap-1.5 border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 Remove cache
               </button>
-              <p className="basis-full text-xs text-neutral-500">
+              <p className="basis-full text-xs text-neutral-400">
                 The cache can grow in place when its storage class allows volume
                 expansion. To shrink it or change the class, remove it and set
                 it up again.
@@ -764,17 +764,17 @@ function PluginCacheSection({
             });
           }}
         >
-          <label className="flex flex-col gap-1 text-xs text-neutral-600">
+          <label className="flex flex-col gap-1 text-xs text-neutral-300">
             Size
             <input
               type="text"
               aria-label="Plugin cache size"
               value={size}
               onChange={(e) => setSize(e.target.value)}
-              className="w-28 border border-neutral-300 px-2 py-1.5 font-mono text-sm text-neutral-900"
+              className="w-28 border border-neutral-700 px-2 py-1.5 font-mono text-sm text-neutral-100"
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs text-neutral-600">
+          <label className="flex flex-col gap-1 text-xs text-neutral-300">
             Storage class
             <input
               type="text"
@@ -782,25 +782,25 @@ function PluginCacheSection({
               value={storageClass}
               placeholder="(cluster default)"
               onChange={(e) => setStorageClass(e.target.value)}
-              className="w-48 border border-neutral-300 px-2 py-1.5 font-mono text-sm text-neutral-900 placeholder:font-sans"
+              className="w-48 border border-neutral-700 px-2 py-1.5 font-mono text-sm text-neutral-100 placeholder:font-sans"
             />
           </label>
           <button
             type="submit"
             disabled={busy || size.trim() === ""}
-            className="bg-black px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+            className="bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
           >
             {busy ? "Creating…" : "Create cache"}
           </button>
-          <p className="basis-full text-xs text-neutral-500">
+          <p className="basis-full text-xs text-neutral-400">
             The storage class must support ReadWriteMany so steps on every node
             can share the volume.
           </p>
         </form>
       ) : (
-        <p className="mt-2 text-sm text-neutral-500">No cache configured.</p>
+        <p className="mt-2 text-sm text-neutral-400">No cache configured.</p>
       )}
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
     </div>
   );
 }

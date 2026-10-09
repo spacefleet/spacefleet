@@ -38,6 +38,10 @@ oauth2:
 expiry:
   {{- toYaml . | nindent 2 }}
 {{- end }}
+{{- with .Values.dex.frontend }}
+frontend:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
 staticClients:
   - id: {{ .Values.dex.clientID | quote }}
     name: Spacefleet
