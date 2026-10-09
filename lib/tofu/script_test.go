@@ -397,6 +397,17 @@ func TestScriptRejectsPathTraversal(t *testing.T) {
 	}
 }
 
+func TestScriptEmptyPathIsRepoRoot(t *testing.T) {
+	s := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Backend: "s3"})
+	if !strings.Contains(s, "cd '/src'\n") {
+		t.Errorf("empty path should cd into the clone root\n---\n%s", s)
+	}
+	s = Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "envs/prod", Backend: "s3"})
+	if !strings.Contains(s, "cd '/src/envs/prod'\n") {
+		t.Errorf("path should cd under the clone root\n---\n%s", s)
+	}
+}
+
 func TestScriptCloudAuthSourcesEnvFile(t *testing.T) {
 	backend, cfg := s3Backend()
 	s := Script(Apply{

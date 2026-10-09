@@ -458,6 +458,17 @@ func TestValidateTerraformBackend(t *testing.T) {
 	if err := validateOneStage([]ComponentInput{tfNode(nil)}); err != nil {
 		t.Errorf("s3 backend with full config: unexpected error %v", err)
 	}
+	// No working path → valid (the module is at the repo root); no repo → rejected.
+	noPath := tfNode(nil)
+	delete(noPath.Config, manifestConfigPath)
+	if err := validateOneStage([]ComponentInput{noPath}); err != nil {
+		t.Errorf("no working path: unexpected error %v", err)
+	}
+	noRepo := tfNode(nil)
+	delete(noRepo.Config, helm.ConfigRepoURL)
+	if err := validateOneStage([]ComponentInput{noRepo}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("no repo_url: expected ErrInvalidConfig, got %v", err)
+	}
 	// No backend → rejected.
 	noBackend := tfNode(nil)
 	delete(noBackend.Config, terraformConfigBackend)

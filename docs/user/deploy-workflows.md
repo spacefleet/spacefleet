@@ -31,7 +31,8 @@ the services onto it, then a **Verify** stage with a smoke test.
    - For a **Manifest** component, the Git repository, branch or tag, and the
      path to the manifests to apply.
    - For an **OpenTofu** component, the Git repository, branch or tag, and the
-     working path holding your OpenTofu files, plus where its state lives
+     working path holding your OpenTofu files (leave it empty for the
+     repository root), plus where its state lives
      (Spacefleet keeps it unless you pick a cloud backend) — and,
      for code that creates Kubernetes resources, optional **cluster
      authentication** — see [OpenTofu components](#opentofu-components).

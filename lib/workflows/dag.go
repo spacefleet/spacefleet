@@ -141,10 +141,10 @@ func hasTargetCluster(n ComponentInput) bool {
 }
 
 // Terraform component config keys. A terraform component clones a git repo at a
-// ref, cds into a working path holding the root module, configures the state
-// backend, and runs tofu plan or apply. The git source keys are shared with
-// helm/manifest (helm.ConfigRepoURL / helm.ConfigGitRef) and the working-path
-// key with manifest (manifestConfigPath).
+// ref, cds into a working path holding the root module (the repo root when
+// empty), configures the state backend, and runs tofu plan or apply. The git
+// source keys are shared with helm/manifest (helm.ConfigRepoURL /
+// helm.ConfigGitRef) and the working-path key with manifest (manifestConfigPath).
 const (
 	// terraformConfigCommand selects the tofu verb an execution unit runs: "plan"
 	// (produces the review material) or "apply" (mutates infrastructure). It is
@@ -260,8 +260,8 @@ const (
 	s3BackendKeyLockfile = "use_lockfile"
 )
 
-// validateTerraformConfig checks a terraform node's config: a git repo_url + a
-// working path are required, the state backend must be a supported type
+// validateTerraformConfig checks a terraform node's config: a git repo_url is
+// required (the working path is optional — empty is the repo root), the state backend must be a supported type
 // (spacefleet, s3, gcs, azurerm), and backend_config must be a JSON object
 // carrying that backend's required settings (bucket/key/region for s3;
 // nothing at all for spacefleet) — so a broken override is
@@ -279,7 +279,7 @@ func validateTerraformConfig(n ComponentInput) error {
 	if n.TargetNamespace != "" {
 		return fmt.Errorf("%w: node %q (terraform) must not set a target namespace", ErrInvalidConfig, n.Name)
 	}
-	if err := requireConfig(n, helm.ConfigRepoURL, manifestConfigPath); err != nil {
+	if err := requireConfig(n, helm.ConfigRepoURL); err != nil {
 		return err
 	}
 	// The state backend is always managed by Spacefleet (the run writes a backend

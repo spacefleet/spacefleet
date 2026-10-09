@@ -217,7 +217,8 @@ type Apply struct {
 	RepoURL string
 	// GitRef is an optional branch/tag to clone (default branch when empty).
 	GitRef string
-	// Path is the working directory within the repo holding the root module.
+	// Path is the working directory within the repo holding the root module;
+	// empty is the repo root.
 	Path string
 	// Backend names the state backend (one of the Backend* constants; the
 	// workflow validation enforces it).
@@ -358,7 +359,11 @@ func Script(a Apply) string {
 	// worker's existing helm.ParseRevisions captures it as the component revision.
 	fmt.Fprintf(&b, "echo \"%s$(git -C /src rev-parse HEAD)\"\n", revChartPrefix)
 
-	fmt.Fprintf(&b, "cd %s\n", shQuote("/src/"+a.Path))
+	workDir := "/src"
+	if a.Path != "" {
+		workDir += "/" + a.Path
+	}
+	fmt.Fprintf(&b, "cd %s\n", shQuote(workDir))
 
 	// Typed inputs: one auto-loaded tfvars file, written before anything else
 	// so plan, apply, drift, and import all read the same values. The heredoc

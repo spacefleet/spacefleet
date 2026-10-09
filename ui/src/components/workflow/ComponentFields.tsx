@@ -730,11 +730,14 @@ function TerraformConfig({
           disabled={disabled}
         />
       </Field>
-      <Field label="Working path" help="Directory holding the OpenTofu files.">
+      <Field
+        label="Working path"
+        help="Directory holding the OpenTofu files. Repository root if empty."
+      >
         <input
           type="text"
           className="w-full border border-neutral-300 px-3 py-2 text-sm"
-          placeholder="infra/prod"
+          placeholder="(repository root)"
           value={config.path ?? ""}
           onChange={(e) => setConfig("path", e.target.value)}
           disabled={disabled}
