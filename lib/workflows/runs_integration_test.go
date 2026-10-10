@@ -16,6 +16,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/component"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
+	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/testsupport"
 	"github.com/spacefleet/spacefleet/lib/tofu"
 )
@@ -844,27 +845,34 @@ func TestBeginComponentRun(t *testing.T) {
 	}
 	targets := []string{"aws_instance.web"}
 
-	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, helmComp.ID, ActionDeploy, nil); !errors.Is(err, ErrScopedRunUnsupported) {
+	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, helmComp.ID, ActionDeploy, ScopedRunOptions{}); !errors.Is(err, ErrScopedRunUnsupported) {
 		t.Errorf("helm deploy: err = %v, want ErrScopedRunUnsupported", err)
 	}
-	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, helmComp.ID, ActionUninstall, targets); !errors.Is(err, ErrScopedRunUnsupported) {
+	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, helmComp.ID, ActionUninstall, ScopedRunOptions{Targets: targets}); !errors.Is(err, ErrScopedRunUnsupported) {
 		t.Errorf("targeted helm uninstall: err = %v, want ErrScopedRunUnsupported", err)
 	}
-	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, uuid.New(), ActionUninstall, nil); !ent.IsNotFound(err) {
+	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, uuid.New(), ActionUninstall, ScopedRunOptions{}); !ent.IsNotFound(err) {
 		t.Errorf("unknown component: err = %v, want NotFound", err)
 	}
-	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, tf.ID, ActionPreview, nil); !errors.Is(err, ErrInvalidScopedAction) {
+	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, tf.ID, ActionPreview, ScopedRunOptions{}); !errors.Is(err, ErrInvalidScopedAction) {
 		t.Errorf("preview: err = %v, want ErrInvalidScopedAction", err)
 	}
-	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, tf.ID, ActionDeploy, []string{"aws_instance"}); !errors.Is(err, tofu.ErrInvalidTarget) {
+	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, tf.ID, ActionDeploy, ScopedRunOptions{Targets: []string{"aws_instance"}}); !errors.Is(err, tofu.ErrInvalidTarget) {
 		t.Errorf("bad target: err = %v, want ErrInvalidTarget", err)
 	}
+	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, tf.ID, ActionDeploy, ScopedRunOptions{GitRef: "-x"}); !errors.Is(err, ErrInvalidGitRef) {
+		t.Errorf("bad git ref: err = %v, want ErrInvalidGitRef", err)
+	}
+	// A Helm chart from a repository, not git, has no ref to override.
+	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, helmComp.ID, ActionUninstall, ScopedRunOptions{GitRef: "main"}); !errors.Is(err, ErrInvalidGitRef) {
+		t.Errorf("git ref on a non-git helm chart: err = %v, want ErrInvalidGitRef", err)
+	}
 	other := newOrg(t, client, "Other")
-	if _, err := svc.BeginComponentRun(ctx, other.ID, app.ID, tf.ID, ActionUninstall, nil); !ent.IsNotFound(err) {
+	if _, err := svc.BeginComponentRun(ctx, other.ID, app.ID, tf.ID, ActionUninstall, ScopedRunOptions{}); !ent.IsNotFound(err) {
 		t.Errorf("cross-org: err = %v, want NotFound", err)
 	}
 
-	run, err := svc.BeginComponentRun(ctx, org.ID, app.ID, tf.ID, ActionUninstall, targets)
+	run, err := svc.BeginComponentRun(ctx, org.ID, app.ID, tf.ID, ActionUninstall, ScopedRunOptions{Targets: targets, GitRef: "v1.2.0"})
 	if err != nil {
 		t.Fatalf("BeginComponentRun: %v", err)
 	}
@@ -872,7 +880,7 @@ func TestBeginComponentRun(t *testing.T) {
 		t.Errorf("run = %s/%s, want uninstall/pending", run.Action, run.Status)
 	}
 	scope, ok, err := ScopeOf(run)
-	if err != nil || !ok || scope.ComponentID != tf.ID || scope.ComponentName != "infra" || scope.ComponentType != TypeTerraform || len(scope.Targets) != 1 || scope.Targets[0] != targets[0] {
+	if err != nil || !ok || scope.ComponentID != tf.ID || scope.ComponentName != "infra" || scope.ComponentType != TypeTerraform || len(scope.Targets) != 1 || scope.Targets[0] != targets[0] || scope.GitRef != "v1.2.0" {
 		t.Errorf("stored scope = %+v (ok=%v err=%v)", scope, ok, err)
 	}
 	_, steps, err := svc.GetRun(ctx, org.ID, app.ID, run.ID)
@@ -889,12 +897,17 @@ func TestBeginComponentRun(t *testing.T) {
 	if got := snap.Nodes[0].Config[terraformConfigPlanFlags]; got != `["-var=env=prod","-target=aws_instance.web"]` {
 		t.Errorf("plan flags = %s", got)
 	}
+	for _, n := range snap.Nodes {
+		if got := n.Config[helm.ConfigGitRef]; got != "v1.2.0" {
+			t.Errorf("%s git_ref = %q, want the run's ref", n.ID, got)
+		}
+	}
 	if len(snap.Nodes[0].DependsOn) != 0 || !snap.Nodes[1].RequiresApproval {
 		t.Errorf("snapshot nodes = %+v, want no authored deps and a gated destroy apply", snap.Nodes)
 	}
 
 	// The pending run arms the in-flight gate for every kind of run.
-	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, tf.ID, ActionDeploy, nil); !errors.Is(err, ErrRunInFlight) {
+	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, tf.ID, ActionDeploy, ScopedRunOptions{}); !errors.Is(err, ErrRunInFlight) {
 		t.Errorf("second scoped run: err = %v, want ErrRunInFlight", err)
 	}
 	if _, err := svc.BeginRun(ctx, org.ID, app.ID, ActionDeploy); !errors.Is(err, ErrRunInFlight) {
@@ -926,7 +939,7 @@ func TestBeginComponentRunUninstallsHelmAndManifest(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		run, err := svc.BeginComponentRun(ctx, org.ID, app.ID, c.ID, ActionUninstall, nil)
+		run, err := svc.BeginComponentRun(ctx, org.ID, app.ID, c.ID, ActionUninstall, ScopedRunOptions{})
 		if err != nil {
 			t.Fatalf("%s uninstall: %v", typ, err)
 		}

@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Link, useNavigate } from "react-router";
+import { useEffect, useState, type ReactNode } from "react";
+import { Link } from "react-router";
 import { Download } from "lucide-react";
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
@@ -11,39 +11,37 @@ type ComponentState = components["schemas"]["ComponentState"];
 type DriftStatus = components["schemas"]["DriftStatus"];
 type ManagedStateVersion = components["schemas"]["ManagedStateVersion"];
 type StateLock = components["schemas"]["StateLock"];
-type StateOperationKind = components["schemas"]["StateOperationKind"];
-
-// A prefilled operation — what the lock box hands the Operations form when
-// the user clicks "Release this lock".
-type OperationPrefill = { kind: StateOperationKind; values: Record<string, string> };
 
 // ComponentStatePanel is an OpenTofu component's persistent "what do I own"
 // view: the outputs and the managed-resource inventory its last successful
 // apply recorded, with a link to the run that recorded them. It reads the
 // component-state endpoint; a component that has never applied successfully
-// (404) shows a quiet placeholder rather than an error.
+// (404) shows a quiet placeholder rather than an error. The guarded state
+// operations are a card of their own (ComponentOperations).
 export function ComponentStatePanel({
   appId,
   componentId,
   canEdit = false,
   managedBackend = false,
+  onReleaseLock,
 }: {
   appId: string;
   componentId: string;
-  // Editor or above: shows the guarded state operations (each starts an
-  // approval-gated run) and the state download. Viewers see the recorded
-  // state only.
+  // Editor or above: offers the state download and, on a stuck lock, the
+  // release button. Viewers see the recorded state only.
   canEdit?: boolean;
   // The component keeps its state in Spacefleet (the managed backend), so
   // its current state version is shown, and editors can download it. A
   // cloud backend's state is in its own bucket.
   managedBackend?: boolean;
+  // Hands a stuck lock's id to the Operations card, which opens force-unlock
+  // with it filled in.
+  onReleaseLock?: (lockId: string) => void;
 }) {
   const [state, setState] = useState<ComponentState | null>(null);
   const [empty, setEmpty] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"resources" | "outputs">("resources");
-  const [prefill, setPrefill] = useState<OperationPrefill | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,8 +109,8 @@ export function ComponentStatePanel({
           appId={appId}
           lock={state.lock}
           onRelease={
-            canEdit
-              ? () => setPrefill({ kind: "force_unlock", values: { lock_id: state.lock!.id } })
+            canEdit && onReleaseLock
+              ? () => onReleaseLock(state.lock!.id)
               : undefined
           }
         />
@@ -171,293 +169,7 @@ export function ComponentStatePanel({
           )}
         </>
       )}
-
-      {canEdit && (
-        <StateOperations appId={appId} componentId={componentId} prefill={prefill} />
-      )}
-      {canEdit && <ScopedRuns appId={appId} componentId={componentId} />}
     </div>
-  );
-}
-
-// parseTargets splits the targets field — one resource address per line, or
-// comma-separated — into the list the API validates.
-function parseTargets(raw: string): string[] {
-  return raw
-    .split(/[\s,]+/)
-    .map((t) => t.trim())
-    .filter((t) => t !== "");
-}
-
-// ScopedRuns is the editor-only "Destroy and targeted runs" section: a run
-// limited to this component alone — a deploy of just this module, or its
-// destruction — optionally narrowed to a fixed list of resource addresses
-// (each becomes a -target flag on the plan; never free-form flags). A
-// destroy asks for confirmation here and then always parks its apply for
-// approval, so the destroy plan is reviewed before anything goes. On
-// success the user is taken straight to the run.
-function ScopedRuns({
-  appId,
-  componentId,
-}: {
-  appId: string;
-  componentId: string;
-}) {
-  const navigate = useNavigate();
-  const [targetsRaw, setTargetsRaw] = useState("");
-  const [confirmDestroy, setConfirmDestroy] = useState(false);
-  const [submitting, setSubmitting] = useState<"deploy" | "uninstall" | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const targets = parseTargets(targetsRaw);
-
-  const start = async (action: "deploy" | "uninstall") => {
-    setSubmitting(action);
-    setError(null);
-    const { data, error } = await api.POST(
-      "/api/applications/{id}/components/{componentId}/runs",
-      {
-        params: { path: { id: appId, componentId } },
-        body: targets.length > 0 ? { action, targets } : { action },
-      },
-    );
-    setSubmitting(null);
-    if (error || !data) {
-      setError(error?.message ?? "Could not start the run");
-      return;
-    }
-    navigate(`/applications/${appId}/runs/${data.id}`);
-  };
-
-  return (
-    <div className="mt-6 border-t border-neutral-800 pt-4">
-      <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-        Destroy and targeted runs
-      </h3>
-      <p className="mb-3 mt-1 text-xs text-neutral-400">
-        Run just this component, without the rest of the workflow. List
-        resource addresses to limit the run to those resources (each becomes
-        a <code className="font-mono">-target</code>); leave it empty to
-        cover the whole component.
-      </p>
-      <label className="flex flex-col gap-1 text-xs text-neutral-300">
-        Targets (optional, one per line)
-        <textarea
-          aria-label="Target addresses"
-          value={targetsRaw}
-          rows={2}
-          placeholder={"aws_instance.web\nmodule.vpc.aws_subnet.private[0]"}
-          onChange={(e) => {
-            setTargetsRaw(e.target.value);
-            setError(null);
-          }}
-          className="border border-neutral-700 bg-neutral-900 px-2 py-1.5 font-mono text-sm text-neutral-100 placeholder:font-sans placeholder:text-neutral-500"
-        />
-      </label>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => void start("deploy")}
-          disabled={submitting !== null}
-          className="bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
-        >
-          {submitting === "deploy"
-            ? "Starting…"
-            : targets.length > 0
-              ? "Deploy targets"
-              : "Deploy this component"}
-        </button>
-        {!confirmDestroy && (
-          <button
-            type="button"
-            onClick={() => {
-              setConfirmDestroy(true);
-              setError(null);
-            }}
-            disabled={submitting !== null}
-            className="border border-red-500/40 px-3 py-1.5 text-sm text-red-300 hover:bg-red-500/10 disabled:opacity-50"
-          >
-            {targets.length > 0 ? "Destroy targets…" : "Destroy this component…"}
-          </button>
-        )}
-      </div>
-      {confirmDestroy && (
-        <div className="mt-3 border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-          <p>
-            {targets.length > 0
-              ? `This plans the destruction of ${targets.length} targeted resource${targets.length === 1 ? "" : "s"}.`
-              : "This plans the destruction of every resource this component manages."}{" "}
-            The destroy always waits for approval: review the plan on the run,
-            then approve to destroy or reject to keep everything.
-          </p>
-          <div className="mt-2 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void start("uninstall")}
-              disabled={submitting !== null}
-              className="bg-red-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-800 disabled:opacity-50"
-            >
-              {submitting === "uninstall" ? "Starting…" : "Start destroy for approval"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirmDestroy(false)}
-              disabled={submitting !== null}
-              className="px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-900 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
-    </div>
-  );
-}
-
-// The fixed menu of guarded state operations, each with the fields it takes.
-const STATE_OPS: {
-  kind: StateOperationKind;
-  label: string;
-  hint: string;
-  fields: { name: "address" | "new_address" | "lock_id" | "import_id"; label: string; placeholder: string }[];
-}[] = [
-  {
-    kind: "rm",
-    label: "Stop managing a resource",
-    hint: "tofu state rm — forgets the resource in state. The real infrastructure is not destroyed; OpenTofu simply stops managing it.",
-    fields: [{ name: "address", label: "Resource address", placeholder: "aws_instance.web" }],
-  },
-  {
-    kind: "mv",
-    label: "Rename a resource",
-    hint: "tofu state mv — moves a resource to a new address in state, so a refactor (a rename, a move into a module) is not a destroy and create.",
-    fields: [
-      { name: "address", label: "Current address", placeholder: "aws_instance.web" },
-      { name: "new_address", label: "New address", placeholder: "module.web.aws_instance.this" },
-    ],
-  },
-  {
-    kind: "import",
-    label: "Import existing infrastructure",
-    hint: "tofu import — adopts a resource that already exists into state, under the given address. The module must already declare that address.",
-    fields: [
-      { name: "address", label: "Resource address", placeholder: "aws_s3_bucket.data" },
-      { name: "import_id", label: "Import id", placeholder: "the provider's id, e.g. a bucket name or an instance id" },
-    ],
-  },
-  {
-    kind: "force_unlock",
-    label: "Release a stuck state lock",
-    hint: "tofu force-unlock — releases a lock left behind by a run that did not finish. Only do this when you are sure no other run is still using the state.",
-    fields: [{ name: "lock_id", label: "Lock id", placeholder: "from the \"Error acquiring the state lock\" message" }],
-  },
-];
-
-// StateOperations is the editor-only "Operations" section of the panel: pick
-// one of the four guarded operations, fill in its typed fields, and start it.
-// The request opens a state_op run parked at its approval gate — nothing
-// touches state until someone reviews the exact command on the run and
-// approves it — so on success the user is taken straight to that run.
-function StateOperations({
-  appId,
-  componentId,
-  prefill,
-}: {
-  appId: string;
-  componentId: string;
-  // Set by the lock box: selects the operation and fills its fields (each
-  // new prefill object re-applies, so clicking "Release" twice works).
-  prefill?: OperationPrefill | null;
-}) {
-  const navigate = useNavigate();
-  const [kind, setKind] = useState<StateOperationKind>("rm");
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (!prefill) return;
-    setKind(prefill.kind);
-    setValues(prefill.values);
-    setError(null);
-  }, [prefill]);
-  const op = STATE_OPS.find((o) => o.kind === kind) ?? STATE_OPS[0];
-  const complete = op.fields.every((f) => (values[f.name] ?? "").trim() !== "");
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    const body: Record<string, string> = { operation: kind };
-    for (const f of op.fields) body[f.name] = (values[f.name] ?? "").trim();
-    const { data, error } = await api.POST(
-      "/api/applications/{id}/components/{componentId}/state-ops",
-      {
-        params: { path: { id: appId, componentId } },
-        body: body as { operation: StateOperationKind },
-      },
-    );
-    setSubmitting(false);
-    if (error || !data) {
-      setError(error?.message ?? "Could not start the operation");
-      return;
-    }
-    navigate(`/applications/${appId}/runs/${data.id}`);
-  };
-
-  return (
-    <form onSubmit={(e) => void submit(e)} className="mt-6 border-t border-neutral-800 pt-4">
-      <h3 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-        Operations
-      </h3>
-      <p className="mb-3 mt-1 text-xs text-neutral-400">
-        Guarded state operations. Each starts a run that waits for approval,
-        showing the exact command before it touches state, and refreshes the
-        recorded state afterwards.
-      </p>
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-xs text-neutral-300">
-          Operation
-          <select
-            aria-label="State operation"
-            value={kind}
-            onChange={(e) => {
-              setKind(e.target.value as StateOperationKind);
-              setValues({});
-              setError(null);
-            }}
-            className="border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm text-neutral-100"
-          >
-            {STATE_OPS.map((o) => (
-              <option key={o.kind} value={o.kind}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {op.fields.map((f) => (
-          <label key={f.name} className="flex min-w-[16rem] flex-1 flex-col gap-1 text-xs text-neutral-300">
-            {f.label}
-            <input
-              type="text"
-              aria-label={f.label}
-              value={values[f.name] ?? ""}
-              placeholder={f.placeholder}
-              onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
-              className="border border-neutral-700 bg-neutral-900 px-2 py-1.5 font-mono text-sm text-neutral-100 placeholder:font-sans placeholder:text-neutral-500"
-            />
-          </label>
-        ))}
-        <button
-          type="submit"
-          disabled={!complete || submitting}
-          className="bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
-        >
-          {submitting ? "Starting…" : "Start for approval"}
-        </button>
-      </div>
-      <p className="mt-2 text-xs text-neutral-400">{op.hint}</p>
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
-    </form>
   );
 }
 
@@ -523,7 +235,7 @@ function LockBox({
             Release this lock…
           </button>{" "}
           <span className="text-xs text-red-300">
-            fills in the force-unlock operation below; it still waits for
+            fills in the force-unlock operation above; it still waits for
             approval. Only release a lock whose run is definitely no longer
             running.
           </span>

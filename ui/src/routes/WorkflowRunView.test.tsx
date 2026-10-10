@@ -739,7 +739,12 @@ describe("WorkflowRunView", () => {
     const scopedRun = {
       ...runDetail,
       action: "uninstall",
-      scope: { component_id: compA, component_name: "infra", targets: ["aws_instance.web"] },
+      scope: {
+        component_id: compA,
+        component_name: "infra",
+        targets: ["aws_instance.web"],
+        git_ref: "0123456789abcdef0123456789abcdef01234567",
+      },
     };
     mockApi.GET.mockImplementation((path: string) => {
       if (path === "/api/applications/{id}/runs/{runId}")
@@ -748,7 +753,7 @@ describe("WorkflowRunView", () => {
     });
     renderRunView();
     expect(await screen.findByRole("heading", { name: "Component destroy" })).toBeInTheDocument();
-    expect(screen.getByText("Only infra, targeting aws_instance.web")).toBeInTheDocument();
+    expect(screen.getByText("Only infra at 0123456, targeting aws_instance.web")).toBeInTheDocument();
   });
 
   it("says what triggered a run started from GitHub", async () => {

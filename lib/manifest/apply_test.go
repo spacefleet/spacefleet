@@ -127,6 +127,16 @@ func TestScriptGitRefBranchFlag(t *testing.T) {
 	}
 }
 
+func TestScriptGitRefCommitSHA(t *testing.T) {
+	s := Script(Apply{Action: ActionDeploy, RepoURL: "r", GitRef: "0123456789abcdef0123456789abcdef01234567", Path: "p"})
+	want := "git init -q /src\n" +
+		"git -C /src fetch -q --depth 1 'r' '0123456789abcdef0123456789abcdef01234567'\n" +
+		"git -C /src checkout -q --detach FETCH_HEAD\n"
+	if !strings.Contains(s, want) || strings.Contains(s, "git clone") {
+		t.Errorf("expected a fetch-by-SHA checkout\n---\n%s", s)
+	}
+}
+
 func TestScriptTokenWiresCredentialHelper(t *testing.T) {
 	withTok := Script(Apply{Action: ActionDeploy, RepoURL: "r", Path: "p", HasGitToken: true})
 	if !strings.Contains(withTok, "git config --global credential.helper 'store --file=/workspace/creds/git-credentials'") {

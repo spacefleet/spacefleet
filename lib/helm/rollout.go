@@ -352,11 +352,7 @@ func Script(r Rollout) string {
 			continue
 		}
 		dir := "/values/" + strconv.Itoa(i)
-		if ref := src[ValuesSourceGitRef]; ref != "" {
-			fmt.Fprintf(&b, "git clone --depth 1 --branch %s %s %s\n", shQuote(ref), shQuote(repo), shQuote(dir))
-		} else {
-			fmt.Fprintf(&b, "git clone --depth 1 %s %s\n", shQuote(repo), shQuote(dir))
-		}
+		b.WriteString(gitClone(repo, src[ValuesSourceGitRef], shQuote(dir)))
 		// Echo this source's resolved SHA (tagged with its index) so the worker can
 		// pair it back to the source. A failed substitution yields an empty marker,
 		// never a step failure under set -e (echo still exits 0).
@@ -441,12 +437,7 @@ func Script(r Rollout) string {
 	case SourceGit:
 		// The git credential helper (for a private repo) is wired once above, before
 		// any clone, so the chart clone here just reuses it.
-		ref := r.Config[ConfigGitRef]
-		if ref != "" {
-			fmt.Fprintf(&b, "git clone --depth 1 --branch %s %s /src\n", shQuote(ref), shQuote(repoURL))
-		} else {
-			fmt.Fprintf(&b, "git clone --depth 1 %s /src\n", shQuote(repoURL))
-		}
+		b.WriteString(gitClone(repoURL, r.Config[ConfigGitRef], "/src"))
 		// Echo the resolved chart SHA so the worker records what this run pulled.
 		fmt.Fprintf(&b, "echo \"%s$(git -C /src rev-parse HEAD)\"\n", revChartPrefix)
 		if r.RenderGitContext {
@@ -512,6 +503,37 @@ func writeForceRestart(b *strings.Builder, release, ns, kubeconfig, timeout stri
 	b.WriteString("else\n")
 	fmt.Fprintf(b, "  echo 'force: no workloads matched %s; nothing to restart' >&2\n", sel)
 	b.WriteString("fi\n")
+}
+
+// gitClone renders a shallow clone of repo into dir (a shell-safe path) at
+// ref: a branch or tag through `git clone --branch`, or — since a commit
+// can't be cloned by name — a full commit SHA fetched on its own and checked
+// out detached (GitHub, GitLab, and Bitbucket all serve a fetch by SHA). An
+// empty ref clones the default branch.
+func gitClone(repo, ref, dir string) string {
+	switch {
+	case ref == "":
+		return fmt.Sprintf("git clone --depth 1 %s %s\n", shQuote(repo), dir)
+	case isCommitSHA(ref):
+		return fmt.Sprintf("git init -q %[3]s\ngit -C %[3]s fetch -q --depth 1 %[1]s %[2]s\ngit -C %[3]s checkout -q --detach FETCH_HEAD\n",
+			shQuote(repo), shQuote(ref), dir)
+	default:
+		return fmt.Sprintf("git clone --depth 1 --branch %s %s %s\n", shQuote(ref), shQuote(repo), dir)
+	}
+}
+
+// isCommitSHA reports whether ref is a full commit id: 40 (SHA-1) or 64
+// (SHA-256) hex digits.
+func isCommitSHA(ref string) bool {
+	if len(ref) != 40 && len(ref) != 64 {
+		return false
+	}
+	for _, r := range ref {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", r) {
+			return false
+		}
+	}
+	return true
 }
 
 // shQuote single-quotes a value for safe interpolation into the /bin/sh script,

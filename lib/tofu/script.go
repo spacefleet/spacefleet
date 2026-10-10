@@ -215,7 +215,8 @@ type Apply struct {
 	Action string
 	// RepoURL is the git repository to clone the root module from.
 	RepoURL string
-	// GitRef is an optional branch/tag to clone (default branch when empty).
+	// GitRef is an optional branch, tag, or full commit SHA to clone (default
+	// branch when empty).
 	GitRef string
 	// Path is the working directory within the repo holding the root module;
 	// empty is the repo root.
@@ -348,12 +349,8 @@ func Script(a Apply) string {
 	}
 
 	// Clone the root module. --depth 1 keeps it shallow; an explicit ref pins the
-	// branch/tag.
-	if a.GitRef != "" {
-		fmt.Fprintf(&b, "git clone --depth 1 --branch %s %s /src\n", shQuote(a.GitRef), shQuote(a.RepoURL))
-	} else {
-		fmt.Fprintf(&b, "git clone --depth 1 %s /src\n", shQuote(a.RepoURL))
-	}
+	// branch, tag, or commit.
+	b.WriteString(gitClone(a.RepoURL, a.GitRef, "/src"))
 	// Echo the resolved SHA so the worker records what this run ran against (a
 	// branch can move between runs). Reuses the helm revision marker so the
 	// worker's existing helm.ParseRevisions captures it as the component revision.
@@ -663,6 +660,38 @@ func appendFlags(b *strings.Builder, flags []string) {
 		}
 		fmt.Fprintf(b, " %s", shQuote(f))
 	}
+}
+
+// gitClone renders a shallow clone of repo into dir (a shell-safe path) at
+// ref: a branch or tag through `git clone --branch`, or — since a commit
+// can't be cloned by name — a full commit SHA fetched on its own and checked
+// out detached (GitHub, GitLab, and Bitbucket all serve a fetch by SHA). An
+// empty ref clones the default branch. Replicated in lib/helm and lib/manifest
+// (where it is unexported) so this renderer stays self-contained.
+func gitClone(repo, ref, dir string) string {
+	switch {
+	case ref == "":
+		return fmt.Sprintf("git clone --depth 1 %s %s\n", shQuote(repo), dir)
+	case isCommitSHA(ref):
+		return fmt.Sprintf("git init -q %[3]s\ngit -C %[3]s fetch -q --depth 1 %[1]s %[2]s\ngit -C %[3]s checkout -q --detach FETCH_HEAD\n",
+			shQuote(repo), shQuote(ref), dir)
+	default:
+		return fmt.Sprintf("git clone --depth 1 --branch %s %s %s\n", shQuote(ref), shQuote(repo), dir)
+	}
+}
+
+// isCommitSHA reports whether ref is a full commit id: 40 (SHA-1) or 64
+// (SHA-256) hex digits.
+func isCommitSHA(ref string) bool {
+	if len(ref) != 40 && len(ref) != 64 {
+		return false
+	}
+	for _, r := range ref {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", r) {
+			return false
+		}
+	}
+	return true
 }
 
 // shQuote single-quotes a value for safe interpolation into the /bin/sh script,

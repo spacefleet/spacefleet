@@ -1239,7 +1239,9 @@ paths:
         just this module (a targeted apply when `targets` is given) and keeps
         the component's own approval gate. Either can be narrowed to a fixed
         list of resource addresses (`targets`, rendered as `-target` flags on
-        the plan).
+        the plan), and either can run against a different revision of the
+        component's repository than the one it tracks (`git_ref`: a branch,
+        a tag, or a full commit SHA).
 
         A Helm or Manifest component can only be **uninstalled** on its own —
         its release, or what was applied from its path — and the step is
@@ -1247,10 +1249,11 @@ paths:
         `${{ components.* }}` references resolve against the referenced
         components' latest recorded outputs.
 
-        The run's `scope` names the component and targets. Requires the
+        The run's `scope` names the component, targets, and ref. Requires the
         background worker (503 otherwise). 400 for another action, an invalid
-        target address, or a `deploy` or `targets` for a Helm or Manifest
-        component; 409 while a run is already in flight for the application.
+        target address or ref, a `git_ref` for a component not sourced from
+        git, or a `deploy` or `targets` for a Helm or Manifest component; 409
+        while a run is already in flight for the application.
       operationId: startComponentRun
       parameters:
         - $ref: "#/components/parameters/ApplicationID"
@@ -4579,14 +4582,21 @@ components:
             flag on the plan. Omit to cover the whole component.
           items:
             type: string
+        git_ref:
+          type: string
+          description: |
+            The revision of the component's repository to run against, in
+            place of the one it tracks: a branch, a tag, or a full commit
+            SHA. Omit to use the component's own ref (its default branch
+            when it sets none).
 
     RunScope:
       type: object
       description: |
         Present on a run limited to one component (see the component's runs
         endpoint): the component and, when the run was targeted, the
-        resource addresses it was limited to. Absent on a whole-workflow
-        run.
+        resource addresses it was limited to and the ref it ran against.
+        Absent on a whole-workflow run.
       required: [component_id, component_name]
       properties:
         component_id:
@@ -4601,6 +4611,9 @@ components:
           type: array
           items:
             type: string
+        git_ref:
+          type: string
+          description: The revision the run was started against, when it overrode the component's own ref.
 
     StateOperationKind:
       type: string

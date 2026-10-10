@@ -358,6 +358,23 @@ func TestScriptGitRefBranchFlag(t *testing.T) {
 	}
 }
 
+// A full commit SHA can't be cloned with --branch, so it is fetched on its
+// own and checked out detached; the revision echo still reads HEAD.
+func TestScriptGitRefCommitSHA(t *testing.T) {
+	s := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", GitRef: "0123456789abcdef0123456789abcdef01234567", Path: "p", Backend: "s3"})
+	want := "git init -q /src\n" +
+		"git -C /src fetch -q --depth 1 'r' '0123456789abcdef0123456789abcdef01234567'\n" +
+		"git -C /src checkout -q --detach FETCH_HEAD\n" +
+		"echo \"" + revChartPrefix + "$(git -C /src rev-parse HEAD)\"\n"
+	if !strings.Contains(s, want) || strings.Contains(s, "git clone") {
+		t.Errorf("expected a fetch-by-SHA checkout\n---\n%s", s)
+	}
+	// An abbreviated SHA could as well be a branch name, so it stays a --branch clone.
+	if s := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", GitRef: "0123456", Path: "p", Backend: "s3"}); !strings.Contains(s, "--branch '0123456'") {
+		t.Errorf("expected --branch for a short ref\n---\n%s", s)
+	}
+}
+
 func TestScriptTokenWiresCredentialHelper(t *testing.T) {
 	withTok := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "p", Backend: "s3", HasGitToken: true})
 	if !strings.Contains(withTok, "git config --global credential.helper 'store --file=/workspace/creds/git-credentials'") {

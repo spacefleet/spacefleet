@@ -9,6 +9,7 @@ vi.mock("../../api/client", () => ({
 }));
 const mockGet = api.GET as unknown as ReturnType<typeof vi.fn>;
 const mockPost = api.POST as unknown as ReturnType<typeof vi.fn>;
+const onReleaseLock = vi.fn();
 
 function renderPanel(canEdit = false, managedBackend = false) {
   return render(
@@ -22,6 +23,7 @@ function renderPanel(canEdit = false, managedBackend = false) {
               componentId="comp-1"
               canEdit={canEdit}
               managedBackend={managedBackend}
+              onReleaseLock={onReleaseLock}
             />
           }
         />
@@ -34,6 +36,7 @@ function renderPanel(canEdit = false, managedBackend = false) {
 beforeEach(() => {
   mockGet.mockReset();
   mockPost.mockReset();
+  onReleaseLock.mockReset();
 });
 
 describe("ComponentStatePanel", () => {
@@ -88,54 +91,7 @@ describe("ComponentStatePanel", () => {
     expect(await screen.findByText("boom")).toBeInTheDocument();
   });
 
-  it("hides the state operations from a viewer", async () => {
-    mockGet.mockResolvedValue({
-      data: undefined,
-      error: { message: "no recorded state for this component" },
-      response: { status: 404 },
-    });
-    renderPanel(false);
-    await screen.findByText(/Nothing recorded yet/);
-    expect(screen.queryByText("Operations")).not.toBeInTheDocument();
-  });
-
-  it("starts a guarded state operation and goes to its run", async () => {
-    mockGet.mockResolvedValue({
-      data: undefined,
-      error: { message: "no recorded state for this component" },
-      response: { status: 404 },
-    });
-    mockPost.mockResolvedValue({
-      data: { id: "run-42", action: "state_op", status: "pending" },
-      error: undefined,
-    });
-    renderPanel(true);
-    await screen.findByText("Operations");
-    const start = screen.getByRole("button", { name: "Start for approval" });
-    expect(start).toBeDisabled();
-
-    // Switch to a move: its two fields appear, the button stays disabled
-    // until both are filled.
-    fireEvent.change(screen.getByLabelText("State operation"), { target: { value: "mv" } });
-    fireEvent.change(screen.getByLabelText("Current address"), { target: { value: "aws_instance.web" } });
-    expect(start).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("New address"), { target: { value: " module.web.aws_instance.this " } });
-    expect(start).toBeEnabled();
-    fireEvent.click(start);
-
-    await waitFor(() =>
-      expect(mockPost).toHaveBeenCalledWith(
-        "/api/applications/{id}/components/{componentId}/state-ops",
-        {
-          params: { path: { id: "app-1", componentId: "comp-1" } },
-          body: { operation: "mv", address: "aws_instance.web", new_address: "module.web.aws_instance.this" },
-        },
-      ),
-    );
-    expect(await screen.findByText("run page")).toBeInTheDocument();
-  });
-
-  it("shows a stuck lock and prefills the force-unlock operation for an editor", async () => {
+  it("shows a stuck lock and hands its id to the operations for an editor", async () => {
     mockGet.mockResolvedValue({
       data: {
         run_id: "run-9",
@@ -154,10 +110,6 @@ describe("ComponentStatePanel", () => {
       error: undefined,
       response: { status: 200 },
     });
-    mockPost.mockResolvedValue({
-      data: { id: "run-42", action: "state_op", status: "pending" },
-      error: undefined,
-    });
     renderPanel(true);
     expect(await screen.findByText("State is locked.")).toBeInTheDocument();
     expect(screen.getByText("root@pod")).toBeInTheDocument();
@@ -167,21 +119,9 @@ describe("ComponentStatePanel", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Release this lock…" }));
-    expect(screen.getByLabelText("State operation")).toHaveValue("force_unlock");
-    expect(screen.getByLabelText("Lock id")).toHaveValue("6ea66d5f-8c3c-4d0d-8ecf-1d0e7a3f1c0f");
-    const start = screen.getByRole("button", { name: "Start for approval" });
-    expect(start).toBeEnabled();
-    fireEvent.click(start);
-    await waitFor(() =>
-      expect(mockPost).toHaveBeenCalledWith(
-        "/api/applications/{id}/components/{componentId}/state-ops",
-        {
-          params: { path: { id: "app-1", componentId: "comp-1" } },
-          body: { operation: "force_unlock", lock_id: "6ea66d5f-8c3c-4d0d-8ecf-1d0e7a3f1c0f" },
-        },
-      ),
-    );
-    expect(await screen.findByText("run page")).toBeInTheDocument();
+    expect(onReleaseLock).toHaveBeenCalledWith("6ea66d5f-8c3c-4d0d-8ecf-1d0e7a3f1c0f");
+    // The operations are a card of their own now.
+    expect(screen.queryByText("Operations")).not.toBeInTheDocument();
   });
 
   it("shows a stuck lock before the first apply, with nothing recorded", async () => {
@@ -211,110 +151,6 @@ describe("ComponentStatePanel", () => {
     renderPanel(false);
     expect(await screen.findByText("State is locked.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Release this lock…" })).not.toBeInTheDocument();
-  });
-
-  it("starts a per-component destroy only after confirming, and goes to its run", async () => {
-    mockGet.mockResolvedValue({
-      data: undefined,
-      error: { message: "no recorded state for this component" },
-      response: { status: 404 },
-    });
-    mockPost.mockResolvedValue({
-      data: { id: "run-43", action: "uninstall", status: "pending" },
-      error: undefined,
-    });
-    renderPanel(true);
-    await screen.findByText("Destroy and targeted runs");
-    fireEvent.click(screen.getByRole("button", { name: "Destroy this component…" }));
-    expect(mockPost).not.toHaveBeenCalled();
-    expect(
-      screen.getByText(/destruction of every resource this component manages/),
-    ).toBeInTheDocument();
-    // Backing out hides the confirmation without starting anything.
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByText(/destruction of every resource/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Destroy this component…" }));
-    fireEvent.click(screen.getByRole("button", { name: "Start destroy for approval" }));
-
-    await waitFor(() =>
-      expect(mockPost).toHaveBeenCalledWith(
-        "/api/applications/{id}/components/{componentId}/runs",
-        {
-          params: { path: { id: "app-1", componentId: "comp-1" } },
-          body: { action: "uninstall" },
-        },
-      ),
-    );
-    expect(await screen.findByText("run page")).toBeInTheDocument();
-  });
-
-  it("starts a targeted deploy with the listed addresses", async () => {
-    mockGet.mockResolvedValue({
-      data: undefined,
-      error: { message: "no recorded state for this component" },
-      response: { status: 404 },
-    });
-    mockPost.mockResolvedValue({
-      data: { id: "run-44", action: "deploy", status: "pending" },
-      error: undefined,
-    });
-    renderPanel(true);
-    await screen.findByText("Destroy and targeted runs");
-    fireEvent.change(screen.getByLabelText("Target addresses"), {
-      target: { value: " aws_instance.web\nmodule.vpc.aws_subnet.private[0], " },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Deploy targets" }));
-    await waitFor(() =>
-      expect(mockPost).toHaveBeenCalledWith(
-        "/api/applications/{id}/components/{componentId}/runs",
-        {
-          params: { path: { id: "app-1", componentId: "comp-1" } },
-          body: {
-            action: "deploy",
-            targets: ["aws_instance.web", "module.vpc.aws_subnet.private[0]"],
-          },
-        },
-      ),
-    );
-    expect(await screen.findByText("run page")).toBeInTheDocument();
-  });
-
-  it("shows the API's reason when a scoped run is refused", async () => {
-    mockGet.mockResolvedValue({
-      data: undefined,
-      error: { message: "no recorded state for this component" },
-      response: { status: 404 },
-    });
-    mockPost.mockResolvedValue({
-      data: undefined,
-      error: { message: 'tofu: invalid target address: "aws_instance" is not a resource address' },
-      response: { status: 400 },
-    });
-    renderPanel(true);
-    await screen.findByText("Destroy and targeted runs");
-    fireEvent.change(screen.getByLabelText("Target addresses"), { target: { value: "aws_instance" } });
-    fireEvent.click(screen.getByRole("button", { name: "Deploy targets" }));
-    expect(await screen.findByText(/is not a resource address/)).toBeInTheDocument();
-  });
-
-  it("shows the API's reason when an operation is refused", async () => {
-    mockGet.mockResolvedValue({
-      data: undefined,
-      error: { message: "no recorded state for this component" },
-      response: { status: 404 },
-    });
-    mockPost.mockResolvedValue({
-      data: undefined,
-      error: { message: "a run is already in progress for this application" },
-      response: { status: 409 },
-    });
-    renderPanel(true);
-    await screen.findByText("Operations");
-    fireEvent.change(screen.getByLabelText("Resource address"), { target: { value: "aws_instance.web" } });
-    fireEvent.click(screen.getByRole("button", { name: "Start for approval" }));
-    expect(
-      await screen.findByText("a run is already in progress for this application"),
-    ).toBeInTheDocument();
   });
 
   describe("managed state", () => {

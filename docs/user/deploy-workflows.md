@@ -438,8 +438,9 @@ Some state surgery is occasionally unavoidable: a lock left behind by a run
 that died, a resource you want OpenTofu to stop managing without destroying
 it, a rename that would otherwise become a destroy and a create, or existing
 infrastructure you want to adopt. Rather than doing these from a laptop with
-production credentials, run them from the **State** section of the
-component's page, under **Operations** (editor or above):
+production credentials, run them from the **Operations** section of the
+component's page (editor or above): choose the operation, read what it does,
+fill in its fields, and choose **Start for approval**.
 
 | Operation | What it runs | Fields |
 | --- | --- | --- |
@@ -452,7 +453,7 @@ You rarely need to hunt for a lock id. When the component's latest run
 failed because the state was locked, the **State** panel says **State is
 locked** and shows what OpenTofu recorded about the lock — its id, who took
 it, and when — with a link to the run that hit it. **Release this lock…**
-fills in the force-unlock operation with that id. Check first that the run
+opens the force-unlock operation with that id filled in. Check first that the run
 holding the lock is really gone: releasing a lock under a run that is still
 applying can corrupt the state. The notice clears as soon as a later run
 gets through.
@@ -471,32 +472,40 @@ operation counts as a run of the application: it appears in the run history,
 and it cannot start while another run is in progress (nor can a deploy start
 while one is waiting for approval).
 
-### Destroying one component and targeted runs
+### Running or destroying one component
 
-A workflow's **Uninstall** removes everything. To take down just one OpenTofu
-component — or to plan and apply just that module without running the rest
-of the workflow — use **Destroy and targeted runs** in the **State** section
-of the component's page (editor or above):
+**Run** at the top of an OpenTofu component's page (editor or above) plans
+and applies just that module, without the rest of the workflow. Its own
+approval gate and policy still apply. The dialog takes two optional
+settings:
 
-- **Destroy this component** plans the destruction of every resource the
-  component manages and then **always waits for approval**, whatever the
-  component's own approval setting: the run shows the destroy plan, with
-  the resources about to go listed first, and an editor or admin approves
-  to destroy or rejects to keep everything. The button asks you to confirm
-  before the run starts. Once it applies, the component's recorded state
-  is refreshed: an empty inventory after a full destroy, the survivors
-  after a targeted one.
-- **Deploy this component** plans and applies only this module. It keeps the
-  component's own approval gate and policy.
+- **Git ref** — a branch, a tag, or a full commit SHA to run instead of the
+  one the component tracks, for example to try a branch before merging it or
+  to go back to a known-good commit. Leave it blank to use the component's
+  own (or the repository's default branch, if it sets none). A commit SHA
+  must be the full 40 characters, and your Git host must allow fetching a
+  commit by its SHA (GitHub, GitLab, and Bitbucket do).
+- **Advanced → Limit to resources** — resource addresses (one per line, e.g.
+  `aws_instance.web` or `module.vpc.aws_subnet.private[0]`) to limit the
+  plan to, the same as OpenTofu's `-target`. Only well-formed addresses are
+  accepted; there is no way to pass other flags. Targeting is for
+  exceptional situations (recovering from an error, working around a
+  provider bug): a targeted apply leaves the rest of the module
+  unreconciled, and OpenTofu will flag that in the plan. Follow it with a
+  normal run when you can.
 
-Either run can be **targeted**: list resource addresses (one per line, e.g.
-`aws_instance.web` or `module.vpc.aws_subnet.private[0]`) and the plan is
-limited to those resources — the same as OpenTofu's `-target`. Only
-well-formed addresses are accepted; there is no way to pass other flags.
-Targeting is for exceptional situations (recovering from an error, working
-around a provider bug): a targeted apply leaves the rest of the module
-unreconciled, and OpenTofu will flag that in the plan. Follow it with a
-normal deploy when you can.
+A workflow's **Uninstall** removes everything. To take down just one
+component, choose **⋮ → Delete** on its page and then **Destroy it first**
+(OpenTofu) or **Uninstall it first** (Helm, Manifest) — see
+[Delete or move a component](#delete-or-move-a-component). That run always
+waits for approval, whatever the component's own approval setting: for
+OpenTofu, the run shows the destroy plan, with the resources about to go
+listed first, and an editor or admin approves to destroy or rejects to keep
+everything. The component itself is deleted only if you choose **Delete
+component** once the run succeeds, so the same route destroys a component's
+resources while keeping it in the workflow to deploy again later. Once a
+destroy applies, the component's recorded state is refreshed to an empty
+inventory.
 
 A Helm or Manifest component can be uninstalled on its own too, from its
 **Delete** dialog's **Uninstall it first** (see
@@ -508,10 +517,12 @@ it.
 
 A component-scoped run appears in the run history as a **Component deploy**,
 **Component destroy** (OpenTofu), or **Component uninstall** (Helm,
-Manifest) naming the component and any targets. It counts as a run of the
-application: it cannot start while another run is in progress, and nothing
-else can start while it is running or waiting for approval. Deploying or
-targeting a single component is available for OpenTofu components only.
+Manifest) naming the component, the ref it ran at (when you chose one), and
+any targets. It counts as a run of the application: it cannot start while
+another run is in progress, and nothing else can start while it is running
+or waiting for approval. Running a single component on its own is available
+for OpenTofu components only; Helm and Manifest components deploy with the
+workflow.
 
 ## Run the workflow
 

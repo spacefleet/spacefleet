@@ -1,8 +1,20 @@
 import { useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router";
-import { ArrowLeft, ArrowRightLeft, Settings, Trash2, Variable } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRightLeft,
+  Play,
+  Settings,
+  Trash2,
+  Variable,
+} from "lucide-react";
 import { useWorkflowDraft } from "../contexts/WorkflowDraftContext";
 import { ActionsMenu } from "../components/ActionsMenu";
+import {
+  ComponentOperations,
+  type OperationPrefill,
+} from "../components/workflow/ComponentOperations";
+import { ComponentRunDialog } from "../components/workflow/ComponentRunDialog";
 import { ComponentStatePanel } from "../components/workflow/ComponentStatePanel";
 import { DeleteComponentDialog } from "../components/workflow/DeleteComponentDialog";
 import { MoveComponentDialog } from "../components/workflow/MoveComponentDialog";
@@ -12,10 +24,11 @@ import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 // ComponentDetail is one workflow component's page
 // (/applications/:appId/workflow/nodes/:nodeId), shaped like the application
-// page: the component's settings at a glance and — for OpenTofu — its recorded
-// state, with Variables, Manage (the editor), and Move and Delete in the
-// header's menu. A
-// component still being created has no page yet, so it opens in the editor.
+// page: the component's settings at a glance and — for OpenTofu — the guarded
+// state operations (editors) and its recorded state, last; with Variables,
+// Manage (the editor), Run (OpenTofu: a run of just this component), and Move
+// and Delete in the header's menu. A component still being created has no
+// page yet, so it opens in the editor.
 //
 // The run view of a component's succeeded destroy/uninstall links back here
 // with { deleteAfterUninstall: true } in the location state, which opens the
@@ -47,6 +60,10 @@ export function ComponentDetail() {
   useDocumentTitle(component?.name, "Workflow", appName);
   const [deleting, setDeleting] = useState(afterUninstall);
   const [moving, setMoving] = useState(false);
+  const [running, setRunning] = useState(false);
+  // The State card's "Release this lock" hands the lock to the Operations
+  // card through this.
+  const [opsPrefill, setOpsPrefill] = useState<OperationPrefill | null>(null);
 
   const workflowPath = `/applications/${appId}/workflow`;
   const componentPath = `${workflowPath}/nodes/${nodeId}`;
@@ -109,6 +126,18 @@ export function ComponentDetail() {
                     <Settings className="h-3.5 w-3.5" />
                     Manage
                   </button>
+                  {/* Only an OpenTofu component deploys on its own; the
+                      others deploy with the workflow. */}
+                  {component.type === "terraform" && (
+                    <button
+                      type="button"
+                      onClick={() => setRunning(true)}
+                      className="inline-flex items-center gap-1.5 bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover"
+                    >
+                      <Play className="h-3.5 w-3.5" />
+                      Run
+                    </button>
+                  )}
                   <ActionsMenu
                     label={`${component.name} actions`}
                     items={[
@@ -153,15 +182,40 @@ export function ComponentDetail() {
             </dl>
           </div>
 
-          {/* An OpenTofu component's recorded state: the resources it manages
-              and its outputs, as of its last successful apply, plus — for an
-              editor — the guarded state operations and scoped runs. */}
+          {/* An OpenTofu component's guarded state operations (editors),
+              then its recorded state: the resources it manages and its
+              outputs, as of its last successful apply. */}
+          {component.type === "terraform" && canEdit && (
+            <ComponentOperations
+              appId={appId}
+              componentId={nodeId}
+              prefill={opsPrefill}
+            />
+          )}
           {component.type === "terraform" && (
             <ComponentStatePanel
               appId={appId}
               componentId={nodeId}
               canEdit={canEdit}
               managedBackend={component.config.backend === "spacefleet"}
+              onReleaseLock={(lockId) =>
+                setOpsPrefill({
+                  kind: "force_unlock",
+                  values: { lock_id: lockId },
+                })
+              }
+            />
+          )}
+
+          {running && canEdit && (
+            <ComponentRunDialog
+              appId={appId}
+              component={component}
+              onClose={() => setRunning(false)}
+              onBeforeRun={flush}
+              onStarted={(runId) =>
+                navigate(`/applications/${appId}/runs/${runId}`)
+              }
             />
           )}
 

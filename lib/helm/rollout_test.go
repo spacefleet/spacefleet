@@ -165,6 +165,37 @@ func TestScriptGit(t *testing.T) {
 	}
 }
 
+// A git chart or values source pinned to a full commit SHA is fetched by
+// SHA and checked out detached, since --branch takes only a branch or tag.
+func TestScriptGitCommitSHA(t *testing.T) {
+	s := Script(Rollout{
+		Action:      ActionDeploy,
+		ChartSource: SourceGit,
+		Config: map[string]string{
+			ConfigRepoURL: "https://git.example.com/r.git",
+			ConfigGitRef:  "0123456789abcdef0123456789abcdef01234567",
+			ConfigGitPath: "charts/app",
+		},
+		ValuesSources: []map[string]string{
+			{ValuesSourceRepoURL: "https://git.example.com/v.git", ValuesSourceGitRef: "0123456789abcdef0123456789abcdef01234567", ValuesSourcePath: "values.yaml"},
+		},
+		ReleaseName:     "app",
+		TargetNamespace: "ns",
+		WaitTimeout:     30 * time.Minute,
+	})
+	for _, w := range []string{
+		"git init -q /src\ngit -C /src fetch -q --depth 1 'https://git.example.com/r.git' '0123456789abcdef0123456789abcdef01234567'\ngit -C /src checkout -q --detach FETCH_HEAD\n",
+		"git init -q '/values/0'\ngit -C '/values/0' fetch -q --depth 1 'https://git.example.com/v.git' '0123456789abcdef0123456789abcdef01234567'\ngit -C '/values/0' checkout -q --detach FETCH_HEAD\n",
+	} {
+		if !strings.Contains(s, w) {
+			t.Errorf("git script missing %q\n---\n%s", w, s)
+		}
+	}
+	if strings.Contains(s, "git clone") {
+		t.Errorf("a commit SHA must not be cloned with --branch\n---\n%s", s)
+	}
+}
+
 func TestScriptGitWithToken(t *testing.T) {
 	s := Script(Rollout{
 		Action:      ActionDeploy,

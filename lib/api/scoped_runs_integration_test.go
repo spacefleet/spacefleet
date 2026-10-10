@@ -14,7 +14,8 @@ import (
 )
 
 // TestStartComponentRun covers the handler's own gates: a viewer is refused,
-// a wrong action and a malformed target are 400s before anything else, and
+// a wrong action, a malformed target, and a malformed git ref are 400s before
+// anything else, and
 // a valid request without a background worker is a 503 (the harness has no
 // queue — the service and worker paths are covered in lib/workflows). The
 // run mapping of a stored scope is checked through the run detail.
@@ -63,6 +64,14 @@ func TestStartComponentRun(t *testing.T) {
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "not a resource address") {
 		t.Errorf("bad target got %d, want 400 naming the address\n%s", rec.Code, rec.Body.String())
 	}
+	rec = testReq{method: http.MethodPost, path: path, token: editorTok, orgID: orgID.String(), body: `{"action":"deploy","git_ref":"--upload-pack=x"}`}.do(t, h.handler)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "invalid git ref") {
+		t.Errorf("bad git ref got %d, want 400 naming the ref\n%s", rec.Code, rec.Body.String())
+	}
+	rec = testReq{method: http.MethodPost, path: path, token: editorTok, orgID: orgID.String(), body: `{"action":"deploy","git_ref":" v1.2.0 "}`}.do(t, h.handler)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("no worker (with a ref) got %d, want 503\n%s", rec.Code, rec.Body.String())
+	}
 	rec = testReq{method: http.MethodPost, path: path, token: editorTok, orgID: orgID.String(), body: `{"action":"uninstall","targets":["aws_instance.web"]}`}.do(t, h.handler)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("no worker got %d, want 503\n%s", rec.Code, rec.Body.String())
@@ -72,7 +81,7 @@ func TestStartComponentRun(t *testing.T) {
 	// has none.
 	scoped, err := h.client.WorkflowRun.Create().
 		SetOrganizationID(orgID).SetApplicationID(app.ID).SetAction("uninstall").
-		SetArgs(`{"component_id":"` + infra.ID.String() + `","component_name":"infra","targets":["aws_instance.web"]}`).
+		SetArgs(`{"component_id":"` + infra.ID.String() + `","component_name":"infra","targets":["aws_instance.web"],"git_ref":"v1.2.0"}`).
 		SetGraph(`{"nodes":[]}`).
 		Save(ctx)
 	if err != nil {
@@ -89,7 +98,7 @@ func TestStartComponentRun(t *testing.T) {
 		t.Fatalf("get run got %d\n%s", rec.Code, rec.Body.String())
 	}
 	// A run from before scopes recorded the component's type was OpenTofu.
-	if body := rec.Body.String(); !strings.Contains(body, `"scope":{"component_id":"`+infra.ID.String()+`","component_name":"infra","component_type":"terraform","targets":["aws_instance.web"]}`) {
+	if body := rec.Body.String(); !strings.Contains(body, `"scope":{"component_id":"`+infra.ID.String()+`","component_name":"infra","component_type":"terraform","git_ref":"v1.2.0","targets":["aws_instance.web"]}`) {
 		t.Errorf("run detail lacks the scope:\n%s", body)
 	}
 	rec = testReq{method: http.MethodGet, path: "/api/applications/" + app.ID.String() + "/runs/" + whole.ID.String(), token: viewerTok, orgID: orgID.String()}.do(t, h.handler)

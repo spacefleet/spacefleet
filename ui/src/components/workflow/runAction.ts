@@ -25,11 +25,20 @@ export function isTofuScope(scope: RunScope): boolean {
 }
 
 // runScopeDescription is the one-line reading of a component-scoped run:
-// which component, and the resource addresses it was targeted to, if any.
+// which component, the git ref it ran in place of the component's own (a
+// commit SHA shortened), and the resource addresses it was targeted to, if
+// any.
 export function runScopeDescription(scope: RunScope): string {
+  let out = `Only ${scope.component_name}`;
+  if (scope.git_ref) {
+    const ref = /^([0-9a-f]{40}|[0-9a-f]{64})$/i.test(scope.git_ref)
+      ? scope.git_ref.slice(0, 7)
+      : scope.git_ref;
+    out += ` at ${ref}`;
+  }
   const targets = scope.targets ?? [];
-  if (targets.length === 0) return `Only ${scope.component_name}`;
-  return `Only ${scope.component_name}, targeting ${targets.join(", ")}`;
+  if (targets.length > 0) out += `, targeting ${targets.join(", ")}`;
+  return out;
 }
 
 // stateOpDescription is the one-line human reading of a state operation,

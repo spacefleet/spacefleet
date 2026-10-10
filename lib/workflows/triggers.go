@@ -422,16 +422,21 @@ func componentTracks(c *ent.Component, repo, branch, defaultBranch string) bool 
 // the named GitHub repository: a manifest or OpenTofu component's repo_url,
 // or a Helm component's when its chart source is git.
 func componentSourcedFrom(c *ent.Component, repo string) bool {
+	return clonesFromGit(c) && RepoMatches(c.Config[helm.ConfigRepoURL], repo)
+}
+
+// clonesFromGit reports whether a component's source is a git clone (its
+// repo_url at its git_ref): a manifest or OpenTofu component, or a Helm
+// component whose chart source is git.
+func clonesFromGit(c *ent.Component) bool {
 	switch string(c.Type) {
 	case TypeHelm:
-		if c.Config[helmConfigChartSource] != helm.SourceGit {
-			return false
-		}
+		return c.Config[helmConfigChartSource] == helm.SourceGit
 	case TypeManifest, TypeTerraform:
+		return true
 	default:
 		return false
 	}
-	return RepoMatches(c.Config[helm.ConfigRepoURL], repo)
 }
 
 // RepoMatches reports whether a git URL names the GitHub repository with the
