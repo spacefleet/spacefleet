@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
+	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/predicate"
 	"github.com/spacefleet/spacefleet/ent/schema"
 	"github.com/spacefleet/spacefleet/ent/tofustate"
@@ -28,6 +29,20 @@ type TofuStateUpdate struct {
 // Where appends a list predicates to the TofuStateUpdate builder.
 func (_u *TofuStateUpdate) Where(ps ...predicate.TofuState) *TofuStateUpdate {
 	_u.mutation.Where(ps...)
+	return _u
+}
+
+// SetApplicationID sets the "application_id" field.
+func (_u *TofuStateUpdate) SetApplicationID(v uuid.UUID) *TofuStateUpdate {
+	_u.mutation.SetApplicationID(v)
+	return _u
+}
+
+// SetNillableApplicationID sets the "application_id" field if the given value is not nil.
+func (_u *TofuStateUpdate) SetNillableApplicationID(v *uuid.UUID) *TofuStateUpdate {
+	if v != nil {
+		_u.SetApplicationID(*v)
+	}
 	return _u
 }
 
@@ -165,6 +180,11 @@ func (_u *TofuStateUpdate) SetUpdatedAt(v time.Time) *TofuStateUpdate {
 	return _u
 }
 
+// SetApplication sets the "application" edge to the Application entity.
+func (_u *TofuStateUpdate) SetApplication(v *Application) *TofuStateUpdate {
+	return _u.SetApplicationID(v.ID)
+}
+
 // AddVersionIDs adds the "versions" edge to the TofuStateVersion entity by IDs.
 func (_u *TofuStateUpdate) AddVersionIDs(ids ...uuid.UUID) *TofuStateUpdate {
 	_u.mutation.AddVersionIDs(ids...)
@@ -183,6 +203,12 @@ func (_u *TofuStateUpdate) AddVersions(v ...*TofuStateVersion) *TofuStateUpdate 
 // Mutation returns the TofuStateMutation object of the builder.
 func (_u *TofuStateUpdate) Mutation() *TofuStateMutation {
 	return _u.mutation
+}
+
+// ClearApplication clears the "application" edge to the Application entity.
+func (_u *TofuStateUpdate) ClearApplication() *TofuStateUpdate {
+	_u.mutation.ClearApplication()
+	return _u
 }
 
 // ClearVersions clears all "versions" edges to the TofuStateVersion entity.
@@ -307,6 +333,35 @@ func (_u *TofuStateUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(tofustate.FieldUpdatedAt, field.TypeTime, value)
 	}
+	if _u.mutation.ApplicationCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   tofustate.ApplicationTable,
+			Columns: []string{tofustate.ApplicationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(application.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ApplicationIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   tofustate.ApplicationTable,
+			Columns: []string{tofustate.ApplicationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(application.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.VersionsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -370,6 +425,20 @@ type TofuStateUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *TofuStateMutation
+}
+
+// SetApplicationID sets the "application_id" field.
+func (_u *TofuStateUpdateOne) SetApplicationID(v uuid.UUID) *TofuStateUpdateOne {
+	_u.mutation.SetApplicationID(v)
+	return _u
+}
+
+// SetNillableApplicationID sets the "application_id" field if the given value is not nil.
+func (_u *TofuStateUpdateOne) SetNillableApplicationID(v *uuid.UUID) *TofuStateUpdateOne {
+	if v != nil {
+		_u.SetApplicationID(*v)
+	}
+	return _u
 }
 
 // SetCurrentVersion sets the "current_version" field.
@@ -506,6 +575,11 @@ func (_u *TofuStateUpdateOne) SetUpdatedAt(v time.Time) *TofuStateUpdateOne {
 	return _u
 }
 
+// SetApplication sets the "application" edge to the Application entity.
+func (_u *TofuStateUpdateOne) SetApplication(v *Application) *TofuStateUpdateOne {
+	return _u.SetApplicationID(v.ID)
+}
+
 // AddVersionIDs adds the "versions" edge to the TofuStateVersion entity by IDs.
 func (_u *TofuStateUpdateOne) AddVersionIDs(ids ...uuid.UUID) *TofuStateUpdateOne {
 	_u.mutation.AddVersionIDs(ids...)
@@ -524,6 +598,12 @@ func (_u *TofuStateUpdateOne) AddVersions(v ...*TofuStateVersion) *TofuStateUpda
 // Mutation returns the TofuStateMutation object of the builder.
 func (_u *TofuStateUpdateOne) Mutation() *TofuStateMutation {
 	return _u.mutation
+}
+
+// ClearApplication clears the "application" edge to the Application entity.
+func (_u *TofuStateUpdateOne) ClearApplication() *TofuStateUpdateOne {
+	_u.mutation.ClearApplication()
+	return _u
 }
 
 // ClearVersions clears all "versions" edges to the TofuStateVersion entity.
@@ -677,6 +757,35 @@ func (_u *TofuStateUpdateOne) sqlSave(ctx context.Context) (_node *TofuState, er
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(tofustate.FieldUpdatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ApplicationCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   tofustate.ApplicationTable,
+			Columns: []string{tofustate.ApplicationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(application.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ApplicationIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   tofustate.ApplicationTable,
+			Columns: []string{tofustate.ApplicationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(application.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _u.mutation.VersionsCleared() {
 		edge := &sqlgraph.EdgeSpec{

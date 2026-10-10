@@ -8,11 +8,20 @@ type RunTrigger = components["schemas"]["RunTrigger"];
 // `state_op` reads fine as its raw value (capitalised by the caller); a
 // state operation is shown as what it is, and a deploy or uninstall limited
 // to one component (a run with a scope) says so — an uninstall of one
-// component is a destroy.
+// OpenTofu component is a destroy.
 export function runActionLabel(action: string, scope?: RunScope | null): string {
   if (action === "state_op") return "State operation";
-  if (scope) return action === "uninstall" ? "Component destroy" : "Component deploy";
+  if (scope) {
+    if (action !== "uninstall") return "Component deploy";
+    return isTofuScope(scope) ? "Component destroy" : "Component uninstall";
+  }
   return action;
+}
+
+// isTofuScope reports whether a scoped run covered an OpenTofu component
+// (runs from before the type was recorded were all OpenTofu).
+export function isTofuScope(scope: RunScope): boolean {
+  return (scope.component_type ?? "terraform") === "terraform";
 }
 
 // runScopeDescription is the one-line reading of a component-scoped run:

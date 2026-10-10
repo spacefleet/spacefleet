@@ -11,6 +11,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/google/uuid"
+	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/predicate"
 	"github.com/spacefleet/spacefleet/ent/variable"
 )
@@ -25,6 +27,20 @@ type VariableUpdate struct {
 // Where appends a list predicates to the VariableUpdate builder.
 func (_u *VariableUpdate) Where(ps ...predicate.Variable) *VariableUpdate {
 	_u.mutation.Where(ps...)
+	return _u
+}
+
+// SetApplicationID sets the "application_id" field.
+func (_u *VariableUpdate) SetApplicationID(v uuid.UUID) *VariableUpdate {
+	_u.mutation.SetApplicationID(v)
+	return _u
+}
+
+// SetNillableApplicationID sets the "application_id" field if the given value is not nil.
+func (_u *VariableUpdate) SetNillableApplicationID(v *uuid.UUID) *VariableUpdate {
+	if v != nil {
+		_u.SetApplicationID(*v)
+	}
 	return _u
 }
 
@@ -94,9 +110,20 @@ func (_u *VariableUpdate) SetUpdatedAt(v time.Time) *VariableUpdate {
 	return _u
 }
 
+// SetApplication sets the "application" edge to the Application entity.
+func (_u *VariableUpdate) SetApplication(v *Application) *VariableUpdate {
+	return _u.SetApplicationID(v.ID)
+}
+
 // Mutation returns the VariableMutation object of the builder.
 func (_u *VariableUpdate) Mutation() *VariableMutation {
 	return _u.mutation
+}
+
+// ClearApplication clears the "application" edge to the Application entity.
+func (_u *VariableUpdate) ClearApplication() *VariableUpdate {
+	_u.mutation.ClearApplication()
+	return _u
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -187,6 +214,35 @@ func (_u *VariableUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(variable.FieldUpdatedAt, field.TypeTime, value)
 	}
+	if _u.mutation.ApplicationCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   variable.ApplicationTable,
+			Columns: []string{variable.ApplicationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(application.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ApplicationIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   variable.ApplicationTable,
+			Columns: []string{variable.ApplicationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(application.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{variable.Label}
@@ -205,6 +261,20 @@ type VariableUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *VariableMutation
+}
+
+// SetApplicationID sets the "application_id" field.
+func (_u *VariableUpdateOne) SetApplicationID(v uuid.UUID) *VariableUpdateOne {
+	_u.mutation.SetApplicationID(v)
+	return _u
+}
+
+// SetNillableApplicationID sets the "application_id" field if the given value is not nil.
+func (_u *VariableUpdateOne) SetNillableApplicationID(v *uuid.UUID) *VariableUpdateOne {
+	if v != nil {
+		_u.SetApplicationID(*v)
+	}
+	return _u
 }
 
 // SetName sets the "name" field.
@@ -273,9 +343,20 @@ func (_u *VariableUpdateOne) SetUpdatedAt(v time.Time) *VariableUpdateOne {
 	return _u
 }
 
+// SetApplication sets the "application" edge to the Application entity.
+func (_u *VariableUpdateOne) SetApplication(v *Application) *VariableUpdateOne {
+	return _u.SetApplicationID(v.ID)
+}
+
 // Mutation returns the VariableMutation object of the builder.
 func (_u *VariableUpdateOne) Mutation() *VariableMutation {
 	return _u.mutation
+}
+
+// ClearApplication clears the "application" edge to the Application entity.
+func (_u *VariableUpdateOne) ClearApplication() *VariableUpdateOne {
+	_u.mutation.ClearApplication()
+	return _u
 }
 
 // Where appends a list predicates to the VariableUpdate builder.
@@ -395,6 +476,35 @@ func (_u *VariableUpdateOne) sqlSave(ctx context.Context) (_node *Variable, err 
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(variable.FieldUpdatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ApplicationCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   variable.ApplicationTable,
+			Columns: []string{variable.ApplicationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(application.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ApplicationIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   variable.ApplicationTable,
+			Columns: []string{variable.ApplicationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(application.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	_node = &Variable{config: _u.config}
 	_spec.Assign = _node.assignValues

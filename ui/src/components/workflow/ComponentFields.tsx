@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { components } from "../../api/schema";
 import { CHART_SOURCES } from "../chartSources";
+import { parseBackendConfig } from "./backendConfig";
 import {
   TOFU_DEFAULT_VERSION,
   TOFU_VERSIONS,
@@ -59,8 +60,8 @@ interface ComponentFieldsProps {
   cloudCredentials: CloudCredential[];
   installations: GitHubInstallation[];
   githubEnabled: boolean;
-  // When true the fields render read-only (a viewer opened the editor). Inputs
-  // are disabled rather than hidden so the configuration stays inspectable.
+  // When true the fields render read-only. Inputs are disabled rather than
+  // hidden so the configuration stays inspectable.
   disabled?: boolean;
   // Names of the upstream OpenTofu components whose outputs this node may
   // reference (its transitive dependencies — the editor computes them from the
@@ -1467,25 +1468,6 @@ function ValuesSourcesEditor({
       )}
     </div>
   );
-}
-
-// parseBackendConfig defensively parses the JSON-object string the terraform
-// node stores in config.backend_config into a flat string map. A
-// missing/invalid value yields an empty object (the fields start blank).
-function parseBackendConfig(raw: string | undefined): Record<string, string> {
-  if (!raw || raw.trim() === "") return {};
-  try {
-    const obj = JSON.parse(raw) as unknown;
-    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
-    return Object.fromEntries(
-      Object.entries(obj as Record<string, unknown>).map(([key, value]) => [
-        key,
-        value == null ? "" : String(value),
-      ]),
-    );
-  } catch {
-    return {};
-  }
 }
 
 // WithPicker sets a repository URL input beside its picker button, or renders

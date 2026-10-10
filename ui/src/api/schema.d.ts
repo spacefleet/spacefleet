@@ -881,6 +881,17 @@ export interface paths {
          *     `backend_change`) unless `allow_backend_change` is set: the new
          *     backend starts empty, so the next run would plan to create
          *     everything again.
+         *
+         *     Removing an OpenTofu component deletes its managed state (the
+         *     `spacefleet` backend) in the same save — nothing could reach it
+         *     again; a cloud backend's state is never touched. So a save that
+         *     removes one is refused with 409: `state_deletion` when its state
+         *     still lists resources and `allow_state_deletion` is not set (the
+         *     resources would keep running with nothing to manage them);
+         *     `state_locked` when its state is locked, whatever the flag; and
+         *     `conflict` while a run is in flight for the application. A save
+         *     carrying a component that has since moved to another application is
+         *     refused with 409 `component_moved` (reload the workflow).
          */
         put: operations["replaceApplicationWorkflow"];
         post?: never;
@@ -941,6 +952,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{id}/components/{componentId}/state/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download an OpenTofu component's managed state
+         * @description Org-scoped, editor or above (state holds secrets, the same rule as
+         *     sensitive outputs and state operations). Returns the current version
+         *     of the component's **managed** state (the `spacefleet` backend) as
+         *     the raw `.tfstate` file, as an attachment named after the application
+         *     and the component. A component on a cloud backend keeps its state in
+         *     its own bucket and has nothing to download here. 404 when the
+         *     component has no managed state (or nothing has been written yet);
+         *     503 when managed state is not configured on this deployment.
+         */
+        get: operations["downloadComponentState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{id}/components/{componentId}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a component to another application (or another stage)
+         * @description Org-scoped, editor or above. Moves the component to the end of a
+         *     stage of another of the organization's applications — or of its own —
+         *     in one step, keeping its id: its settings, its component variables,
+         *     and its managed OpenTofu state go with it, and its recorded state
+         *     view follows it. Its run history stays with this application. Name
+         *     an existing stage of the destination (`stage_id`) or add one at the
+         *     end of its workflow (`new_stage_name`); `name` renames the component
+         *     on the way.
+         *
+         *     References are not checked in either direction: a
+         *     `${{ components.* }}` reference that no longer resolves fails the
+         *     next save of that workflow, or the run. 400 for an application or
+         *     stage that isn't the organization's, or an invalid name or target
+         *     cluster; 409 when the destination already has a component by that
+         *     name (`name_taken`), while either application has a run in flight
+         *     (`conflict`), or while the component's managed state is locked
+         *     (`state_locked`).
+         */
+        post: operations["moveComponent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{id}/components/{componentId}/runs": {
         parameters: {
             query?: never;
@@ -951,20 +1025,29 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Start a run limited to one OpenTofu component (destroy, or targeted deploy)
+         * Start a run limited to one component (destroy or uninstall, or a targeted OpenTofu deploy)
          * @description Org-scoped, editor or above. Starts a `deploy` or `uninstall` run
-         *     that covers only this OpenTofu component, optionally narrowed to a
-         *     fixed list of resource addresses (`targets`, rendered as `-target`
-         *     flags on the plan). `uninstall` is a per-component **destroy**: the
-         *     plan is a destroy plan and the apply is **always** parked for
-         *     approval, whatever the component's own setting, so the resources
-         *     about to go are reviewed first. `deploy` plans and applies just this
-         *     module (a targeted apply when `targets` is given) and keeps the
-         *     component's own approval gate. The run's `scope` names the component
-         *     and targets. Requires the background worker (503 otherwise). 400 for
-         *     another action, an invalid target address, or a component that is
-         *     not an OpenTofu component; 409 while a run is already in flight for
-         *     the application.
+         *     that covers only this component.
+         *
+         *     For an OpenTofu component, `uninstall` is a per-component
+         *     **destroy**: the plan is a destroy plan and the apply is **always**
+         *     parked for approval, whatever the component's own setting, so the
+         *     resources about to go are reviewed first. `deploy` plans and applies
+         *     just this module (a targeted apply when `targets` is given) and keeps
+         *     the component's own approval gate. Either can be narrowed to a fixed
+         *     list of resource addresses (`targets`, rendered as `-target` flags on
+         *     the plan).
+         *
+         *     A Helm or Manifest component can only be **uninstalled** on its own —
+         *     its release, or what was applied from its path — and the step is
+         *     **always** parked for approval before it runs. Its
+         *     `${{ components.* }}` references resolve against the referenced
+         *     components' latest recorded outputs.
+         *
+         *     The run's `scope` names the component and targets. Requires the
+         *     background worker (503 otherwise). 400 for another action, an invalid
+         *     target address, or a `deploy` or `targets` for a Helm or Manifest
+         *     component; 409 while a run is already in flight for the application.
          */
         post: operations["startComponentRun"];
         delete?: never;
@@ -2934,6 +3017,23 @@ export interface components {
         Workflow: {
             stages: components["schemas"]["WorkflowStage"][];
         };
+        /** @description Where to move a component. Give `stage_id` or `new_stage_name`, not both. */
+        ComponentMoveRequest: {
+            /**
+             * Format: uuid
+             * @description The destination application (this one to move between its stages).
+             */
+            application_id: string;
+            /**
+             * Format: uuid
+             * @description A stage of the destination application; the component goes at its end.
+             */
+            stage_id?: string;
+            /** @description Adds a stage with this name at the end of the destination's workflow instead. */
+            new_stage_name?: string;
+            /** @description Renames the component on the way; omit to keep its name. */
+            name?: string;
+        };
         /**
          * @description The full workflow to replace the current one with: every stage, in run
          *     order, each with its components in display order.
@@ -2946,6 +3046,13 @@ export interface components {
              *     Without it such a save is refused with 409 `backend_change`.
              */
             allow_backend_change?: boolean;
+            /**
+             * @description Confirms that removing OpenTofu components on the managed backend
+             *     whose state still lists resources deletes that state, leaving the
+             *     resources running with nothing to manage them. Without it such a
+             *     save is refused with 409 `state_deletion`.
+             */
+            allow_state_deletion?: boolean;
         };
         /**
          * @description What a workflow run does across the whole workflow. `drift` is a drift
@@ -3241,16 +3348,17 @@ export interface components {
             targets?: string[];
         };
         /**
-         * @description Present on a run limited to one OpenTofu component (see the
-         *     component's runs endpoint): the component and, when the run was
-         *     targeted, the resource addresses it was limited to. Absent on a
-         *     whole-workflow run.
+         * @description Present on a run limited to one component (see the component's runs
+         *     endpoint): the component and, when the run was targeted, the
+         *     resource addresses it was limited to. Absent on a whole-workflow
+         *     run.
          */
         RunScope: {
             /** Format: uuid */
             component_id: string;
             /** @description The component's name when the run began. */
             component_name: string;
+            component_type?: components["schemas"]["ComponentType"];
             targets?: string[];
         };
         /**
@@ -3294,9 +3402,9 @@ export interface components {
          * @description An OpenTofu (Terraform) component's last recorded state: the outputs
          *     and managed-resource inventory captured by its most recent successful
          *     apply, and the run that captured them. Before any apply has recorded
-         *     state the view is returned only when there is a stuck lock to show
-         *     (editors): then `run_id` / `component_run_id` are absent and
-         *     `resources` is empty.
+         *     state the view is returned only when there is something else to show
+         *     — a stuck lock (editors) or a managed state version: then `run_id` /
+         *     `component_run_id` are absent and `resources` is empty.
          */
         ComponentState: {
             /**
@@ -3325,6 +3433,31 @@ export interface components {
             resources: components["schemas"]["TofuResource"][];
             drift?: components["schemas"]["DriftStatus"];
             lock?: components["schemas"]["StateLock"];
+            managed_state?: components["schemas"]["ManagedStateVersion"];
+        };
+        /**
+         * @description The current version of a component's managed state (the `spacefleet`
+         *     backend): which version it is and when it was written. Metadata only
+         *     — the state itself is downloaded separately (editors). Absent when
+         *     the component has no managed state or nothing has been written yet.
+         */
+        ManagedStateVersion: {
+            /** @description The version number (1 for the first write; every accepted write adds one). */
+            version: number;
+            /**
+             * Format: int64
+             * @description The state's own serial, as OpenTofu wrote it.
+             */
+            serial: number;
+            /** Format: int64 */
+            size_bytes: number;
+            /** Format: date-time */
+            written_at: string;
+            /**
+             * Format: uuid
+             * @description The workflow run whose step wrote this version.
+             */
+            run_id?: string;
         };
         /**
          * @description A state lock the component's most recent run could not acquire — one
@@ -4800,6 +4933,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ComponentState"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    downloadComponentState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                componentId: components["parameters"]["ComponentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current state file */
+            200: {
+                headers: {
+                    /** @description `attachment; filename="<application>-<component>.tfstate"` */
+                    "Content-Disposition"?: string;
+                    /** @description Always `no-store` — the file holds secrets. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    moveComponent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ApplicationID"];
+                componentId: components["parameters"]["ComponentID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComponentMoveRequest"];
+            };
+        };
+        responses: {
+            /** @description The component, where it is now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Component"];
                 };
             };
             default: components["responses"]["Error"];

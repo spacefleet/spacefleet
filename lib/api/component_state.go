@@ -1,9 +1,12 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -26,21 +29,28 @@ func (s *Server) GetComponentState(ctx context.Context, req GetComponentStateReq
 	if aerr != nil {
 		return errResp[GetComponentStatedefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
 	}
+	managed, err := s.managedStateVersion(ctx, orgID, req.Id, req.ComponentId)
+	if err != nil {
+		return nil, err
+	}
 	cr, err := s.workflows.LatestComponentState(ctx, orgID, req.Id, req.ComponentId)
 	if err != nil {
 		if !ent.IsNotFound(err) {
 			return nil, err
 		}
 		// Nothing recorded yet. A stuck lock can still exist — the very
-		// first plan may have died holding it — and it is the one thing
-		// worth showing before any apply, so an editor gets a state view
-		// carrying only the lock; otherwise this is a 404 as before.
+		// first plan may have died holding it — and so can a managed state
+		// (an apply that wrote state and then failed); either is worth
+		// showing before any apply, so the view carries just those;
+		// otherwise this is a 404 as before.
+		var lock *StateLock
 		if canSeeSecrets {
-			if lock, err := s.componentStateLock(ctx, orgID, req.Id, req.ComponentId); err != nil {
+			if lock, err = s.componentStateLock(ctx, orgID, req.Id, req.ComponentId); err != nil {
 				return nil, err
-			} else if lock != nil {
-				return GetComponentState200JSONResponse(ComponentState{Resources: []TofuResource{}, Lock: lock}), nil
 			}
+		}
+		if lock != nil || managed != nil {
+			return GetComponentState200JSONResponse(ComponentState{Resources: []TofuResource{}, Lock: lock, ManagedState: managed}), nil
 		}
 		return errResp[GetComponentStatedefaultJSONResponse](http.StatusNotFound, "not_found", "no recorded state for this component"), nil
 	}
@@ -51,6 +61,7 @@ func (s *Server) GetComponentState(ctx context.Context, req GetComponentStateReq
 		RecordedAt:     cr.FinishedAt,
 		Outputs:        toAPIComponentRunOutputs(cr.Outputs, canSeeSecrets),
 		Resources:      toAPITofuResources(cr.Resources),
+		ManagedState:   managed,
 	}
 	// The latest drift check, when one has run: its verdict is parsed from the
 	// step's refresh-only plan. Addresses only — the state-vs-real diffs stay on
@@ -69,6 +80,88 @@ func (s *Server) GetComponentState(ctx context.Context, req GetComponentStateReq
 		}
 	}
 	return GetComponentState200JSONResponse(out), nil
+}
+
+// DownloadComponentState returns the current version of an OpenTofu
+// component's managed state as the raw .tfstate file, for a member who is
+// taking the resources elsewhere (their own bucket, or out of Spacefleet).
+// Editor or above: state holds every secret the module touched — the same
+// rule as sensitive outputs and state operations. 404 when there is nothing
+// to download, including a component on a cloud backend, whose state is
+// already in its own bucket.
+func (s *Server) DownloadComponentState(ctx context.Context, req DownloadComponentStateRequestObject) (DownloadComponentStateResponseObject, error) {
+	orgID, aerr, err := s.resolveWorkflowWrite(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[DownloadComponentStatedefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	if !s.tofuState.Enabled() {
+		return errResp[DownloadComponentStatedefaultJSONResponse](http.StatusServiceUnavailable, "unavailable", "managed state is not configured on this Spacefleet"), nil
+	}
+	app, err := s.applications.Get(ctx, orgID, req.Id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return errResp[DownloadComponentStatedefaultJSONResponse](http.StatusNotFound, "not_found", "application not found"), nil
+		}
+		return nil, err
+	}
+	data, _, ok, err := s.tofuState.Download(ctx, orgID, req.Id, req.ComponentId)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return errResp[DownloadComponentStatedefaultJSONResponse](http.StatusNotFound, "not_found", "this component has no managed state"), nil
+	}
+	// The component itself may be gone (state left behind by a removal);
+	// its id still names the file.
+	name := req.ComponentId.String()
+	if c, err := s.workflows.GetComponent(ctx, orgID, req.Id, req.ComponentId); err == nil {
+		name = c.Name
+	} else if !ent.IsNotFound(err) {
+		return nil, err
+	}
+	return DownloadComponentState200ApplicationoctetStreamResponse{
+		Body:          bytes.NewReader(data),
+		ContentLength: int64(len(data)),
+		Headers: DownloadComponentState200ResponseHeaders{
+			ContentDisposition: fmt.Sprintf("attachment; filename=%q", stateFilename(app.Name, name)),
+			CacheControl:       "no-store",
+		},
+	}, nil
+}
+
+// stateFilename names a downloaded state file "<application>-<component>.tfstate".
+// Both names are DNS labels already; any other character is replaced with a
+// dash, so the header never needs escaping.
+func stateFilename(appName, componentName string) string {
+	clean := func(s string) string {
+		return strings.Map(func(r rune) rune {
+			if r == '-' || r == '_' || r == '.' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+				return r
+			}
+			return '-'
+		}, s)
+	}
+	return clean(appName) + "-" + clean(componentName) + ".tfstate"
+}
+
+// managedStateVersion returns the current version of the component's managed
+// state for the state view — metadata only — or nil when there is none (or
+// managed state is not wired in).
+func (s *Server) managedStateVersion(ctx context.Context, orgID, appID, componentID uuid.UUID) (*ManagedStateVersion, error) {
+	v, err := s.tofuState.CurrentVersion(ctx, orgID, appID, componentID)
+	if err != nil || v == nil {
+		return nil, err
+	}
+	return &ManagedStateVersion{
+		Version:   v.Version,
+		Serial:    v.Serial,
+		SizeBytes: v.SizeBytes,
+		WrittenAt: v.CreatedAt,
+		RunId:     v.WorkflowRunID,
+	}, nil
 }
 
 // componentStateLock returns the lock the component's latest settled step

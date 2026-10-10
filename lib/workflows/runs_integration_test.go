@@ -13,6 +13,7 @@ import (
 
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/ent/cluster"
+	"github.com/spacefleet/spacefleet/ent/component"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
 	"github.com/spacefleet/spacefleet/lib/testsupport"
@@ -818,10 +819,11 @@ func TestBeginStateOp(t *testing.T) {
 }
 
 // TestBeginComponentRun proves a component-scoped run opens the component's
-// plan + apply pair alone with its scope on the row: only for an OpenTofu
-// component of the org-scoped application, only for deploy/uninstall, only
-// with valid targets, only when nothing is in flight; a destroy is gated
-// regardless of the component's flag and its targets ride the plan flags.
+// plan + apply pair alone with its scope on the row: only for a component of
+// the org-scoped application, only for deploy/uninstall (a Helm component
+// only for an untargeted uninstall), only with valid targets, only when
+// nothing is in flight; a destroy is gated regardless of the component's flag
+// and its targets ride the plan flags.
 func TestBeginComponentRun(t *testing.T) {
 	client := testsupport.NewEntClient(t)
 	svc := NewService(client)
@@ -842,8 +844,11 @@ func TestBeginComponentRun(t *testing.T) {
 	}
 	targets := []string{"aws_instance.web"}
 
-	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, helmComp.ID, ActionUninstall, nil); !errors.Is(err, ErrNotTofuComponent) {
-		t.Errorf("helm component: err = %v, want ErrNotTofuComponent", err)
+	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, helmComp.ID, ActionDeploy, nil); !errors.Is(err, ErrScopedRunUnsupported) {
+		t.Errorf("helm deploy: err = %v, want ErrScopedRunUnsupported", err)
+	}
+	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, helmComp.ID, ActionUninstall, targets); !errors.Is(err, ErrScopedRunUnsupported) {
+		t.Errorf("targeted helm uninstall: err = %v, want ErrScopedRunUnsupported", err)
 	}
 	if _, err := svc.BeginComponentRun(ctx, org.ID, app.ID, uuid.New(), ActionUninstall, nil); !ent.IsNotFound(err) {
 		t.Errorf("unknown component: err = %v, want NotFound", err)
@@ -867,7 +872,7 @@ func TestBeginComponentRun(t *testing.T) {
 		t.Errorf("run = %s/%s, want uninstall/pending", run.Action, run.Status)
 	}
 	scope, ok, err := ScopeOf(run)
-	if err != nil || !ok || scope.ComponentID != tf.ID || scope.ComponentName != "infra" || len(scope.Targets) != 1 || scope.Targets[0] != targets[0] {
+	if err != nil || !ok || scope.ComponentID != tf.ID || scope.ComponentName != "infra" || scope.ComponentType != TypeTerraform || len(scope.Targets) != 1 || scope.Targets[0] != targets[0] {
 		t.Errorf("stored scope = %+v (ok=%v err=%v)", scope, ok, err)
 	}
 	_, steps, err := svc.GetRun(ctx, org.ID, app.ID, run.ID)
@@ -894,6 +899,53 @@ func TestBeginComponentRun(t *testing.T) {
 	}
 	if _, err := svc.BeginRun(ctx, org.ID, app.ID, ActionDeploy); !errors.Is(err, ErrRunInFlight) {
 		t.Errorf("deploy during scoped run: err = %v, want ErrRunInFlight", err)
+	}
+}
+
+// TestBeginComponentRunUninstallsHelmAndManifest: a Helm or Manifest
+// component uninstalls alone — one step carrying its target, gated even
+// though its own approval is off, with no dependencies on the stages before
+// it — and the run's scope records its type.
+func TestBeginComponentRunUninstallsHelmAndManifest(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	cluster := newCluster(t, client, org.ID, "prod")
+	addComponent(t, client, org.ID, app.ID, "first", nil)
+	later := testsupport.NewStage(t, client, org.ID, app.ID, "later")
+
+	for _, typ := range []string{TypeHelm, TypeManifest} {
+		c, err := client.Component.Create().
+			SetOrganizationID(org.ID).SetApplicationID(app.ID).SetStageID(later).
+			SetName("c-" + typ).SetType(component.Type(typ)).
+			SetConfig(map[string]string{"repo_url": "https://example.com/r.git", "path": "k8s"}).
+			SetTargetClusterID(cluster.ID).SetTargetNamespace("shop").
+			Save(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		run, err := svc.BeginComponentRun(ctx, org.ID, app.ID, c.ID, ActionUninstall, nil)
+		if err != nil {
+			t.Fatalf("%s uninstall: %v", typ, err)
+		}
+		if scope, ok, err := ScopeOf(run); err != nil || !ok || scope.ComponentType != typ {
+			t.Errorf("%s scope = %+v (ok=%v err=%v)", typ, scope, ok, err)
+		}
+		var snap GraphSnapshot
+		if err := json.Unmarshal([]byte(run.Graph), &snap); err != nil || len(snap.Nodes) != 1 {
+			t.Fatalf("%s snapshot = %s (err %v), want one node", typ, run.Graph, err)
+		}
+		n := snap.Nodes[0]
+		if n.ID != c.ID || n.Type != typ || !n.RequiresApproval || len(n.DependsOn) != 0 ||
+			n.TargetClusterID == nil || *n.TargetClusterID != cluster.ID || n.TargetNamespace != "shop" {
+			t.Errorf("%s node = %+v, want the gated component alone with its target", typ, n)
+		}
+		// Settle it so the next one can start.
+		if err := svc.MarkRun(ctx, org.ID, run.ID, "succeeded", ""); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

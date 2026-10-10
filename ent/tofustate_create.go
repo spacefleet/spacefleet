@@ -499,6 +499,18 @@ type (
 	}
 )
 
+// SetApplicationID sets the "application_id" field.
+func (u *TofuStateUpsert) SetApplicationID(v uuid.UUID) *TofuStateUpsert {
+	u.Set(tofustate.FieldApplicationID, v)
+	return u
+}
+
+// UpdateApplicationID sets the "application_id" field to the value that was provided on create.
+func (u *TofuStateUpsert) UpdateApplicationID() *TofuStateUpsert {
+	u.SetExcluded(tofustate.FieldApplicationID)
+	return u
+}
+
 // SetCurrentVersion sets the "current_version" field.
 func (u *TofuStateUpsert) SetCurrentVersion(v int) *TofuStateUpsert {
 	u.Set(tofustate.FieldCurrentVersion, v)
@@ -651,9 +663,6 @@ func (u *TofuStateUpsertOne) UpdateNewValues() *TofuStateUpsertOne {
 		if _, exists := u.create.mutation.OrganizationID(); exists {
 			s.SetIgnore(tofustate.FieldOrganizationID)
 		}
-		if _, exists := u.create.mutation.ApplicationID(); exists {
-			s.SetIgnore(tofustate.FieldApplicationID)
-		}
 		if _, exists := u.create.mutation.ComponentID(); exists {
 			s.SetIgnore(tofustate.FieldComponentID)
 		}
@@ -692,6 +701,20 @@ func (u *TofuStateUpsertOne) Update(set func(*TofuStateUpsert)) *TofuStateUpsert
 		set(&TofuStateUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetApplicationID sets the "application_id" field.
+func (u *TofuStateUpsertOne) SetApplicationID(v uuid.UUID) *TofuStateUpsertOne {
+	return u.Update(func(s *TofuStateUpsert) {
+		s.SetApplicationID(v)
+	})
+}
+
+// UpdateApplicationID sets the "application_id" field to the value that was provided on create.
+func (u *TofuStateUpsertOne) UpdateApplicationID() *TofuStateUpsertOne {
+	return u.Update(func(s *TofuStateUpsert) {
+		s.UpdateApplicationID()
+	})
 }
 
 // SetCurrentVersion sets the "current_version" field.
@@ -1034,9 +1057,6 @@ func (u *TofuStateUpsertBulk) UpdateNewValues() *TofuStateUpsertBulk {
 			if _, exists := b.mutation.OrganizationID(); exists {
 				s.SetIgnore(tofustate.FieldOrganizationID)
 			}
-			if _, exists := b.mutation.ApplicationID(); exists {
-				s.SetIgnore(tofustate.FieldApplicationID)
-			}
 			if _, exists := b.mutation.ComponentID(); exists {
 				s.SetIgnore(tofustate.FieldComponentID)
 			}
@@ -1076,6 +1096,20 @@ func (u *TofuStateUpsertBulk) Update(set func(*TofuStateUpsert)) *TofuStateUpser
 		set(&TofuStateUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetApplicationID sets the "application_id" field.
+func (u *TofuStateUpsertBulk) SetApplicationID(v uuid.UUID) *TofuStateUpsertBulk {
+	return u.Update(func(s *TofuStateUpsert) {
+		s.SetApplicationID(v)
+	})
+}
+
+// UpdateApplicationID sets the "application_id" field to the value that was provided on create.
+func (u *TofuStateUpsertBulk) UpdateApplicationID() *TofuStateUpsertBulk {
+	return u.Update(func(s *TofuStateUpsert) {
+		s.UpdateApplicationID()
+	})
 }
 
 // SetCurrentVersion sets the "current_version" field.

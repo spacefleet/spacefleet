@@ -19,6 +19,8 @@ export interface DropdownItem {
   disabled?: boolean;
   // A destructive entry renders in red.
   danger?: boolean;
+  // A line under the label — e.g. why a disabled entry can't be picked.
+  hint?: string;
 }
 
 // Dropdown is a small self-contained button + menu. It closes on outside click,
@@ -131,12 +133,21 @@ export function Dropdown({
                   setOpen(false);
                   item.onSelect();
                 }}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent ${
+                className={`flex w-full flex-col items-start px-3 py-1.5 text-left text-sm hover:bg-neutral-800 disabled:cursor-not-allowed disabled:hover:bg-transparent ${
                   item.danger ? "text-red-300" : "text-neutral-300"
                 }`}
               >
-                {item.icon}
-                {item.label}
+                <span
+                  className={`flex items-center gap-2 ${item.disabled ? "opacity-40" : ""}`}
+                >
+                  {item.icon}
+                  {item.label}
+                </span>
+                {item.hint && (
+                  <span className="max-w-[14rem] text-xs text-neutral-500">
+                    {item.hint}
+                  </span>
+                )}
               </button>
             ))}
           </div>,

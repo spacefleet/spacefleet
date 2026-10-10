@@ -172,7 +172,8 @@ interface WorkflowDraftValue {
 
   addStage: () => void;
   renameStage: (id: string, name: string) => void;
-  // Removes the stage and every component in it.
+  // Removes an empty stage. A stage still holding components is left alone:
+  // each component goes through its own delete (see removeComponent).
   deleteStage: (id: string) => void;
   // Moves a stage one place earlier (-1) or later (+1) in run order.
   moveStage: (id: string, delta: -1 | 1) => void;
@@ -185,7 +186,16 @@ interface WorkflowDraftValue {
   // that stage's components with the moved one already taken out.
   moveComponent: (componentId: string, toStageId: string, toIndex: number) => void;
   updateComponent: (next: EditableComponent) => void;
-  deleteComponent: (id: string) => void;
+  // removeComponent deletes a component and saves straight away (with any
+  // other pending edits), rather than through the debounced auto-save, so the
+  // delete dialog can show a refusal — the component's managed state is
+  // locked, or a run is in progress. allowStateDeletion confirms that its
+  // managed state, still listing resources, is deleted with it. Resolves to
+  // the server's message on failure (the component stays), or null.
+  removeComponent: (
+    id: string,
+    opts?: { allowStateDeletion?: boolean },
+  ) => Promise<string | null>;
   getComponent: (id: string) => EditableComponent | null;
   // The stage holding a component (and its position in run order), or null.
   stageOf: (componentId: string) => { stage: DraftStage; index: number } | null;
@@ -206,6 +216,13 @@ interface WorkflowDraftValue {
   save: () => Promise<void>;
   // Re-saves with the backend switch confirmed (see backendChange).
   confirmBackendChange: () => Promise<void>;
+  // flush saves any pending edits now (after a save already in flight),
+  // resolving to the error message if the save failed, or null — for an
+  // action that changes the workflow on the server directly (moving a
+  // component), which must not race the draft.
+  flush: () => Promise<string | null>;
+  // reload re-reads the workflow from the server, discarding the draft.
+  reload: () => Promise<void>;
 }
 
 const WorkflowDraftContext = createContext<WorkflowDraftValue | null>(null);
@@ -372,7 +389,9 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
 
   const deleteStage = useCallback(
     (id: string) => {
-      setStages((ss) => ss.filter((st) => st.id !== id));
+      setStages((ss) =>
+        ss.filter((st) => st.id !== id || st.components.length > 0),
+      );
       markDirty();
     },
     [markDirty],
@@ -402,7 +421,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     (stageId: string, type: ComponentType) => {
       const id = crypto.randomUUID();
       navigate(
-        `/applications/${appId}/workflow/nodes/${id}?new=${type}&stage=${stageId}`,
+        `/applications/${appId}/workflow/nodes/${id}/edit?new=${type}&stage=${stageId}`,
       );
     },
     [appId, navigate],
@@ -467,19 +486,6 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
         ss.map((st) => ({
           ...st,
           components: st.components.map((c) => (c.id === next.id ? next : c)),
-        })),
-      );
-      markDirty();
-    },
-    [markDirty],
-  );
-
-  const deleteComponent = useCallback(
-    (id: string) => {
-      setStages((ss) =>
-        ss.map((st) => ({
-          ...st,
-          components: st.components.filter((c) => c.id !== id),
         })),
       );
       markDirty();
@@ -566,34 +572,97 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
     [stages, provisional],
   );
 
-  const persist = useCallback(async (allowBackendChange: boolean) => {
-    const rev = revision.current;
-    setSaving(true);
-    setSaveError(null);
-    setBackendChange(null);
-    const payload = buildPayload();
-    const { data, error } = await api.PUT("/api/applications/{id}/workflow", {
-      params: { path: { id: appId } },
-      body: {
-        stages: payload,
-        ...(allowBackendChange ? { allow_backend_change: true } : {}),
-      },
-    });
-    setSaving(false);
-    if (error?.code === "backend_change") {
-      setBackendChange(error.message);
-      return;
-    }
-    if (error || !data) {
-      setSaveError(error?.message ?? "Could not save the workflow");
-      return;
-    }
-    // Only mark clean if no edits landed while this save was in flight; otherwise
-    // leave it dirty so the auto-save effect runs again for the newer state.
-    if (revision.current === rev) setSaved(true);
-  }, [appId, buildPayload]);
-  const save = useCallback(() => persist(false), [persist]);
-  const confirmBackendChange = useCallback(() => persist(true), [persist]);
+  // Saves reach the server one at a time, in the order they were started: each
+  // PUT replaces the whole workflow, so a removal saved straight away must not
+  // be overtaken by an older auto-save that still carries the component.
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const enqueueSave = useCallback(<T,>(fn: () => Promise<T>): Promise<T> => {
+    const next = saveQueue.current.then(fn, fn);
+    saveQueue.current = next.catch(() => undefined);
+    return next;
+  }, []);
+
+  const persist = useCallback(
+    (allowBackendChange: boolean) =>
+      enqueueSave(async (): Promise<string | null> => {
+        const rev = revision.current;
+        setSaving(true);
+        setSaveError(null);
+        setBackendChange(null);
+        const payload = buildPayload();
+        const { data, error } = await api.PUT("/api/applications/{id}/workflow", {
+          params: { path: { id: appId } },
+          body: {
+            stages: payload,
+            ...(allowBackendChange ? { allow_backend_change: true } : {}),
+          },
+        });
+        setSaving(false);
+        if (error?.code === "backend_change") {
+          setBackendChange(error.message);
+          return error.message;
+        }
+        if (error || !data) {
+          const message = error?.message ?? "Could not save the workflow";
+          setSaveError(message);
+          return message;
+        }
+        // Only mark clean if no edits landed while this save was in flight;
+        // otherwise leave it dirty so the auto-save effect runs again for the
+        // newer state.
+        if (revision.current === rev) setSaved(true);
+        return null;
+      }),
+    [appId, buildPayload, enqueueSave],
+  );
+
+  const removeComponent = useCallback(
+    (id: string, opts: { allowStateDeletion?: boolean } = {}) =>
+      enqueueSave(async (): Promise<string | null> => {
+        const rev = revision.current;
+        setSaving(true);
+        const payload = buildPayload().map((st) => ({
+          ...st,
+          components: st.components.filter((c) => c.id !== id),
+        }));
+        const { data, error } = await api.PUT("/api/applications/{id}/workflow", {
+          params: { path: { id: appId } },
+          body: {
+            stages: payload,
+            ...(opts.allowStateDeletion ? { allow_state_deletion: true } : {}),
+          },
+        });
+        setSaving(false);
+        if (error || !data) {
+          return error?.message ?? "Could not delete the component";
+        }
+        // The server has the workflow without it now — drop it locally
+        // without marking the draft dirty. The save carried every other
+        // pending edit too, so the draft is clean unless more landed since.
+        setStages((ss) =>
+          ss.map((st) => ({
+            ...st,
+            components: st.components.filter((c) => c.id !== id),
+          })),
+        );
+        if (revision.current === rev) {
+          setSaved(true);
+          setSaveError(null);
+        }
+        return null;
+      }),
+    [appId, buildPayload, enqueueSave],
+  );
+  const save = useCallback(async () => {
+    await persist(false);
+  }, [persist]);
+  const confirmBackendChange = useCallback(async () => {
+    await persist(true);
+  }, [persist]);
+  const flush = useCallback(
+    () => (saved ? Promise.resolve(null) : persist(false)),
+    [saved, persist],
+  );
 
   // Auto-save: whenever the draft is dirty (and we can edit), schedule a debounced
   // save. `save`'s identity changes with every edit (it closes over the payload),
@@ -631,7 +700,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       addComponent,
       moveComponent,
       updateComponent,
-      deleteComponent,
+      removeComponent,
       getComponent,
       stageOf,
       isProvisional,
@@ -640,6 +709,8 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       discardNewNode,
       save,
       confirmBackendChange,
+      flush,
+      reload: load,
     }),
     [
       appId,
@@ -666,7 +737,7 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       addComponent,
       moveComponent,
       updateComponent,
-      deleteComponent,
+      removeComponent,
       getComponent,
       stageOf,
       isProvisional,
@@ -675,6 +746,8 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
       discardNewNode,
       save,
       confirmBackendChange,
+      flush,
+      load,
     ],
   );
 

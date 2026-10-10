@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
+	"github.com/spacefleet/spacefleet/ent/application"
 	"github.com/spacefleet/spacefleet/ent/chartcredential"
 	"github.com/spacefleet/spacefleet/ent/cluster"
 	"github.com/spacefleet/spacefleet/ent/component"
@@ -31,6 +32,20 @@ type ComponentUpdate struct {
 // Where appends a list predicates to the ComponentUpdate builder.
 func (_u *ComponentUpdate) Where(ps ...predicate.Component) *ComponentUpdate {
 	_u.mutation.Where(ps...)
+	return _u
+}
+
+// SetApplicationID sets the "application_id" field.
+func (_u *ComponentUpdate) SetApplicationID(v uuid.UUID) *ComponentUpdate {
+	_u.mutation.SetApplicationID(v)
+	return _u
+}
+
+// SetNillableApplicationID sets the "application_id" field if the given value is not nil.
+func (_u *ComponentUpdate) SetNillableApplicationID(v *uuid.UUID) *ComponentUpdate {
+	if v != nil {
+		_u.SetApplicationID(*v)
+	}
 	return _u
 }
 
@@ -243,6 +258,11 @@ func (_u *ComponentUpdate) SetUpdatedAt(v time.Time) *ComponentUpdate {
 	return _u
 }
 
+// SetApplication sets the "application" edge to the Application entity.
+func (_u *ComponentUpdate) SetApplication(v *Application) *ComponentUpdate {
+	return _u.SetApplicationID(v.ID)
+}
+
 // SetTargetCluster sets the "target_cluster" edge to the Cluster entity.
 func (_u *ComponentUpdate) SetTargetCluster(v *Cluster) *ComponentUpdate {
 	return _u.SetTargetClusterID(v.ID)
@@ -266,6 +286,12 @@ func (_u *ComponentUpdate) SetStage(v *WorkflowStage) *ComponentUpdate {
 // Mutation returns the ComponentMutation object of the builder.
 func (_u *ComponentUpdate) Mutation() *ComponentMutation {
 	return _u.mutation
+}
+
+// ClearApplication clears the "application" edge to the Application entity.
+func (_u *ComponentUpdate) ClearApplication() *ComponentUpdate {
+	_u.mutation.ClearApplication()
+	return _u
 }
 
 // ClearTargetCluster clears the "target_cluster" edge to the Cluster entity.
@@ -403,6 +429,35 @@ func (_u *ComponentUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(component.FieldUpdatedAt, field.TypeTime, value)
 	}
+	if _u.mutation.ApplicationCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   component.ApplicationTable,
+			Columns: []string{component.ApplicationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(application.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ApplicationIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   component.ApplicationTable,
+			Columns: []string{component.ApplicationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(application.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TargetClusterCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
@@ -537,6 +592,20 @@ type ComponentUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *ComponentMutation
+}
+
+// SetApplicationID sets the "application_id" field.
+func (_u *ComponentUpdateOne) SetApplicationID(v uuid.UUID) *ComponentUpdateOne {
+	_u.mutation.SetApplicationID(v)
+	return _u
+}
+
+// SetNillableApplicationID sets the "application_id" field if the given value is not nil.
+func (_u *ComponentUpdateOne) SetNillableApplicationID(v *uuid.UUID) *ComponentUpdateOne {
+	if v != nil {
+		_u.SetApplicationID(*v)
+	}
+	return _u
 }
 
 // SetName sets the "name" field.
@@ -748,6 +817,11 @@ func (_u *ComponentUpdateOne) SetUpdatedAt(v time.Time) *ComponentUpdateOne {
 	return _u
 }
 
+// SetApplication sets the "application" edge to the Application entity.
+func (_u *ComponentUpdateOne) SetApplication(v *Application) *ComponentUpdateOne {
+	return _u.SetApplicationID(v.ID)
+}
+
 // SetTargetCluster sets the "target_cluster" edge to the Cluster entity.
 func (_u *ComponentUpdateOne) SetTargetCluster(v *Cluster) *ComponentUpdateOne {
 	return _u.SetTargetClusterID(v.ID)
@@ -771,6 +845,12 @@ func (_u *ComponentUpdateOne) SetStage(v *WorkflowStage) *ComponentUpdateOne {
 // Mutation returns the ComponentMutation object of the builder.
 func (_u *ComponentUpdateOne) Mutation() *ComponentMutation {
 	return _u.mutation
+}
+
+// ClearApplication clears the "application" edge to the Application entity.
+func (_u *ComponentUpdateOne) ClearApplication() *ComponentUpdateOne {
+	_u.mutation.ClearApplication()
+	return _u
 }
 
 // ClearTargetCluster clears the "target_cluster" edge to the Cluster entity.
@@ -937,6 +1017,35 @@ func (_u *ComponentUpdateOne) sqlSave(ctx context.Context) (_node *Component, er
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(component.FieldUpdatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ApplicationCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   component.ApplicationTable,
+			Columns: []string{component.ApplicationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(application.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ApplicationIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   component.ApplicationTable,
+			Columns: []string{component.ApplicationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(application.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _u.mutation.TargetClusterCleared() {
 		edge := &sqlgraph.EdgeSpec{

@@ -11,13 +11,13 @@ import (
 	"github.com/spacefleet/spacefleet/lib/workflows"
 )
 
-// StartComponentRun starts a run limited to one OpenTofu component: a
-// per-component destroy (action uninstall — its apply is always gated) or a
+// StartComponentRun starts a run limited to one component: a per-component
+// destroy or uninstall (action uninstall — always gated), or, for OpenTofu, a
 // deploy of just that module, optionally targeted to a fixed list of
 // resource addresses. Editor or above; needs the background worker (503
-// otherwise). Another action, an invalid target, or a non-OpenTofu
-// component is a 400, a component outside the org/app a 404, and a run
-// already in flight a 409 — the same gate as every run.
+// otherwise). Another action, an invalid target, or a deploy or targets for
+// a Helm or Manifest component is a 400, a component outside the org/app a
+// 404, and a run already in flight a 409 — the same gate as every run.
 func (s *Server) StartComponentRun(ctx context.Context, req StartComponentRunRequestObject) (StartComponentRunResponseObject, error) {
 	orgID, aerr, err := s.resolveWorkflowWrite(ctx)
 	if err != nil {
@@ -50,9 +50,7 @@ func (s *Server) StartComponentRun(ctx context.Context, req StartComponentRunReq
 		switch {
 		case ent.IsNotFound(err):
 			return errResp[StartComponentRundefaultJSONResponse](http.StatusNotFound, "not_found", "component not found"), nil
-		case errors.Is(err, workflows.ErrNotTofuComponent):
-			return errResp[StartComponentRundefaultJSONResponse](http.StatusBadRequest, "bad_request", "component-scoped runs apply only to OpenTofu components"), nil
-		case errors.Is(err, workflows.ErrInvalidScopedAction), errors.Is(err, tofu.ErrInvalidTarget):
+		case errors.Is(err, workflows.ErrScopedRunUnsupported), errors.Is(err, workflows.ErrInvalidScopedAction), errors.Is(err, tofu.ErrInvalidTarget):
 			return errResp[StartComponentRundefaultJSONResponse](http.StatusBadRequest, "bad_request", err.Error()), nil
 		case errors.Is(err, workflows.ErrRunInFlight):
 			return errResp[StartComponentRundefaultJSONResponse](http.StatusConflict, "conflict", err.Error()), nil
@@ -92,7 +90,11 @@ func toAPIRunScope(r *ent.WorkflowRun) *RunScope {
 	if err != nil || !ok {
 		return nil
 	}
-	out := &RunScope{ComponentId: scope.ComponentID, ComponentName: scope.ComponentName}
+	componentType := ComponentType(workflows.TypeTerraform)
+	if scope.ComponentType != "" {
+		componentType = ComponentType(scope.ComponentType)
+	}
+	out := &RunScope{ComponentId: scope.ComponentID, ComponentName: scope.ComponentName, ComponentType: &componentType}
 	if len(scope.Targets) > 0 {
 		targets := scope.Targets
 		out.Targets = &targets

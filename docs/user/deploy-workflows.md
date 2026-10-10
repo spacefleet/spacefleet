@@ -18,8 +18,8 @@ the services onto it, then a **Verify** stage with a smoke test.
    components are listed inside it, top to bottom.
 3. Add a stage for each phase of the deploy, and rename it to say what it does
    (click its name). Use the stage's menu to move it left or right, or to
-   delete it — deleting a stage removes its components too, so you're asked to
-   confirm when it isn't empty.
+   delete it. Only an empty stage can be deleted: delete or move its
+   components first, so each one asks what happens to what it deployed.
 4. In a stage, select **Add component** and choose **Helm**, **Manifest**, or
    **OpenTofu**. The component editor opens:
    - **Name** — a short, lowercase name for the step (letters, digits, and
@@ -49,9 +49,13 @@ the services onto it, then a **Verify** stage with a smoke test.
      failed. Leave it off for a component that later stages truly require.
 5. To change the order, drag a component to another place in its stage or into
    another stage. Only the stage a component is in affects when it runs; its
-   position within the stage is just for reading. To delete a component, open
-   it and choose **Delete component**.
-6. Changes save automatically as you make them.
+   position within the stage is just for reading.
+6. Select a component to open its page: its settings at a glance and, for an
+   OpenTofu component, its [managed resources and outputs](#managed-resources).
+   From there, **Manage** opens the editor, **Variables** sets variables for
+   just this component, and the **⋮** menu
+   [moves or deletes it](#delete-or-move-a-component).
+7. Changes save automatically as you make them.
 
 Put a component in a **later stage** than anything it needs. Two components
 in the same stage start together, so neither can rely on the other having
@@ -66,6 +70,53 @@ The values, release name, and target namespace can also embed `${{ ... }}`
 references — your variables (`${{ vars.CUSTOMER_ID }}`) and the run's context,
 like the commit being deployed (`${{ run.git_sha_short }}`) — filled in when a
 run starts. See [Variables in component configuration](variable-interpolation.md).
+
+### Delete or move a component
+
+**⋮ → Delete** on a component's page removes it from the workflow, along with
+its variables; its run history stays with the application. Deleting never
+touches what the component deployed on its own, so the dialog asks what to do
+about that:
+
+- **Destroy it first** (OpenTofu) or **Uninstall it first** (Helm, Manifest)
+  starts a run of just this component instead of deleting it, and opens it:
+  an OpenTofu destroy plans the destruction of everything the component
+  manages, a Helm uninstall removes its release, and a Manifest uninstall
+  deletes what was applied from its path. The run **always waits for
+  approval**, whatever the component's own approval setting. When it
+  succeeds, its run page offers **Delete component** to finish the job. If
+  it fails or is rejected, nothing is deleted.
+- **Leave it running** deletes the component right away. What it deployed
+  stays as it is, and Spacefleet no longer manages it. The dialog says what
+  is left behind: the Helm release and where it runs, what a Manifest
+  component applied, or an OpenTofu component's resources. For an OpenTofu
+  component on [Spacefleet-managed state](#state-backend), its **state is
+  deleted** with it — Spacefleet can't manage those resources again, and
+  OpenTofu would need them imported to track them — so the dialog offers
+  **Download the state first**. A cloud backend's state stays in your
+  bucket, and a component pointed at it picks the resources back up.
+
+The component can't be deleted while its managed state is locked or while a
+run of the application is in progress.
+
+**⋮ → Move…** moves the component to a stage of another application — or to
+another stage of this one — optionally under a new name (the destination
+can't already have a component by that name). Its settings, variables, and
+state go with it, and its **State** section keeps showing its last recorded
+resources, linking to the run that recorded them. Its run history stays with
+this application. Its jobs then run on the destination's runner cluster, so
+check that it can reach what the component needs. A move waits until
+neither application has a run in progress.
+
+Neither deleting nor moving checks `${{ components.* }}` references. A
+component that referenced the one you removed or moved — or a moved component
+whose references no longer resolve in its new workflow — fails with a
+message naming the reference at the next save of that workflow or the next
+run; fix it then.
+
+If a workflow is open in another tab while one of its components is moved
+away, saving that tab is refused with a message saying where the component
+went — reload it.
 
 ## OpenTofu components
 
@@ -173,11 +224,13 @@ your code.
 keeps the state itself. There is nothing to set up — no bucket, no state key,
 no cloud credential for the state, no lock table. The state is encrypted,
 every version of it is kept, and it is locked automatically during every plan
-and apply. Each component (and each [workspace](#workspaces) of it) has its
-own state. Removing a component from the workflow keeps its state, because it
-still describes infrastructure that exists; the state is deleted with the
-application. The option is available when your Spacefleet operator has set it
-up — see [Managed OpenTofu state](../operator/managed-state.md).
+and apply. Each component has its own state. Deleting a component deletes its
+state with it — destroy its resources first, or download the state (see
+[Delete or move a component](#delete-or-move-a-component)) — and moving a
+component to another application takes its state along. The state of every
+component is deleted with the application. The option is available when your
+Spacefleet operator has set it up — see
+[Managed OpenTofu state](../operator/managed-state.md).
 
 Or keep the state in your own cloud: pick one of the three cloud backends and
 point it at the location (an existing state file there is adopted in place):
@@ -207,6 +260,31 @@ again. When the component's latest recorded state still lists resources,
 Spacefleet doesn't save the change straight away: the workflow builder
 explains what will happen and asks you to confirm. Destroy the component's
 resources first, or move the state yourself before you confirm.
+
+#### Move managed state to your own bucket
+
+To take a component's state from Spacefleet-managed state to a cloud backend
+without touching its resources:
+
+1. On the component's page, its **State** section names the managed state's
+   current version. Choose **Download state** (editor or above) to save it as
+   a `.tfstate` file. The file holds every value in the state, secrets
+   included — handle it the way you would the secrets themselves, and delete
+   your copy when you're done.
+2. Upload the file to where the new backend will look for it: the bucket and
+   **state key** for Amazon S3, `<prefix>/default.tfstate` in the bucket for
+   Google Cloud Storage, or the **blob name** in the container for Azure
+   Blob Storage.
+3. Change the component's backend to that location. The builder asks you to
+   confirm, because the component still manages resources — confirm: the
+   state is already in place.
+4. Run a **Preview**. The component's plan should show **no changes**. If it
+   plans to create everything instead, the new backend isn't finding the
+   file — check its location before you deploy.
+
+The same download is how you take a component out of Spacefleet altogether:
+keep the file as the state of your own OpenTofu setup, then delete the
+component and leave its resources running.
 
 Backend settings are configuration, not a place for secrets: they are part
 of the run and visible to anyone who can read it. A setting that is a
@@ -310,8 +388,8 @@ You can see the inventory in two places:
 
 - On the apply step of a run, under its **Resources** tab — the inventory as
   of that apply.
-- On the component itself: open it in the workflow builder and scroll to
-  **State**, which shows the resources and outputs from the component's most
+- On the component itself: open its page from the workflow builder. Its
+  **State** section shows the resources and outputs from the component's most
   recent successful apply, with a link to the run that recorded them. This is
   the place to answer "what does this component own right now?" without
   opening run history.
@@ -337,7 +415,7 @@ The result appears in three places:
 - The run's step opens on a **Drift** tab: a headline verdict and, for each
   drifted resource, whether it was **changed** or **deleted** outside of
   OpenTofu, expandable to the state-versus-real difference.
-- The component's **State** panel in the workflow builder carries the latest
+- The **State** section of the component's page carries the latest
   verdict — no drift, drift with the affected addresses, or a check that
   failed — linking to the run that produced it.
 - Every ordinary plan also reports drift it noticed, above its planned
@@ -360,8 +438,8 @@ Some state surgery is occasionally unavoidable: a lock left behind by a run
 that died, a resource you want OpenTofu to stop managing without destroying
 it, a rename that would otherwise become a destroy and a create, or existing
 infrastructure you want to adopt. Rather than doing these from a laptop with
-production credentials, run them from the component's **State** panel in the
-workflow builder, under **Operations** (editor or above):
+production credentials, run them from the **State** section of the
+component's page, under **Operations** (editor or above):
 
 | Operation | What it runs | Fields |
 | --- | --- | --- |
@@ -397,8 +475,8 @@ while one is waiting for approval).
 
 A workflow's **Uninstall** removes everything. To take down just one OpenTofu
 component — or to plan and apply just that module without running the rest
-of the workflow — use **Destroy and targeted runs** on the component's
-**State** panel in the workflow builder (editor or above):
+of the workflow — use **Destroy and targeted runs** in the **State** section
+of the component's page (editor or above):
 
 - **Destroy this component** plans the destruction of every resource the
   component manages and then **always waits for approval**, whatever the
@@ -420,11 +498,20 @@ around a provider bug): a targeted apply leaves the rest of the module
 unreconciled, and OpenTofu will flag that in the plan. Follow it with a
 normal deploy when you can.
 
-A component-scoped run appears in the run history as a **Component deploy**
-or **Component destroy** naming the component and its targets. It counts as
-a run of the application: it cannot start while another run is in progress,
-and nothing else can start while it is running or waiting for approval.
-These runs are available for OpenTofu components only.
+A Helm or Manifest component can be uninstalled on its own too, from its
+**Delete** dialog's **Uninstall it first** (see
+[Delete or move a component](#delete-or-move-a-component)). It always waits
+for approval before it runs. A `${{ components.* }}` reference in its
+settings resolves from that component's most recent recorded outputs, since
+the component isn't part of the run; if it has none, the step fails naming
+it.
+
+A component-scoped run appears in the run history as a **Component deploy**,
+**Component destroy** (OpenTofu), or **Component uninstall** (Helm,
+Manifest) naming the component and any targets. It counts as a run of the
+application: it cannot start while another run is in progress, and nothing
+else can start while it is running or waiting for approval. Deploying or
+targeting a single component is available for OpenTofu components only.
 
 ## Run the workflow
 
@@ -461,7 +548,11 @@ to do about that:
   offers **Delete application** to finish the job. If it fails or is
   rejected, nothing is deleted.
 - **Leave it running** deletes the application right away. Everything it
-  deployed stays as it is, and Spacefleet no longer manages it.
+  deployed stays as it is, and Spacefleet no longer manages it. The state
+  of its OpenTofu components on
+  [Spacefleet-managed state](#state-backend) is deleted too — the dialog
+  names those components; download each one's state from its page first if
+  you'll manage the resources elsewhere.
 
 ## Triggers
 

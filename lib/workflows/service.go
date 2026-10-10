@@ -140,6 +140,11 @@ type ReplaceOptions struct {
 	// resources move to a different state backend (see checkBackendChanges)
 	// — the caller confirmed that the next run starts from empty state.
 	AllowBackendChange bool
+	// AllowStateDeletion lets a save remove an OpenTofu component on the
+	// managed backend whose state still lists resources (see
+	// checkStateDeletions) — the caller confirmed that the resources keep
+	// running and the state is deleted.
+	AllowStateDeletion bool
 }
 
 // ReplaceWorkflowWith is ReplaceWorkflow with options.
@@ -167,6 +172,9 @@ func (s *Service) ReplaceWorkflowWith(ctx context.Context, orgID, appID uuid.UUI
 	if err := s.validateComponentTargets(ctx, orgID, app, nodes); err != nil {
 		return nil, err
 	}
+	if err := s.checkMovedComponents(ctx, orgID, appID, nodes); err != nil {
+		return nil, err
+	}
 	if err := s.resolveInstallations(ctx, orgID, stages); err != nil {
 		return nil, err
 	}
@@ -181,6 +189,10 @@ func (s *Service) ReplaceWorkflowWith(ctx context.Context, orgID, appID uuid.UUI
 		if err := s.checkBackendChanges(ctx, orgID, appID, nodes); err != nil {
 			return nil, err
 		}
+	}
+	stateDel, err := s.checkStateDeletions(ctx, orgID, appID, nodes, opts.AllowStateDeletion)
+	if err != nil {
+		return nil, err
 	}
 
 	tx, err := s.ent.Tx(ctx)
@@ -240,6 +252,11 @@ func (s *Service) ReplaceWorkflowWith(ctx context.Context, orgID, appID uuid.UUI
 	if _, err := del.Exec(ctx); err != nil {
 		return nil, rollback(tx, err)
 	}
+	// A removed OpenTofu component's managed state goes with it: keyed by
+	// the component's id, nothing could reach it again.
+	if err := deleteStates(ctx, tx, orgID, appID, stateDel); err != nil {
+		return nil, rollback(tx, err)
+	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -285,6 +302,19 @@ func (s *Service) createComponent(ctx context.Context, tx *ent.Tx, orgID, appID,
 func (s *Service) getApp(ctx context.Context, orgID, appID uuid.UUID) (*ent.Application, error) {
 	return s.ent.Application.Query().
 		Where(application.OrganizationID(orgID), application.ID(appID)).
+		Only(ctx)
+}
+
+// GetComponent returns one component of the application, scoped to the
+// organization — ent's NotFoundError when the application has no such
+// component.
+func (s *Service) GetComponent(ctx context.Context, orgID, appID, componentID uuid.UUID) (*ent.Component, error) {
+	return s.ent.Component.Query().
+		Where(
+			component.OrganizationID(orgID),
+			component.ApplicationID(appID),
+			component.ID(componentID),
+		).
 		Only(ctx)
 }
 

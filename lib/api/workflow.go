@@ -72,7 +72,10 @@ func (s *Server) ReplaceApplicationWorkflow(ctx context.Context, req ReplaceAppl
 	for i, st := range req.Body.Stages {
 		stages[i] = toStageInput(st)
 	}
-	opts := workflows.ReplaceOptions{AllowBackendChange: req.Body.AllowBackendChange != nil && *req.Body.AllowBackendChange}
+	opts := workflows.ReplaceOptions{
+		AllowBackendChange: req.Body.AllowBackendChange != nil && *req.Body.AllowBackendChange,
+		AllowStateDeletion: req.Body.AllowStateDeletion != nil && *req.Body.AllowStateDeletion,
+	}
 	saved, err := s.workflows.ReplaceWorkflowWith(ctx, orgID, req.Id, stages, opts)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -80,6 +83,18 @@ func (s *Server) ReplaceApplicationWorkflow(ctx context.Context, req ReplaceAppl
 		}
 		if errors.Is(err, workflows.ErrBackendChange) {
 			return errResp[ReplaceApplicationWorkflowdefaultJSONResponse](http.StatusConflict, "backend_change", err.Error()), nil
+		}
+		if errors.Is(err, workflows.ErrStateDeletion) {
+			return errResp[ReplaceApplicationWorkflowdefaultJSONResponse](http.StatusConflict, "state_deletion", err.Error()), nil
+		}
+		if errors.Is(err, workflows.ErrStateLocked) {
+			return errResp[ReplaceApplicationWorkflowdefaultJSONResponse](http.StatusConflict, "state_locked", err.Error()), nil
+		}
+		if errors.Is(err, workflows.ErrRunInFlight) {
+			return errResp[ReplaceApplicationWorkflowdefaultJSONResponse](http.StatusConflict, "conflict", err.Error()), nil
+		}
+		if errors.Is(err, workflows.ErrComponentMoved) {
+			return errResp[ReplaceApplicationWorkflowdefaultJSONResponse](http.StatusConflict, "component_moved", err.Error()), nil
 		}
 		if isWorkflowValidation(err) {
 			return errResp[ReplaceApplicationWorkflowdefaultJSONResponse](http.StatusBadRequest, "bad_request", err.Error()), nil
@@ -89,6 +104,46 @@ func (s *Server) ReplaceApplicationWorkflow(ctx context.Context, req ReplaceAppl
 	// The writer is editor-or-above, so the round-tripped components are returned
 	// unredacted (canSee=true), keeping the builder's edit form populated.
 	return ReplaceApplicationWorkflow200JSONResponse(toAPIWorkflow(saved, true)), nil
+}
+
+// MoveComponent moves a component to a stage of another of the org's
+// applications (or another stage of its own), keeping its id so its
+// variables and managed state follow it. Editor or above.
+func (s *Server) MoveComponent(ctx context.Context, req MoveComponentRequestObject) (MoveComponentResponseObject, error) {
+	orgID, aerr, err := s.resolveWorkflowWrite(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if aerr != nil {
+		return errResp[MoveComponentdefaultJSONResponse](aerr.status, aerr.code, aerr.msg), nil
+	}
+	if req.Body == nil {
+		return errResp[MoveComponentdefaultJSONResponse](http.StatusBadRequest, "bad_request", "request body is required"), nil
+	}
+	in := workflows.MoveInput{
+		ApplicationID: req.Body.ApplicationId,
+		StageID:       req.Body.StageId,
+		NewStageName:  deref(req.Body.NewStageName),
+		Name:          deref(req.Body.Name),
+	}
+	moved, err := s.workflows.MoveComponent(ctx, orgID, req.Id, req.ComponentId, in)
+	if err != nil {
+		switch {
+		case ent.IsNotFound(err):
+			return errResp[MoveComponentdefaultJSONResponse](http.StatusNotFound, "not_found", "component not found"), nil
+		case errors.Is(err, workflows.ErrNameTaken):
+			return errResp[MoveComponentdefaultJSONResponse](http.StatusConflict, "name_taken", err.Error()), nil
+		case errors.Is(err, workflows.ErrRunInFlight):
+			return errResp[MoveComponentdefaultJSONResponse](http.StatusConflict, "conflict", err.Error()), nil
+		case errors.Is(err, workflows.ErrStateLocked):
+			return errResp[MoveComponentdefaultJSONResponse](http.StatusConflict, "state_locked", err.Error()), nil
+		case errors.Is(err, workflows.ErrMoveTarget), isWorkflowValidation(err):
+			return errResp[MoveComponentdefaultJSONResponse](http.StatusBadRequest, "bad_request", err.Error()), nil
+		default:
+			return nil, err
+		}
+	}
+	return MoveComponent200JSONResponse(toAPIComponent(moved, true)), nil
 }
 
 // isWorkflowValidation reports whether err is one of the workflow/config

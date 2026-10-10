@@ -95,7 +95,7 @@ test("stage builder: menus, adding a stage, and moving components", async ({
     }),
   ).toBe(true);
   await tofu.click();
-  await expect(page).toHaveURL(/\/workflow\/nodes\/.+\?new=terraform&stage=/);
+  await expect(page).toHaveURL(/\/workflow\/nodes\/.+\/edit\?new=terraform&stage=/);
   await expect(page.getByText(/in stage 1, Build/i)).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(build.getByText("opentofu", { exact: true })).toHaveCount(0);
@@ -132,4 +132,106 @@ test("stage builder: menus, adding a stage, and moving components", async ({
     .toEqual(["Build", "Deploy", "Verify"]);
   last = saves[saves.length - 1];
   expect(last[2].components).toEqual([]);
+});
+
+test("a stage holding components can't be deleted; an empty one can", async ({
+  page,
+}) => {
+  await loginIntoOrg(page);
+  const saves = await serveWorkflow(page);
+  await page.goto(`/applications/${appId}/workflow`);
+
+  await page.getByRole("button", { name: "Stage Deploy actions" }).click();
+  const item = page.getByRole("menuitem", { name: /delete stage/i });
+  await expect(item).toBeDisabled();
+  await expect(item).toContainText("Delete or move its components first");
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Add stage" }).click();
+  await page.getByRole("button", { name: "Stage Stage 3 actions" }).click();
+  await page.getByRole("menuitem", { name: /delete stage/i }).click();
+  await expect(page.getByRole("region", { name: "Stage Stage 3" })).toHaveCount(0);
+  await expect
+    .poll(() => saves[saves.length - 1]?.map((s) => s.name))
+    .toEqual(["Build", "Deploy"]);
+});
+
+test("deleting a component, leaving what it deployed running", async ({
+  page,
+}) => {
+  await loginIntoOrg(page);
+  const saves = await serveWorkflow(page);
+  await page.goto(`/applications/${appId}/workflow`);
+
+  await page
+    .getByRole("region", { name: "Stage Deploy" })
+    .getByText("site", { exact: true })
+    .click();
+  await expect(page.getByRole("heading", { name: "site" })).toBeVisible();
+  await page.getByRole("button", { name: "site actions" }).click();
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Delete site" });
+  const del = dialog.getByRole("button", { name: "Delete component" });
+  await expect(del).toBeDisabled();
+  await dialog.getByRole("radio", { name: /leave it running/i }).check();
+  await expect(dialog.getByText(/keeps running on/)).toBeVisible();
+  await del.click();
+
+  await expect(page).toHaveURL(new RegExp(`/applications/${appId}/workflow$`));
+  await expect(page.getByRole("region", { name: "Stage Deploy" }).getByText("site")).toHaveCount(0);
+  expect(saves.length).toBeGreaterThan(0);
+  expect(names(saves[saves.length - 1][1])).toEqual([]);
+});
+
+test("moving a component to another application", async ({ page }) => {
+  const otherId = "00000000-0000-4000-8000-0000000000e3";
+  await loginIntoOrg(page);
+  await serveWorkflow(page);
+  let otherStages: Stage[] = [
+    {
+      id: "00000000-0000-4000-8000-00000000b001",
+      name: "Services",
+      components: [manifest("00000000-0000-4000-8000-00000000d001", "api")],
+    },
+  ];
+  await page.route("**/api/applications", (route) =>
+    route.fulfill({
+      json: [
+        { id: appId, name: "shop" },
+        { id: otherId, name: "platform" },
+      ],
+    }),
+  );
+  await page.route(`**/api/applications/${otherId}/workflow`, (route) =>
+    route.fulfill({ json: { stages: otherStages } }),
+  );
+  for (const path of ["variables", "component-outputs"]) {
+    await page.route(`**/api/applications/${otherId}/${path}`, (route) =>
+      route.fulfill({ json: path === "variables" ? [] : {} }),
+    );
+  }
+  const site = manifest("00000000-0000-4000-8000-00000000c003", "site");
+  let moveBody: Record<string, unknown> | null = null;
+  await page.route(`**/api/applications/${appId}/components/*/move`, async (route) => {
+    moveBody = route.request().postDataJSON();
+    otherStages = [
+      ...otherStages,
+      { id: "00000000-0000-4000-8000-00000000b002", name: String(moveBody?.new_stage_name), components: [site] },
+    ];
+    await route.fulfill({ json: site });
+  });
+
+  await page.goto(`/applications/${appId}/workflow/nodes/${site.id}`);
+  await page.getByRole("button", { name: "site actions" }).click();
+  await page.getByRole("menuitem", { name: /move/i }).click();
+  const dialog = page.getByRole("dialog", { name: "Move site" });
+  await dialog.getByRole("combobox", { name: "Application" }).selectOption(otherId);
+  await dialog.getByRole("combobox", { name: "Stage" }).selectOption({ label: "New stage at the end" });
+  await dialog.getByRole("textbox", { name: "New stage name" }).fill("Edge");
+  await dialog.getByRole("button", { name: "Move component" }).click();
+
+  await expect(page).toHaveURL(new RegExp(`/applications/${otherId}/workflow/nodes/${site.id}$`));
+  await expect(page.getByText(/in stage 2, Edge/i)).toBeVisible();
+  expect(moveBody).toEqual({ application_id: otherId, new_stage_name: "Edge" });
 });

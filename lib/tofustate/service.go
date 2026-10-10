@@ -228,6 +228,61 @@ func (s *Service) Read(ctx context.Context, c Claims) (data []byte, ok bool, err
 	return data, true, nil
 }
 
+// componentPredicates scopes a tofu_states query to one component's managed
+// state, for the member-facing reads (no token): organization, application,
+// component. Managed state takes no workspace, so it is always the default
+// one.
+func componentPredicates(orgID, appID, componentID uuid.UUID) []predicateState {
+	return []predicateState{
+		tstate.OrganizationID(orgID),
+		tstate.ApplicationID(appID),
+		tstate.ComponentID(componentID),
+		tstate.Workspace(DefaultWorkspace),
+	}
+}
+
+// CurrentVersion returns the current version of a component's managed
+// state — metadata only, the sealed body is not opened — or nil when the
+// component has no managed state or nothing has been written yet. It reads
+// no secrets, so it works without a key.
+func (s *Service) CurrentVersion(ctx context.Context, orgID, appID, componentID uuid.UUID) (*ent.TofuStateVersion, error) {
+	if s == nil || s.ent == nil {
+		return nil, nil
+	}
+	st, err := s.ent.TofuState.Query().Where(componentPredicates(orgID, appID, componentID)...).Only(ctx)
+	if ent.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil || st.CurrentVersion == 0 {
+		return nil, err
+	}
+	return s.ent.TofuStateVersion.Query().
+		Where(
+			tsversion.OrganizationID(orgID),
+			tsversion.StateID(st.ID),
+			tsversion.Version(st.CurrentVersion),
+		).
+		Only(ctx)
+}
+
+// Download returns the current state of a component's managed state, opened,
+// with its version — ok=false when there is none. The caller authorizes
+// (state holds secrets: editors only).
+func (s *Service) Download(ctx context.Context, orgID, appID, componentID uuid.UUID) (data []byte, v *ent.TofuStateVersion, ok bool, err error) {
+	if !s.Enabled() {
+		return nil, nil, false, ErrDisabled
+	}
+	v, err = s.CurrentVersion(ctx, orgID, appID, componentID)
+	if err != nil || v == nil {
+		return nil, nil, false, err
+	}
+	data, err = s.open(v.Sealed)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	return data, v, true, nil
+}
+
 // lockAttempts bounds Lock's retry when the lock is released between the
 // refused update and the read of its holder.
 const lockAttempts = 3

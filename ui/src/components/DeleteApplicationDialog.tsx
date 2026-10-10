@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import { AlertTriangle, Loader2, X } from "lucide-react";
 import { api } from "../api/client";
 import type { components } from "../api/schema";
@@ -41,6 +42,7 @@ export function DeleteApplicationDialog({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const managed = useManagedStateComponents(app.id, !afterUninstall);
 
   async function runDelete() {
     setBusy(true);
@@ -137,6 +139,25 @@ export function DeleteApplicationDialog({
               </Choice>
             </fieldset>
           )}
+          {deployed === "keep" && !afterUninstall && managed.length > 0 && (
+            <div className="border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+              The OpenTofu state Spacefleet keeps for{" "}
+              {managed.map((c, i) => (
+                <span key={c.id}>
+                  {i > 0 && ", "}
+                  <Link
+                    to={`/applications/${app.id}/workflow/nodes/${c.id}`}
+                    className="font-mono underline-offset-2 hover:underline"
+                  >
+                    {c.name}
+                  </Link>
+                </span>
+              ))}{" "}
+              is deleted with the application, so their resources would keep
+              running with nothing to manage them. To manage them elsewhere,
+              download each one&apos;s state from its page first.
+            </div>
+          )}
           {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
 
@@ -170,7 +191,40 @@ export function DeleteApplicationDialog({
   );
 }
 
-function Choice({
+// useManagedStateComponents lists the application's OpenTofu components on
+// managed state — whose state goes with the application — for the "Leave it
+// running" warning. Empty until loaded, or when not wanted.
+function useManagedStateComponents(
+  appId: string,
+  enabled: boolean,
+): { id: string; name: string }[] {
+  const [managed, setManaged] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await api.GET("/api/applications/{id}/workflow", {
+        params: { path: { id: appId } },
+      });
+      // Best effort: without the workflow there's just no warning.
+      if (cancelled || !Array.isArray(data?.stages)) return;
+      setManaged(
+        data.stages
+          .flatMap((st) => st.components)
+          .filter((c) => c.type === "terraform" && c.config.backend === "spacefleet")
+          .map((c) => ({ id: c.id, name: c.name })),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [appId, enabled]);
+  return managed;
+}
+
+// Choice is one radio answer of a delete dialog's "what about what it
+// deployed?" question: a title with its consequences beneath.
+export function Choice({
   checked,
   onChange,
   disabled,

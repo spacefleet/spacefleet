@@ -1,12 +1,15 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
+import { Download } from "lucide-react";
 import { api } from "../../api/client";
 import type { components } from "../../api/schema";
+import { downloadComponentState } from "../../lib/stateDownload";
 import { OutputsTable } from "./OutputsTable";
 import { ResourcesTable } from "./ResourcesTable";
 
 type ComponentState = components["schemas"]["ComponentState"];
 type DriftStatus = components["schemas"]["DriftStatus"];
+type ManagedStateVersion = components["schemas"]["ManagedStateVersion"];
 type StateLock = components["schemas"]["StateLock"];
 type StateOperationKind = components["schemas"]["StateOperationKind"];
 
@@ -23,12 +26,18 @@ export function ComponentStatePanel({
   appId,
   componentId,
   canEdit = false,
+  managedBackend = false,
 }: {
   appId: string;
   componentId: string;
   // Editor or above: shows the guarded state operations (each starts an
-  // approval-gated run). Viewers see the recorded state only.
+  // approval-gated run) and the state download. Viewers see the recorded
+  // state only.
   canEdit?: boolean;
+  // The component keeps its state in Spacefleet (the managed backend), so
+  // its current state version is shown, and editors can download it. A
+  // cloud backend's state is in its own bucket.
+  managedBackend?: boolean;
 }) {
   const [state, setState] = useState<ComponentState | null>(null);
   const [empty, setEmpty] = useState(false);
@@ -88,6 +97,14 @@ export function ComponentStatePanel({
         What this component manages, as of its last successful apply.
       </p>
 
+      {managedBackend && state?.managed_state && (
+        <ManagedStateLine
+          appId={appId}
+          componentId={componentId}
+          version={state.managed_state}
+          canDownload={canEdit}
+        />
+      )}
       {state?.drift && <DriftLine appId={appId} drift={state.drift} />}
       {state?.lock && (
         <LockBox
@@ -512,6 +529,62 @@ function LockBox({
           </span>
         </p>
       )}
+    </div>
+  );
+}
+
+// ManagedStateLine names the current version of the component's managed
+// state and, for editors, offers it as a download — the way to take the
+// resources elsewhere (another backend, or out of Spacefleet). The file holds
+// every secret the module touched, hence editors only.
+function ManagedStateLine({
+  appId,
+  componentId,
+  version,
+  canDownload,
+}: {
+  appId: string;
+  componentId: string;
+  version: ManagedStateVersion;
+  canDownload: boolean;
+}) {
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const download = async () => {
+    setDownloading(true);
+    setError(null);
+    const err = await downloadComponentState(appId, componentId);
+    setDownloading(false);
+    setError(err);
+  };
+  return (
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border border-neutral-800 bg-neutral-800/50 px-3 py-2 text-sm text-neutral-300">
+      <p>
+        <span className="font-medium text-neutral-100">Managed state</span>{" "}
+        version {version.version}, written{" "}
+        {version.run_id ? (
+          <Link
+            to={`/applications/${appId}/runs/${version.run_id}`}
+            className="underline-offset-2 hover:underline"
+          >
+            {new Date(version.written_at).toLocaleString()}
+          </Link>
+        ) : (
+          new Date(version.written_at).toLocaleString()
+        )}
+      </p>
+      {canDownload && (
+        <button
+          type="button"
+          onClick={() => void download()}
+          disabled={downloading}
+          className="inline-flex items-center gap-1.5 border border-neutral-700 px-3 py-1 text-sm text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+        >
+          <Download className="h-3.5 w-3.5" />
+          {downloading ? "Downloading…" : "Download state"}
+        </button>
+      )}
+      {error && <p className="w-full text-xs text-red-400">{error}</p>}
     </div>
   );
 }

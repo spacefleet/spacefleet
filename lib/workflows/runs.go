@@ -822,6 +822,29 @@ func (s *Service) SettleStuckComponentRuns(ctx context.Context, orgID, runID uui
 		Save(ctx)
 }
 
+// TofuComponentByName returns the id of the application's OpenTofu component
+// with the given name — ent's NotFoundError when there is none, and an error
+// naming the ambiguity when several share it. Org-scoped.
+func (s *Service) TofuComponentByName(ctx context.Context, orgID, appID uuid.UUID, name string) (uuid.UUID, error) {
+	ids, err := s.ent.Component.Query().
+		Where(
+			component.OrganizationID(orgID),
+			component.ApplicationID(appID),
+			component.Name(name),
+			component.TypeEQ(component.TypeTerraform),
+		).
+		IDs(ctx)
+	switch {
+	case err != nil:
+		return uuid.Nil, err
+	case len(ids) == 0:
+		return uuid.Nil, &ent.NotFoundError{}
+	case len(ids) > 1:
+		return uuid.Nil, fmt.Errorf("component name %q is ambiguous in this application — rename one of the OpenTofu components", name)
+	}
+	return ids[0], nil
+}
+
 // ResolveComponentOutputs returns the persisted `tofu output -json` JSON for
 // one execution unit (a terraform apply unit's component_id), for the
 // ${{ components.* }} render context: the unit's succeeded-with-outputs row in
@@ -884,17 +907,12 @@ type OutputKey struct {
 // apply id) or a state operation's unit (keyed by the authored id; a plan or
 // drift unit under that id never captures either, so they cannot match) — or
 // ent's NotFoundError when the component has never applied successfully. The
-// component must belong to the org-scoped application: the row is looked up
-// through the component, so another org's run can't be read by id.
+// component must belong to the org-scoped application (see
+// assertComponentInApp); its history is then read across the org, so it
+// follows a component moved from another application.
 func (s *Service) LatestComponentState(ctx context.Context, orgID, appID, componentID uuid.UUID) (*ent.ComponentRun, error) {
-	ok, err := s.ent.Component.Query().
-		Where(component.OrganizationID(orgID), component.ApplicationID(appID), component.ID(componentID)).
-		Exist(ctx)
-	if err != nil {
+	if err := s.assertComponentInApp(ctx, orgID, appID, componentID); err != nil {
 		return nil, err
-	}
-	if !ok {
-		return nil, &ent.NotFoundError{}
 	}
 	return s.ent.ComponentRun.Query().
 		Where(
@@ -907,24 +925,43 @@ func (s *Service) LatestComponentState(ctx context.Context, orgID, appID, compon
 		First(ctx)
 }
 
+// assertComponentInApp returns ent's NotFoundError unless the component
+// belongs to the org-scoped application. The per-component history reads
+// gate on it, then look runs up by organization and component id rather than
+// by application: component ids are unique, and a component moved to another
+// application keeps its id, so its recorded state, drift checks, and locks
+// follow it — the runs themselves stay in the old application's history.
+func (s *Service) assertComponentInApp(ctx context.Context, orgID, appID, componentID uuid.UUID) error {
+	ok, err := s.ent.Component.Query().
+		Where(component.OrganizationID(orgID), component.ApplicationID(appID), component.ID(componentID)).
+		Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return &ent.NotFoundError{}
+	}
+	return nil
+}
+
 // LatestSettledStep returns the most recent settled (succeeded or failed)
 // execution unit of an OpenTofu component — its plan or state-op unit
-// (authored id) or its apply unit (derived id), across every run action of
-// the application — or ent's NotFoundError when none has settled. The API
-// reads a failed step's logs for the state lock it could not acquire: a lock
-// is stuck only while the component's latest attempt still trips over it,
-// so the newest settled step is the one that decides. Org-scoped.
+// (authored id) or its apply unit (derived id), across every run action —
+// or ent's NotFoundError when none has settled. The API reads a failed
+// step's logs for the state lock it could not acquire: a lock is stuck only
+// while the component's latest attempt still trips over it, so the newest
+// settled step is the one that decides. The component must belong to the
+// org-scoped application; its history follows it across a move.
 func (s *Service) LatestSettledStep(ctx context.Context, orgID, appID, componentID uuid.UUID) (*ent.ComponentRun, error) {
+	if err := s.assertComponentInApp(ctx, orgID, appID, componentID); err != nil {
+		return nil, err
+	}
 	return s.ent.ComponentRun.Query().
 		Where(
 			componentrun.OrganizationID(orgID),
 			componentrun.ComponentIDIn(deriveApplyID(componentID), componentID),
 			componentrun.StatusIn(componentrun.StatusSucceeded, componentrun.StatusFailed),
 			componentrun.FinishedAtNotNil(),
-			componentrun.HasWorkflowRunWith(
-				workflowrun.OrganizationID(orgID),
-				workflowrun.ApplicationID(appID),
-			),
 		).
 		Order(ent.Desc(componentrun.FieldFinishedAt)).
 		First(ctx)
@@ -934,8 +971,12 @@ func (s *Service) LatestSettledStep(ctx context.Context, orgID, appID, component
 // OpenTofu component — the plan unit (authored id) of the latest succeeded
 // or failed `drift` run — or ent's NotFoundError when the component has never
 // been drift-checked. Its logs carry the refresh-only plan the API parses for
-// the drift verdict. Org-scoped like every run read.
+// the drift verdict. The component must belong to the org-scoped
+// application; its history follows it across a move.
 func (s *Service) LatestDriftCheck(ctx context.Context, orgID, appID, componentID uuid.UUID) (*ent.ComponentRun, error) {
+	if err := s.assertComponentInApp(ctx, orgID, appID, componentID); err != nil {
+		return nil, err
+	}
 	return s.ent.ComponentRun.Query().
 		Where(
 			componentrun.OrganizationID(orgID),
@@ -943,7 +984,6 @@ func (s *Service) LatestDriftCheck(ctx context.Context, orgID, appID, componentI
 			componentrun.StatusIn(componentrun.StatusSucceeded, componentrun.StatusFailed),
 			componentrun.HasWorkflowRunWith(
 				workflowrun.OrganizationID(orgID),
-				workflowrun.ApplicationID(appID),
 				workflowrun.ActionEQ(workflowrun.ActionDrift),
 			),
 		).

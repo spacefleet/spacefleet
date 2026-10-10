@@ -21,6 +21,14 @@ export interface StageViewStage {
   components: StageViewComponent[];
 }
 
+// The product name of each component type, for headings ("OpenTofu", not the
+// API's "terraform").
+export const COMPONENT_TYPE_LABELS: Record<ComponentType, string> = {
+  helm: "Helm",
+  manifest: "Manifest",
+  terraform: "OpenTofu",
+};
+
 // componentSummary is the one-line "where does this go" under a component's
 // name: the deploy target for helm (cluster / namespace) and manifest
 // (cluster), the module path for OpenTofu. Empty when nothing is set yet.

@@ -23,6 +23,7 @@ import (
 	"github.com/spacefleet/spacefleet/ent/tofustateversion"
 	"github.com/spacefleet/spacefleet/ent/workflowrun"
 	"github.com/spacefleet/spacefleet/lib/secrets"
+	"github.com/spacefleet/spacefleet/lib/testsupport"
 	"github.com/spacefleet/spacefleet/lib/tofustate"
 )
 
@@ -384,4 +385,115 @@ func TestTofuStateLockContention(t *testing.T) {
 	if won != 1 || locked != racers-1 {
 		t.Fatalf("won %d, locked %d; want exactly one winner and %d refusals", won, locked, racers-1)
 	}
+}
+
+// TestDownloadComponentState: an editor downloads the current version of a
+// component's managed state as the raw file, named after the application and
+// the component and marked no-store; the state view carries the version's
+// metadata to everyone (even before any apply is recorded); a viewer can't
+// download; nothing written, another org, and another application are 404s.
+func TestDownloadComponentState(t *testing.T) {
+	f := newStateFixture(t)
+	h := f.h.handler
+	ctx := context.Background()
+	editorTok := "editor"
+	if _, err := f.h.client.Component.Create().
+		SetID(f.component).SetOrganizationID(f.orgID).SetApplicationID(f.appID).
+		SetStageID(testsupport.Stage(t, f.h.client, f.orgID, f.appID)).
+		SetName("infra").SetType("terraform").Save(ctx); err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	viewer, err := f.h.client.User.Create().SetOidcSubject("viewer").SetEmail("viewer@test.local").Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.h.client.Membership.Create().
+		SetOrganizationID(f.orgID).SetUserID(viewer.ID).SetRole(membership.RoleViewer).Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	base := "/api/applications/" + f.appID.String() + "/components/" + f.component.String() + "/state"
+	get := func(path, token string, org uuid.UUID) *httptest.ResponseRecorder {
+		return testReq{method: http.MethodGet, path: path, token: token, orgID: org.String()}.do(t, h)
+	}
+
+	// Nothing written yet: no download, and no state view either.
+	if rec := get(base+"/download", editorTok, f.orgID); rec.Code != http.StatusNotFound {
+		t.Fatalf("download before any write: %d, want 404", rec.Code)
+	}
+	if rec := get(base, editorTok, f.orgID); rec.Code != http.StatusNotFound {
+		t.Fatalf("state view before any write: %d, want 404", rec.Code)
+	}
+
+	// An apply step writes two versions.
+	apply := f.step(t)
+	tok := f.token(t, apply, tofustate.ScopeWrite)
+	if rec := stateReq(t, h, http.MethodPost, f.path()+"/lock", tok, lockBody("l")); rec.Code != http.StatusOK {
+		t.Fatalf("lock: %d %s", rec.Code, rec.Body)
+	}
+	for serial, marker := range []string{"first", "second"} {
+		if rec := stateReq(t, h, http.MethodPost, f.path()+"?ID=l", tok, stateBody("lin", serial+1, marker)); rec.Code != http.StatusOK {
+			t.Fatalf("write %d: %d %s", serial+1, rec.Code, rec.Body)
+		}
+	}
+	current := stateBody("lin", 2, "second")
+
+	rec := get(base+"/download", editorTok, f.orgID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("editor download: %d %s", rec.Code, rec.Body)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), current) {
+		t.Errorf("downloaded %s, want the current version %s", rec.Body, current)
+	}
+	if got, want := rec.Header().Get("Content-Disposition"), `attachment; filename="web-infra.tfstate"`; got != want {
+		t.Errorf("Content-Disposition = %q, want %q", got, want)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+
+	// The state view, before any apply is recorded, carries the version — for
+	// a viewer too (metadata only).
+	for _, who := range []string{editorTok, "viewer"} {
+		rec := get(base, who, f.orgID)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s state view: %d %s", who, rec.Code, rec.Body)
+		}
+		var view ComponentState
+		if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
+			t.Fatal(err)
+		}
+		if view.RunId != nil || view.ManagedState == nil || view.ManagedState.Version != 2 || view.ManagedState.Serial != 2 ||
+			view.ManagedState.SizeBytes != int64(len(current)) || view.ManagedState.RunId == nil || *view.ManagedState.RunId != f.runID {
+			t.Errorf("%s state view = %+v, want only managed_state at version 2", who, view)
+		}
+	}
+
+	// A viewer can't download (state holds secrets).
+	if rec := get(base+"/download", "viewer", f.orgID); rec.Code != http.StatusForbidden {
+		t.Errorf("viewer download: %d, want 403", rec.Code)
+	}
+	// Another org's editor, and the same component id under another of
+	// this org's applications, find nothing.
+	otherTok, otherOrg := f.h.member("other", membership.RoleEditor)
+	if rec := get(base+"/download", otherTok, otherOrg); rec.Code != http.StatusNotFound {
+		t.Errorf("cross-org download: %d, want 404", rec.Code)
+	}
+	app2, err := f.h.client.Application.Create().
+		SetOrganizationID(f.orgID).SetName("api").SetRunnerClusterID(mustRunner(t, f)).Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := get("/api/applications/"+app2.ID.String()+"/components/"+f.component.String()+"/state/download", editorTok, f.orgID); rec.Code != http.StatusNotFound {
+		t.Errorf("other application: %d, want 404", rec.Code)
+	}
+}
+
+// mustRunner returns the fixture application's runner cluster.
+func mustRunner(t *testing.T, f *stateFixture) uuid.UUID {
+	t.Helper()
+	app, err := f.h.client.Application.Get(context.Background(), f.appID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return app.RunnerClusterID
 }

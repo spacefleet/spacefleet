@@ -32,3 +32,17 @@ func TestTofuStateUnconfigured(t *testing.T) {
 		}
 	}
 }
+
+// TestStateFilename: a downloaded state is named "<app>-<component>.tfstate",
+// and anything that would need escaping in the header becomes a dash.
+func TestStateFilename(t *testing.T) {
+	for _, tc := range []struct{ app, comp, want string }{
+		{"web", "infra", "web-infra.tfstate"},
+		{"web", "5f0c2b3e-1d2a-4c55-9a77-3c2e8f6b1d00", "web-5f0c2b3e-1d2a-4c55-9a77-3c2e8f6b1d00.tfstate"},
+		{`a"b`, "c\\d e", "a-b-c-d-e.tfstate"},
+	} {
+		if got := stateFilename(tc.app, tc.comp); got != tc.want {
+			t.Errorf("stateFilename(%q, %q) = %q, want %q", tc.app, tc.comp, got, tc.want)
+		}
+	}
+}

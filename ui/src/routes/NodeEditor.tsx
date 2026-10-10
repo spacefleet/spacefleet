@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router";
-import { ArrowLeft, Save, Trash2 } from "lucide-react";
+import { Navigate, useNavigate, useParams, useSearchParams } from "react-router";
+import { ArrowLeft, Save } from "lucide-react";
 import { useWorkflowDraft } from "../contexts/WorkflowDraftContext";
 import type { components } from "../api/schema";
 import {
@@ -15,8 +15,7 @@ import type {
   OutputKeyInfo,
   RefContext,
 } from "../components/workflow/refAutocomplete";
-import { VariablesEditor } from "../components/VariablesEditor";
-import { ComponentStatePanel } from "../components/workflow/ComponentStatePanel";
+import { COMPONENT_TYPE_LABELS } from "../components/workflow/stageView";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type ComponentType = components["schemas"]["ComponentType"];
@@ -50,13 +49,15 @@ function componentsEqual(a: EditableComponent, b: EditableComponent): boolean {
   return ak.every((k) => a.config[k] === b.config[k]);
 }
 
-// NodeEditor is the full-page editor for one workflow component, reached at
-// /applications/:appId/workflow/nodes/:nodeId. It edits a local working copy of
-// the component — edits do NOT touch the shared workflow draft until the user
-// clicks Save. Cancel (or Back) discards those edits; for a freshly added
-// component, which is provisional until saved, Cancel removes it from the draft
-// entirely. Viewers see the fields read-only with no Save/Cancel. A Back link
-// returns to the stage builder through the router (never raw history).
+// NodeEditor is the full-page editor for one workflow component (its page's
+// Manage button), reached at /applications/:appId/workflow/nodes/:nodeId/edit —
+// and where a component is created, with ?new=<type>&stage=<id>. It edits a
+// local working copy of the component — edits do NOT touch the shared workflow
+// draft until the user clicks Save. Save and Cancel (or Back) return to the
+// component's page; for a freshly added component, which is provisional until
+// saved, they return to the stage builder, and Cancel removes it from the draft
+// entirely. Viewers are sent to the component's page. Navigation goes through
+// the router (never raw history).
 export function NodeEditor() {
   const { appId = "", nodeId = "" } = useParams();
   const [searchParams] = useSearchParams();
@@ -80,7 +81,6 @@ export function NodeEditor() {
     ensureProvisional,
     commitComponent,
     discardNewNode,
-    deleteComponent,
   } = useWorkflowDraft();
 
   // The committed component as it currently lives in the shared draft, and the
@@ -104,9 +104,8 @@ export function NodeEditor() {
   // keyed on having-seeded-once, because a legitimate re-seed is required when a
   // draft reload wipes the provisional component — the org context loads
   // asynchronously and can trigger a second workflow load that resets the draft
-  // right after we seed, so the effect must re-seed then. cancel()/removeNode()
-  // set this before they discard; a page reload remounts the editor fresh,
-  // resetting it.
+  // right after we seed, so the effect must re-seed then. cancel() sets this
+  // before it discards; a page reload remounts the editor fresh, resetting it.
   const newType = searchParams.get("new");
   const newStage = searchParams.get("stage");
   const discardedRef = useRef(false);
@@ -130,9 +129,13 @@ export function NodeEditor() {
     }
   }, [committed, nodeId]);
 
-  function backToWorkflow() {
-    // Relative navigation up to the builder (index of the workflow layout).
-    navigate("..");
+  const workflowPath = `/applications/${appId}/workflow`;
+  const componentPath = `${workflowPath}/nodes/${nodeId}`;
+
+  // leave returns to the component's page — or, for a component being created
+  // (which has no page until the workflow saves it), to the stage builder.
+  function leave() {
+    navigate(isNew ? workflowPath : componentPath);
   }
 
   // Cancel/Back: drop a provisional component entirely; for a committed one just
@@ -144,23 +147,13 @@ export function NodeEditor() {
       discardedRef.current = true;
       discardNewNode(nodeId);
     }
-    backToWorkflow();
+    leave();
   }
 
   function saveNode() {
     if (!draft) return;
     commitComponent(draft);
-    backToWorkflow();
-  }
-
-  function removeNode() {
-    if (isNew) {
-      discardedRef.current = true;
-      discardNewNode(nodeId);
-    } else {
-      deleteComponent(nodeId);
-    }
-    backToWorkflow();
+    leave();
   }
 
   const view = draft ?? committed;
@@ -168,7 +161,7 @@ export function NodeEditor() {
     draft != null && committed != null && !componentsEqual(draft, committed);
   // A provisional component always has something to save (it isn't persisted
   // yet).
-  const hasUnsaved = canEdit && (dirty || isNew);
+  const hasUnsaved = dirty || isNew;
 
   // The upstream OpenTofu components whose outputs this component may
   // reference — those in an earlier stage — feeding the insert-a-reference
@@ -218,6 +211,8 @@ export function NodeEditor() {
     [renamedFrom, stages, nodeId],
   );
 
+  if (!canEdit) return <Navigate to={componentPath} replace />;
+
   return (
     <div className="mx-auto flex max-w-4xl flex-col">
       <button
@@ -226,7 +221,7 @@ export function NodeEditor() {
         className="inline-flex w-fit items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to workflow
+        {isNew ? "Back to workflow" : "Back to component"}
       </button>
 
       {loading ? (
@@ -240,7 +235,7 @@ export function NodeEditor() {
           </p>
           <button
             type="button"
-            onClick={backToWorkflow}
+            onClick={() => navigate(workflowPath)}
             className="mt-2 text-sm font-medium text-neutral-300 hover:text-white"
           >
             Back to the workflow
@@ -248,38 +243,19 @@ export function NodeEditor() {
         </div>
       ) : (
         <>
-          <div className="mt-3 flex items-start justify-between gap-3 pb-4">
-            <div className="min-w-0">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-                {view.type} component
-                {placed && (
-                  <span className="ml-1 normal-case tracking-normal">
-                    · in stage {placed.index + 1}, {placed.stage.name}
-                  </span>
-                )}
-                {isNew && <span className="ml-1 text-neutral-500">· new</span>}
-              </p>
-              <h1 className="mt-0.5 truncate text-xl font-bold tracking-tight">
-                {view.name || "Edit component"}
-              </h1>
-            </div>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={removeNode}
-                className="inline-flex shrink-0 items-center gap-1.5 border border-red-500/40 px-3 py-1.5 text-sm text-red-300 hover:bg-red-500/10"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Delete component
-              </button>
-            )}
-          </div>
-
-          {!canEdit && (
-            <p className="mb-4 border border-neutral-800 bg-neutral-800/50 px-3 py-2 text-sm text-neutral-300">
-              You have view-only access to this workflow.
+          <div className="mt-3 pb-4">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+              {COMPONENT_TYPE_LABELS[view.type]} component
+              {placed && (
+                <span className="ml-1 normal-case tracking-normal">
+                  · in stage {placed.index + 1}, {placed.stage.name}
+                </span>
+              )}
             </p>
-          )}
+            <h1 className="mt-0.5 truncate text-xl font-bold tracking-tight">
+              {isNew ? "New component" : "Manage component"}
+            </h1>
+          </div>
 
           <div className="border border-neutral-800 bg-neutral-900 p-6">
             <ComponentFields
@@ -290,7 +266,6 @@ export function NodeEditor() {
               cloudCredentials={cloudCredentials}
               installations={installations}
               githubEnabled={githubEnabled}
-              disabled={!canEdit}
               upstreamOutputs={upstreamOutputs}
               refContext={refContext}
             />
@@ -309,63 +284,27 @@ export function NodeEditor() {
             </p>
           )}
 
-          {canEdit && (
-            <div className="mt-4 flex items-center justify-end gap-3">
-              <span className="mr-auto text-xs text-neutral-500">
-                {hasUnsaved ? "Unsaved changes" : "Saved to workflow"}
-              </span>
-              <button
-                type="button"
-                onClick={cancel}
-                className="inline-flex items-center gap-1.5 border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={saveNode}
-                disabled={!hasUnsaved}
-                className="inline-flex items-center gap-1.5 bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
-              >
-                <Save className="h-3.5 w-3.5" />
-                Save component
-              </button>
-            </div>
-          )}
-
-          {/* Component variables. These override the app-level variables of the
-              same name for this component's job, and write through their own
-              endpoints — so only once the component is saved; a new one gets
-              them from its page afterwards. */}
-          {!isNew && (
-            <div className="mt-6 border border-neutral-800 bg-neutral-900 p-4">
-              <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-                Variables
-              </h2>
-              <p className="mb-3 mt-1 text-xs text-neutral-400">
-                Passed to this component’s job as environment variables,
-                overriding any app-level variable of the same name. Saved
-                separately from the settings above. A sensitive value is sealed
-                and never shown again.
-              </p>
-              <VariablesEditor
-                scope={{ kind: "component", appId, componentId: nodeId }}
-                canEdit={canEdit}
-              />
-            </div>
-          )}
-
-          {/* An OpenTofu component's recorded state: the resources it manages
-              and its outputs, as of its last successful apply, plus — for an
-              editor — the guarded state operations. Only for a saved
-              component — a new one has no history. */}
-          {!isNew && draft?.type === "terraform" && (
-            <ComponentStatePanel
-              appId={appId}
-              componentId={nodeId}
-              canEdit={canEdit}
-            />
-          )}
+          <div className="mt-4 flex items-center justify-end gap-3">
+            <span className="mr-auto text-xs text-neutral-500">
+              {hasUnsaved ? "Unsaved changes" : "Saved to workflow"}
+            </span>
+            <button
+              type="button"
+              onClick={cancel}
+              className="inline-flex items-center gap-1.5 border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={saveNode}
+              disabled={!hasUnsaved}
+              className="inline-flex items-center gap-1.5 bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
+            >
+              <Save className="h-3.5 w-3.5" />
+              Save component
+            </button>
+          </div>
         </>
       )}
     </div>

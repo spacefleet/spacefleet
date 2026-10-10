@@ -16,6 +16,8 @@ import { ApplicationGroupDetail } from "./routes/ApplicationGroupDetail";
 import { WorkflowLayout } from "./routes/WorkflowLayout";
 import { WorkflowBuilder } from "./routes/WorkflowBuilder";
 import { NodeEditor } from "./routes/NodeEditor";
+import { ComponentDetail } from "./routes/ComponentDetail";
+import { ComponentVariables } from "./routes/ComponentVariables";
 import { WorkflowRuns } from "./routes/WorkflowRuns";
 import { WorkflowRunView } from "./routes/WorkflowRunView";
 import { RunsIndex } from "./routes/RunsIndex";
@@ -135,15 +137,21 @@ export function App() {
                 />
                 {/* Workflow builder: a layout route owning the in-memory draft
                     (so unsaved edits survive builder↔editor navigation), with the
-                    stage builder at the index and the full-page component editor
-                    under nodes/:nodeId. Listed before the ":appId" detail route
-                    so the "/workflow" segment isn't swallowed. */}
+                    stage builder at the index, a component's page under
+                    nodes/:nodeId, and its editor and variables beneath that.
+                    Listed before the ":appId" detail route so the "/workflow"
+                    segment isn't swallowed. */}
                 <Route
                   path="/applications/:appId/workflow"
                   element={<WorkflowLayout />}
                 >
                   <Route index element={<WorkflowBuilder />} />
-                  <Route path="nodes/:nodeId" element={<NodeEditor />} />
+                  <Route path="nodes/:nodeId" element={<ComponentDetail />} />
+                  <Route path="nodes/:nodeId/edit" element={<NodeEditor />} />
+                  <Route
+                    path="nodes/:nodeId/variables"
+                    element={<ComponentVariables />}
+                  />
                 </Route>
                 {/* Workflow run history (a CI-like list of runs). */}
                 <Route

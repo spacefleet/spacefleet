@@ -605,6 +605,18 @@ type (
 	}
 )
 
+// SetApplicationID sets the "application_id" field.
+func (u *ComponentUpsert) SetApplicationID(v uuid.UUID) *ComponentUpsert {
+	u.Set(component.FieldApplicationID, v)
+	return u
+}
+
+// UpdateApplicationID sets the "application_id" field to the value that was provided on create.
+func (u *ComponentUpsert) UpdateApplicationID() *ComponentUpsert {
+	u.SetExcluded(component.FieldApplicationID)
+	return u
+}
+
 // SetName sets the "name" field.
 func (u *ComponentUpsert) SetName(v string) *ComponentUpsert {
 	u.Set(component.FieldName, v)
@@ -823,9 +835,6 @@ func (u *ComponentUpsertOne) UpdateNewValues() *ComponentUpsertOne {
 		if _, exists := u.create.mutation.OrganizationID(); exists {
 			s.SetIgnore(component.FieldOrganizationID)
 		}
-		if _, exists := u.create.mutation.ApplicationID(); exists {
-			s.SetIgnore(component.FieldApplicationID)
-		}
 		if _, exists := u.create.mutation.CreatedAt(); exists {
 			s.SetIgnore(component.FieldCreatedAt)
 		}
@@ -858,6 +867,20 @@ func (u *ComponentUpsertOne) Update(set func(*ComponentUpsert)) *ComponentUpsert
 		set(&ComponentUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetApplicationID sets the "application_id" field.
+func (u *ComponentUpsertOne) SetApplicationID(v uuid.UUID) *ComponentUpsertOne {
+	return u.Update(func(s *ComponentUpsert) {
+		s.SetApplicationID(v)
+	})
+}
+
+// UpdateApplicationID sets the "application_id" field to the value that was provided on create.
+func (u *ComponentUpsertOne) UpdateApplicationID() *ComponentUpsertOne {
+	return u.Update(func(s *ComponentUpsert) {
+		s.UpdateApplicationID()
+	})
 }
 
 // SetName sets the "name" field.
@@ -1277,9 +1300,6 @@ func (u *ComponentUpsertBulk) UpdateNewValues() *ComponentUpsertBulk {
 			if _, exists := b.mutation.OrganizationID(); exists {
 				s.SetIgnore(component.FieldOrganizationID)
 			}
-			if _, exists := b.mutation.ApplicationID(); exists {
-				s.SetIgnore(component.FieldApplicationID)
-			}
 			if _, exists := b.mutation.CreatedAt(); exists {
 				s.SetIgnore(component.FieldCreatedAt)
 			}
@@ -1313,6 +1333,20 @@ func (u *ComponentUpsertBulk) Update(set func(*ComponentUpsert)) *ComponentUpser
 		set(&ComponentUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetApplicationID sets the "application_id" field.
+func (u *ComponentUpsertBulk) SetApplicationID(v uuid.UUID) *ComponentUpsertBulk {
+	return u.Update(func(s *ComponentUpsert) {
+		s.SetApplicationID(v)
+	})
+}
+
+// UpdateApplicationID sets the "application_id" field to the value that was provided on create.
+func (u *ComponentUpsertBulk) UpdateApplicationID() *ComponentUpsertBulk {
+	return u.Update(func(s *ComponentUpsert) {
+		s.UpdateApplicationID()
+	})
 }
 
 // SetName sets the "name" field.

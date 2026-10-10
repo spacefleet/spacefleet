@@ -673,7 +673,7 @@ func (w *WorkflowRunWorker) planHelm(ctx context.Context, app *ent.Application, 
 	renderer := &helmRenderer{
 		node: node, action: action, runID: runID,
 		vars:    mergeVars(resolved.Env, resolved.SecretEnv),
-		outputs: w.outputsLookup(ctx, app.OrganizationID, runID, byID),
+		outputs: w.outputsLookup(ctx, app.OrganizationID, app.ID, runID, byID),
 	}
 	renderedValues, _, err := renderer.render(helmFieldValues, node.Config[helmConfigValues], true)
 	if err != nil {

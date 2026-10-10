@@ -36,10 +36,10 @@ func (Variable) Fields() []ent.Field {
 	return []ent.Field{
 		field.UUID("id", uuid.UUID{}).Default(uuid.New),
 		// FK columns bound to the edges below; explicit so the names match the
-		// hand-written migration. Both immutable: a variable belongs to one org and
-		// one application for its lifetime.
+		// hand-written migration. A variable belongs to one org for its lifetime;
+		// a component variable moves with its component to another application.
 		field.UUID("organization_id", uuid.UUID{}).Immutable(),
-		field.UUID("application_id", uuid.UUID{}).Immutable(),
+		field.UUID("application_id", uuid.UUID{}),
 		// The component this variable scopes to, or nil for an app-level variable.
 		// Immutable and intentionally NOT an edge (no FK) — see the type comment.
 		field.UUID("component_id", uuid.UUID{}).Optional().Nillable().Immutable(),
@@ -71,8 +71,7 @@ func (Variable) Edges() []ent.Edge {
 		edge.To("application", Application.Type).
 			Field("application_id").
 			Unique().
-			Required().
-			Immutable(),
+			Required(),
 	}
 }
 

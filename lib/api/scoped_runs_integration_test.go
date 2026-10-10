@@ -88,7 +88,8 @@ func TestStartComponentRun(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("get run got %d\n%s", rec.Code, rec.Body.String())
 	}
-	if body := rec.Body.String(); !strings.Contains(body, `"scope":{"component_id":"`+infra.ID.String()+`","component_name":"infra","targets":["aws_instance.web"]}`) {
+	// A run from before scopes recorded the component's type was OpenTofu.
+	if body := rec.Body.String(); !strings.Contains(body, `"scope":{"component_id":"`+infra.ID.String()+`","component_name":"infra","component_type":"terraform","targets":["aws_instance.web"]}`) {
 		t.Errorf("run detail lacks the scope:\n%s", body)
 	}
 	rec = testReq{method: http.MethodGet, path: "/api/applications/" + app.ID.String() + "/runs/" + whole.ID.String(), token: viewerTok, orgID: orgID.String()}.do(t, h.handler)

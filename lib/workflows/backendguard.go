@@ -11,7 +11,6 @@ import (
 	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/ent/component"
 	"github.com/spacefleet/spacefleet/ent/componentrun"
-	"github.com/spacefleet/spacefleet/ent/workflowrun"
 )
 
 // ErrBackendChange is returned by a workflow save that would move an
@@ -64,7 +63,7 @@ func (s *Service) checkBackendChanges(ctx context.Context, orgID, appID uuid.UUI
 		if !ok || old == n.Config[terraformConfigBackend] {
 			continue
 		}
-		manages, err := s.managesResources(ctx, orgID, appID, n.ID)
+		manages, err := s.managesResources(ctx, orgID, n.ID)
 		if err != nil {
 			return err
 		}
@@ -79,28 +78,36 @@ func (s *Service) checkBackendChanges(ctx context.Context, orgID, appID uuid.UUI
 }
 
 // managesResources reports whether an OpenTofu component's latest recorded
-// state (from a succeeded apply or state operation of this application)
-// still lists resources. A record whose inventory was not captured counts
-// as managing resources — the cautious answer.
-func (s *Service) managesResources(ctx context.Context, orgID, appID, componentID uuid.UUID) (bool, error) {
+// state (from a succeeded apply or state operation) still lists resources.
+// A record whose inventory was not captured counts as managing resources —
+// the cautious answer. The history is read by organization and component
+// id, not application, so it follows a component moved between
+// applications: a guard must never wave a change through just because the
+// component's runs happened under its old application.
+func (s *Service) managesResources(ctx context.Context, orgID, componentID uuid.UUID) (bool, error) {
+	cr, err := s.latestRecordedState(ctx, orgID, componentID)
+	if err != nil || cr == nil {
+		return false, err
+	}
+	return cr.Resources != emptyTofuResources, nil
+}
+
+// latestRecordedState returns the component run that last recorded an
+// OpenTofu component's state (a succeeded apply or state operation that
+// captured outputs or an inventory), across the organization — or nil when
+// nothing was ever recorded.
+func (s *Service) latestRecordedState(ctx context.Context, orgID, componentID uuid.UUID) (*ent.ComponentRun, error) {
 	cr, err := s.ent.ComponentRun.Query().
 		Where(
 			componentrun.OrganizationID(orgID),
 			componentrun.ComponentIDIn(deriveApplyID(componentID), componentID),
 			componentrun.StatusEQ(componentrun.StatusSucceeded),
 			componentrun.Or(componentrun.OutputsNEQ(""), componentrun.ResourcesNEQ("")),
-			componentrun.HasWorkflowRunWith(
-				workflowrun.OrganizationID(orgID),
-				workflowrun.ApplicationID(appID),
-			),
 		).
 		Order(ent.Desc(componentrun.FieldFinishedAt)).
 		First(ctx)
 	if ent.IsNotFound(err) {
-		return false, nil
+		return nil, nil
 	}
-	if err != nil {
-		return false, err
-	}
-	return cr.Resources != emptyTofuResources, nil
+	return cr, err
 }

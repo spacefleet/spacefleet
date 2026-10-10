@@ -72,10 +72,11 @@ func (Component) Fields() []ent.Field {
 	return []ent.Field{
 		field.UUID("id", uuid.UUID{}).Default(uuid.New),
 		// FK columns bound to the edges below; explicit so the column names match
-		// the hand-written migration. Both immutable: a component belongs to one org
-		// and one application for its lifetime.
+		// the hand-written migration. A component belongs to one org for its
+		// lifetime; it can move to another of the org's applications (keeping its
+		// id, so what is keyed by the id follows it — see workflows.MoveComponent).
 		field.UUID("organization_id", uuid.UUID{}).Immutable(),
-		field.UUID("application_id", uuid.UUID{}).Immutable(),
+		field.UUID("application_id", uuid.UUID{}),
 		field.String("name").NotEmpty(),
 		// The component type: a Helm release, a manifest apply, or an OpenTofu
 		// plan/apply. The enum lets the set grow without a migration for the common
@@ -137,8 +138,7 @@ func (Component) Edges() []ent.Edge {
 		edge.To("application", Application.Type).
 			Field("application_id").
 			Unique().
-			Required().
-			Immutable(),
+			Required(),
 		// Optional per-component target cluster override. RESTRICT in the migration:
 		// a cluster a component targets can't be deleted out from under it.
 		edge.To("target_cluster", Cluster.Type).

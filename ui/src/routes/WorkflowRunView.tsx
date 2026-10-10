@@ -36,6 +36,7 @@ import {
   RunStatusBadge,
 } from "../components/workflow/status";
 import {
+  isTofuScope,
   runActionLabel,
   runScopeDescription,
   runTriggerDescription,
@@ -59,6 +60,7 @@ type RunStatus = components["schemas"]["RunStatus"];
 type PolicyVerdict = components["schemas"]["PolicyVerdict"];
 type RunStage = components["schemas"]["RunStage"];
 type RunStageComponent = components["schemas"]["RunStageComponent"];
+type RunScope = components["schemas"]["RunScope"];
 
 // GraphSnapshot mirrors the backend's lib/workflows GraphSnapshot JSON written
 // to WorkflowRun.graph: the execution steps with their as-run config and the
@@ -353,6 +355,17 @@ export function WorkflowRunView() {
                 appId={appId}
                 appName={appName}
                 runId={runId}
+              />
+            )}
+          {canApprove &&
+            run.action === "uninstall" &&
+            run.status === "succeeded" &&
+            run.scope &&
+            !run.scope.targets?.length && (
+              <DeleteComponentAfterUninstall
+                appId={appId}
+                runId={runId}
+                scope={run.scope}
               />
             )}
 
@@ -1199,6 +1212,72 @@ function PolicyVerdictBox({ verdict }: { verdict: PolicyVerdict }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+// DeleteComponentAfterUninstall offers a component's delete once its own
+// destroy or uninstall has succeeded — the second half of the component
+// Delete dialog's "Destroy it first" / "Uninstall it first". Shown only while
+// this run is still the application's latest (after a later deploy the offer
+// would be wrong) and the component is still in the workflow. The delete
+// itself happens on the component's page, with the dialog opened past its
+// question.
+function DeleteComponentAfterUninstall({
+  appId,
+  runId,
+  scope,
+}: {
+  appId: string;
+  runId: string;
+  scope: RunScope;
+}) {
+  const navigate = useNavigate();
+  const [offer, setOffer] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [runs, workflow] = await Promise.all([
+        api.GET("/api/applications/{id}/runs", {
+          params: { path: { id: appId } },
+        }),
+        api.GET("/api/applications/{id}/workflow", {
+          params: { path: { id: appId } },
+        }),
+      ]);
+      if (cancelled) return;
+      const latest = runs.data?.runs?.[0]?.id === runId;
+      const present = (workflow.data?.stages ?? []).some((st) =>
+        st.components.some((c) => c.id === scope.component_id),
+      );
+      setOffer(latest && present);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [appId, runId, scope.component_id]);
+
+  if (!offer) return null;
+  const done = isTofuScope(scope) ? "destroyed" : "uninstalled";
+  return (
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border border-neutral-800 bg-neutral-900 px-4 py-3">
+      <p className="text-sm text-neutral-300">
+        <span className="font-medium">{scope.component_name}</span> has been{" "}
+        {done}. You can delete the component now.
+      </p>
+      <button
+        type="button"
+        onClick={() =>
+          navigate(`/applications/${appId}/workflow/nodes/${scope.component_id}`, {
+            state: { deleteAfterUninstall: true },
+          })
+        }
+        className="inline-flex items-center gap-1.5 border border-red-500/40 px-3 py-1.5 text-sm text-red-300 hover:bg-red-500/10"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        Delete component
+      </button>
     </div>
   );
 }

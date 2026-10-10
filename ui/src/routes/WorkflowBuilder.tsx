@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
-  AlertTriangle,
   ArrowLeft,
   FileCode,
   Layers,
   Package,
   Plus,
   Save,
-  X,
 } from "lucide-react";
 import {
   useWorkflowDraft,
@@ -36,9 +34,9 @@ interface DropTarget {
 // components in a stage run in parallel, and each stage starts once the one
 // before it has finished. Editors rename, reorder, add, and delete stages, add
 // components to a stage, and drag components within or between stages.
-// Clicking a component opens the full-page editor, which is also where it's
-// deleted. Every change auto-saves the whole workflow with one PUT. Runs are
-// started (and their history viewed) from the application page, not here.
+// Clicking a component opens its page, where it's managed and deleted. Every
+// change auto-saves the whole workflow with one PUT. Runs are started (and
+// their history viewed) from the application page, not here.
 export function WorkflowBuilder() {
   const { appId = "" } = useParams();
   const navigate = useNavigate();
@@ -199,7 +197,9 @@ export function WorkflowBuilder() {
                   onMove={(delta) => moveStage(stage.id, delta)}
                   onDelete={() => deleteStage(stage.id)}
                   onAdd={(type) => addComponent(stage.id, type)}
-                  onOpen={(id) => navigate(`nodes/${id}`)}
+                  onOpen={(id) =>
+                    navigate(isProvisional(id) ? `nodes/${id}/edit` : `nodes/${id}`)
+                  }
                 />
               </div>
             ))}
@@ -262,7 +262,6 @@ function StageColumn({
   onAdd: (type: EditableComponent["type"]) => void;
   onOpen: (id: string) => void;
 }) {
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const count = stage.components.length;
   const indicatorAt =
     dragId && dropTarget?.stageId === stage.id ? dropTarget.index : null;
@@ -307,27 +306,20 @@ function StageColumn({
                 disabled: index === stageCount - 1,
                 onSelect: () => onMove(1),
               },
+              // Only an empty stage can go: each component's own Delete asks
+              // what happens to what it deployed, which deleting the stage
+              // would skip.
               {
                 label: "Delete stage",
                 danger: true,
-                onSelect: () =>
-                  count > 0 ? setConfirmingDelete(true) : onDelete(),
+                disabled: count > 0,
+                hint: count > 0 ? "Delete or move its components first" : undefined,
+                onSelect: onDelete,
               },
             ]}
           />
         )}
       </header>
-
-      {confirmingDelete && (
-        <DeleteStageDialog
-          stage={stage}
-          onClose={() => setConfirmingDelete(false)}
-          onConfirm={() => {
-            setConfirmingDelete(false);
-            onDelete();
-          }}
-        />
-      )}
 
       <div
         data-testid={`stage-drop-${stage.id}`}
@@ -400,93 +392,6 @@ function StageColumn({
         </div>
       )}
     </section>
-  );
-}
-
-// DeleteStageDialog confirms deleting a stage that still holds components,
-// since they're deleted with it. (An empty stage is deleted without asking.)
-function DeleteStageDialog({
-  stage,
-  onConfirm,
-  onClose,
-}: {
-  stage: DraftStage;
-  onConfirm: () => void;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const count = stage.components.length;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="delete-stage-title"
-        className="mt-12 w-full max-w-lg border border-neutral-800 bg-neutral-900 shadow-lg"
-      >
-        <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
-          <h2
-            id="delete-stage-title"
-            className="inline-flex min-w-0 items-center gap-2 text-lg font-semibold tracking-tight"
-          >
-            <AlertTriangle className="h-5 w-5 shrink-0 text-red-400" />
-            <span className="truncate">Delete {stage.name}</span>
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-neutral-500 hover:text-neutral-300"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="space-y-3 px-5 py-4 text-sm text-neutral-300">
-          <p>
-            This removes the stage and its {count}{" "}
-            {count === 1 ? "component" : "components"} from the workflow,
-            along with their variables:
-          </p>
-          <ul className="list-disc space-y-1 pl-5">
-            {stage.components.map((c) => (
-              <li key={c.id} className="font-medium text-neutral-100">
-                {c.name || "(unnamed)"}
-              </li>
-            ))}
-          </ul>
-          <p className="text-neutral-400">
-            Anything they deployed stays as it is, and Spacefleet stops
-            managing it.
-          </p>
-        </div>
-
-        <div className="flex items-center justify-end gap-3 border-t border-neutral-800 px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-sm text-neutral-400 hover:text-neutral-100"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-          >
-            Delete stage
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 

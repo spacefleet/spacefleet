@@ -707,6 +707,54 @@ func TestPlanHelmComponentOutputsFailures(t *testing.T) {
 	}
 }
 
+// TestPlanHelmComponentOutputsOutsideRun: a component-scoped uninstall runs a
+// Helm component alone, so a component it references isn't in the snapshot —
+// the reference resolves by name against the application's OpenTofu
+// components, from that component's latest recorded outputs. No record is
+// the deploy-first failure; no such component the run-scoped one.
+func TestPlanHelmComponentOutputsOutsideRun(t *testing.T) {
+	t.Parallel()
+	app := &ent.Application{ID: uuid.New(), OrganizationID: uuid.New(), RunnerClusterID: uuid.New()}
+	infraID := uuid.New()
+	alone := tofuSnapshotByID() // just the helm node's run: no OpenTofu units
+	byName := func(_ context.Context, orgID, appID uuid.UUID, name string) (uuid.UUID, error) {
+		if orgID != app.OrganizationID || appID != app.ID {
+			t.Errorf("looked up in org %s app %s, want the run's", orgID, appID)
+		}
+		if name == "infra" {
+			return infraID, nil
+		}
+		return uuid.Nil, &ent.NotFoundError{}
+	}
+
+	w := helmOutputsWorker(map[uuid.UUID]string{
+		deriveApplyID(infraID): `{"namespace": {"value": "team-a", "type": "string", "sensitive": false}, "replicas": {"value": 2, "type": "number", "sensitive": false}}`,
+	})
+	w.componentByName = byName
+	req, err := w.planHelm(context.Background(), app, helmOutputsRefNode(), ActionUninstall, false, "", uuid.New(), alone)
+	if err != nil {
+		t.Fatalf("planHelm: %v", err)
+	}
+	if !strings.Contains(req.Spec.Script, "-n 'team-a'") {
+		t.Errorf("script missing the namespace from the recorded outputs\n---\n%s", req.Spec.Script)
+	}
+
+	w = helmOutputsWorker(nil)
+	w.componentByName = byName
+	_, err = w.planHelm(context.Background(), app, helmOutputsRefNode(), ActionUninstall, false, "", uuid.New(), alone)
+	if err == nil || !strings.Contains(err.Error(), `component "infra" has no recorded outputs — deploy it successfully first`) {
+		t.Errorf("no record: got %v, want the deploy-first message", err)
+	}
+
+	node := helmOutputsRefNode()
+	node.Config[helmConfigValues] = "ns: ${{ components.bogus.outputs.namespace }}"
+	node.TargetNamespace = "apps"
+	_, err = w.planHelm(context.Background(), app, node, ActionUninstall, false, "", uuid.New(), alone)
+	if err == nil || !strings.Contains(err.Error(), `component "bogus" is not an OpenTofu component`) {
+		t.Errorf("no such component: got %v, want it named", err)
+	}
+}
+
 // TestPlanTofuHandoverFailure: a handover provision failure fails the planning
 // (the step would only fail later, worse — at the kubectl upsert after a full
 // plan), with the component named in the error.

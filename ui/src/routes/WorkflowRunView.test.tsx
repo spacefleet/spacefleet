@@ -1063,6 +1063,70 @@ describe("delete after uninstall", () => {
     expect(screen.queryByRole("button", { name: "Delete application" })).toBeNull();
   });
 
+  describe("a component's own uninstall", () => {
+    const componentUninstall = {
+      ...uninstallDetail,
+      scope: { component_id: compA, component_name: "release", component_type: "helm" },
+    };
+
+    function mockComponentUninstall(stillThere: boolean) {
+      mockApi.GET.mockImplementation((path: string) => {
+        if (path === "/api/applications/{id}/runs/{runId}")
+          return Promise.resolve({ data: componentUninstall, error: undefined });
+        if (path === "/api/applications/{id}/runs")
+          return Promise.resolve({ data: { runs: [{ id: "run-1" }] }, error: undefined });
+        if (path === "/api/applications/{id}/workflow")
+          return Promise.resolve({
+            data: {
+              stages: [
+                {
+                  id: "st-1",
+                  name: "Apps",
+                  components: stillThere ? [{ id: compA, name: "release" }] : [],
+                },
+              ],
+            },
+            error: undefined,
+          });
+        if (path === "/api/applications/{id}")
+          return Promise.resolve({ data: { id: "app-1", name: "web" }, error: undefined });
+        return Promise.resolve({ data: undefined, error: undefined });
+      });
+    }
+
+    function ComponentPage() {
+      const state = useLocation().state as { deleteAfterUninstall?: boolean } | null;
+      return <p>component page{state?.deleteAfterUninstall ? ", deleting" : ""}</p>;
+    }
+
+    it("offers the component's delete, on its page with the question answered", async () => {
+      mockComponentUninstall(true);
+      render(
+        <MemoryRouter initialEntries={["/applications/app-1/runs/run-1"]}>
+          <Routes>
+            <Route path="/applications/:appId/runs/:runId" element={<WorkflowRunView />} />
+            <Route path="/applications/:appId/workflow/nodes/:nodeId" element={<ComponentPage />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      expect(await screen.findByText(/has been uninstalled/)).toBeInTheDocument();
+      expect(screen.getAllByText("Component uninstall").length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "Delete application" })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Delete component" }));
+      expect(await screen.findByText("component page, deleting")).toBeInTheDocument();
+    });
+
+    it("makes no offer once the component is gone", async () => {
+      mockComponentUninstall(false);
+      renderRunView();
+      await screen.findByRole("navigation", { name: "Run steps" });
+      await waitFor(() =>
+        expect(mockApi.GET).toHaveBeenCalledWith("/api/applications/{id}/workflow", expect.anything()),
+      );
+      expect(screen.queryByRole("button", { name: "Delete component" })).toBeNull();
+    });
+  });
+
   it("makes no offer for a single component's destroy", async () => {
     mockUninstall(
       { ...uninstallDetail, scope: { component_id: compA, component_name: "release" } },

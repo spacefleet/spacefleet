@@ -14,17 +14,22 @@ import (
 	"github.com/spacefleet/spacefleet/lib/tofu"
 )
 
-// RunScope narrows a deploy or uninstall run to one OpenTofu component —
-// a per-component destroy, or a deploy of just that module — optionally to
-// a fixed list of resource addresses within it (`-target`). It is the
-// per-run argument stored on the run row (args) of a component-scoped run;
-// a run without one covers the whole workflow.
+// RunScope narrows a deploy or uninstall run to one component — a
+// per-component destroy or uninstall, or a deploy of just one OpenTofu
+// module — optionally to a fixed list of resource addresses within it
+// (`-target`, OpenTofu only). It is the per-run argument stored on the run
+// row (args) of a component-scoped run; a run without one covers the whole
+// workflow.
 type RunScope struct {
 	ComponentID uuid.UUID `json:"component_id"`
 	// ComponentName is the authored name at the time the run began, kept so
 	// the history reads without a lookup of a component that may since have
 	// been renamed or deleted.
 	ComponentName string `json:"component_name"`
+	// ComponentType is the component's type when the run began. Empty on
+	// runs from before Helm and Manifest components could run alone, which
+	// were all OpenTofu.
+	ComponentType string `json:"component_type,omitempty"`
 	// Targets is the resource addresses the run is limited to, rendered as
 	// -target flags on the plan; empty covers the whole component.
 	Targets []string `json:"targets,omitempty"`
@@ -35,26 +40,36 @@ type RunScope struct {
 // A handler maps it to 400.
 var ErrInvalidScopedAction = errors.New("workflows: a component-scoped run is a deploy or an uninstall")
 
-// BeginComponentRun opens a run limited to one OpenTofu component: a
-// per-component **destroy** (action uninstall — `tofu plan -destroy` then
-// the apply, gated) or a **targeted deploy** (action deploy, with the
-// targets as `-target` flags on the plan; an empty list deploys the whole
-// module). The component must belong to the org-scoped application (ent's
-// NotFoundError otherwise) and be an OpenTofu component (ErrNotTofuComponent
-// — a Helm or Manifest component has no state to target and may reference
-// other components' outputs that only a whole-workflow run resolves). The
-// targets are validated (tofu.ValidateTargets; failures wrap
-// tofu.ErrInvalidTarget, a 400), and the application's in-flight gate
-// applies exactly as for any run (ErrRunInFlight).
+// ErrScopedRunUnsupported is returned by BeginComponentRun for a run a
+// component of its type can't have on its own: a Helm or Manifest component
+// is only ever uninstalled alone, without targets — it is deployed with the
+// workflow. A handler maps it to 400.
+var ErrScopedRunUnsupported = errors.New("workflows: a Helm or Manifest component runs on its own only to be uninstalled, without targets")
+
+// BeginComponentRun opens a run limited to one component. For an OpenTofu
+// component that is a per-component **destroy** (action uninstall — `tofu
+// plan -destroy` then the apply, gated) or a **targeted deploy** (action
+// deploy, with the targets as `-target` flags on the plan; an empty list
+// deploys the whole module). A Helm or Manifest component can only be
+// **uninstalled** on its own (its release, or what was applied from its
+// path), with no targets (ErrScopedRunUnsupported otherwise). Its
+// `${{ components.* }}` references resolve against the referenced
+// components' latest recorded outputs, since they aren't in the run (see
+// outputsLookup). The component must belong to the org-scoped application
+// (ent's NotFoundError otherwise). The targets are validated
+// (tofu.ValidateTargets; failures wrap tofu.ErrInvalidTarget, a 400), and
+// the application's in-flight gate applies exactly as for any run
+// (ErrRunInFlight).
 //
-// The run is the component's usual plan → apply pair with no dependencies
-// on anything else. A destroy is **always** gated (the apply parks for
-// approval regardless of the component's own flag: the plan shows exactly
-// what is about to be destroyed); a deploy keeps the component's own gate
-// and approval policy. The scope is stored on the run row (args) as
-// RunScope JSON for the history, and the targets are folded into the
-// snapshot node's plan flags — the as-run config the planner already reads
-// — so the worker needs nothing beyond the snapshot.
+// The run is the component's usual step (an OpenTofu plan → apply pair)
+// with no dependencies on anything else. An uninstall is **always** gated
+// regardless of the component's own flag — for OpenTofu the apply parks
+// with the destroy plan to review; for Helm and Manifest the step parks
+// before it runs — while a deploy keeps the component's own gate and
+// approval policy. The scope is stored on the run row (args) as RunScope
+// JSON for the history, and the targets are folded into the snapshot node's
+// plan flags — the as-run config the planner already reads — so the worker
+// needs nothing beyond the snapshot.
 func (s *Service) BeginComponentRun(ctx context.Context, orgID, appID, componentID uuid.UUID, action string, targets []string) (*ent.WorkflowRun, error) {
 	if action != ActionDeploy && action != ActionUninstall {
 		return nil, ErrInvalidScopedAction
@@ -72,13 +87,13 @@ func (s *Service) BeginComponentRun(ctx context.Context, orgID, appID, component
 	if err != nil {
 		return nil, err
 	}
-	if string(comp.Type) != TypeTerraform {
-		return nil, ErrNotTofuComponent
+	if string(comp.Type) != TypeTerraform && (action != ActionUninstall || len(targets) > 0) {
+		return nil, ErrScopedRunUnsupported
 	}
 	if err := s.assertNoRunInFlight(ctx, orgID, appID); err != nil {
 		return nil, err
 	}
-	scope := RunScope{ComponentID: comp.ID, ComponentName: comp.Name, Targets: targets}
+	scope := RunScope{ComponentID: comp.ID, ComponentName: comp.Name, ComponentType: string(comp.Type), Targets: targets}
 	args, err := json.Marshal(scope)
 	if err != nil {
 		return nil, err
@@ -87,31 +102,21 @@ func (s *Service) BeginComponentRun(ctx context.Context, orgID, appID, component
 }
 
 // scopedSnapshot builds the snapshot of a component-scoped run from the live
-// component: the authored node alone (its as-run config, credentials, and
-// installation, with no dependencies — nothing else is in the run), with
-// the targets appended to its plan flags and the gate forced on for a
-// destroy, then expanded into its plan + apply units exactly as a
-// whole-workflow run would expand it (the same unit ids, so the apply's
-// recorded state lands under the component like any deploy). A pure
-// function (unit-testable).
+// component: the authored node alone (its as-run config, target,
+// credentials, and installation, with no dependencies — nothing else is in
+// the run), with the targets appended to an OpenTofu node's plan flags and
+// the gate forced on for an uninstall, then expanded exactly as a
+// whole-workflow run would expand it (for OpenTofu, the same plan + apply
+// unit ids, so the apply's recorded state lands under the component like
+// any deploy). A pure function (unit-testable).
 func scopedSnapshot(c *ent.Component, action string, targets []string) GraphSnapshot {
-	n := GraphNode{
-		ID:               c.ID,
-		ComponentID:      c.ID,
-		Name:             c.Name,
-		Type:             string(c.Type),
-		Config:           withTargets(nonNilStringMap(c.Config), targets),
-		DependsOn:        []uuid.UUID{},
-		RequiresApproval: c.RequiresApproval || action == ActionUninstall,
+	n := componentNode(c, uuid.Nil)
+	if n.Type == TypeTerraform {
+		n.Config = withTargets(n.Config, targets)
 	}
-	if !isZeroPolicy(c.ApprovalPolicy) {
-		p := c.ApprovalPolicy
-		n.ApprovalPolicy = &p
-	}
-	if c.GithubInstallationID != uuid.Nil {
-		id := c.GithubInstallationID
-		n.GitHubInstallationID = &id
-	}
+	// Alone in its run, a failure is simply the run's failure.
+	n.ContinueOnFailure = false
+	n.RequiresApproval = c.RequiresApproval || action == ActionUninstall
 	stageID, stages := snapshotStageOf(c)
 	n.StageID = stageID
 	return GraphSnapshot{Stages: stages, Nodes: expandExecutionNodes([]GraphNode{n}, action)}

@@ -11,6 +11,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkflowLayout } from "./WorkflowLayout";
 import { WorkflowBuilder } from "./WorkflowBuilder";
 import { NodeEditor } from "./NodeEditor";
+import { ComponentDetail } from "./ComponentDetail";
+import { ComponentVariables } from "./ComponentVariables";
 import { api } from "../api/client";
 
 vi.mock("../api/client", () => ({
@@ -80,7 +82,9 @@ function tree(entry = "/applications/app-1/workflow") {
       <Routes>
         <Route path="/applications/:appId/workflow" element={<WorkflowLayout />}>
           <Route index element={<WorkflowBuilder />} />
-          <Route path="nodes/:nodeId" element={<NodeEditor />} />
+          <Route path="nodes/:nodeId" element={<ComponentDetail />} />
+          <Route path="nodes/:nodeId/edit" element={<NodeEditor />} />
+          <Route path="nodes/:nodeId/variables" element={<ComponentVariables />} />
         </Route>
       </Routes>
     </MemoryRouter>
@@ -93,6 +97,8 @@ function renderWorkflow(entry?: string) {
 
 function defaultGets(stages: unknown[], cloudCreds: unknown[] = []) {
   mockApi.GET.mockImplementation((path: string) => {
+    if (path === "/api/applications/{id}")
+      return Promise.resolve({ data: { id: "app-1", name: "shop" }, error: undefined });
     if (path === "/api/applications/{id}/workflow")
       return Promise.resolve({ data: { stages }, error: undefined });
     if (path === "/api/clusters")
@@ -121,6 +127,14 @@ type SentStage = { id: string; name: string; components: SentComponent[] };
 function lastPut(): SentStage[] {
   const calls = mockApi.PUT.mock.calls;
   return (calls[calls.length - 1][1].body as { stages: SentStage[] }).stages;
+}
+
+// openEditor opens a saved component's editor the way a person does: its card
+// in the builder, then Manage on its page.
+async function openEditor(name: string) {
+  await userEvent.click(await screen.findByText(name));
+  await userEvent.click(await screen.findByRole("button", { name: "Manage" }));
+  await screen.findByRole("button", { name: /save component/i });
 }
 
 async function waitForPut() {
@@ -346,24 +360,186 @@ describe("WorkflowBuilder", () => {
     defaultGets(twoStages); // the server has no such component (never saved)
     const newId = "44444444-4444-4444-4444-444444444444";
     renderWorkflow(
-      `/applications/app-1/workflow/nodes/${newId}?new=terraform&stage=${STAGE_APPS}`,
+      `/applications/app-1/workflow/nodes/${newId}/edit?new=terraform&stage=${STAGE_APPS}`,
     );
     expect(await screen.findByDisplayValue("opentofu")).toBeInTheDocument();
     expect(screen.queryByText(/isn’t in this workflow/i)).not.toBeInTheDocument();
     expect(screen.getByText(/in stage 2, Apps/)).toBeInTheDocument();
     // It's a terraform component: the OpenTofu working-path field is present.
     expect(screen.getByText("Working path")).toBeInTheDocument();
-    // Variables wait until the component is saved — they're managed on its page.
-    expect(screen.queryByText(/Saved separately from the settings above/)).not.toBeInTheDocument();
   });
 
-  it("offers a saved component's variables on its page", async () => {
+  it("clicking a card opens the component's page: its settings, read-only", async () => {
+    defaultGets(twoStages);
+    renderWorkflow();
+    await userEvent.click(await screen.findByText("release"));
+
+    expect(await screen.findByRole("heading", { name: "release" })).toBeInTheDocument();
+    expect(screen.getByText(/Helm component/i)).toBeInTheDocument();
+    expect(screen.getByText("https://example.com")).toBeInTheDocument();
+    // The target cluster by name, and the release name it defaults to.
+    expect(screen.getByText("prod")).toBeInTheDocument();
+    expect(screen.getByText("shop-release")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Variables" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Manage" })).toBeInTheDocument();
+  });
+
+  it("Manage opens the editor, and Cancel goes back to the component's page", async () => {
+    defaultGets(twoStages);
+    renderWorkflow();
+    await openEditor("release");
+    expect(screen.getByRole("heading", { name: "Manage component" })).toBeInTheDocument();
+    expect(screen.getByDisplayValue("release")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(await screen.findByRole("heading", { name: "release" })).toBeInTheDocument();
+    expect(mockApi.PUT).not.toHaveBeenCalled();
+  });
+
+  it("offers a saved component's variables from its page", async () => {
     defaultGets(twoStages);
     renderWorkflow();
     await userEvent.click(await screen.findByText("infra"));
+    await userEvent.click(await screen.findByRole("button", { name: "Variables" }));
+
+    expect(await screen.findByRole("heading", { name: "Variables" })).toBeInTheDocument();
+    expect(screen.getByText(/overriding any app-level variable/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(mockApi.GET).toHaveBeenCalledWith(
+        "/api/applications/{id}/components/{componentId}/variables",
+        expect.objectContaining({
+          params: { path: { id: "app-1", componentId: infra.id } },
+        }),
+      ),
+    );
+  });
+
+  // openDelete opens a component's Delete dialog from its page.
+  async function openDelete(name: string) {
+    await userEvent.click(await screen.findByText(name));
+    await userEvent.click(await screen.findByRole("button", { name: `${name} actions` }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    return screen.getByRole("dialog", { name: `Delete ${name}` });
+  }
+
+  it("deletes a component left running, saving straight away", async () => {
+    defaultGets(twoStages);
+    renderWorkflow();
+    const dialog = await openDelete("apply");
+    // Nothing is preselected; leaving it running names what keeps running.
+    const del = within(dialog).getByRole("button", { name: "Delete component" });
+    expect(del).toBeDisabled();
+    await userEvent.click(within(dialog).getByRole("radio", { name: /leave it running/i }));
+    expect(within(dialog).getByText(/keeps running on its cluster/)).toBeInTheDocument();
+    await userEvent.click(del);
+
+    // Back on the builder, without it.
+    await screen.findByRole("region", { name: "Stage Apps" });
+    expect(screen.queryByText("apply")).not.toBeInTheDocument();
+    expect(lastPut()[1].components.map((c) => c.name)).toEqual(["release"]);
+    const body = mockApi.PUT.mock.calls[mockApi.PUT.mock.calls.length - 1][1].body;
+    expect(body.allow_state_deletion).toBeUndefined();
+  });
+
+  it("confirms the state deletion for an OpenTofu component on managed state", async () => {
+    const managed = { ...infra, config: { backend: "spacefleet", path: "envs/prod" } };
+    defaultGets([
+      { id: STAGE_INFRA, name: "Infrastructure", components: [managed] },
+      { id: STAGE_APPS, name: "Apps", components: [release, apply] },
+    ]);
+    renderWorkflow();
+    const dialog = await openDelete("infra");
+    await userEvent.click(within(dialog).getByRole("radio", { name: /leave it running/i }));
+    expect(within(dialog).getByText(/state is deleted/)).toBeInTheDocument();
     expect(
-      await screen.findByText(/Saved separately from the settings above/),
+      within(dialog).getByRole("button", { name: /download the state first/i }),
     ).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete component" }));
+
+    await screen.findByRole("region", { name: "Stage Apps" });
+    const body = mockApi.PUT.mock.calls[mockApi.PUT.mock.calls.length - 1][1].body;
+    expect(body.allow_state_deletion).toBe(true);
+    expect(body.stages[0].components).toEqual([]);
+  });
+
+  it("keeps the component and shows the server's refusal", async () => {
+    defaultGets(twoStages);
+    mockApi.PUT.mockResolvedValue({
+      data: undefined,
+      error: { code: "state_locked", message: "infra's managed state is locked" },
+    });
+    renderWorkflow();
+    const dialog = await openDelete("infra");
+    await userEvent.click(within(dialog).getByRole("radio", { name: /leave it running/i }));
+    // A cloud backend's state stays in the bucket.
+    expect(within(dialog).getByText("s3://my-state/prod/terraform.tfstate")).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete component" }));
+    expect(await within(dialog).findByText("infra's managed state is locked")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "infra" })).toBeInTheDocument();
+  });
+
+  it("starts a destroy of just the component instead of deleting it", async () => {
+    defaultGets(twoStages);
+    mockApi.POST.mockResolvedValue({ data: { id: "run-7" }, error: undefined });
+    render(
+      <MemoryRouter initialEntries={["/applications/app-1/workflow"]}>
+        <Routes>
+          <Route path="/applications/:appId/workflow" element={<WorkflowLayout />}>
+            <Route index element={<WorkflowBuilder />} />
+            <Route path="nodes/:nodeId" element={<ComponentDetail />} />
+          </Route>
+          <Route path="/applications/:appId/runs/:runId" element={<div>run view</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const dialog = await openDelete("infra");
+    await userEvent.click(within(dialog).getByRole("radio", { name: /destroy it first/i }));
+    await userEvent.click(within(dialog).getByRole("button", { name: /start destroy for approval/i }));
+    expect(await screen.findByText("run view")).toBeInTheDocument();
+    expect(mockApi.POST).toHaveBeenCalledWith(
+      "/api/applications/{id}/components/{componentId}/runs",
+      { params: { path: { id: "app-1", componentId: infra.id } }, body: { action: "uninstall" } },
+    );
+    expect(mockApi.PUT).not.toHaveBeenCalled();
+  });
+
+  it("opens the delete with its question answered after the component's uninstall", async () => {
+    defaultGets(twoStages);
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: `/applications/app-1/workflow/nodes/${release.id}`,
+            state: { deleteAfterUninstall: true },
+          },
+        ]}
+      >
+        <Routes>
+          <Route path="/applications/:appId/workflow" element={<WorkflowLayout />}>
+            <Route index element={<WorkflowBuilder />} />
+            <Route path="nodes/:nodeId" element={<ComponentDetail />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Delete release" });
+    expect(within(dialog).getByText(/its uninstall finished/i)).toBeInTheDocument();
+    expect(within(dialog).queryByRole("radio")).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete component" }));
+    await screen.findByRole("region", { name: "Stage Apps" });
+    expect(lastPut()[1].components.map((c) => c.name)).toEqual(["apply"]);
+  });
+
+  it("shows a viewer the component's page, never the editor", async () => {
+    org.role = "viewer";
+    defaultGets(twoStages);
+    renderWorkflow(`/applications/app-1/workflow/nodes/${release.id}/edit`);
+
+    expect(await screen.findByRole("heading", { name: "release" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Variables" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Manage" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /actions$/ })).not.toBeInTheDocument();
   });
 
   it("offers only OpenTofu components of earlier stages as output references", async () => {
@@ -371,8 +547,7 @@ describe("WorkflowBuilder", () => {
     renderWorkflow();
     // release (Apps) runs after infra (Infrastructure): infra's outputs are
     // offered under its values and its namespace.
-    await userEvent.click(await screen.findByText("release"));
-    await screen.findByRole("button", { name: /back to workflow/i });
+    await openEditor("release");
     expect(screen.getAllByRole("button", { name: "infra" })).toHaveLength(2);
   });
 
@@ -382,18 +557,8 @@ describe("WorkflowBuilder", () => {
       { id: STAGE_INFRA, name: "Infrastructure", components: [infra, release] },
     ]);
     renderWorkflow();
-    await userEvent.click(await screen.findByText("release"));
-    await screen.findByRole("button", { name: /back to workflow/i });
+    await openEditor("release");
     expect(screen.queryByRole("button", { name: "infra" })).not.toBeInTheDocument();
-  });
-
-  it("clicking a card opens the component editor", async () => {
-    defaultGets(twoStages);
-    renderWorkflow();
-    await userEvent.click(await screen.findByText("release"));
-    expect(await screen.findByRole("button", { name: /back to workflow/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /delete component/i })).toBeInTheDocument();
-    expect(screen.getByDisplayValue("release")).toBeInTheDocument();
   });
 
   it("adds a stage at the end", async () => {
@@ -442,31 +607,122 @@ describe("WorkflowBuilder", () => {
     expect(lastPut().map((s) => s.name)).toEqual(["Apps", "Infrastructure"]);
   });
 
-  it("asks before deleting a stage that has components, then removes them too", async () => {
+  describe("move", () => {
+    const apiStages = [
+      { id: "st-api", name: "Services", components: [{ ...apply, id: "c-api", name: "release" }] },
+    ];
+
+    function moveGets() {
+      defaultGets(twoStages);
+      const base = mockApi.GET.getMockImplementation() as (
+        path: string,
+        opts?: unknown,
+      ) => Promise<unknown>;
+      mockApi.GET.mockImplementation((path: string, opts?: { params?: { path?: { id?: string } } }) => {
+        if (path === "/api/applications")
+          return Promise.resolve({
+            data: [
+              { id: "app-1", name: "shop" },
+              { id: "app-2", name: "api" },
+            ],
+            error: undefined,
+          });
+        if (path === "/api/applications/{id}/workflow" && opts?.params?.path?.id === "app-2")
+          return Promise.resolve({ data: { stages: apiStages }, error: undefined });
+        return base(path, opts);
+      });
+    }
+
+    function moveTree() {
+      return (
+        <MemoryRouter initialEntries={[`/applications/app-1/workflow/nodes/${release.id}`]}>
+          <Routes>
+            <Route path="/applications/:appId/workflow" element={<WorkflowLayout />}>
+              <Route index element={<WorkflowBuilder />} />
+              <Route path="nodes/:nodeId" element={<ComponentDetail />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      );
+    }
+
+    async function openMove() {
+      await userEvent.click(await screen.findByRole("button", { name: "release actions" }));
+      await userEvent.click(screen.getByRole("menuitem", { name: /move/i }));
+      return screen.getByRole("dialog", { name: "Move release" });
+    }
+
+    it("moves a component into another application's new stage, renamed", async () => {
+      moveGets();
+      mockApi.POST.mockResolvedValue({ data: { ...release }, error: undefined });
+      render(moveTree());
+      const dialog = await openMove();
+      const appSelect = within(dialog).getByRole("combobox", { name: "Application" });
+      await waitFor(() => expect(within(appSelect).getByText("api")).toBeInTheDocument());
+      await userEvent.selectOptions(appSelect, "app-2");
+
+      // api already has a release: flagged, and the move held back.
+      expect(await within(dialog).findByText(/already has a component named release/)).toBeInTheDocument();
+      const submit = within(dialog).getByRole("button", { name: "Move component" });
+      expect(submit).toBeDisabled();
+      const nameInput = within(dialog).getByRole("textbox", { name: "Name" });
+      await userEvent.clear(nameInput);
+      await userEvent.type(nameInput, "web");
+      await userEvent.selectOptions(
+        within(dialog).getByRole("combobox", { name: "Stage" }),
+        "New stage at the end",
+      );
+      expect(within(dialog).getByRole("textbox", { name: "New stage name" })).toHaveValue("Stage 2");
+      expect(within(dialog).getByText(/run history stays with this application/)).toBeInTheDocument();
+      await userEvent.click(submit);
+
+      await waitFor(() =>
+        expect(mockApi.POST).toHaveBeenCalledWith(
+          "/api/applications/{id}/components/{componentId}/move",
+          {
+            params: { path: { id: "app-1", componentId: release.id } },
+            body: { application_id: "app-2", new_stage_name: "Stage 2", name: "web" },
+          },
+        ),
+      );
+      // Nothing was pending, so nothing was saved first.
+      expect(mockApi.PUT).not.toHaveBeenCalled();
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    });
+
+    it("lists this application too, and holds a move to where it already is", async () => {
+      moveGets();
+      render(moveTree());
+      const dialog = await openMove();
+      const stageSelect = within(dialog).getByRole("combobox", { name: "Stage" });
+      await waitFor(() =>
+        expect(within(stageSelect).getByText(/Apps \(where it is now\)/)).toBeInTheDocument(),
+      );
+      await userEvent.selectOptions(stageSelect, STAGE_APPS);
+      expect(within(dialog).getByRole("button", { name: "Move component" })).toBeDisabled();
+      await userEvent.selectOptions(stageSelect, STAGE_INFRA);
+      expect(within(dialog).getByRole("button", { name: "Move component" })).toBeEnabled();
+    });
+  });
+
+  it("deletes only an empty stage", async () => {
     defaultGets(twoStages);
     renderWorkflow();
     await screen.findByText("release");
-    const openDialog = async () => {
-      await userEvent.click(screen.getByRole("button", { name: "Stage Apps actions" }));
-      await userEvent.click(screen.getByRole("menuitem", { name: "Delete stage" }));
-      return screen.getByRole("dialog", { name: "Delete Apps" });
-    };
-
-    // Nothing is gone until the dialog is confirmed; Escape backs out.
-    let dialog = await openDialog();
-    expect(within(dialog).getByText(/its 2 components/)).toBeInTheDocument();
-    expect(within(dialog).getByText("release")).toBeInTheDocument();
-    expect(within(dialog).getByText("apply")).toBeInTheDocument();
-    await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Stage Apps actions" }));
+    const item = screen.getByRole("menuitem", { name: /delete stage/i });
+    expect(item).toBeDisabled();
+    expect(item).toHaveTextContent("Delete or move its components first");
     expect(screen.getByText("release")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
 
-    dialog = await openDialog();
-    await userEvent.click(within(dialog).getByRole("button", { name: "Delete stage" }));
-
-    expect(screen.queryByText("release")).not.toBeInTheDocument();
+    // An empty stage goes without asking.
+    await userEvent.click(screen.getByRole("button", { name: /add stage/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Stage Stage 3 actions" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /delete stage/i }));
+    expect(screen.queryByRole("region", { name: "Stage Stage 3" })).not.toBeInTheDocument();
     await waitForPut();
-    expect(lastPut().map((s) => s.name)).toEqual(["Infrastructure"]);
+    expect(lastPut().map((st) => st.name)).toEqual(["Infrastructure", "Apps"]);
   });
 
   it("drags a component into another stage", async () => {
@@ -519,8 +775,7 @@ describe("WorkflowBuilder", () => {
 describe("OpenTofu component editor", () => {
   async function openTerraformEditor() {
     renderWorkflow();
-    await userEvent.click(await screen.findByText("infra"));
-    await screen.findByRole("button", { name: /back to workflow/i });
+    await openEditor("infra");
   }
 
   // The Field helper renders an adjacent <label> (not linked via htmlFor), so the

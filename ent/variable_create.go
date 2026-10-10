@@ -378,6 +378,18 @@ type (
 	}
 )
 
+// SetApplicationID sets the "application_id" field.
+func (u *VariableUpsert) SetApplicationID(v uuid.UUID) *VariableUpsert {
+	u.Set(variable.FieldApplicationID, v)
+	return u
+}
+
+// UpdateApplicationID sets the "application_id" field to the value that was provided on create.
+func (u *VariableUpsert) UpdateApplicationID() *VariableUpsert {
+	u.SetExcluded(variable.FieldApplicationID)
+	return u
+}
+
 // SetName sets the "name" field.
 func (u *VariableUpsert) SetName(v string) *VariableUpsert {
 	u.Set(variable.FieldName, v)
@@ -470,9 +482,6 @@ func (u *VariableUpsertOne) UpdateNewValues() *VariableUpsertOne {
 		if _, exists := u.create.mutation.OrganizationID(); exists {
 			s.SetIgnore(variable.FieldOrganizationID)
 		}
-		if _, exists := u.create.mutation.ApplicationID(); exists {
-			s.SetIgnore(variable.FieldApplicationID)
-		}
 		if _, exists := u.create.mutation.ComponentID(); exists {
 			s.SetIgnore(variable.FieldComponentID)
 		}
@@ -508,6 +517,20 @@ func (u *VariableUpsertOne) Update(set func(*VariableUpsert)) *VariableUpsertOne
 		set(&VariableUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetApplicationID sets the "application_id" field.
+func (u *VariableUpsertOne) SetApplicationID(v uuid.UUID) *VariableUpsertOne {
+	return u.Update(func(s *VariableUpsert) {
+		s.SetApplicationID(v)
+	})
+}
+
+// UpdateApplicationID sets the "application_id" field to the value that was provided on create.
+func (u *VariableUpsertOne) UpdateApplicationID() *VariableUpsertOne {
+	return u.Update(func(s *VariableUpsert) {
+		s.UpdateApplicationID()
+	})
 }
 
 // SetName sets the "name" field.
@@ -780,9 +803,6 @@ func (u *VariableUpsertBulk) UpdateNewValues() *VariableUpsertBulk {
 			if _, exists := b.mutation.OrganizationID(); exists {
 				s.SetIgnore(variable.FieldOrganizationID)
 			}
-			if _, exists := b.mutation.ApplicationID(); exists {
-				s.SetIgnore(variable.FieldApplicationID)
-			}
 			if _, exists := b.mutation.ComponentID(); exists {
 				s.SetIgnore(variable.FieldComponentID)
 			}
@@ -819,6 +839,20 @@ func (u *VariableUpsertBulk) Update(set func(*VariableUpsert)) *VariableUpsertBu
 		set(&VariableUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetApplicationID sets the "application_id" field.
+func (u *VariableUpsertBulk) SetApplicationID(v uuid.UUID) *VariableUpsertBulk {
+	return u.Update(func(s *VariableUpsert) {
+		s.SetApplicationID(v)
+	})
+}
+
+// UpdateApplicationID sets the "application_id" field to the value that was provided on create.
+func (u *VariableUpsertBulk) UpdateApplicationID() *VariableUpsertBulk {
+	return u.Update(func(s *VariableUpsert) {
+		s.UpdateApplicationID()
+	})
 }
 
 // SetName sets the "name" field.

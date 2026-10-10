@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/spacefleet/spacefleet/ent"
 	"github.com/spacefleet/spacefleet/lib/helm"
 	"github.com/spacefleet/spacefleet/lib/interpolate"
 )
@@ -162,15 +164,29 @@ func renderOutputValue(v json.RawMessage) string {
 // authored name → the recorded outputs of that component's apply unit,
 // resolved this-run-first then latest-successful (w.resolveOutputs), cached so
 // several references to one component cost one query. byID is the run
-// snapshot's execution units — the only authoritative name→id mapping for this
-// run.
-func (w *WorkflowRunWorker) outputsLookup(ctx context.Context, orgID, runID uuid.UUID, byID map[uuid.UUID]GraphNode) outputsLookup {
+// snapshot's execution units — the authoritative name→id mapping for this
+// run. A component that isn't in the run — the upstream of a component-scoped
+// run, which runs alone — is found by name among the application's OpenTofu
+// components (w.componentByName), and its latest recorded outputs are used:
+// the same record its State panel shows.
+func (w *WorkflowRunWorker) outputsLookup(ctx context.Context, orgID, appID, runID uuid.UUID, byID map[uuid.UUID]GraphNode) outputsLookup {
 	cache := make(map[string]map[string]tofuOutput)
 	return func(name string) (map[string]tofuOutput, error) {
 		if outs, ok := cache[name]; ok {
 			return outs, nil
 		}
 		applyID, err := tofuApplyUnitID(name, byID)
+		if errors.Is(err, errNotInRun) && w.componentByName != nil {
+			id, lerr := w.componentByName(ctx, orgID, appID, name)
+			switch {
+			case ent.IsNotFound(lerr):
+				// Keep the run-scoped message: there's no such component at all.
+			case lerr != nil:
+				return nil, fmt.Errorf("look up component %q: %w", name, lerr)
+			default:
+				applyID, err = deriveApplyID(id), nil
+			}
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -229,10 +245,14 @@ func tofuApplyUnitID(name string, byID map[uuid.UUID]GraphNode) (uuid.UUID, erro
 		id, found = candidate, true
 	}
 	if !found {
-		return uuid.Nil, fmt.Errorf("component %q is not an OpenTofu component of this run — outputs can only be referenced from an upstream OpenTofu component", name)
+		return uuid.Nil, fmt.Errorf("%w: component %q is not an OpenTofu component of this run — outputs can only be referenced from an upstream OpenTofu component", errNotInRun, name)
 	}
 	return id, nil
 }
+
+// errNotInRun marks a components.* reference to a name the run snapshot has
+// no OpenTofu component for.
+var errNotInRun = errors.New("not in this run")
 
 // mergeVars merges the resolver's non-secret and sensitive variable env into
 // the single vars.* lookup context (the maps are disjoint by the resolver's

@@ -52,8 +52,9 @@ func TestReplaceWorkflowManagedStateNeedsKey(t *testing.T) {
 // TestReplaceWorkflowGuardsBackendChanges: switching the backend of an
 // OpenTofu component whose recorded state still lists resources is refused
 // (ErrBackendChange naming it) unless confirmed; a component that never
-// applied, or whose last recorded state is empty, switches freely; another
-// application's history doesn't count.
+// applied, or whose last recorded state is empty, switches freely; history
+// recorded under another application (a component moved in, keeping its id)
+// counts like its own.
 func TestReplaceWorkflowGuardsBackendChanges(t *testing.T) {
 	client := testsupport.NewEntClient(t)
 	svc := NewService(client)
@@ -101,12 +102,6 @@ func TestReplaceWorkflowGuardsBackendChanges(t *testing.T) {
 	if err := save(tofu.BackendSpacefleet, ReplaceOptions{}); err != nil {
 		t.Fatalf("same backend: %v", err)
 	}
-	// Another application's apply of the same id is not this one's history.
-	other := newApp(t, client, org.ID, "other")
-	recordApply(other.ID, `[]`, now)
-	if err := save(tofu.BackendS3, ReplaceOptions{}); !errors.Is(err, ErrBackendChange) {
-		t.Fatalf("another app's empty state must not clear the guard: err = %v", err)
-	}
 	// Confirmed: the switch goes through.
 	if err := save(tofu.BackendS3, ReplaceOptions{AllowBackendChange: true}); err != nil {
 		t.Fatalf("confirmed switch: %v", err)
@@ -115,5 +110,13 @@ func TestReplaceWorkflowGuardsBackendChanges(t *testing.T) {
 	recordApply(app.ID, `[]`, now.Add(time.Minute))
 	if err := save(tofu.BackendSpacefleet, ReplaceOptions{}); err != nil {
 		t.Fatalf("switch after destroy: %v", err)
+	}
+	// The component's history follows its id, not the application: a newer
+	// apply recorded under another application (where it lived before a
+	// move) is its latest state, and it lists resources again.
+	other := newApp(t, client, org.ID, "other")
+	recordApply(other.ID, `[{"address":"null_resource.b","mode":"managed","type":"null_resource","name":"b","provider":"p","id":"2"}]`, now.Add(2*time.Minute))
+	if err := save(tofu.BackendS3, ReplaceOptions{}); !errors.Is(err, ErrBackendChange) {
+		t.Fatalf("resources recorded under another application must keep the guard: err = %v", err)
 	}
 }

@@ -76,6 +76,10 @@ type WorkflowRunWorker struct {
 	// successful — svc.ResolveComponentOutputs in production); a seam so planner
 	// unit tests run without a database.
 	resolveOutputs func(ctx context.Context, orgID, runID, componentID uuid.UUID) (string, error)
+	// componentByName finds an OpenTofu component of the application by name
+	// (svc.TofuComponentByName in production), for a reference to a component
+	// that isn't in the run; nil leaves such references unresolved.
+	componentByName func(ctx context.Context, orgID, appID uuid.UUID, name string) (uuid.UUID, error)
 	// ensureHandover / deleteHandover provision and sweep a terraform pair's
 	// planfile-handover objects on the runner cluster (the real
 	// tekton.EnsureHandoverSecret / DeleteHandoverSecret in production) — seams
@@ -99,6 +103,7 @@ func NewWorker(svc *Service, resolver *deploy.Resolver) *WorkflowRunWorker {
 	w.captureLogs = defaultCaptureLogs
 	w.captureHandover = tekton.ReadHandoverSecretKey
 	w.resolveOutputs = svc.ResolveComponentOutputs
+	w.componentByName = svc.TofuComponentByName
 	w.ensureHandover = tekton.EnsureHandoverSecret
 	w.deleteHandover = tekton.DeleteHandoverSecret
 	w.pluginCache = svc.PluginCacheClaim

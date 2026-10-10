@@ -31,8 +31,9 @@ type TofuLockInfo struct {
 // pointer with its serial and lineage, and the lock.
 //
 // component_id is a bare column with no edge on purpose: a workflow save
-// deletes and recreates components, and a component removed from the
-// workflow still owns state that tracks real infrastructure. The row goes
+// deletes and recreates components (keeping their ids). Removing a component
+// from its workflow deletes its state (see workflows.checkStateDeletions);
+// moving it to another application re-keys application_id. The row goes
 // with its application (ON DELETE CASCADE).
 type TofuState struct {
 	ent.Schema
@@ -44,7 +45,8 @@ func (TofuState) Fields() []ent.Field {
 		// FK columns bound to the edges below; explicit so the column names
 		// match the hand-written migration.
 		field.UUID("organization_id", uuid.UUID{}).Immutable(),
-		field.UUID("application_id", uuid.UUID{}).Immutable(),
+		// Mutable: the state follows its component to another application.
+		field.UUID("application_id", uuid.UUID{}),
 		// The authored component (no FK, see the type doc).
 		field.UUID("component_id", uuid.UUID{}).Immutable(),
 		// The component's workspace setting ("default" when unset).
@@ -76,8 +78,7 @@ func (TofuState) Edges() []ent.Edge {
 		edge.To("application", Application.Type).
 			Field("application_id").
 			Unique().
-			Required().
-			Immutable(),
+			Required(),
 		edge.To("versions", TofuStateVersion.Type),
 	}
 }

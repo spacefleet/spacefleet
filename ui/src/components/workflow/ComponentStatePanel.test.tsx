@@ -10,14 +10,19 @@ vi.mock("../../api/client", () => ({
 const mockGet = api.GET as unknown as ReturnType<typeof vi.fn>;
 const mockPost = api.POST as unknown as ReturnType<typeof vi.fn>;
 
-function renderPanel(canEdit = false) {
+function renderPanel(canEdit = false, managedBackend = false) {
   return render(
     <MemoryRouter initialEntries={["/node"]}>
       <Routes>
         <Route
           path="/node"
           element={
-            <ComponentStatePanel appId="app-1" componentId="comp-1" canEdit={canEdit} />
+            <ComponentStatePanel
+              appId="app-1"
+              componentId="comp-1"
+              canEdit={canEdit}
+              managedBackend={managedBackend}
+            />
           }
         />
         <Route path="/applications/:appId/runs/:runId" element={<div>run page</div>} />
@@ -310,5 +315,70 @@ describe("ComponentStatePanel", () => {
     expect(
       await screen.findByText("a run is already in progress for this application"),
     ).toBeInTheDocument();
+  });
+
+  describe("managed state", () => {
+    const managedView = {
+      data: {
+        resources: [],
+        managed_state: {
+          version: 3,
+          serial: 7,
+          size_bytes: 512,
+          written_at: "2026-10-01T10:00:00Z",
+          run_id: "run-3",
+        },
+      },
+      error: undefined,
+      response: { status: 200 },
+    };
+
+    it("names the current version and lets an editor download it", async () => {
+      mockGet.mockResolvedValueOnce(managedView).mockResolvedValueOnce({
+        data: new Blob(["{}"]),
+        error: undefined,
+        response: {
+          status: 200,
+          headers: new Headers({
+            "Content-Disposition": 'attachment; filename="web-infra.tfstate"',
+          }),
+        },
+      });
+      const createObjectURL = vi.fn(() => "blob:state");
+      const revokeObjectURL = vi.fn();
+      Object.assign(URL, { createObjectURL, revokeObjectURL });
+      const click = vi
+        .spyOn(HTMLAnchorElement.prototype, "click")
+        .mockImplementation(() => {});
+
+      renderPanel(true, true);
+      expect(await screen.findByText(/version 3, written/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /download state/i }));
+      await waitFor(() => expect(click).toHaveBeenCalled());
+      expect(mockGet).toHaveBeenLastCalledWith(
+        "/api/applications/{id}/components/{componentId}/state/download",
+        { params: { path: { id: "app-1", componentId: "comp-1" } }, parseAs: "blob" },
+      );
+      const anchor = click.mock.contexts[0] as HTMLAnchorElement;
+      expect(anchor.download).toBe("web-infra.tfstate");
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:state");
+      click.mockRestore();
+    });
+
+    it("shows the version without a download to a viewer", async () => {
+      mockGet.mockResolvedValue(managedView);
+      renderPanel(false, true);
+      expect(await screen.findByText(/version 3, written/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /download state/i })).toBeNull();
+    });
+
+    it("hides it for a component on a cloud backend", async () => {
+      mockGet.mockResolvedValue(managedView);
+      renderPanel(true, false);
+      expect(
+        await screen.findByText(/Nothing recorded yet/),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Managed state/)).toBeNull();
+    });
   });
 });
