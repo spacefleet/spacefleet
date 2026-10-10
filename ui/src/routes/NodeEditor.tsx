@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router";
-import { ArrowLeft, Save } from "lucide-react";
+import { Save } from "lucide-react";
 import { useWorkflowDraft } from "../contexts/WorkflowDraftContext";
 import type { components } from "../api/schema";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import {
   ComponentFields,
   type EditableComponent,
@@ -138,15 +139,20 @@ export function NodeEditor() {
     navigate(isNew ? workflowPath : componentPath);
   }
 
-  // Cancel/Back: drop a provisional component entirely; for a committed one just
-  // leave (the local edits were never applied to the draft). discardedRef stops
-  // the create effect from re-seeding the component we're discarding before the
-  // navigation away unmounts the editor.
-  function cancel() {
+  // discard drops a provisional component entirely — on Cancel, or when a
+  // breadcrumb leads away from a component that was never saved. discardedRef
+  // stops the create effect from re-seeding the component we're discarding
+  // before the navigation away unmounts the editor. A committed component has
+  // nothing to drop (the local edits were never applied to the draft).
+  function discard() {
     if (isNew) {
       discardedRef.current = true;
       discardNewNode(nodeId);
     }
+  }
+
+  function cancel() {
+    discard();
     leave();
   }
 
@@ -215,14 +221,18 @@ export function NodeEditor() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col">
-      <button
-        type="button"
-        onClick={cancel}
-        className="inline-flex w-fit items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        {isNew ? "Back to workflow" : "Back to component"}
-      </button>
+      <Breadcrumbs
+        items={[
+          { label: "Applications", to: "/applications" },
+          { label: appName ?? "…", to: `/applications/${appId}` },
+          { label: "Workflow", to: workflowPath },
+          // A component being created has no page of its own yet.
+          ...(isNew || !committed
+            ? []
+            : [{ label: committed.name, to: componentPath }]),
+        ]}
+        onNavigate={discard}
+      />
 
       {loading ? (
         <p className="mt-6 text-sm text-neutral-400">Loading…</p>
@@ -243,18 +253,19 @@ export function NodeEditor() {
         </div>
       ) : (
         <>
-          <div className="mt-3 pb-4">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-              {COMPONENT_TYPE_LABELS[view.type]} component
-              {placed && (
-                <span className="ml-1 normal-case tracking-normal">
-                  · in stage {placed.index + 1}, {placed.stage.name}
-                </span>
-              )}
-            </p>
-            <h1 className="mt-0.5 truncate text-xl font-bold tracking-tight">
+          <div className="mt-2 pb-4">
+            <h1 className="truncate text-xl font-bold tracking-tight">
               {isNew ? "New component" : "Manage component"}
             </h1>
+            <p className="mt-1 text-sm text-neutral-400">
+              {COMPONENT_TYPE_LABELS[view.type]} component
+              {placed && (
+                <>
+                  {" "}
+                  · in stage {placed.index + 1}, {placed.stage.name}
+                </>
+              )}
+            </p>
           </div>
 
           <div className="border border-neutral-800 bg-neutral-900 p-6">

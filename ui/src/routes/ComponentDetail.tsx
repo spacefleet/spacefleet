@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import {
-  ArrowLeft,
   ArrowRightLeft,
   Play,
   Settings,
@@ -10,6 +9,7 @@ import {
 } from "lucide-react";
 import { useWorkflowDraft } from "../contexts/WorkflowDraftContext";
 import { ActionsMenu } from "../components/ActionsMenu";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import {
   ComponentOperations,
   type OperationPrefill,
@@ -74,14 +74,13 @@ export function ComponentDetail() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col">
-      <button
-        type="button"
-        onClick={() => navigate(workflowPath)}
-        className="inline-flex w-fit items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to workflow
-      </button>
+      <Breadcrumbs
+        items={[
+          { label: "Applications", to: "/applications" },
+          { label: appName ?? "…", to: `/applications/${appId}` },
+          { label: "Workflow", to: workflowPath },
+        ]}
+      />
 
       {loading ? (
         <p className="mt-6 text-sm text-neutral-400">Loading…</p>
@@ -93,19 +92,20 @@ export function ComponentDetail() {
         </p>
       ) : (
         <>
-          <div className="mt-3 flex items-start justify-between gap-4">
+          <div className="mt-2 flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-                {COMPONENT_TYPE_LABELS[component.type]} component
-                {placed && (
-                  <span className="ml-1 normal-case tracking-normal">
-                    · in stage {placed.index + 1}, {placed.stage.name}
-                  </span>
-                )}
-              </p>
-              <h1 className="mt-0.5 break-all text-xl font-bold tracking-tight">
+              <h1 className="break-all text-xl font-bold tracking-tight">
                 {component.name}
               </h1>
+              <p className="mt-1 text-sm text-neutral-400">
+                {COMPONENT_TYPE_LABELS[component.type]} component
+                {placed && (
+                  <>
+                    {" "}
+                    · in stage {placed.index + 1}, {placed.stage.name}
+                  </>
+                )}
+              </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <button

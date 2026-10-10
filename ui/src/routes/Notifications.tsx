@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 type Channel = components["schemas"]["NotificationChannel"];
 type Kind = components["schemas"]["NotificationChannelKind"];
@@ -92,10 +93,8 @@ export function Notifications() {
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Admin
-          </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight">Notifications</h1>
+          <Breadcrumbs items={[{ label: "Admin" }]} />
+          <h1 className="mt-2 text-2xl font-bold tracking-tight">Notifications</h1>
           <p className="mt-1 text-sm text-neutral-300">
             Where run events go: a run waiting for approval, a failed run, or
             drift found by a check — by email, to Slack, or to any webhook.

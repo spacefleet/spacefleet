@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router";
-import { ArrowLeft } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { RunnerRequiredNotice } from "../components/RunnerRequiredNotice";
 import { SlugInput } from "../components/SlugInput";
 import { githubAppEnabled } from "../lib/appConfig";
@@ -43,6 +43,8 @@ export function ApplicationForm() {
   const canEdit = currentRole !== "viewer";
 
   const [name, setName] = useState(seedRelease?.name ?? "");
+  // The name as saved, for the breadcrumb (`name` follows the input).
+  const [savedName, setSavedName] = useState<string | null>(null);
   const [runnerClusterId, setRunnerClusterId] = useState("");
   // Run triggers (what a GitHub push or pull request starts) — edit mode only:
   // a new application has no components yet, so nothing could match.
@@ -85,6 +87,7 @@ export function ApplicationForm() {
         return;
       }
       setName(data.name);
+      setSavedName(data.name);
       setRunnerClusterId(data.runner_cluster_id);
       setPushTrigger(data.push_trigger ?? "");
       setPrPlans(data.pr_plans === true);
@@ -162,16 +165,18 @@ export function ApplicationForm() {
 
   return (
     <div className="max-w-2xl">
-      <button
-        type="button"
-        onClick={() => navigate(editing ? `/applications/${appId}` : "/applications")}
-        className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back
-      </button>
+      <Breadcrumbs
+        items={[
+          { label: "Applications", to: "/applications" },
+          ...(editing
+            ? [{ label: savedName ?? "…", to: `/applications/${appId}` }]
+            : importing
+              ? [{ label: "Import existing release", to: "/applications/import" }]
+              : []),
+        ]}
+      />
 
-      <h1 className="mt-3 text-2xl font-bold tracking-tight">{title}</h1>
+      <h1 className="mt-2 text-2xl font-bold tracking-tight">{title}</h1>
       <p className="mt-1 text-sm text-neutral-300">
         An application owns a deploy workflow. Set its name and runner cluster
         here; build the deploy steps — and their targets — in the workflow

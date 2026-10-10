@@ -77,7 +77,7 @@ function LocationProbe() {
 }
 
 // state carries the optional `from` the runs index passes when linking here, so
-// the back-target tests can exercise both arrival paths.
+// the breadcrumb tests can exercise both arrival paths.
 function runViewTree(state?: { from: string }, search = "") {
   return (
     <MemoryRouter
@@ -95,7 +95,15 @@ function runViewTree(state?: { from: string }, search = "") {
         />
         <Route path="/applications/:appId" element={<div>application page</div>} />
         <Route path="/applications" element={<div>applications list</div>} />
-        <Route path="/runs" element={<div>runs index</div>} />
+        <Route
+          path="/runs"
+          element={
+            <>
+              <div>runs index</div>
+              <LocationProbe />
+            </>
+          }
+        />
       </Routes>
     </MemoryRouter>
   );
@@ -369,30 +377,47 @@ describe("WorkflowRunView", () => {
     expect(await screen.findByRole("navigation", { name: "Run steps" })).toBeInTheDocument();
   });
 
-  it("goes back to the application by default", async () => {
+  // breadcrumbLink finds a link in the page's breadcrumb trail.
+  async function breadcrumbLink(name: string) {
+    const trail = await screen.findByRole("navigation", { name: "Breadcrumb" });
+    return within(trail).findByRole("link", { name });
+  }
+
+  function mockRunAndApp() {
     mockApi.GET.mockImplementation((path: string) => {
       if (path === "/api/applications/{id}/runs/{runId}")
         return Promise.resolve({ data: runDetail, error: undefined });
+      if (path === "/api/applications/{id}")
+        return Promise.resolve({ data: { id: "app-1", name: "web" }, error: undefined });
       return Promise.resolve({ data: undefined, error: undefined });
     });
+  }
+
+  it("leads back up to the application from the breadcrumb", async () => {
+    mockRunAndApp();
     renderRunView();
-    fireEvent.click(
-      await screen.findByRole("button", { name: /back to application/i }),
-    );
+    fireEvent.click(await breadcrumbLink("web"));
     expect(await screen.findByText("application page")).toBeInTheDocument();
   });
 
-  it("goes back to the runs index when the user came from there", async () => {
-    mockApi.GET.mockImplementation((path: string) => {
-      if (path === "/api/applications/{id}/runs/{runId}")
-        return Promise.resolve({ data: runDetail, error: undefined });
-      return Promise.resolve({ data: undefined, error: undefined });
-    });
-    renderRunView({ from: "/runs?application=app-1" });
-    fireEvent.click(
-      await screen.findByRole("button", { name: /back to runs/i }),
-    );
+  it("leads to the application's run history by default", async () => {
+    mockRunAndApp();
+    renderRunView();
+    fireEvent.click(await breadcrumbLink("Runs"));
     expect(await screen.findByText("runs index")).toBeInTheDocument();
+    expect(screen.getByTestId("location-search")).toHaveTextContent(
+      "?application=app-1",
+    );
+  });
+
+  it("leads back to the runs index the user came from, filters and all", async () => {
+    mockRunAndApp();
+    renderRunView({ from: "/runs?status=failed" });
+    fireEvent.click(await breadcrumbLink("Runs"));
+    expect(await screen.findByText("runs index")).toBeInTheDocument();
+    expect(screen.getByTestId("location-search")).toHaveTextContent(
+      "?status=failed",
+    );
   });
 
   it("shows a Cancel run button only while in flight and POSTs cancel", async () => {

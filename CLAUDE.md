@@ -229,6 +229,12 @@ rectangular components; the Tailwind radius scale is overridden to zero in
 `color-scheme: dark` is set globally, so native controls render dark too. Dex's
 login page uses its built-in dark theme (`frontend.theme`).
 
+**Navigation: every page starts with `<Breadcrumbs>`**
+([ui/src/components/Breadcrumbs.tsx](ui/src/components/Breadcrumbs.tsx)) — the
+pages above it, each a link, ending at the parent (the page's `<h1>` is the last
+step); a top-level page shows just its sidebar section. Don't add "Back to …"
+buttons or uppercase section eyebrows above the title.
+
 ## Dev workflow
 
 ```sh

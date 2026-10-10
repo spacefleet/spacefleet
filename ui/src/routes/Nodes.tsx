@@ -13,6 +13,7 @@ import { nodeAge, nodeRolesLabel, type Cluster } from "../lib/nodes";
 import { useClusterNodeStreams } from "../lib/useClusterNodeStreams";
 import type { StreamStatus } from "../lib/resourceStream";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 const ALL = "all";
 
@@ -75,10 +76,8 @@ export function Nodes() {
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Infrastructure
-          </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight">Nodes</h1>
+          <Breadcrumbs items={[{ label: "Infrastructure" }]} />
+          <h1 className="mt-2 text-2xl font-bold tracking-tight">Nodes</h1>
           <p className="mt-1 text-sm text-neutral-300">
             The Kubernetes nodes across your registered clusters, updated live.
           </p>

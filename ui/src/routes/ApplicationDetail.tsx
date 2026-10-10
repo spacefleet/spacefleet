@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import {
-  ArrowLeft,
   History,
   Pencil,
   Play,
@@ -18,6 +17,7 @@ import { useObjectStream } from "../lib/useObjectStream";
 import type { components } from "../api/schema";
 import { DeleteApplicationDialog } from "../components/DeleteApplicationDialog";
 import { ActionsMenu } from "../components/ActionsMenu";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { RunDialog } from "../components/RunDialog";
 import { RunStatusBadge } from "../components/workflow/status";
 import {
@@ -152,14 +152,7 @@ export function ApplicationDetail() {
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => navigate("/applications")}
-        className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to applications
-      </button>
+      <Breadcrumbs items={[{ label: "Applications", to: "/applications" }]} />
 
       {loading ? (
         <p className="mt-6 text-sm text-neutral-400">Loading…</p>
@@ -167,12 +160,9 @@ export function ApplicationDetail() {
         <p className="mt-6 text-sm text-red-400">{error ?? "Not found"}</p>
       ) : (
         <>
-          <div className="mt-3 flex items-start justify-between gap-4">
+          <div className="mt-2 flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                Applications
-              </p>
-              <h1 className="mt-1 break-all text-2xl font-bold tracking-tight">
+              <h1 className="break-all text-2xl font-bold tracking-tight">
                 {app.name}
               </h1>
               <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">

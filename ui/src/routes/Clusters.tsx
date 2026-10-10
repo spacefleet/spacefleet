@@ -15,6 +15,7 @@ import type { components } from "../api/schema";
 import { RegisterClusterDialog } from "../components/RegisterClusterDialog";
 import { CONNECTION_METHODS } from "../components/connectionMethods";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 type Cluster = components["schemas"]["Cluster"];
 
@@ -100,10 +101,8 @@ export function Clusters() {
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Admin
-          </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight">Clusters</h1>
+          <Breadcrumbs items={[{ label: "Admin" }]} />
+          <h1 className="mt-2 text-2xl font-bold tracking-tight">Clusters</h1>
           <p className="mt-1 text-sm text-neutral-300">
             Register the Kubernetes clusters Spacefleet runs workloads on.
           </p>

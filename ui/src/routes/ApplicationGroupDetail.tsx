@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
   AlertTriangle,
-  ArrowLeft,
   Check,
   Folder,
   Loader2,
@@ -12,6 +11,7 @@ import {
 } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { VariablesEditor } from "../components/VariablesEditor";
 import type { components } from "../api/schema";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
@@ -123,14 +123,7 @@ export function ApplicationGroupDetail() {
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => navigate("/applications")}
-        className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to applications
-      </button>
+      <Breadcrumbs items={[{ label: "Applications", to: "/applications" }]} />
 
       {loading ? (
         <p className="mt-6 text-sm text-neutral-400">Loading…</p>
@@ -140,13 +133,10 @@ export function ApplicationGroupDetail() {
         <p className="mt-6 text-sm text-red-400">Not found</p>
       ) : (
         <>
-          <div className="mt-3 flex items-start justify-between gap-4">
+          <div className="mt-2 flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                Group
-              </p>
               {editingName ? (
-                <div className="mt-1 flex items-center gap-2">
+                <div className="flex items-center gap-2">
                   <input
                     type="text"
                     autoFocus
@@ -189,7 +179,7 @@ export function ApplicationGroupDetail() {
                   </button>
                 </div>
               ) : (
-                <h1 className="mt-1 inline-flex items-center gap-2 break-all text-2xl font-bold tracking-tight">
+                <h1 className="inline-flex items-center gap-2 break-all text-2xl font-bold tracking-tight">
                   <Folder className="h-5 w-5 text-neutral-500" />
                   {group.name}
                 </h1>

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
-import { ArrowLeft, PackageSearch } from "lucide-react";
+import { PackageSearch } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import type { ImportSeed } from "./ApplicationForm";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 type Cluster = components["schemas"]["Cluster"];
@@ -83,20 +84,10 @@ export function ImportApplication() {
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => navigate("/applications")}
-        className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to applications
-      </button>
+      <Breadcrumbs items={[{ label: "Applications", to: "/applications" }]} />
 
-      <div className="mt-3">
-        <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-          Applications
-        </p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">
+      <div className="mt-2">
+        <h1 className="text-2xl font-bold tracking-tight">
           Import existing release
         </h1>
         <p className="mt-1 text-sm text-neutral-300">

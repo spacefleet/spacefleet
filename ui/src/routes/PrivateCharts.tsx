@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 type ChartCredential = components["schemas"]["ChartCredential"];
 type CreateRequest = components["schemas"]["ChartCredentialCreateRequest"];
@@ -54,10 +55,8 @@ export function PrivateCharts() {
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Admin
-          </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight">
+          <Breadcrumbs items={[{ label: "Admin" }]} />
+          <h1 className="mt-2 text-2xl font-bold tracking-tight">
             Private Charts
           </h1>
           <p className="mt-1 text-sm text-neutral-300">

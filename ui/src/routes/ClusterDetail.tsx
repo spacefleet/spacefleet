@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   CircleDashed,
   RefreshCw,
@@ -12,6 +11,7 @@ import {
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { ClusterCapabilities } from "../components/ClusterCapabilities";
 import { TektonPanel } from "../components/TektonPanel";
 import { CONNECTION_METHODS } from "../components/connectionMethods";
@@ -124,21 +124,13 @@ export function ClusterDetail() {
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => navigate("/admin/clusters")}
-        className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to clusters
-      </button>
+      <Breadcrumbs
+        items={[{ label: "Admin" }, { label: "Clusters", to: "/admin/clusters" }]}
+      />
 
-      <div className="mt-3 flex items-start justify-between gap-4">
+      <div className="mt-2 flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Admin / Clusters
-          </p>
-          <h1 className="mt-1 break-all text-2xl font-bold tracking-tight">
+          <h1 className="break-all text-2xl font-bold tracking-tight">
             {cluster?.name ?? (loading ? "…" : "Cluster")}
           </h1>
           {cluster?.endpoint && (

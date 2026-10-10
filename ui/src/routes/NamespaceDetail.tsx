@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router";
-import { AlertTriangle, ArrowLeft, CircleSlash } from "lucide-react";
+import { Link, useParams } from "react-router";
+import { AlertTriangle, CircleSlash } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { namespacePhase, type Namespace } from "../lib/namespaces";
 import { nodeAge, type Cluster } from "../lib/nodes";
 import { useResourceStream } from "../lib/useResourceStream";
@@ -18,7 +19,6 @@ export function NamespaceDetail() {
   const decodedName = decodeURIComponent(namespaceName);
   useDocumentTitle(decodedName, "Namespaces");
   const { currentOrg } = useOrg();
-  const navigate = useNavigate();
   const [cluster, setCluster] = useState<Cluster | null>(null);
 
   // The cluster (for its name) is fetched once; the namespace itself streams
@@ -50,22 +50,17 @@ export function NamespaceDetail() {
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => navigate("/infrastructure/namespaces")}
-        className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to namespaces
-      </button>
+      <Breadcrumbs
+        items={[
+          { label: "Infrastructure" },
+          { label: "Namespaces", to: "/infrastructure/namespaces" },
+          ...(cluster ? [{ label: cluster.name }] : []),
+        ]}
+      />
 
-      <div className="mt-3 flex items-start justify-between">
+      <div className="mt-2 flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Infrastructure / Namespaces
-            {cluster && <> / {cluster.name}</>}
-          </p>
-          <h1 className="mt-1 break-all text-2xl font-bold tracking-tight">
+          <h1 className="break-all text-2xl font-bold tracking-tight">
             {decodedName}
           </h1>
         </div>

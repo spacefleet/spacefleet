@@ -356,6 +356,24 @@ describe("WorkflowBuilder", () => {
     expect(mockApi.PUT).not.toHaveBeenCalled();
   });
 
+  it("following a breadcrumb out of a freshly added component discards it", async () => {
+    defaultGets([]);
+    renderWorkflow();
+    await screen.findByText("No components yet.");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Add a component to Stage 1" }),
+    );
+    await userEvent.click(screen.getByRole("menuitem", { name: /helm/i }));
+    await screen.findByRole("button", { name: /save component/i });
+    const trail = screen.getByRole("navigation", { name: "Breadcrumb" });
+    await userEvent.click(within(trail).getByRole("link", { name: "Workflow" }));
+
+    // Back on the builder, nothing was added (and nothing saved).
+    expect(await screen.findByText("No components yet.")).toBeInTheDocument();
+    expect(mockApi.PUT).not.toHaveBeenCalled();
+  });
+
   it("reloading the create page re-seeds the form instead of 'not found'", async () => {
     defaultGets(twoStages); // the server has no such component (never saved)
     const newId = "44444444-4444-4444-4444-444444444444";

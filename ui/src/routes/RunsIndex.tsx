@@ -10,6 +10,7 @@ import { runActionLabel } from "../components/workflow/runAction";
 import type { StreamStatus } from "../lib/resourceStream";
 import { useObjectStream } from "../lib/useObjectStream";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 type WorkflowRun = components["schemas"]["WorkflowRun"];
 type RunList = components["schemas"]["RunList"];
@@ -138,10 +139,8 @@ export function RunsIndex() {
     <div>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Applications
-          </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight">Workflow Runs</h1>
+          <Breadcrumbs items={[{ label: "Applications" }]} />
+          <h1 className="mt-2 text-2xl font-bold tracking-tight">Workflow Runs</h1>
           <p className="mt-1 text-sm text-neutral-300">
             Deploy history across every application, updated live.
           </p>

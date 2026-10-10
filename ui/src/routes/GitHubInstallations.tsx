@@ -5,6 +5,7 @@ import { useOrg } from "../contexts/OrgContext";
 import { githubAppEnabled } from "../lib/appConfig";
 import type { components } from "../api/schema";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 type GitHubInstallation = components["schemas"]["GitHubInstallation"];
 
@@ -69,10 +70,8 @@ export function GitHubInstallations() {
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Admin
-          </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight">GitHub</h1>
+          <Breadcrumbs items={[{ label: "Admin" }]} />
+          <h1 className="mt-2 text-2xl font-bold tracking-tight">GitHub</h1>
           <p className="mt-1 text-sm text-neutral-300">
             Connect a GitHub App installation to deploy charts from private Git
             repositories. Attach one to a Git-source application.

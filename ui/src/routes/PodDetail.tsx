@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router";
-import { AlertTriangle, ArrowLeft, FileText } from "lucide-react";
+import { Link, useParams } from "react-router";
+import { AlertTriangle, FileText } from "lucide-react";
 import { api } from "../api/client";
 import { useOrg } from "../contexts/OrgContext";
 import {
@@ -11,6 +11,7 @@ import {
   type StatusTone,
 } from "../lib/pods";
 import { useResourceStream } from "../lib/useResourceStream";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { PodLogsModal } from "../components/PodLogsModal";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
@@ -28,7 +29,6 @@ export function PodDetail() {
   const decodedName = decodeURIComponent(podName);
   useDocumentTitle(decodedName, "Pods");
   const { currentOrg } = useOrg();
-  const navigate = useNavigate();
   const [cluster, setCluster] = useState<Cluster | null>(null);
   const [logsOpen, setLogsOpen] = useState(false);
 
@@ -62,22 +62,21 @@ export function PodDetail() {
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => navigate("/infrastructure/pods")}
-        className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to pods
-      </button>
+      <Breadcrumbs
+        items={[
+          { label: "Infrastructure" },
+          { label: "Pods", to: "/infrastructure/pods" },
+          ...(cluster ? [{ label: cluster.name }] : []),
+          {
+            label: decodedNs,
+            to: `/infrastructure/namespaces/${clusterId}/${encodeURIComponent(decodedNs)}`,
+          },
+        ]}
+      />
 
-      <div className="mt-3 flex items-start justify-between gap-4">
+      <div className="mt-2 flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Infrastructure / Pods
-            {cluster && <> / {cluster.name}</>} / {decodedNs}
-          </p>
-          <h1 className="mt-1 break-all text-2xl font-bold tracking-tight">
+          <h1 className="break-all text-2xl font-bold tracking-tight">
             {decodedName}
           </h1>
         </div>

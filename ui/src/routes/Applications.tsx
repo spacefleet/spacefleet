@@ -6,6 +6,7 @@ import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import { RunnerRequiredNotice } from "../components/RunnerRequiredNotice";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 type Application = components["schemas"]["Application"];
 type ApplicationGroup = components["schemas"]["ApplicationGroup"];
@@ -100,10 +101,8 @@ export function Applications() {
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Applications
-          </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight">All Apps</h1>
+          <Breadcrumbs items={[{ label: "Applications" }]} />
+          <h1 className="mt-2 text-2xl font-bold tracking-tight">All Apps</h1>
           <p className="mt-1 text-sm text-neutral-300">
             Organize applications into groups, or deploy them directly.
           </p>

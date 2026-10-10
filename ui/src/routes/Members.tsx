@@ -5,6 +5,7 @@ import { useOrg } from "../contexts/OrgContext";
 import { emailEnabled } from "../lib/appConfig";
 import type { components } from "../api/schema";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 type Member = components["schemas"]["Member"];
 type Invitation = components["schemas"]["Invitation"];
@@ -50,7 +51,8 @@ export function Members() {
   if (currentRole !== "admin") {
     return (
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Members</h1>
+        <Breadcrumbs items={[{ label: "Admin" }]} />
+        <h1 className="mt-2 text-2xl font-bold tracking-tight">Members</h1>
         <p className="mt-2 text-sm text-neutral-300">
           You need to be an organization admin to manage members.
         </p>
@@ -96,10 +98,8 @@ export function Members() {
   return (
     <div className="space-y-8">
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-          Organization
-        </p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">Members</h1>
+        <Breadcrumbs items={[{ label: "Admin" }]} />
+        <h1 className="mt-2 text-2xl font-bold tracking-tight">Members</h1>
         <p className="mt-1 text-sm text-neutral-300">
           Manage who can access {currentOrg?.name ?? "this organization"} and what they can do.
         </p>

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -56,7 +56,8 @@ describe("ApplicationVariables", () => {
     renderPage();
     expect(await screen.findByText("LOG_LEVEL")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Variables" })).toBeInTheDocument();
-    expect(await screen.findByText("web")).toBeInTheDocument();
+    const trail = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(await within(trail).findByRole("link", { name: "web" })).toBeInTheDocument();
     expect(mockApi.GET).toHaveBeenCalledWith(
       "/api/applications/{id}/variables",
       expect.objectContaining({ params: { path: { id: "app-1" } } }),
@@ -71,11 +72,10 @@ describe("ApplicationVariables", () => {
     expect(screen.queryByRole("button", { name: /^add$/i })).toBeNull();
   });
 
-  it("goes back to the application page", async () => {
+  it("leads back up to the application page from the breadcrumb", async () => {
     renderPage();
-    await userEvent.click(
-      await screen.findByRole("button", { name: /back to application/i }),
-    );
+    const trail = screen.getByRole("navigation", { name: "Breadcrumb" });
+    await userEvent.click(await within(trail).findByRole("link", { name: "web" }));
     expect(await screen.findByText("application page")).toBeInTheDocument();
   });
 });

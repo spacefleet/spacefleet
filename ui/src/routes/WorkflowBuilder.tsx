@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
-  ArrowLeft,
   FileCode,
   Layers,
   Package,
@@ -12,6 +11,7 @@ import {
   useWorkflowDraft,
   type DraftStage,
 } from "../contexts/WorkflowDraftContext";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Dropdown } from "../components/Dropdown";
 import { ActionsMenu } from "../components/ActionsMenu";
 import {
@@ -100,17 +100,15 @@ export function WorkflowBuilder() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-3 pb-3">
+      <Breadcrumbs
+        items={[
+          { label: "Applications", to: "/applications" },
+          { label: appName ?? "…", to: `/applications/${appId}` },
+        ]}
+      />
+      <div className="mt-2 flex flex-wrap items-start justify-between gap-3 pb-3">
         <div className="min-w-0">
-          <button
-            type="button"
-            onClick={() => navigate(`/applications/${appId}`)}
-            className="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to application
-          </button>
-          <h1 className="mt-1 text-xl font-bold tracking-tight">Workflow</h1>
+          <h1 className="text-xl font-bold tracking-tight">Workflow</h1>
           <p className="mt-1 text-sm text-neutral-300">
             Stages run left to right, each once the one before it has
             finished. The components in a stage run in parallel.

@@ -1,5 +1,6 @@
 import { useLocation } from "react-router";
 import { navLeaves } from "../nav";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 // Placeholder is the stand-in page rendered for every scaffolded nav leaf that
@@ -16,12 +17,8 @@ export function Placeholder() {
 
   return (
     <div>
-      {sectionLabel && (
-        <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-          {sectionLabel}
-        </p>
-      )}
-      <h1 className="mt-1 text-2xl font-bold tracking-tight">{title}</h1>
+      {sectionLabel && <Breadcrumbs items={[{ label: sectionLabel }]} />}
+      <h1 className="mt-2 text-2xl font-bold tracking-tight">{title}</h1>
       <div className="mt-6 border border-neutral-800 bg-neutral-900 p-6 text-sm text-neutral-400">
         {sectionLabel ? `${sectionLabel} › ${title}` : title} — placeholder.
         Build this page out here.

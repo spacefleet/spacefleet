@@ -16,6 +16,7 @@ import { useClusterPodStreams } from "../lib/useClusterPodStreams";
 import { PodLogsModal } from "../components/PodLogsModal";
 import type { StreamStatus } from "../lib/resourceStream";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 // Pods is the Infrastructure › Pods page. It lists the Kubernetes pods of the
 // organization's registered clusters and updates live, with two coordinated
@@ -124,10 +125,8 @@ export function Pods() {
     <div>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Infrastructure
-          </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight">Pods</h1>
+          <Breadcrumbs items={[{ label: "Infrastructure" }]} />
+          <h1 className="mt-2 text-2xl font-bold tracking-tight">Pods</h1>
           <p className="mt-1 text-sm text-neutral-300">
             The Kubernetes pods across your registered clusters, updated live.
           </p>

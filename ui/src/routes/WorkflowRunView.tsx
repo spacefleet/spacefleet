@@ -12,7 +12,6 @@ import {
   useSearchParams,
 } from "react-router";
 import {
-  ArrowLeft,
   Ban,
   Check,
   Maximize2,
@@ -28,6 +27,7 @@ import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { usePodLogs } from "../lib/usePodLogs";
 import type { components } from "../api/schema";
 import { formatDuration } from "../lib/duration";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { DiffView } from "../components/DiffView";
 import { DeleteApplicationDialog } from "../components/DeleteApplicationDialog";
 import { TypeBadge } from "../components/workflow/TypeBadge";
@@ -103,20 +103,18 @@ type StateOperation = components["schemas"]["StateOperation"];
 export function WorkflowRunView() {
   const { appId = "", runId = "" } = useParams();
   const { currentOrg, currentRole } = useOrg();
-  const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const canApprove = currentRole !== "viewer";
 
-  // Where Back returns to. Pages that link here (the runs index) pass their own
-  // location in router state; without it — arriving from the application page or
-  // a deep link — Back goes to the application, matching where the journey
-  // started rather than always dumping the user on the global run history.
+  // Where the breadcrumb's Runs leads. The runs index passes its own location
+  // (with its filters) in router state, so Runs returns to that same list;
+  // otherwise — arriving from the application page or a deep link — it opens
+  // the run history filtered to this application.
   const from = (location.state as { from?: string } | null)?.from;
-  const backTo = from ?? `/applications/${appId}`;
-  const backLabel = from?.startsWith("/runs")
-    ? "Back to runs"
-    : "Back to application";
+  const runsPath = from?.startsWith("/runs")
+    ? from
+    : `/runs?application=${appId}`;
 
   const [run, setRun] = useState<WorkflowRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -274,14 +272,13 @@ export function WorkflowRunView() {
 
   return (
     <div className="flex h-[calc(100vh-7rem)] flex-col">
-      <button
-        type="button"
-        onClick={() => navigate(backTo)}
-        className="inline-flex w-fit items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-100"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        {backLabel}
-      </button>
+      <Breadcrumbs
+        items={[
+          { label: "Applications", to: "/applications" },
+          { label: appName ?? "…", to: `/applications/${appId}` },
+          { label: "Runs", to: runsPath },
+        ]}
+      />
 
       {loading ? (
         <p className="mt-6 text-sm text-neutral-400">Loading…</p>
@@ -289,12 +286,9 @@ export function WorkflowRunView() {
         <p className="mt-6 text-sm text-red-400">{error ?? "Not found"}</p>
       ) : (
         <>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 pb-3">
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-3 pb-3">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                Workflow run
-              </p>
-              <h1 className="mt-0.5 text-xl font-bold capitalize tracking-tight">
+              <h1 className="text-xl font-bold capitalize tracking-tight">
                 {runActionLabel(run.action, run.scope)}
               </h1>
               {run.scope && (

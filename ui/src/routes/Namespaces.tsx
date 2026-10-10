@@ -8,6 +8,7 @@ import { nodeAge, type Cluster } from "../lib/nodes";
 import { useClusterNamespaceStreams } from "../lib/useClusterNamespaceStreams";
 import type { StreamStatus } from "../lib/resourceStream";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 const ALL = "all";
 
@@ -70,10 +71,8 @@ export function Namespaces() {
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Infrastructure
-          </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight">Namespaces</h1>
+          <Breadcrumbs items={[{ label: "Infrastructure" }]} />
+          <h1 className="mt-2 text-2xl font-bold tracking-tight">Namespaces</h1>
           <p className="mt-1 text-sm text-neutral-300">
             The Kubernetes namespaces across your registered clusters, updated
             live.
