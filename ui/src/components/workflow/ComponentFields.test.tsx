@@ -6,6 +6,7 @@ import { ComponentFields, type EditableComponent } from "./ComponentFields";
 import type { components } from "../../api/schema";
 
 type CloudCredential = components["schemas"]["CloudCredential"];
+type Cluster = components["schemas"]["Cluster"];
 
 function makeComponent(
   overrides: Partial<EditableComponent> = {},
@@ -35,12 +36,14 @@ function Harness({
   upstreamOutputs,
   disabled,
   cloudCredentials = [],
+  clusters = [],
 }: {
   initial: EditableComponent;
   onComponent: (c: EditableComponent) => void;
   upstreamOutputs?: string[];
   disabled?: boolean;
   cloudCredentials?: CloudCredential[];
+  clusters?: Cluster[];
 }) {
   const [component, setComponent] = useState(initial);
   return (
@@ -50,7 +53,7 @@ function Harness({
         setComponent(next);
         onComponent(next);
       }}
-      clusters={[]}
+      clusters={clusters}
       credentials={[]}
       cloudCredentials={cloudCredentials}
       installations={[]}
@@ -424,5 +427,31 @@ describe("managed state backend", () => {
 
     render(<Harness initial={makeComponent({ config: { backend: "spacefleet" } })} onComponent={() => {}} />);
     expect((screen.getByLabelText("State backend") as HTMLSelectElement).value).toBe("spacefleet");
+  });
+});
+
+describe("manifest fields", () => {
+  it("groups the source under Repository and the cluster under Target", async () => {
+    const user = userEvent.setup();
+    let latest: EditableComponent | null = null;
+    render(
+      <Harness
+        initial={makeComponent({ type: "manifest", requires_approval: false })}
+        onComponent={(c) => {
+          latest = c;
+        }}
+        clusters={[{ id: "k-prod", name: "prod" } as Cluster]}
+      />,
+    );
+    expect(
+      screen.getAllByRole("heading").map((h) => h.textContent),
+    ).toEqual(["General", "Repository", "Target", "Approval"]);
+
+    await user.type(screen.getByPlaceholderText("manifests/prod"), "k8s");
+    expect(latest!.config.path).toBe("k8s");
+    await user.selectOptions(screen.getByLabelText("Target cluster"), "k-prod");
+    expect(latest!.target_cluster_id).toBe("k-prod");
+    await user.selectOptions(screen.getByLabelText("Target cluster"), "");
+    expect(latest!.target_cluster_id).toBeNull();
   });
 });

@@ -206,6 +206,14 @@ export function ComponentFields({
           config={component.config}
           setConfig={setConfig}
           repoUrlPicker={repoUrlPicker}
+          clusterSelect={
+            <ClusterSelect
+              clusters={clusters}
+              value={component.target_cluster_id}
+              onChange={(id) => set("target_cluster_id", id)}
+              disabled={disabled}
+            />
+          }
           disabled={disabled}
         />
       )}
@@ -237,28 +245,20 @@ export function ComponentFields({
           </Field>
         )}
 
-      {/* Targeting. Helm + manifest deploy to a cluster (required); terraform
-          manages cloud infra and has no cluster target, so the fields are hidden
-          for it. The namespace is only meaningful for helm — a manifest carries
-          its own namespaces. */}
-      {component.type !== "terraform" && (
+      {/* Targeting. A helm release deploys to a cluster + namespace (both
+          required). A manifest's cluster sits in its own Target section, and
+          terraform manages cloud infra with no cluster target. */}
+      {component.type === "helm" && (
         <Field
           label="Target cluster"
           help="The cluster this component deploys into."
         >
-          <select
-            className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
-            value={component.target_cluster_id ?? ""}
-            onChange={(e) => set("target_cluster_id", e.target.value || null)}
+          <ClusterSelect
+            clusters={clusters}
+            value={component.target_cluster_id}
+            onChange={(id) => set("target_cluster_id", id)}
             disabled={disabled}
-          >
-            <option value="">Select a cluster…</option>
-            {clusters.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          />
         </Field>
       )}
 
@@ -550,52 +550,93 @@ function HelmConfig({
   );
 }
 
+// ManifestConfig edits a manifest node in the same sections as an OpenTofu
+// one: the git source (repo_url/ref/path), then the cluster it applies to. The
+// manifests carry their own namespaces, so there is no namespace field.
 function ManifestConfig({
   config,
   setConfig,
   repoUrlPicker,
+  clusterSelect,
   disabled,
 }: {
   config: Record<string, string>;
   setConfig: (key: string, value: string) => void;
   repoUrlPicker: ReactNode;
+  clusterSelect: ReactNode;
   disabled: boolean;
 }) {
   return (
     <>
-      <Field label="Repository URL">
-        <WithPicker picker={repoUrlPicker}>
+      <Section title="Repository">
+        <Field label="Repository URL">
+          <WithPicker picker={repoUrlPicker}>
+            <input
+              type="text"
+              className="w-full border border-neutral-700 px-3 py-2 text-sm"
+              placeholder="https://github.com/org/manifests.git"
+              value={config.repo_url ?? ""}
+              onChange={(e) => setConfig("repo_url", e.target.value)}
+              disabled={disabled}
+            />
+          </WithPicker>
+        </Field>
+        <Field label="Branch or tag">
           <input
             type="text"
             className="w-full border border-neutral-700 px-3 py-2 text-sm"
-            placeholder="https://github.com/org/manifests.git"
-            value={config.repo_url ?? ""}
-            onChange={(e) => setConfig("repo_url", e.target.value)}
+            placeholder="(default branch)"
+            value={config.git_ref ?? ""}
+            onChange={(e) => setConfig("git_ref", e.target.value)}
             disabled={disabled}
           />
-        </WithPicker>
-      </Field>
-      <Field label="Branch or tag">
-        <input
-          type="text"
-          className="w-full border border-neutral-700 px-3 py-2 text-sm"
-          placeholder="(default branch)"
-          value={config.git_ref ?? ""}
-          onChange={(e) => setConfig("git_ref", e.target.value)}
-          disabled={disabled}
-        />
-      </Field>
-      <Field label="Path" help="File or directory to kubectl apply.">
-        <input
-          type="text"
-          className="w-full border border-neutral-700 px-3 py-2 text-sm"
-          placeholder="manifests/prod"
-          value={config.path ?? ""}
-          onChange={(e) => setConfig("path", e.target.value)}
-          disabled={disabled}
-        />
-      </Field>
+        </Field>
+        <Field label="Path" help="File or directory to kubectl apply.">
+          <input
+            type="text"
+            className="w-full border border-neutral-700 px-3 py-2 text-sm"
+            placeholder="manifests/prod"
+            value={config.path ?? ""}
+            onChange={(e) => setConfig("path", e.target.value)}
+            disabled={disabled}
+          />
+        </Field>
+      </Section>
+      <Section title="Target">
+        <Field label="Target cluster">{clusterSelect}</Field>
+      </Section>
     </>
+  );
+}
+
+// ClusterSelect picks the registered cluster a helm or manifest node deploys
+// into. Empty is stored as null (the server rejects a save without one).
+function ClusterSelect({
+  clusters,
+  value,
+  onChange,
+  disabled,
+}: {
+  clusters: Cluster[];
+  value: string | null;
+  onChange: (id: string | null) => void;
+  disabled: boolean;
+}) {
+  return (
+    <select
+      aria-label="Target cluster"
+      className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value || null)}
+      disabled={disabled}
+    >
+      <option value="">Select a cluster…</option>
+      {clusters.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.name}
+        </option>
+      ))}
+    </select>
   );
 }
 
