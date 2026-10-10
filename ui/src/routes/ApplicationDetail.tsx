@@ -6,6 +6,7 @@ import {
   Pencil,
   Play,
   RefreshCw,
+  Server,
   Settings,
   Trash2,
   Variable,
@@ -37,12 +38,16 @@ type RunStatus = components["schemas"]["RunStatus"];
 // closed. Mirrors WorkflowRunView's inFlight gating.
 const TERMINAL: RunStatus[] = ["succeeded", "failed", "partial"];
 
+// How many of the newest runs the page lists; the full history is on the runs
+// page.
+const RECENT_RUNS = 5;
+
 // ApplicationDetail is the per-app overview (route /applications/:appId). An
 // application owns a deploy workflow (stages of components); this page shows an
 // at-a-glance view of that workflow — colored by the latest run — with the run
-// controls (deploy / preview / uninstall), the app's runner, and the most
-// recent run's status. The workflow builder page is only for building/changing
-// the workflow itself.
+// controls (deploy / preview / uninstall), its most recent runs, and the
+// app's runner as a tag by its name. The workflow builder page is only for
+// building/changing the workflow itself.
 export function ApplicationDetail() {
   const { appId = "" } = useParams();
   const { currentOrg, currentRole } = useOrg();
@@ -51,7 +56,7 @@ export function ApplicationDetail() {
 
   const [app, setApp] = useState<Application | null>(null);
   useDocumentTitle(app?.name, "Applications");
-  const [latestRun, setLatestRun] = useState<WorkflowRun | null>(null);
+  const [recentRuns, setRecentRuns] = useState<WorkflowRun[]>([]);
   const [clusters, setClusters] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,19 +95,21 @@ export function ApplicationDetail() {
     })();
   }, [currentOrg?.id]);
 
-  // The most recent workflow run (for an at-a-glance status), if any.
+  // The newest workflow runs (newest first), for an at-a-glance history.
   useEffect(() => {
     void (async () => {
       const { data } = await api.GET("/api/applications/{id}/runs", {
         params: { path: { id: appId } },
       });
-      setLatestRun(data?.runs?.[0] ?? null);
+      setRecentRuns(data?.runs?.slice(0, RECENT_RUNS) ?? []);
     })();
   }, [appId, currentOrg?.id]);
 
-  // The badge is fetched once above; if that run is still in flight, follow its
-  // stream so the status stays current without polling (mirrors WorkflowRunView).
-  // The stream emits the full WorkflowRunDetail on each change.
+  // The runs are fetched once above; if the latest is still in flight, follow
+  // its stream so its status stays current without polling (mirrors
+  // WorkflowRunView). Only the latest can be in flight — an app runs one at a
+  // time. The stream emits the full WorkflowRunDetail on each change.
+  const latestRun = recentRuns[0] ?? null;
   const inFlight =
     latestRun != null && !TERMINAL.includes(latestRun.status);
   const { value: streamed } = useObjectStream<WorkflowRunDetail>(
@@ -110,7 +117,7 @@ export function ApplicationDetail() {
     inFlight,
   );
 
-  // The run shown by the badge: the fetched run, with the streamed fields folded
+  // The latest run as shown: the fetched run, with the streamed fields folded
   // in when the stream is for that same run. Deriving it (rather than mutating
   // state in an effect) avoids racing the initial fetch and keeps the badge
   // current as the stream progresses.
@@ -118,8 +125,7 @@ export function ApplicationDetail() {
     latestRun && streamed && streamed.id === latestRun.id
       ? { ...latestRun, ...streamed }
       : latestRun;
-
-
+  const shownRuns = displayRun ? [displayRun, ...recentRuns.slice(1)] : [];
 
   // Start a run against the saved workflow and jump to its live view. Runs are
   // started from here (not the workflow builder) — the builder only edits the
@@ -169,11 +175,23 @@ export function ApplicationDetail() {
               <h1 className="mt-1 break-all text-2xl font-bold tracking-tight">
                 {app.name}
               </h1>
-              {app.imported && (
-                <span className="mt-2 inline-block border border-neutral-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
-                  imported
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                {/* The runner: where the app's jobs run (deploy targets live
+                    on the individual components). */}
+                <span
+                  title="Runner cluster: where this application's jobs run"
+                  className="inline-flex items-center gap-1.5 border border-neutral-700 px-1.5 py-0.5 text-neutral-300"
+                >
+                  <Server className="h-3 w-3 text-neutral-500" />
+                  <span className="text-neutral-500">runner</span>
+                  {clusters[app.runner_cluster_id] ?? app.runner_cluster_id}
                 </span>
-              )}
+                {app.imported && (
+                  <span className="border border-neutral-700 px-1.5 py-0.5 uppercase tracking-wide text-neutral-400">
+                    imported
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -212,15 +230,20 @@ export function ApplicationDetail() {
 
           {/* Workflow: an at-a-glance view of the stages plus the run
               controls. Building/changing the workflow happens on the dedicated
-              builder page; runs are started from here. */}
+              builder page (the heading and Edit workflow both open it); a
+              component card opens that component's page. Runs are started
+              from here. */}
           <div className="mt-6 border border-neutral-800 bg-neutral-900">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800 px-4 py-2">
-              <div className="flex items-center gap-2">
-                <Workflow className="h-3.5 w-3.5 text-neutral-500" />
-                <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+              <h2 className="text-[11px] font-medium uppercase tracking-wide">
+                <Link
+                  to={`/applications/${appId}/workflow`}
+                  className="inline-flex items-center gap-2 text-neutral-500 hover:text-neutral-100"
+                >
+                  <Workflow className="h-3.5 w-3.5" />
                   Workflow
-                </h2>
-              </div>
+                </Link>
+              </h2>
               <button
                 type="button"
                 onClick={() => navigate(`/applications/${appId}/workflow`)}
@@ -235,7 +258,9 @@ export function ApplicationDetail() {
               appId={appId}
               clusterName={(id) => clusters[id]}
               latestStages={displayRun?.stages}
-              onOpen={() => navigate(`/applications/${appId}/workflow`)}
+              onOpen={(componentId) =>
+                navigate(`/applications/${appId}/workflow/nodes/${componentId}`)
+              }
             />
             {canEdit && (
               <div className="flex flex-wrap items-center justify-end gap-2 border-t border-neutral-800 px-4 py-3">
@@ -273,17 +298,17 @@ export function ApplicationDetail() {
             )}
           </div>
 
-          {/* Latest run (links to the run view; the full history is on the
-              runs page, filtered to this application) */}
+          {/* Recent runs (each links to its run view; the full history is
+              on the runs page, filtered to this application) */}
           <div className="mt-6 border border-neutral-800 bg-neutral-900">
             <div className="flex items-center justify-between gap-2 border-b border-neutral-800 px-4 py-2">
               <div className="flex items-center gap-2">
                 <History className="h-3.5 w-3.5 text-neutral-500" />
                 <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-                  Latest run
+                  Recent runs
                 </h2>
               </div>
-              {displayRun && (
+              {shownRuns.length > 0 && (
                 <Link
                   to={`/runs?application=${appId}`}
                   className="text-xs text-neutral-400 hover:text-neutral-100"
@@ -292,47 +317,40 @@ export function ApplicationDetail() {
                 </Link>
               )}
             </div>
-            {!displayRun ? (
+            {shownRuns.length === 0 ? (
               <p className="px-4 py-6 text-sm text-neutral-400">
                 No runs yet. Build the deploy workflow and start a run.
               </p>
             ) : (
-              <button
-                type="button"
-                onClick={() =>
-                  navigate(`/applications/${appId}/runs/${displayRun.id}`)
-                }
-                className="flex w-full items-center justify-between px-4 py-3 text-left text-sm hover:bg-neutral-800"
-              >
-                <span className="flex items-center gap-3">
-                  <span className="capitalize text-neutral-300">
-                    {runActionLabel(displayRun.action, displayRun.scope)}
-                  </span>
-                  <RunStatusBadge status={displayRun.status} />
-                  <StageBar stages={displayRun.stages} />
-                </span>
-                <span className="text-neutral-400">
-                  {new Date(displayRun.created_at).toLocaleString()} ·{" "}
-                  {formatDuration(
-                    displayRun.created_at,
-                    displayRun.finished_at ?? undefined,
-                  )}
-                </span>
-              </button>
+              <ul aria-label="Recent runs" className="divide-y divide-neutral-800">
+                {shownRuns.map((r) => (
+                  <li key={r.id}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(`/applications/${appId}/runs/${r.id}`)
+                      }
+                      className="flex w-full items-center justify-between px-4 py-3 text-left text-sm hover:bg-neutral-800"
+                    >
+                      <span className="flex items-center gap-3">
+                        <span className="capitalize text-neutral-300">
+                          {runActionLabel(r.action, r.scope)}
+                        </span>
+                        <RunStatusBadge status={r.status} />
+                        <StageBar stages={r.stages} />
+                      </span>
+                      <span className="text-neutral-400">
+                        {new Date(r.created_at).toLocaleString()} ·{" "}
+                        {formatDuration(
+                          r.created_at,
+                          r.finished_at ?? undefined,
+                        )}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
-          </div>
-
-          {/* Runner (deploy targets live on the individual components) */}
-          <div className="mt-6 border border-neutral-800 bg-neutral-900 p-4">
-            <h2 className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-              Runner
-            </h2>
-            <dl className="mt-3 grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
-              <Row
-                label="Runner cluster"
-                value={clusters[app.runner_cluster_id] ?? app.runner_cluster_id}
-              />
-            </dl>
           </div>
 
           {runDialogOpen && (
@@ -356,15 +374,6 @@ export function ApplicationDetail() {
           )}
         </>
       )}
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col">
-      <dt className="text-xs text-neutral-500">{label}</dt>
-      <dd className="break-all text-neutral-200">{value || "—"}</dd>
     </div>
   );
 }

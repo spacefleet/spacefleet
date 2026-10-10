@@ -1,5 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useParams } from "react-router";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApplicationDetail } from "./ApplicationDetail";
@@ -103,6 +103,23 @@ const workflow = {
   ],
 };
 
+// Stands in for the component page, echoing the id it was opened with.
+function ComponentPage() {
+  const { nodeId } = useParams();
+  return <div>component page {nodeId}</div>;
+}
+
+// Stands in for the run view, echoing the run it was opened for.
+function RunPage() {
+  const { runId } = useParams();
+  return (
+    <div>
+      <p>run view</p>
+      <p>opened {runId}</p>
+    </div>
+  );
+}
+
 function renderDetail() {
   return render(
     <MemoryRouter initialEntries={["/applications/app-1"]}>
@@ -122,8 +139,12 @@ function renderDetail() {
           element={<div>workflow builder</div>}
         />
         <Route
+          path="/applications/:appId/workflow/nodes/:nodeId"
+          element={<ComponentPage />}
+        />
+        <Route
           path="/applications/:appId/runs/:runId"
-          element={<div>run view</div>}
+          element={<RunPage />}
         />
       </Routes>
     </MemoryRouter>,
@@ -157,8 +178,11 @@ describe("ApplicationDetail overview", () => {
   it("shows the runner and the latest run status", async () => {
     renderDetail();
     expect(await screen.findByText("web")).toBeInTheDocument();
-    // The runner cluster id resolves to its name.
-    expect((await screen.findAllByText("prod")).length).toBeGreaterThan(0);
+    // The runner is a tag by the name, its cluster id resolved to a name.
+    await waitFor(() =>
+      expect(screen.getByTitle(/runner cluster/i)).toHaveTextContent("runnerprod"),
+    );
+    expect(screen.queryByRole("heading", { name: "Runner" })).toBeNull();
     // The latest run's action + status are shown.
     expect(screen.getByText("deploy")).toBeInTheDocument();
     expect(screen.getByText("succeeded")).toBeInTheDocument();
@@ -169,6 +193,13 @@ describe("ApplicationDetail overview", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /edit workflow/i }),
     );
+    expect(await screen.findByText("workflow builder")).toBeInTheDocument();
+  });
+
+  it("links to the workflow builder from the Workflow heading", async () => {
+    renderDetail();
+    const heading = await screen.findByRole("heading", { name: "Workflow" });
+    await userEvent.click(within(heading).getByRole("link", { name: "Workflow" }));
     expect(await screen.findByText("workflow builder")).toBeInTheDocument();
   });
 
@@ -236,11 +267,13 @@ describe("ApplicationDetail overview", () => {
     ).toBeInTheDocument();
   });
 
-  it("opens the builder from a component in the overview", async () => {
+  it("opens a component's page from its card in the overview", async () => {
     renderDetail();
     const charts = await screen.findByRole("region", { name: "Stage Charts" });
     await userEvent.click(within(charts).getByRole("button", { name: /release/ }));
-    expect(await screen.findByText("workflow builder")).toBeInTheDocument();
+    expect(
+      await screen.findByText(`component page ${RELEASE}`),
+    ).toBeInTheDocument();
   });
 
   it("opens the Run dialog rather than deploying right away, then deploys from it", async () => {
@@ -326,6 +359,30 @@ describe("ApplicationDetail overview", () => {
     expect(
       await screen.findByText(/a run is already in progress/i),
     ).toBeInTheDocument();
+  });
+
+  it("lists the five newest runs, each opening its own run view", async () => {
+    // Seven runs, newest first (as the API returns them): run-7 … run-1.
+    const runs = Array.from({ length: 7 }, (_, i) => ({
+      ...run,
+      id: `run-${7 - i}`,
+      created_at: `2026-06-0${7 - i}T10:00:00Z`,
+      finished_at: `2026-06-0${7 - i}T10:01:00Z`,
+    }));
+    mockApi.GET.mockImplementation((path: string) => {
+      if (path === "/api/applications/{id}")
+        return Promise.resolve({ data: app, error: undefined });
+      if (path === "/api/applications/{id}/runs")
+        return Promise.resolve({ data: { runs }, error: undefined });
+      return Promise.resolve({ data: undefined, error: undefined });
+    });
+    renderDetail();
+    const list = await screen.findByRole("list", { name: "Recent runs" });
+    const rows = within(list).getAllByRole("button");
+    expect(rows).toHaveLength(5);
+    // The third row is the third-newest run.
+    await userEvent.click(rows[2]);
+    expect(await screen.findByText("opened run-5")).toBeInTheDocument();
   });
 
   it("opens the run view from the latest run", async () => {

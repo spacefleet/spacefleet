@@ -12,7 +12,7 @@ type ComponentRunStatus = components["schemas"]["ComponentRunStatus"];
 // application page: the saved stages and their components, laid out like the
 // builder, with each component colored by how it did in the latest run (when
 // that run covered it). It answers "what does a deploy do, and how did the last
-// one go" without opening the builder; clicking a component opens the builder.
+// one go" without opening the builder; clicking a component opens its page.
 export function WorkflowStagesOverview({
   appId,
   clusterName,
@@ -23,7 +23,8 @@ export function WorkflowStagesOverview({
   clusterName: (id: string) => string | undefined;
   // The latest run's stage summary, if there is a latest run.
   latestStages?: RunStage[];
-  onOpen: () => void;
+  // Called with the clicked component's id.
+  onOpen: (componentId: string) => void;
 }) {
   const { currentOrg } = useOrg();
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
@@ -79,7 +80,7 @@ export function WorkflowStagesOverview({
       stages={stages}
       clusterName={clusterName}
       statusByComponent={statusByComponent}
-      onOpen={onOpen}
+      onOpen={(c) => onOpen(c.id)}
     />
   );
 }
