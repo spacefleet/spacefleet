@@ -877,7 +877,10 @@ describe("WorkflowRunView", () => {
   // apply unit captured the module's outputs. The detail mock parameterizes the
   // outputs so the masking tests can model an editor (value present) and a
   // viewer (sensitive value withheld by the API).
-  function mockSettledTofuRun(outputs: Record<string, unknown>) {
+  function mockSettledTofuRun(
+    outputs: Record<string, unknown>,
+    apply: Record<string, unknown> = {},
+  ) {
     const settled = {
       ...awaitingDetail,
       status: "succeeded",
@@ -918,6 +921,7 @@ describe("WorkflowRunView", () => {
                     status: "succeeded",
                     logs: "apply logs",
                     outputs,
+                    ...apply,
                   }
                 : {
                     id: "cr-a",
@@ -955,6 +959,32 @@ describe("WorkflowRunView", () => {
     expect(await screen.findByText("hunter2")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /mask db_password/i }));
     expect(screen.queryByText("hunter2")).not.toBeInTheDocument();
+  });
+
+  it("leads with the plan output on an apply step its plan completed", async () => {
+    // Nothing to apply: the apply step succeeded without a TaskRun (no run
+    // name, no logs), so the plan it rests on is what there is to see.
+    mockSettledTofuRun(
+      {},
+      {
+        logs: "",
+        message: "nothing to apply: the plan has no changes, so no approval was needed",
+      },
+    );
+    renderRunView();
+    await clickStep("apply");
+    expect(await screen.findByText("tofu plan output")).toBeInTheDocument();
+    expect(
+      screen.getByText(/nothing to apply: the plan has no changes/),
+    ).toBeInTheDocument();
+  });
+
+  it("leads with the logs on an apply step that ran", async () => {
+    mockSettledTofuRun({}, { run_name: "tofu-infra-apply-r1" });
+    renderRunView();
+    await clickStep("apply");
+    expect(await screen.findByText("apply logs")).toBeInTheDocument();
+    expect(screen.queryByText("tofu plan output")).not.toBeInTheDocument();
   });
 
   it("offers no reveal when a sensitive output's value was withheld by the API", async () => {

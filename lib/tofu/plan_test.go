@@ -338,3 +338,30 @@ your most recent changes, and found no differences.
 		t.Fatalf("clean refresh-only parsed wrong: %+v", p)
 	}
 }
+
+func TestPlanVerdict(t *testing.T) {
+	cases := []struct {
+		name        string
+		logs        string
+		wantChanges bool
+		wantOK      bool
+	}{
+		{"absent", samplePlanLogs, false, false},
+		{"empty", "", false, false},
+		{"no changes", "No changes.\nsecret/x configured\nSPACEFLEET_PLAN_CHANGES=false\n", false, true},
+		{"changes", "Plan: 1 to add, 0 to change, 0 to destroy.\nSPACEFLEET_PLAN_CHANGES=true", true, true},
+		{"crlf", "SPACEFLEET_PLAN_CHANGES=false\r\n", false, true},
+		// The script echoes the marker last, so it beats anything earlier.
+		{"last wins", "SPACEFLEET_PLAN_CHANGES=false\nSPACEFLEET_PLAN_CHANGES=true\n", true, true},
+		// Only a whole, unindented line counts: a value inside the plan text
+		// (indented under its resource) is not a verdict.
+		{"indented ignored", "      + body = <<-EOT\n          SPACEFLEET_PLAN_CHANGES=false\n        EOT\n", false, false},
+		{"other value ignored", "SPACEFLEET_PLAN_CHANGES=maybe\n", false, false},
+	}
+	for _, tc := range cases {
+		changes, ok := PlanVerdict(tc.logs)
+		if changes != tc.wantChanges || ok != tc.wantOK {
+			t.Errorf("%s: PlanVerdict = (%v, %v), want (%v, %v)", tc.name, changes, ok, tc.wantChanges, tc.wantOK)
+		}
+	}
+}

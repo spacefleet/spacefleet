@@ -255,7 +255,7 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 		if !ok {
 			return nodeResult{Status: statusFailed, Err: fmt.Errorf("workflows: component run for node %s missing", sn.ID)}
 		}
-		res := w.runComponent(ctx, a, app, node, cr, nodeByID, attemptsRemain, stateOp)
+		res := w.runComponent(ctx, a, app, node, cr, nodeByID, crByComponent, attemptsRemain, stateOp)
 		if res.Status == statusFailed && res.Retryable {
 			ranMu.Lock()
 			retryable = true
@@ -273,7 +273,8 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 		// invoking runFn: "skipped" (a dep hard-failed or was skipped) and the
 		// "failed" it settles directly when a node references an unknown dependency id
 		// (F1) — that node never reaches runFn, so without persisting here its
-		// component_run would be left pending while the run reports failed.
+		// component_run would be left pending while the run reports failed — and
+		// the "succeeded" of an apply unit its plan completed (nothing to apply).
 		cr, ok := crByComponent[id]
 		if !ok {
 			return
@@ -309,6 +310,17 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 			ranMu.Unlock()
 			if !executed {
 				_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "failed", "unresolved dependency: a referenced component is not part of this run", "")
+			}
+		case statusSucceeded:
+			// runFn persists its own "succeeded". One the scheduler settled without
+			// running is an apply unit its plan completed (nothing to apply); persist
+			// it here — unless an earlier attempt already did, since re-marking would
+			// restamp the step's finish time on every resume.
+			ranMu.Lock()
+			_, executed := ran[id]
+			ranMu.Unlock()
+			if !executed && cr.Status != componentrun.StatusSucceeded {
+				_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "succeeded", nothingToApplyMessage(nodeByID[id]), "")
 			}
 		}
 	}
@@ -413,14 +425,18 @@ func (w *WorkflowRunWorker) Work(ctx context.Context, job *river.Job[WorkflowRun
 // label), captures logs + revisions, and marks the terminal status. attemptsRemain
 // (whether River will retry the job after a returned error) decides whether a
 // retryable executor failure may leave the component run in-flight for the retry
-// to pick up (H3), or must settle it failed because no retry will follow.
-func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs, app *ent.Application, node GraphNode, cr *ent.ComponentRun, byID map[uuid.UUID]GraphNode, attemptsRemain bool, stateOp *tofu.StateOp) nodeResult {
+// to pick up (H3), or must settle it failed because no retry will follow. crs
+// holds the run's component runs by unit id, for the apply unit a plan with
+// nothing to apply completes.
+func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs, app *ent.Application, node GraphNode, cr *ent.ComponentRun, byID map[uuid.UUID]GraphNode, crs map[uuid.UUID]*ent.ComponentRun, attemptsRemain bool, stateOp *tofu.StateOp) nodeResult {
 	// Retry short-circuit: a component already settled in a prior attempt is not
 	// re-run; its stored status drives the scheduler so dependents see the same
-	// outcome. Skipped is treated as a non-pass terminal too.
+	// outcome. Skipped is treated as a non-pass terminal too. A plan unit with
+	// nothing to apply completes its apply unit again — its persisted logs give
+	// the answer they gave when it settled.
 	switch cr.Status {
 	case componentrun.StatusSucceeded:
-		return nodeResult{Status: statusSucceeded}
+		return nodeResult{Status: statusSucceeded, Completes: noChangeCompletes(a.Action, node, cr.Logs, byID)}
 	case componentrun.StatusFailed:
 		return nodeResult{Status: statusFailed}
 	case componentrun.StatusSkipped:
@@ -509,8 +525,56 @@ func (w *WorkflowRunWorker) runComponent(ctx context.Context, a WorkflowRunArgs,
 	if recordsTofuState(a.Action, node) {
 		w.captureTofuOutputs(ctx, a, node, byID, runnerConn, cr.ID)
 	}
+	// A plan with nothing to apply completes its apply unit: the scheduler
+	// settles it succeeded without running it or parking it for approval. The
+	// plan step recorded the unchanged state's outputs and inventory into the
+	// handover Secret for this case; capture them onto the apply unit's row,
+	// where an apply would have put them (and which deletes the spent Secret).
+	completes := noChangeCompletes(a.Action, node, logs, byID)
+	for _, id := range completes {
+		if applyCR, ok := crs[id]; ok {
+			w.captureTofuOutputs(ctx, a, byID[id], byID, runnerConn, applyCR.ID)
+		}
+	}
 	_ = w.svc.MarkComponentRun(ctx, a.OrgID, cr.ID, "succeeded", finalStatus.Message, runName)
-	return nodeResult{Status: statusSucceeded}
+	return nodeResult{Status: statusSucceeded, Completes: completes}
+}
+
+// noChangeCompletes returns the apply unit a succeeded OpenTofu plan unit
+// completes because there is nothing to apply (nil otherwise): on a deploy or
+// uninstall, OpenTofu's own verdict (the plan's -detailed-exitcode, echoed as
+// tofu.PlanChangesPrefix) says the plan has no changes, and the plan text the
+// run view shows agrees. A verdict that is missing — logs not captured or
+// truncated, a plan from before the marker existed — or that disagrees with
+// the text leaves the apply as it was, gate included: doubt always falls on
+// the side of asking. Pure, so a retry recomputes it from the persisted logs.
+func noChangeCompletes(action string, node GraphNode, logs string, byID map[uuid.UUID]GraphNode) []uuid.UUID {
+	if action != ActionDeploy && action != ActionUninstall {
+		return nil
+	}
+	if node.Type != TypeTerraform || node.Config[terraformConfigCommand] != terraformCommandPlan {
+		return nil
+	}
+	apply, ok := byID[deriveApplyID(node.ID)]
+	if !ok || apply.Config[terraformConfigCommand] != terraformCommandApply || upstreamTofuPlanID(apply, byID) != node.ID {
+		return nil
+	}
+	if changes, ok := tofu.PlanVerdict(logs); !ok || changes {
+		return nil
+	}
+	if plan := tofu.ParsePlan(logs); !plan.Found || plan.HasChanges {
+		return nil
+	}
+	return []uuid.UUID{apply.ID}
+}
+
+// nothingToApplyMessage is the message on an apply unit its plan completed,
+// saying why it did not run — and, for a gated one, why nobody approved it.
+func nothingToApplyMessage(apply GraphNode) string {
+	if apply.RequiresApproval {
+		return "nothing to apply: the plan has no changes, so no approval was needed"
+	}
+	return "nothing to apply: the plan has no changes"
 }
 
 // recordsTofuState reports whether a succeeded unit hands outputs + inventory

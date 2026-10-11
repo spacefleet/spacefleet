@@ -795,6 +795,14 @@ function ComponentRunPanel({
     if (ownPlan) setTab((t) => (t === "logs" ? "plan" : t));
   }, [ownPlan]);
 
+  // An apply step that succeeded without a TaskRun was completed by its plan
+  // (nothing to apply): it has no logs, so the plan output it rests on leads.
+  const completedByPlan =
+    !!planRun && detail?.status === "succeeded" && !detail.run_name;
+  useEffect(() => {
+    if (completedByPlan) setTab((t) => (t === "logs" ? "plan" : t));
+  }, [completedByPlan]);
+
   return (
     <section
       aria-label="Selected step"

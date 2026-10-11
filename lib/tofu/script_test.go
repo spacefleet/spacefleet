@@ -111,12 +111,13 @@ func TestScriptPlanStoresPlanfileSecret(t *testing.T) {
 		}
 	}
 	// The plan node stores; it must not fetch, apply, or delete the Secret, and
-	// it has no outputs to capture (only a deploy apply does).
+	// it captures outputs only when there is nothing to apply (see
+	// TestScriptPlanVerdict).
 	if strings.Contains(s, "tofu apply") || strings.Contains(s, "kubectl get secret") || strings.Contains(s, "kubectl delete secret") {
 		t.Errorf("plan node must only store the planfile\n---\n%s", s)
 	}
-	if strings.Contains(s, "tofu output") {
-		t.Errorf("plan node must not capture outputs\n---\n%s", s)
+	if i, j := strings.Index(s, "if [ \"$plan_rc\" -eq 0 ]; then"), strings.Index(s, "tofu output"); i < 0 || j < i {
+		t.Errorf("plan node must capture outputs only in the no-changes branch\n---\n%s", s)
 	}
 	// The store must come after the plan produced the file.
 	if i, j := strings.Index(s, "tofu plan -input=false -out=tfplan"), strings.Index(s, "kubectl create secret"); i < 0 || j < 0 || i >= j {
@@ -758,7 +759,7 @@ func TestScriptWorkspace(t *testing.T) {
 		mut  func(a *Apply)
 		next string
 	}{
-		{"plan", func(a *Apply) { a.Command, a.Action = CommandPlan, ActionDeploy }, "tofu plan"},
+		{"plan", func(a *Apply) { a.Command, a.Action = CommandPlan, ActionDeploy }, "plan_rc=0\ntofu plan"},
 		{"apply", func(a *Apply) { a.Command, a.Action = CommandApply, ActionDeploy }, applyToolsInstall},
 		{"drift", func(a *Apply) { a.Command, a.Action, a.PlanArtifactSecret = CommandPlan, ActionDrift, "" }, "tofu plan -input=false -refresh-only"},
 		{"state op", func(a *Apply) {
@@ -924,5 +925,52 @@ func TestScriptManagedStateWithoutAddressFailsClosed(t *testing.T) {
 	s := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "p", Backend: BackendSpacefleet})
 	if strings.Contains(s, "tofu init") || !strings.Contains(s, "exit 1") {
 		t.Errorf("want a fail-closed script without init\n---\n%s", s)
+	}
+}
+
+// TestScriptPlanVerdict: a plan that hands its planfile to an apply step runs
+// with -detailed-exitcode, fails the step on any exit but 0 (no changes) or 2
+// (changes), always stores the planfile, and ends with the verdict marker. On
+// no changes it first records the unchanged state's outputs and inventory into
+// the Secret — best-effort, and keeping the planfile beside them — so the
+// completed apply step still leaves the component's state recorded.
+func TestScriptPlanVerdict(t *testing.T) {
+	t.Parallel()
+	for _, action := range []string{ActionDeploy, ActionUninstall} {
+		s := Script(Apply{
+			Command: CommandPlan, Action: action, RepoURL: "r", Path: "p", Backend: "s3",
+			Namespace: "default", PlanArtifactSecret: "tfplan-run1-plan1",
+			PlanFlags: []string{"-var=env=prod"},
+		})
+		plan := "tofu plan -input=false -out=tfplan -no-color -detailed-exitcode '-var=env=prod' || plan_rc=$?\n"
+		if action == ActionUninstall {
+			plan = "tofu plan -input=false -destroy -out=tfplan -no-color -detailed-exitcode '-var=env=prod' || plan_rc=$?\n"
+		}
+		want := "plan_rc=0\n" + plan +
+			"if [ \"$plan_rc\" -ne 0 ] && [ \"$plan_rc\" -ne 2 ]; then exit \"$plan_rc\"; fi\n" +
+			kubectlInstall +
+			"kubectl create secret generic 'tfplan-run1-plan1' --namespace 'default' --from-file=tfplan=tfplan --dry-run=client -o yaml | kubectl apply --namespace 'default' -f -\n" +
+			"if [ \"$plan_rc\" -eq 0 ]; then\n" +
+			"apk add --no-cache jq || echo 'warning: failed to install jq' >&2\n" +
+			"tofu output -json > sf-outputs.json || : > sf-outputs.json\n" +
+			"tofu show -json | jq -c " + shQuote(resourcesFilter) + " > sf-resources.json || : > sf-resources.json\n" +
+			"kubectl create secret generic 'tfplan-run1-plan1' --namespace 'default' --from-file=tfplan=tfplan --from-file=outputs=sf-outputs.json --from-file=resources=sf-resources.json --dry-run=client -o yaml | kubectl apply --namespace 'default' -f - || echo 'warning: failed to store outputs' >&2\n" +
+			"echo 'SPACEFLEET_PLAN_CHANGES=false'\n" +
+			"else\n" +
+			"echo 'SPACEFLEET_PLAN_CHANGES=true'\n" +
+			"fi\n"
+		if !strings.HasSuffix(s, want) {
+			t.Errorf("%s: plan tail\n got: %q\nwant suffix: %q", action, s, want)
+		}
+	}
+	// No handover (nothing applies this plan): a plain plan, no verdict.
+	s := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "p", Backend: "s3"})
+	if strings.Contains(s, "-detailed-exitcode") || strings.Contains(s, PlanChangesPrefix) {
+		t.Errorf("a plan without a handover must not report a verdict\n---\n%s", s)
+	}
+	// A preview never stores a planfile, so never reports one either.
+	s = Script(Apply{Command: CommandPlan, Action: ActionPreview, RepoURL: "r", Path: "p", Backend: "s3", PlanArtifactSecret: "x"})
+	if strings.Contains(s, "-detailed-exitcode") || strings.Contains(s, PlanChangesPrefix) {
+		t.Errorf("a preview must not report a verdict\n---\n%s", s)
 	}
 }

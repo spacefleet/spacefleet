@@ -83,7 +83,8 @@ about that:
   an OpenTofu destroy plans the destruction of everything the component
   manages, a Helm uninstall removes its release, and a Manifest uninstall
   deletes what was applied from its path. The run **always waits for
-  approval**, whatever the component's own approval setting. When it
+  approval**, whatever the component's own approval setting — unless an
+  OpenTofu destroy finds nothing left to destroy. When it
   succeeds, its run page offers **Delete component** to finish the job. If
   it fails or is rejected, nothing is deleted.
 - **Leave it running** deletes the component right away. What it deployed
@@ -127,6 +128,14 @@ approval by default (turn on **Auto-approve apply** to skip the pause). The
 apply always executes exactly the plan that was reviewed — if someone changed
 the infrastructure in between, the run fails loudly instead of applying
 something different.
+
+When a plan has **no changes**, there is nothing to apply and nothing to
+approve: the apply step is marked done straight away, without running or
+pausing, and the run moves on to the next stage. The apply step says
+*nothing to apply: the plan has no changes*, and its plan output is a click
+away. The component's recorded outputs and resources are refreshed as if it
+had applied, so `${{ components.* }}` references keep working. A plan that
+only changes output values still counts as a change and still waits.
 
 ### Reading a plan
 
@@ -501,7 +510,8 @@ component, choose **⋮ → Delete** on its page and then **Destroy it first**
 waits for approval, whatever the component's own approval setting: for
 OpenTofu, the run shows the destroy plan, with the resources about to go
 listed first, and an editor or admin approves to destroy or rejects to keep
-everything. The component itself is deleted only if you choose **Delete
+everything. (A destroy plan with nothing left to destroy has nothing to
+approve, so it finishes on its own.) The component itself is deleted only if you choose **Delete
 component** once the run succeeds, so the same route destroys a component's
 resources while keeping it in the workflow to deploy again later. Once a
 destroy applies, the component's recorded state is refreshed to an empty

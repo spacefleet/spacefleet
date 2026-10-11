@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -157,5 +158,71 @@ func TestNormalizeTofuResources(t *testing.T) {
 	}
 	if _, err := normalizeTofuResources([]byte(`{"vpc_id":{"value":"x"}}`)); err == nil {
 		t.Error("an object (outputs shape) must be rejected")
+	}
+}
+
+// TestNoChangeCompletes: a succeeded OpenTofu plan unit completes its apply
+// unit only on a deploy or uninstall, and only when OpenTofu's verdict marker
+// and the parsed plan text both say there is nothing to apply. Anything
+// missing or disagreeing leaves the apply (and its gate) alone.
+func TestNoChangeCompletes(t *testing.T) {
+	t.Parallel()
+
+	tfID, helmID := uuid.New(), uuid.New()
+	tf := GraphNode{ID: tfID, ComponentID: tfID, Name: "infra", Type: TypeTerraform, Config: map[string]string{terraformConfigBackend: "s3"}, RequiresApproval: true}
+	helmNode := GraphNode{ID: helmID, ComponentID: helmID, Name: "web", Type: TypeHelm, DependsOn: []uuid.UUID{tfID}}
+	byID := map[uuid.UUID]GraphNode{}
+	for _, n := range expandExecutionNodes([]GraphNode{tf, helmNode}, ActionDeploy) {
+		byID[n.ID] = n
+	}
+	plan, apply := byID[tfID], byID[deriveApplyID(tfID)]
+
+	const noChanges = "No changes. Your infrastructure matches the configuration.\n\nSaved the plan to: tfplan\nsecret/x configured\nSPACEFLEET_PLAN_CHANGES=false\n"
+	const changes = "OpenTofu will perform the following actions:\n\n  # aws_s3_bucket.b will be created\n  + resource \"aws_s3_bucket\" \"b\" {\n    }\n\nPlan: 1 to add, 0 to change, 0 to destroy.\nSPACEFLEET_PLAN_CHANGES=true\n"
+
+	cases := []struct {
+		name   string
+		action string
+		node   GraphNode
+		logs   string
+		want   bool
+	}{
+		{"deploy, no changes", ActionDeploy, plan, noChanges, true},
+		{"uninstall, no changes", ActionUninstall, plan, "No changes. No objects need to be destroyed.\nSPACEFLEET_PLAN_CHANGES=false\n", true},
+		{"changes", ActionDeploy, plan, changes, false},
+		{"no verdict (logs from before the marker)", ActionDeploy, plan, "No changes. Your infrastructure matches the configuration.\n", false},
+		{"no logs captured", ActionDeploy, plan, "", false},
+		{"verdict disagrees with the plan text", ActionDeploy, plan, strings.Replace(changes, "=true", "=false", 1), false},
+		{"text disagrees with the verdict", ActionDeploy, plan, strings.Replace(noChanges, "=false", "=true", 1), false},
+		{"apply unit is not a plan", ActionDeploy, apply, noChanges, false},
+		{"non-tofu node", ActionDeploy, byID[helmID], noChanges, false},
+		{"preview", ActionPreview, plan, noChanges, false},
+		{"drift", ActionDrift, plan, noChanges, false},
+	}
+	for _, tc := range cases {
+		got := noChangeCompletes(tc.action, tc.node, tc.logs, byID)
+		if tc.want {
+			if len(got) != 1 || got[0] != apply.ID {
+				t.Errorf("%s: completes = %v, want [%s]", tc.name, got, apply.ID)
+			}
+		} else if got != nil {
+			t.Errorf("%s: completes = %v, want none", tc.name, got)
+		}
+	}
+
+	// A plan unit whose apply unit is missing from the run completes nothing.
+	delete(byID, apply.ID)
+	if got := noChangeCompletes(ActionDeploy, plan, noChanges, byID); got != nil {
+		t.Errorf("without an apply unit: completes = %v, want none", got)
+	}
+}
+
+func TestNothingToApplyMessage(t *testing.T) {
+	t.Parallel()
+	if got := nothingToApplyMessage(GraphNode{RequiresApproval: true}); !strings.Contains(got, "no approval was needed") {
+		t.Errorf("gated message = %q", got)
+	}
+	if got := nothingToApplyMessage(GraphNode{}); strings.Contains(got, "approval") {
+		t.Errorf("ungated message = %q", got)
 	}
 }

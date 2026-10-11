@@ -53,10 +53,16 @@ type schedNode struct {
 // The scheduler itself ignores Retryable; it's consumed by the worker to decide
 // whether to return an error from Work (retry the River job) or nil (settle the
 // run failed without burning retries — F4).
+//
+// Completes lists dependents a succeeded result makes moot: each settles
+// "succeeded" in place, once it is ready, instead of launching or parking at
+// its gate — an OpenTofu plan unit with nothing to apply completes its apply
+// unit this way. It is ignored on any other status.
 type nodeResult struct {
 	Status    string
 	Err       error
 	Retryable bool
+	Completes []uuid.UUID
 }
 
 // schedule runs a DAG of nodes to completion and returns the run's terminal
@@ -77,6 +83,9 @@ type nodeResult struct {
 //     PARKED instead of launched: onState(id, "awaiting_approval") fires once and
 //     the node neither runs nor settles. Its dependents see an unsettled dependency
 //     and wait; in-flight siblings drain, then the loop exits.
+//   - A node named in a succeeded result's Completes neither runs nor parks:
+//     once ready it settles "succeeded" in place (onState fires for it, runFn
+//     never does), so its dependents proceed as if it had run.
 //   - Final status precedence: "failed" if any node hard-failed; else "suspended"
 //     if any node parked; else "partial" if any node failed (continue-on-failure);
 //     else "succeeded". An empty graph → "succeeded".
@@ -109,6 +118,7 @@ func schedule(
 		results   = make(map[uuid.UUID]string, len(nodes)) // terminal status per settled node
 		inflight  = make(map[uuid.UUID]bool, len(nodes))   // running or scheduled-to-run
 		parked    = make(map[uuid.UUID]bool, len(nodes))   // gated, awaiting approval (never settles here)
+		completed = make(map[uuid.UUID]bool)               // made moot by a dependency's result (settles without running)
 		suspended bool                                     // at least one node parked
 		done      = make(chan uuid.UUID)                   // ids of just-settled (executed) nodes
 		sem       = make(chan struct{}, concurrency)
@@ -172,6 +182,11 @@ func schedule(
 				status = statusFailed
 			}
 			mu.Lock()
+			if status == statusSucceeded {
+				for _, id := range res.Completes {
+					completed[id] = true
+				}
+			}
 			markSettled(n.ID, status)
 			mu.Unlock()
 			done <- n.ID
@@ -236,6 +251,13 @@ func schedule(
 					continue
 				}
 				if ready {
+					// A node a dependency's result completed has nothing left to do: it
+					// succeeds in place, ahead of its gate (there is nothing to approve).
+					if completed[n.ID] {
+						markSettled(n.ID, statusSucceeded)
+						progressed = true
+						continue
+					}
 					// A gated node that hasn't been approved parks instead of launching: emit
 					// awaiting_approval once, record it, and leave it unsettled so its dependents
 					// wait. A resume re-runs schedule with Approved=true and it launches normally.

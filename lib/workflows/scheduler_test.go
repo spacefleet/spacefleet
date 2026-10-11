@@ -440,3 +440,83 @@ func TestScheduleNotRequiredApprovalRunsAsToday(t *testing.T) {
 		t.Fatal("an ungated node must not park")
 	}
 }
+
+// completingRunFn is outcomeRunFn for an all-succeeding graph, except that
+// each node in completes reports the given dependents as completed.
+func completingRunFn(completes map[uuid.UUID][]uuid.UUID, ran *recordingState) func(context.Context, schedNode) nodeResult {
+	return func(_ context.Context, n schedNode) nodeResult {
+		ran.on(n.ID, "ran")
+		return nodeResult{Status: statusSucceeded, Completes: completes[n.ID]}
+	}
+}
+
+func TestScheduleCompletedGateSucceedsWithoutRunningOrParking(t *testing.T) {
+	t.Parallel()
+	// plan -> apply(gated) -> next. The plan's result completes the apply: it
+	// settles succeeded without running or parking, and next runs after it.
+	plan, apply, next := uuid.New(), uuid.New(), uuid.New()
+	nodes := []schedNode{
+		{ID: plan},
+		{ID: apply, DependsOn: []uuid.UUID{plan}, RequiresApproval: true},
+		{ID: next, DependsOn: []uuid.UUID{apply}},
+	}
+	st := newRecordingState()
+	ran := newRecordingState()
+	got := schedule(context.Background(), nodes, 4, completingRunFn(map[uuid.UUID][]uuid.UUID{plan: {apply}}, ran), st.on)
+	if got != runSucceeded {
+		t.Fatalf("got %q, want succeeded", got)
+	}
+	if ran.saw(apply, "ran") {
+		t.Fatal("a completed node must not run")
+	}
+	if st.saw(apply, statusAwaitingApproval) || st.saw(apply, statusRunning) {
+		t.Fatalf("a completed node must neither park nor run: %v", st.states[apply])
+	}
+	if st.last(apply) != statusSucceeded {
+		t.Fatalf("completed node = %q, want succeeded", st.last(apply))
+	}
+	if !ran.saw(next, "ran") || st.last(next) != statusSucceeded {
+		t.Fatalf("dependent of a completed node must run: %q", st.last(next))
+	}
+}
+
+func TestScheduleCompletesIgnoredOnFailure(t *testing.T) {
+	t.Parallel()
+	// A failed result cannot complete anything: its dependent skips as usual.
+	plan, apply := uuid.New(), uuid.New()
+	nodes := []schedNode{
+		{ID: plan},
+		{ID: apply, DependsOn: []uuid.UUID{plan}},
+	}
+	st := newRecordingState()
+	runFn := func(_ context.Context, n schedNode) nodeResult {
+		return nodeResult{Status: statusFailed, Completes: []uuid.UUID{apply}}
+	}
+	if got := schedule(context.Background(), nodes, 4, runFn, st.on); got != runFailed {
+		t.Fatalf("got %q, want failed", got)
+	}
+	if st.last(apply) != statusSkipped {
+		t.Fatalf("dependent of a failed node = %q, want skipped", st.last(apply))
+	}
+}
+
+func TestScheduleCompletedNodeWaitsForItsOtherDeps(t *testing.T) {
+	t.Parallel()
+	// A completed node still settles only once ready: with a second dependency
+	// that is parked at a gate, it waits rather than succeeding early.
+	plan, gate, apply := uuid.New(), uuid.New(), uuid.New()
+	nodes := []schedNode{
+		{ID: plan},
+		{ID: gate, RequiresApproval: true},
+		{ID: apply, DependsOn: []uuid.UUID{plan, gate}},
+	}
+	st := newRecordingState()
+	ran := newRecordingState()
+	got := schedule(context.Background(), nodes, 4, completingRunFn(map[uuid.UUID][]uuid.UUID{plan: {apply}}, ran), st.on)
+	if got != runSuspended {
+		t.Fatalf("got %q, want suspended", got)
+	}
+	if st.last(apply) != "" {
+		t.Fatalf("completed node with an unsettled dependency must wait: %v", st.states[apply])
+	}
+}

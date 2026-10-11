@@ -312,6 +312,8 @@ type Apply struct {
 //
 //   - Command=plan, deploy:    tofu plan -input=false -out=tfplan -no-color, then store tfplan
 //   - Command=plan, uninstall: tofu plan -input=false -destroy -out=tfplan -no-color, then store
+//     (either plan, when it stores, runs with -detailed-exitcode and ends with its
+//     verdict marker — see planVerdict)
 //   - Command=apply, deploy/uninstall: restore tfplan, tofu apply tfplan (the
 //     saved plan already encodes deploy-vs-destroy), then hand the outputs +
 //     inventory back through the Secret
@@ -504,16 +506,30 @@ func Script(a Apply) string {
 			b.WriteString("\n")
 			break
 		}
+		// A plan that hands over to an apply step also reports whether there is
+		// anything to apply: -detailed-exitcode exits 0 for no changes and 2 for
+		// changes (anything else is a failed plan, which still fails the step).
+		handover := a.PlanArtifactSecret != ""
+		if handover {
+			b.WriteString("plan_rc=0\n")
+		}
 		if destroy {
 			fmt.Fprintf(&b, "tofu plan -input=false -destroy -out=%s -no-color", PlanfileName)
 		} else {
 			fmt.Fprintf(&b, "tofu plan -input=false -out=%s -no-color", PlanfileName)
 		}
-		appendFlags(&b, a.PlanFlags)
-		b.WriteString("\n")
-		if a.PlanArtifactSecret != "" {
-			b.WriteString(storePlanfile(a))
+		if handover {
+			b.WriteString(" -detailed-exitcode")
 		}
+		appendFlags(&b, a.PlanFlags)
+		if !handover {
+			b.WriteString("\n")
+			break
+		}
+		b.WriteString(" || plan_rc=$?\n")
+		b.WriteString("if [ \"$plan_rc\" -ne 0 ] && [ \"$plan_rc\" -ne 2 ]; then exit \"$plan_rc\"; fi\n")
+		b.WriteString(storePlanfile(a))
+		b.WriteString(planVerdict(a))
 	}
 
 	return b.String()
@@ -576,14 +592,49 @@ func restorePlanfile(a Apply) string {
 // The Secret is not deleted here: the worker deletes it after reading the
 // outputs, and the terminal sweep remains the backstop.
 func storeOutputs(a Apply) string {
+	return captureOutputs(a, false)
+}
+
+// captureOutputs is storeOutputs, optionally re-including the planfile in the
+// upsert. kubectl apply drops a key the previous apply set but this one
+// omits, so a plan step recording state beside a planfile its apply may still
+// need (see planVerdict) carries tfplan along.
+func captureOutputs(a Apply, keepPlanfile bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "tofu output -json > %s || : > %s\n", OutputsFile, OutputsFile)
 	// The resource inventory: the state reduced in-pod to one record per
 	// resource (never the full state, which carries every attribute value).
 	// Like the outputs it goes to a file, never stdout, and tolerates failure.
 	fmt.Fprintf(&b, "tofu show -json | jq -c %s > %s || : > %s\n", shQuote(resourcesFilter), ResourcesFile, ResourcesFile)
-	fmt.Fprintf(&b, "kubectl create secret generic %s --namespace %s --from-file=%s=%s --from-file=%s=%s --dry-run=client -o yaml | kubectl apply --namespace %s -f - || echo 'warning: failed to store outputs' >&2\n",
-		shQuote(a.PlanArtifactSecret), shQuote(a.Namespace), OutputsKey, OutputsFile, ResourcesKey, ResourcesFile, shQuote(a.Namespace))
+	planfile := ""
+	if keepPlanfile {
+		planfile = fmt.Sprintf(" --from-file=%s=%s", PlanfileName, PlanfileName)
+	}
+	fmt.Fprintf(&b, "kubectl create secret generic %s --namespace %s%s --from-file=%s=%s --from-file=%s=%s --dry-run=client -o yaml | kubectl apply --namespace %s -f - || echo 'warning: failed to store outputs' >&2\n",
+		shQuote(a.PlanArtifactSecret), shQuote(a.Namespace), planfile, OutputsKey, OutputsFile, ResourcesKey, ResourcesFile, shQuote(a.Namespace))
+	return b.String()
+}
+
+// planVerdict emits the tail of a plan step that hands over to an apply
+// step, after the planfile is stored: the verdict marker (PlanChangesPrefix)
+// from the plan's -detailed-exitcode, echoed last. A plan with nothing to
+// apply completes its apply step without running it, so the plan step first
+// records what that apply would have — the module's outputs and resource
+// inventory, read from the unchanged state into the handover Secret
+// (best-effort, exactly as an apply records them) — so a first run against
+// existing state still leaves it recorded. The planfile stays in the Secret:
+// if the worker cannot read the verdict (uncaptured logs), the apply runs as
+// before and needs it. kubectl is already installed by storePlanfile; jq is
+// only needed here.
+func planVerdict(a Apply) string {
+	var b strings.Builder
+	b.WriteString("if [ \"$plan_rc\" -eq 0 ]; then\n")
+	b.WriteString("apk add --no-cache jq || echo 'warning: failed to install jq' >&2\n")
+	b.WriteString(captureOutputs(a, true))
+	fmt.Fprintf(&b, "echo '%sfalse'\n", PlanChangesPrefix)
+	b.WriteString("else\n")
+	fmt.Fprintf(&b, "echo '%strue'\n", PlanChangesPrefix)
+	b.WriteString("fi\n")
 	return b.String()
 }
 

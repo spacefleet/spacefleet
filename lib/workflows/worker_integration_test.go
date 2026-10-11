@@ -764,3 +764,161 @@ func TestWorkStateOpGatedThenRecordsState(t *testing.T) {
 		t.Errorf("LatestComponentState = %v (err %v), want the state-op step %s", latest, err, step.ID)
 	}
 }
+
+// noChangePlanLogs is a captured plan step with nothing to apply: the plan
+// text says so and the step's verdict marker (from -detailed-exitcode) agrees.
+const noChangePlanLogs = "No changes. Your infrastructure matches the configuration.\n\nSaved the plan to: tfplan\nsecret/tfplan configured\n" + tofu.PlanChangesPrefix + "false\n"
+
+// gatedTerraformApp builds an application whose first stage is an OpenTofu
+// component requiring approval and whose second stage is a manifest
+// component, and begins a deploy of it.
+func gatedTerraformApp(t *testing.T, client *ent.Client, svc *Service) (tf, next *ent.Component, run *ent.WorkflowRun, args WorkflowRunArgs) {
+	t.Helper()
+	org := newOrg(t, client, "Acme")
+	app := newApp(t, client, org.ID, "web")
+	tf = addTerraformComponent(t, client, org.ID, app.ID, "infra")
+	if _, err := client.Component.UpdateOneID(tf.ID).SetRequiresApproval(true).Save(context.Background()); err != nil {
+		t.Fatalf("gate component: %v", err)
+	}
+	next = addManifestComponent(t, client, org.ID, app.ID, "manifests", true)
+	run, args = beginRun(t, svc, org.ID, app.ID)
+	return tf, next, run, args
+}
+
+// countingSubmits wraps succeedingFuncs, recording each submitted run name.
+func countingSubmits(submitted *[]string) tekton.RunFuncs {
+	funcs := succeedingFuncs()
+	submit := funcs.Submit
+	funcs.Submit = func(ctx context.Context, conn k8s.Connection, ns string, spec tekton.RunSpec) (*tekton.RunStatus, error) {
+		*submitted = append(*submitted, spec.Name)
+		return submit(ctx, conn, ns, spec)
+	}
+	return funcs
+}
+
+// TestWorkNoChangePlanCompletesGatedApply: a plan with nothing to apply
+// completes its apply unit — no TaskRun, no approval gate — recording the
+// unchanged state the plan step handed over onto the apply unit's row, and
+// the run carries straight on into the next stage.
+func TestWorkNoChangePlanCompletesGatedApply(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+	tf, next, run, args := gatedTerraformApp(t, client, svc)
+
+	var submitted []string
+	w := newTestWorker(client, countingSubmits(&submitted))
+	w.captureLogs = func(_ context.Context, _ k8s.Connection, runName string) string {
+		if strings.Contains(runName, "plan") {
+			return noChangePlanLogs
+		}
+		return ""
+	}
+	secretName := tofuPlanArtifactSecret(run.ID, tf.ID)
+	var reads []string
+	w.captureHandover = func(_ context.Context, _ k8s.Connection, _, name, key string) ([]byte, error) {
+		reads = append(reads, name+"#"+key)
+		if key == tofu.ResourcesKey {
+			return []byte(`[{"address":"aws_s3_bucket.data","mode":"managed","type":"aws_s3_bucket","name":"data","provider":"aws","id":"acme-data"}]`), nil
+		}
+		return []byte(`{"bucket": {"sensitive": false, "type": "string", "value": "acme-data"}}`), nil
+	}
+
+	if err := w.Work(ctx, workerJob(args, 1, 3)); err != nil {
+		t.Fatalf("Work: %v", err)
+	}
+	if got := runStatus(t, client, run.ID); got != workflowrun.StatusSucceeded {
+		t.Fatalf("run = %q, want succeeded (no approval for a plan with nothing to apply)", got)
+	}
+
+	// Only the plan and the next stage's step ran on the cluster.
+	if len(submitted) != 2 {
+		t.Errorf("submitted = %v, want the plan and the manifest step only", submitted)
+	}
+	for _, name := range submitted {
+		if strings.Contains(name, "apply") {
+			t.Errorf("the apply unit must not run: submitted %v", submitted)
+		}
+	}
+
+	applyCR := componentRunFor(t, client, run.ID, deriveApplyID(tf.ID))
+	if applyCR.Status != componentrun.StatusSucceeded {
+		t.Fatalf("apply = %q, want succeeded", applyCR.Status)
+	}
+	if applyCR.Message != nothingToApplyMessage(GraphNode{RequiresApproval: true}) {
+		t.Errorf("apply message = %q", applyCR.Message)
+	}
+	if applyCR.RunName != "" || applyCR.ApprovedAt != nil || applyCR.ApprovedBy != "" {
+		t.Errorf("a completed apply has no TaskRun and no approver: run=%q approved=%v by=%q", applyCR.RunName, applyCR.ApprovedAt, applyCR.ApprovedBy)
+	}
+	// The state the plan step handed over is recorded where an apply puts it.
+	wantReads := []string{secretName + "#" + tofu.OutputsKey, secretName + "#" + tofu.ResourcesKey}
+	if !reflect.DeepEqual(reads, wantReads) {
+		t.Errorf("handover reads = %v, want %v", reads, wantReads)
+	}
+	if !strings.Contains(applyCR.Outputs, "acme-data") || !strings.Contains(applyCR.Resources, "aws_s3_bucket.data") {
+		t.Errorf("apply outputs/resources = %q / %q", applyCR.Outputs, applyCR.Resources)
+	}
+	if got := componentRunFor(t, client, run.ID, next.ID).Status; got != componentrun.StatusSucceeded {
+		t.Errorf("next stage = %q, want succeeded", got)
+	}
+}
+
+// TestWorkNoChangePlanCompletesApplyOnRetry: a plan unit settled in an
+// earlier attempt still completes its apply unit — the persisted logs carry
+// the verdict — so a retry neither runs the apply nor parks it.
+func TestWorkNoChangePlanCompletesApplyOnRetry(t *testing.T) {
+	client := testsupport.NewEntClient(t)
+	svc := NewService(client)
+	ctx := context.Background()
+	tf, _, run, args := gatedTerraformApp(t, client, svc)
+
+	planCR := componentRunFor(t, client, run.ID, tf.ID)
+	if err := client.ComponentRun.UpdateOneID(planCR.ID).
+		SetStatus(componentrun.StatusSucceeded).SetLogs(noChangePlanLogs).SetFinishedAt(time.Now()).
+		Exec(ctx); err != nil {
+		t.Fatalf("settle plan: %v", err)
+	}
+
+	var submitted []string
+	w := newTestWorker(client, countingSubmits(&submitted))
+	if err := w.Work(ctx, workerJob(args, 2, 3)); err != nil {
+		t.Fatalf("Work: %v", err)
+	}
+	if got := runStatus(t, client, run.ID); got != workflowrun.StatusSucceeded {
+		t.Fatalf("run = %q, want succeeded", got)
+	}
+	for _, name := range submitted {
+		if strings.Contains(name, "plan") || strings.Contains(name, "apply") {
+			t.Errorf("neither tofu unit may run again: submitted %v", submitted)
+		}
+	}
+	if got := componentRunFor(t, client, run.ID, deriveApplyID(tf.ID)).Status; got != componentrun.StatusSucceeded {
+		t.Errorf("apply = %q, want succeeded", got)
+	}
+}
+
+// TestWorkPlanWithChangesStillParks: the gate is untouched when the plan has
+// changes to apply (and when its verdict could not be read at all).
+func TestWorkPlanWithChangesStillParks(t *testing.T) {
+	changes := "OpenTofu will perform the following actions:\n\n  # aws_s3_bucket.b will be created\n  + resource \"aws_s3_bucket\" \"b\" {\n    }\n\nPlan: 1 to add, 0 to change, 0 to destroy.\n" + tofu.PlanChangesPrefix + "true\n"
+	for name, logs := range map[string]string{"changes": changes, "no verdict": ""} {
+		t.Run(name, func(t *testing.T) {
+			client := testsupport.NewEntClient(t)
+			svc := NewService(client)
+			tf, _, run, args := gatedTerraformApp(t, client, svc)
+
+			w := newTestWorker(client, succeedingFuncs())
+			w.captureLogs = func(context.Context, k8s.Connection, string) string { return logs }
+			if err := w.Work(context.Background(), workerJob(args, 1, 3)); err != nil {
+				t.Fatalf("Work: %v", err)
+			}
+			if got := runStatus(t, client, run.ID); got != workflowrun.StatusAwaitingApproval {
+				t.Fatalf("run = %q, want awaiting_approval", got)
+			}
+			if got := componentRunFor(t, client, run.ID, deriveApplyID(tf.ID)).Status; got != componentrun.StatusAwaitingApproval {
+				t.Errorf("apply = %q, want awaiting_approval", got)
+			}
+		})
+	}
+}

@@ -64,7 +64,11 @@ and then continue with the rest of this document.
   status, logs, the parsed plan, captured outputs/resources, approvals, and
   the policy verdict. An OpenTofu component expands into a **plan unit** and
   an **apply unit** (`expandExecutionNodes`); the planfile crosses between
-  them through a per-run Kubernetes Secret. Run responses carry a server-built
+  them through a per-run Kubernetes Secret. A plan with nothing to apply
+  (its `-detailed-exitcode` verdict marker and the parsed plan agree)
+  *completes* its apply unit: the scheduler settles it succeeded without a
+  TaskRun or an approval gate, and the plan step hands the unchanged state's
+  outputs/inventory over in its place. Run responses carry a server-built
   stage summary (`RunStages` in
   [lib/workflows/runstages.go](lib/workflows/runstages.go)): steps folded
   into components, components into stages, statuses combined. Runs from

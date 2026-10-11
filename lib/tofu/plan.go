@@ -229,6 +229,32 @@ func ParsePlan(logs string) Plan {
 	return p
 }
 
+// PlanChangesPrefix is the verdict marker a plan step that hands its planfile
+// to an apply step echoes as its last line: "true" when `tofu plan
+// -detailed-exitcode` exited 2 (there are changes to apply), "false" when it
+// exited 0 (nothing to apply). It is OpenTofu's own verdict, independent of
+// the plan text ParsePlan reads.
+const PlanChangesPrefix = "SPACEFLEET_PLAN_CHANGES="
+
+// PlanVerdict reads the verdict marker from a plan step's captured logs.
+// hasChanges is the marker's value; ok is false when the logs carry no
+// marker — a step that failed before it, a plan without a handover (a
+// preview), logs that weren't captured or were truncated. The last marker
+// wins and only a whole, unindented line counts: the script echoes it after
+// everything else, so nothing printed earlier (a value inside the plan text)
+// can stand in for it.
+func PlanVerdict(logs string) (hasChanges, ok bool) {
+	for _, line := range strings.Split(logs, "\n") {
+		switch strings.TrimRight(line, "\r") {
+		case PlanChangesPrefix + "true":
+			hasChanges, ok = true, true
+		case PlanChangesPrefix + "false":
+			hasChanges, ok = false, true
+		}
+	}
+	return hasChanges, ok
+}
+
 // isPlanTerminator reports whether a line marks the end of the plan text.
 func isPlanTerminator(line string) bool {
 	t := strings.TrimSpace(line)
