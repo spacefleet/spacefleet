@@ -5,6 +5,7 @@ import { useOrg } from "../contexts/OrgContext";
 import type { components } from "../api/schema";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { RunnerRequiredNotice } from "../components/RunnerRequiredNotice";
+import { StickyFooter } from "../components/StickyFooter";
 import { SlugInput } from "../components/SlugInput";
 import { githubAppEnabled } from "../lib/appConfig";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
@@ -288,13 +289,22 @@ export function ApplicationForm() {
             </section>
           )}
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
-
-          <div className="flex items-center gap-3">
+          <StickyFooter
+            note={error && <p className="text-sm text-red-400">{error}</p>}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                navigate(editing ? `/applications/${appId}` : "/applications")
+              }
+              className="border border-neutral-600 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-700"
+            >
+              Cancel
+            </button>
             <button
               type="submit"
               disabled={submitting || needsRunner}
-              className="bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
+              className="bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
             >
               {submitting
                 ? "Saving…"
@@ -304,16 +314,7 @@ export function ApplicationForm() {
                     ? "Import"
                     : "Create"}
             </button>
-            <button
-              type="button"
-              onClick={() =>
-                navigate(editing ? `/applications/${appId}` : "/applications")
-              }
-              className="text-sm text-neutral-400 hover:text-neutral-100"
-            >
-              Cancel
-            </button>
-          </div>
+          </StickyFooter>
         </form>
       )}
     </div>

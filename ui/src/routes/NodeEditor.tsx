@@ -4,6 +4,7 @@ import { Save } from "lucide-react";
 import { useWorkflowDraft } from "../contexts/WorkflowDraftContext";
 import type { components } from "../api/schema";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { StickyFooter } from "../components/StickyFooter";
 import {
   ComponentFields,
   type EditableComponent,
@@ -296,14 +297,17 @@ export function NodeEditor() {
             </p>
           )}
 
-          <div className="mt-4 flex items-center justify-end gap-3">
-            <span className="mr-auto text-xs text-neutral-500">
-              {hasUnsaved ? "Unsaved changes" : "Saved to workflow"}
-            </span>
+          <StickyFooter
+            note={
+              <span className="text-xs text-neutral-400">
+                {hasUnsaved ? "Unsaved changes" : "Saved to workflow"}
+              </span>
+            }
+          >
             <button
               type="button"
               onClick={cancel}
-              className="inline-flex items-center gap-1.5 border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
+              className="inline-flex items-center gap-1.5 border border-neutral-600 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-700"
             >
               Cancel
             </button>
@@ -316,7 +320,7 @@ export function NodeEditor() {
               <Save className="h-3.5 w-3.5" />
               Save component
             </button>
-          </div>
+          </StickyFooter>
         </>
       )}
     </div>
