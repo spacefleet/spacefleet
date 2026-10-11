@@ -52,6 +52,17 @@ var taskRunGVR = schema.GroupVersionResource{Group: TektonGroup, Version: "v1", 
 // it is exported so callers can build absolute paths to the files they inject.
 const CredsMountPath = "/workspace/creds"
 
+// GitCredentialHelper is the git credential.helper value that authenticates
+// from a git-credentials file (one https://user:token@host line) mounted under
+// CredsMountPath. The mount is read-only, so it wraps `git credential-store`
+// to answer only `get`: git calls the helper's `store` after every successful
+// authentication, and a plain `store --file=` helper then fails to take its
+// lock beside the file, printing a spurious "fatal: unable to get credential
+// storage lock" into the step's log even though the clone succeeded.
+func GitCredentialHelper(file string) string {
+	return `!f() { if [ "$1" = get ]; then git credential-store --file=` + file + ` get; fi; }; f`
+}
+
 // credsVolumeName is the volume name shared by the secret volume and its mount.
 const credsVolumeName = "creds"
 

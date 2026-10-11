@@ -96,9 +96,10 @@ const (
 	RegistryPasswordFile = "registry-password"
 	// GitCredentialsFile carries a git credential line
 	// (https://x-access-token:<token>@github.com) for a private-Git chart. It is
-	// wired into git via `credential.helper store --file=<this>` so the token is
-	// read from the mounted file at runtime and never lands in the script string,
-	// the clone's argv, the TaskRun manifest, or the workspace's .git/config.
+	// wired into git via a read-only credential helper (tekton.GitCredentialHelper)
+	// so the token is read from the mounted file at runtime and never lands in the
+	// script string, the clone's argv, the TaskRun manifest, or the workspace's
+	// .git/config.
 	GitCredentialsFile = "git-credentials"
 )
 
@@ -333,7 +334,7 @@ func Script(r Rollout) string {
 	if r.HasGitToken {
 		gitCredsFile := tekton.CredsMountPath + "/" + GitCredentialsFile
 		fmt.Fprintf(&b, "git config --global credential.helper %s\n",
-			shQuote("store --file="+gitCredsFile))
+			shQuote(tekton.GitCredentialHelper(gitCredsFile)))
 	}
 
 	// Optional values-from-git sources (orthogonal to the chart source): clone each

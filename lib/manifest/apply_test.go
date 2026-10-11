@@ -139,7 +139,7 @@ func TestScriptGitRefCommitSHA(t *testing.T) {
 
 func TestScriptTokenWiresCredentialHelper(t *testing.T) {
 	withTok := Script(Apply{Action: ActionDeploy, RepoURL: "r", Path: "p", HasGitToken: true})
-	if !strings.Contains(withTok, "git config --global credential.helper 'store --file=/workspace/creds/git-credentials'") {
+	if !strings.Contains(withTok, "git config --global credential.helper '!f() { if [ \"$1\" = get ]; then git credential-store --file=/workspace/creds/git-credentials get; fi; }; f'") {
 		t.Errorf("expected credential helper wired when HasGitToken\n---\n%s", withTok)
 	}
 	// The token must never appear in the script string itself.
@@ -154,7 +154,7 @@ func TestScriptTokenWiresCredentialHelper(t *testing.T) {
 
 func TestScriptTokenWiredForUninstall(t *testing.T) {
 	s := Script(Apply{Action: ActionUninstall, RepoURL: "r", Path: "p", HasGitToken: true})
-	if !strings.Contains(s, "credential.helper 'store --file=/workspace/creds/git-credentials'") {
+	if !strings.Contains(s, "credential.helper '!f() { if [ \"$1\" = get ]; then git credential-store --file=/workspace/creds/git-credentials get; fi; }; f'") {
 		t.Errorf("uninstall must still wire the credential helper to clone\n---\n%s", s)
 	}
 }

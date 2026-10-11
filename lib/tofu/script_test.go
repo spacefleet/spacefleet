@@ -378,7 +378,7 @@ func TestScriptGitRefCommitSHA(t *testing.T) {
 
 func TestScriptTokenWiresCredentialHelper(t *testing.T) {
 	withTok := Script(Apply{Command: CommandPlan, Action: ActionDeploy, RepoURL: "r", Path: "p", Backend: "s3", HasGitToken: true})
-	if !strings.Contains(withTok, "git config --global credential.helper 'store --file=/workspace/creds/git-credentials'") {
+	if !strings.Contains(withTok, "git config --global credential.helper '!f() { if [ \"$1\" = get ]; then git credential-store --file=/workspace/creds/git-credentials get; fi; }; f'") {
 		t.Errorf("expected credential helper wired when HasGitToken\n---\n%s", withTok)
 	}
 	// The token must never appear in the script string itself.
@@ -395,7 +395,7 @@ func TestScriptTokenWiredForUninstall(t *testing.T) {
 	// An uninstall (tofu destroy) still clones the root module, so the token wiring
 	// is honored regardless of action.
 	s := Script(Apply{Command: CommandApply, Action: ActionUninstall, RepoURL: "r", Path: "p", Backend: "s3", HasGitToken: true, PlanArtifactSecret: "tfplan-run1-plan1"})
-	if !strings.Contains(s, "credential.helper 'store --file=/workspace/creds/git-credentials'") {
+	if !strings.Contains(s, "credential.helper '!f() { if [ \"$1\" = get ]; then git credential-store --file=/workspace/creds/git-credentials get; fi; }; f'") {
 		t.Errorf("uninstall must still wire the credential helper to clone\n---\n%s", s)
 	}
 }

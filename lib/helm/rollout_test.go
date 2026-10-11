@@ -211,7 +211,7 @@ func TestScriptGitWithToken(t *testing.T) {
 	})
 	// The token is read from the mounted file via git's credential helper; it
 	// never appears in the script string or the clone's argv.
-	want := "git config --global credential.helper 'store --file=/workspace/creds/git-credentials'"
+	want := "git config --global credential.helper '!f() { if [ \"$1\" = get ]; then git credential-store --file=/workspace/creds/git-credentials get; fi; }; f'"
 	if !strings.Contains(s, want) {
 		t.Errorf("git script missing credential helper\nwant: %s\n---\n%s", want, s)
 	}
@@ -336,7 +336,7 @@ func TestScriptValuesFromGitWithToken(t *testing.T) {
 		WaitTimeout:     10 * time.Minute,
 		HasGitToken:     true,
 	})
-	helper := "git config --global credential.helper 'store --file=/workspace/creds/git-credentials'"
+	helper := "git config --global credential.helper '!f() { if [ \"$1\" = get ]; then git credential-store --file=/workspace/creds/git-credentials get; fi; }; f'"
 	if !strings.Contains(s, helper) {
 		t.Errorf("script missing credential helper for git-sourced values:\n%s", s)
 	}
