@@ -18,7 +18,7 @@ import type { StreamStatus } from "../lib/resourceStream";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 
-// Pods is the Infrastructure › Pods page. It lists the Kubernetes pods of the
+// Pods is the Clusters › Pods page. It lists the Kubernetes pods of the
 // organization's registered clusters and updates live, with two coordinated
 // filters: cluster and namespace. Every connected cluster is streamed (each
 // stream carries all namespaces), so both filters are instant client-side
@@ -125,7 +125,7 @@ export function Pods() {
     <div>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <Breadcrumbs items={[{ label: "Infrastructure" }]} />
+          <Breadcrumbs items={[{ label: "Clusters" }]} />
           <h1 className="mt-2 text-2xl font-bold tracking-tight">Pods</h1>
           <p className="mt-1 text-sm text-neutral-300">
             The Kubernetes pods across your registered clusters, updated live.
@@ -216,7 +216,7 @@ export function Pods() {
                   key={`${p.clusterId}/${p.namespace}/${p.name}`}
                   onClick={() =>
                     navigate(
-                      `/infrastructure/pods/${p.clusterId}/${encodeURIComponent(p.namespace)}/${encodeURIComponent(p.name)}`,
+                      `/clusters/pods/${p.clusterId}/${encodeURIComponent(p.namespace)}/${encodeURIComponent(p.name)}`,
                     )
                   }
                   className="cursor-pointer border-b border-neutral-800 last:border-0 hover:bg-neutral-800"

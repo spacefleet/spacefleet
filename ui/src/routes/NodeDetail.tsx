@@ -13,7 +13,7 @@ import { useResourceStream } from "../lib/useResourceStream";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 // NodeDetail is the drill-down for a single node, reached by clicking a row on
-// the Nodes page (route /infrastructure/nodes/:clusterId/:nodeName). It streams
+// the Nodes page (route /clusters/nodes/:clusterId/:nodeName). It streams
 // the cluster's nodes live and renders every detail of the matching one, so the
 // view stays current and is valid as a deep link / on refresh.
 export function NodeDetail() {
@@ -53,8 +53,8 @@ export function NodeDetail() {
     <div>
       <Breadcrumbs
         items={[
-          { label: "Infrastructure" },
-          { label: "Nodes", to: "/infrastructure/nodes" },
+          { label: "Clusters" },
+          { label: "Nodes", to: "/clusters/nodes" },
           ...(cluster ? [{ label: cluster.name }] : []),
         ]}
       />
@@ -77,7 +77,7 @@ export function NodeDetail() {
           <AlertTriangle className="mx-auto h-8 w-8 text-neutral-600" />
           <p className="mt-3 text-sm font-medium text-neutral-300">{displayError}</p>
           <Link
-            to="/infrastructure/nodes"
+            to="/clusters/nodes"
             className="mt-4 inline-block text-sm text-neutral-300 underline hover:text-neutral-100"
           >
             Return to nodes

@@ -11,7 +11,7 @@ import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 // NamespaceDetail is the drill-down for a single namespace, reached by clicking
 // a row on the Namespaces page (route
-// /infrastructure/namespaces/:clusterId/:namespaceName). It mirrors NodeDetail:
+// /clusters/namespaces/:clusterId/:namespaceName). It mirrors NodeDetail:
 // the cluster's namespaces stream live and the matching one is rendered, so the
 // view stays current and is valid as a deep link / on refresh.
 export function NamespaceDetail() {
@@ -52,8 +52,8 @@ export function NamespaceDetail() {
     <div>
       <Breadcrumbs
         items={[
-          { label: "Infrastructure" },
-          { label: "Namespaces", to: "/infrastructure/namespaces" },
+          { label: "Clusters" },
+          { label: "Namespaces", to: "/clusters/namespaces" },
           ...(cluster ? [{ label: cluster.name }] : []),
         ]}
       />
@@ -74,7 +74,7 @@ export function NamespaceDetail() {
           <AlertTriangle className="mx-auto h-8 w-8 text-neutral-600" />
           <p className="mt-3 text-sm font-medium text-neutral-300">{displayError}</p>
           <Link
-            to="/infrastructure/namespaces"
+            to="/clusters/namespaces"
             className="mt-4 inline-block text-sm text-neutral-300 underline hover:text-neutral-100"
           >
             Return to namespaces

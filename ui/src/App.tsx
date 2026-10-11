@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Route, Routes } from "react-router";
+import { Navigate, Route, Routes } from "react-router";
 import { ApiAuthBinder } from "./components/ApiAuthBinder";
 import { AuthGate } from "./components/AuthGate";
 import { Layout } from "./components/Layout";
@@ -49,9 +49,9 @@ const pageComponents: Record<string, ReactNode> = {
   "/applications": <Applications />,
   "/runs": <RunsIndex />,
   "/admin/clusters": <Clusters />,
-  "/infrastructure/nodes": <Nodes />,
-  "/infrastructure/namespaces": <Namespaces />,
-  "/infrastructure/pods": <Pods />,
+  "/clusters/nodes": <Nodes />,
+  "/clusters/namespaces": <Namespaces />,
+  "/clusters/pods": <Pods />,
   "/admin/members": <Members />,
   "/admin/cloud-credentials": <CloudCredentials />,
   "/admin/private-charts": <PrivateCharts />,
@@ -92,11 +92,17 @@ export function App() {
             <Route path="/github/callback" element={<GitHubCallback />} />
             <Route element={<OrgGate />}>
               <Route element={<Layout />}>
-                {/* Dashboard overview (the "/" leaf) is served by Home; every
+                {/* The Overview area's landing ("/") is served by Home; every
                     other nav leaf gets a scaffolded Placeholder page. Routes are
                     generated from the nav config in nav.ts — swap a Placeholder
                     for a real component as each page is built. */}
                 <Route index element={<Home />} />
+                {/* The Clusters area has no page of its own at its root; it
+                    opens on its default leaf. */}
+                <Route
+                  path="/clusters"
+                  element={<Navigate to="/clusters/namespaces" replace />}
+                />
                 {navLeaves
                   .filter(({ leaf }) => leaf.path !== "/")
                   .map(({ leaf }) => (
@@ -181,21 +187,21 @@ export function App() {
                 {/* Node drill-down: a detail route under the Nodes leaf, not a
                     nav entry of its own (so it's added here, not in nav.ts). */}
                 <Route
-                  path="/infrastructure/nodes/:clusterId/:nodeName"
+                  path="/clusters/nodes/:clusterId/:nodeName"
                   element={<NodeDetail />}
                 />
                 {/* Namespace drill-down: a detail route under the Namespaces
                     leaf, not a nav entry of its own (so it's added here, not in
                     nav.ts). */}
                 <Route
-                  path="/infrastructure/namespaces/:clusterId/:namespaceName"
+                  path="/clusters/namespaces/:clusterId/:namespaceName"
                   element={<NamespaceDetail />}
                 />
                 {/* Pod drill-down: a detail route under the Pods leaf (not a
                     nav entry of its own). The namespace segment disambiguates
                     pods of the same name across namespaces. */}
                 <Route
-                  path="/infrastructure/pods/:clusterId/:namespace/:podName"
+                  path="/clusters/pods/:clusterId/:namespace/:podName"
                   element={<PodDetail />}
                 />
                 <Route path="*" element={<NotFound />} />

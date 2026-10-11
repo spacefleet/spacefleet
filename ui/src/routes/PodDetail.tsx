@@ -16,7 +16,7 @@ import { PodLogsModal } from "../components/PodLogsModal";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 
 // PodDetail is the drill-down for a single pod, reached by clicking a row on the
-// Pods page (route /infrastructure/pods/:clusterId/:namespace/:podName). It
+// Pods page (route /clusters/pods/:clusterId/:namespace/:podName). It
 // streams the cluster's pods live and renders the matching one, so the view
 // stays current and is valid as a deep link / on refresh.
 export function PodDetail() {
@@ -64,12 +64,12 @@ export function PodDetail() {
     <div>
       <Breadcrumbs
         items={[
-          { label: "Infrastructure" },
-          { label: "Pods", to: "/infrastructure/pods" },
+          { label: "Clusters" },
+          { label: "Pods", to: "/clusters/pods" },
           ...(cluster ? [{ label: cluster.name }] : []),
           {
             label: decodedNs,
-            to: `/infrastructure/namespaces/${clusterId}/${encodeURIComponent(decodedNs)}`,
+            to: `/clusters/namespaces/${clusterId}/${encodeURIComponent(decodedNs)}`,
           },
         ]}
       />
@@ -102,7 +102,7 @@ export function PodDetail() {
           <AlertTriangle className="mx-auto h-8 w-8 text-neutral-600" />
           <p className="mt-3 text-sm font-medium text-neutral-300">{displayError}</p>
           <Link
-            to="/infrastructure/pods"
+            to="/clusters/pods"
             className="mt-4 inline-block text-sm text-neutral-300 underline hover:text-neutral-100"
           >
             Return to pods

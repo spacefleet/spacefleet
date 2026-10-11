@@ -17,7 +17,7 @@ import { Breadcrumbs } from "../components/Breadcrumbs";
 
 const ALL = "all";
 
-// Nodes is the Infrastructure › Nodes page. It lists the Kubernetes nodes of the
+// Nodes is the Clusters › Nodes page. It lists the Kubernetes nodes of the
 // organization's registered clusters — by default every node across every
 // connected cluster, filterable to a single cluster — and updates live: each
 // node's row links to a detailed view. Nodes are streamed per cluster over SSE
@@ -76,7 +76,7 @@ export function Nodes() {
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <Breadcrumbs items={[{ label: "Infrastructure" }]} />
+          <Breadcrumbs items={[{ label: "Clusters" }]} />
           <h1 className="mt-2 text-2xl font-bold tracking-tight">Nodes</h1>
           <p className="mt-1 text-sm text-neutral-300">
             The Kubernetes nodes across your registered clusters, updated live.
@@ -148,7 +148,7 @@ export function Nodes() {
                   key={`${n.clusterId}/${n.name}`}
                   onClick={() =>
                     navigate(
-                      `/infrastructure/nodes/${n.clusterId}/${encodeURIComponent(n.name)}`,
+                      `/clusters/nodes/${n.clusterId}/${encodeURIComponent(n.name)}`,
                     )
                   }
                   className="cursor-pointer border-b border-neutral-800 last:border-0 hover:bg-neutral-800"

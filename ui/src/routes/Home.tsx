@@ -21,7 +21,7 @@ const RECENT = 8;
 // application. Everything links into the pages that act on it.
 export function Home() {
   const { currentOrg, currentRole } = useOrg();
-  useDocumentTitle("Dashboard");
+  useDocumentTitle("Overview");
   const navigate = useNavigate();
   const [apps, setApps] = useState<Application[]>([]);
   const [clusters, setClusters] = useState<Cluster[]>([]);

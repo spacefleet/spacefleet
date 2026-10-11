@@ -12,7 +12,7 @@ import { Breadcrumbs } from "../components/Breadcrumbs";
 
 const ALL = "all";
 
-// Namespaces is the Infrastructure › Namespaces page. Like Nodes, it lists a
+// Namespaces is the Clusters › Namespaces page. Like Nodes, it lists a
 // cluster-level resource of the organization's registered clusters — by default
 // every namespace across every connected cluster, filterable to a single
 // cluster — and updates live over SSE (see lib/useClusterNamespaceStreams), so
@@ -71,7 +71,7 @@ export function Namespaces() {
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <Breadcrumbs items={[{ label: "Infrastructure" }]} />
+          <Breadcrumbs items={[{ label: "Clusters" }]} />
           <h1 className="mt-2 text-2xl font-bold tracking-tight">Namespaces</h1>
           <p className="mt-1 text-sm text-neutral-300">
             The Kubernetes namespaces across your registered clusters, updated
@@ -141,7 +141,7 @@ export function Namespaces() {
                   key={`${n.clusterId}/${n.name}`}
                   onClick={() =>
                     navigate(
-                      `/infrastructure/namespaces/${n.clusterId}/${encodeURIComponent(n.name)}`,
+                      `/clusters/namespaces/${n.clusterId}/${encodeURIComponent(n.name)}`,
                     )
                   }
                   className="cursor-pointer border-b border-neutral-800 last:border-0 hover:bg-neutral-800"
