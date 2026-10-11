@@ -448,7 +448,7 @@ describe("manifest fields", () => {
     );
     expect(
       screen.getAllByRole("heading").map((h) => h.textContent),
-    ).toEqual(["General", "Repository", "Target", "Approval"]);
+    ).toEqual(["General", "Repository", "Target"]);
 
     await user.type(screen.getByPlaceholderText("manifests/prod"), "k8s");
     expect(latest!.config.path).toBe("k8s");
@@ -480,7 +480,7 @@ describe("helm fields", () => {
     );
     expect(
       screen.getAllByRole("heading").map((h) => h.textContent),
-    ).toEqual(["General", "Chart", "Target", "Values", "Approval"]);
+    ).toEqual(["General", "Chart", "Target", "Values"]);
 
     await user.type(screen.getByPlaceholderText("nginx"), "redis");
     expect(latest!.config.chart).toBe("redis");

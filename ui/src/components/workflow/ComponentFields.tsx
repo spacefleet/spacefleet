@@ -86,8 +86,9 @@ const EMPTY_REF_CONTEXT: RefContext = {
 
 // ComponentFields renders the editable form for one workflow node, independent
 // of any container (it was extracted from the old side panel so the full-page
-// NodeEditor can reuse it): General (name, continue-on-failure), the type's own
-// sections (HelmConfig, ManifestConfig, TerraformConfig), then Approval.
+// NodeEditor can reuse it): General (name, continue-on-failure, and the
+// approval gate every type has), then the type's own sections (HelmConfig,
+// ManifestConfig, TerraformConfig).
 // Client-side validation is intentionally light — the server (PUT /workflow) is
 // the source of truth.
 export function ComponentFields({
@@ -194,6 +195,44 @@ export function ComponentFields({
           />
           Continue on failure
         </label>
+        {/* Approval gate. An OpenTofu node frames it as an Auto-approve opt-out
+            (gated by default — the run plans, then pauses for a human to review
+            before applying); every other node frames it as an opt-in manual-
+            approval requirement. Both edit the same requires_approval flag. */}
+        {component.type === "terraform" ? (
+          <Field help="Off (the default): the run plans, then pauses for a human to review the plan and approve before applying.">
+            <label className="flex items-center gap-2 text-sm text-neutral-300">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-white"
+                checked={!component.requires_approval}
+                onChange={(e) => set("requires_approval", !e.target.checked)}
+                disabled={disabled}
+              />
+              Auto-approve apply
+            </label>
+          </Field>
+        ) : (
+          <Field help="When on, the run pauses at this step until a human approves it.">
+            <label className="flex items-center gap-2 text-sm text-neutral-300">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-white"
+                checked={component.requires_approval}
+                onChange={(e) => set("requires_approval", e.target.checked)}
+                disabled={disabled}
+              />
+              Require manual approval
+            </label>
+          </Field>
+        )}
+        {component.requires_approval && (
+          <ApprovalPolicyFields
+            policy={component.approval_policy}
+            onChange={(p) => set("approval_policy", p)}
+            disabled={disabled}
+          />
+        )}
       </Section>
 
       {component.type === "helm" ? (
@@ -239,47 +278,6 @@ export function ComponentFields({
           disabled={disabled}
         />
       )}
-
-      <Section title="Approval">
-        {/* Approval gate. An OpenTofu node frames it as an Auto-approve opt-out
-            (gated by default — the run plans, then pauses for a human to review
-            before applying); every other node frames it as an opt-in manual-
-            approval requirement. Both edit the same requires_approval flag. */}
-        {component.type === "terraform" ? (
-          <Field help="Off (the default): the run plans, then pauses for a human to review the plan and approve before applying.">
-            <label className="flex items-center gap-2 text-sm text-neutral-300">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-white"
-                checked={!component.requires_approval}
-                onChange={(e) => set("requires_approval", !e.target.checked)}
-                disabled={disabled}
-              />
-              Auto-approve apply
-            </label>
-          </Field>
-        ) : (
-          <Field help="When on, the run pauses at this step until a human approves it.">
-            <label className="flex items-center gap-2 text-sm text-neutral-300">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-white"
-                checked={component.requires_approval}
-                onChange={(e) => set("requires_approval", e.target.checked)}
-                disabled={disabled}
-              />
-              Require manual approval
-            </label>
-          </Field>
-        )}
-        {component.requires_approval && (
-          <ApprovalPolicyFields
-            policy={component.approval_policy}
-            onChange={(p) => set("approval_policy", p)}
-            disabled={disabled}
-          />
-        )}
-      </Section>
     </div>
   );
 }
