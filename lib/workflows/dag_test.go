@@ -141,6 +141,23 @@ func TestValidateConfig_HelmSources(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "create_namespace off",
+			config: map[string]string{
+				helmConfigChartSource:     helm.SourceOCI,
+				helm.ConfigRepoURL:        "oci://example.com/charts/app",
+				helmConfigCreateNamespace: "false",
+			},
+		},
+		{
+			name: "create_namespace not a boolean",
+			config: map[string]string{
+				helmConfigChartSource:     helm.SourceOCI,
+				helm.ConfigRepoURL:        "oci://example.com/charts/app",
+				helmConfigCreateNamespace: "no",
+			},
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

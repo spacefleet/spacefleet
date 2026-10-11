@@ -279,6 +279,7 @@ export function NodeEditor() {
               githubEnabled={githubEnabled}
               upstreamOutputs={upstreamOutputs}
               refContext={refContext}
+              appName={appName}
             />
           </div>
 

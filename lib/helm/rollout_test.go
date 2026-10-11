@@ -20,6 +20,7 @@ func TestScriptHTTPRepo(t *testing.T) {
 		ReleaseName:     "web",
 		TargetNamespace: "apps",
 		WaitTimeout:     30 * time.Minute,
+		CreateNamespace: true,
 	})
 	wantContains := []string{
 		"helm repo add r 'https://charts.example.com'",
@@ -36,6 +37,23 @@ func TestScriptHTTPRepo(t *testing.T) {
 	}
 	if strings.Contains(s, "--ignore-not-found") {
 		t.Error("deploy should not use --ignore-not-found")
+	}
+}
+
+func TestScriptWithoutCreateNamespace(t *testing.T) {
+	s := Script(Rollout{
+		Action:          ActionDeploy,
+		ChartSource:     SourceHTTPRepo,
+		Config:          map[string]string{ConfigRepoURL: "https://c", ConfigChart: "x"},
+		ReleaseName:     "r",
+		TargetNamespace: "apps",
+		WaitTimeout:     30 * time.Minute,
+	})
+	if !strings.Contains(s, "-n 'apps' --wait --timeout '30m0s'") {
+		t.Errorf("script should install into the namespace as-is:\n%s", s)
+	}
+	if strings.Contains(s, "--create-namespace") {
+		t.Errorf("CreateNamespace off, should omit --create-namespace:\n%s", s)
 	}
 }
 
@@ -475,6 +493,8 @@ func TestScriptPreview(t *testing.T) {
 		ReleaseName:     "web",
 		TargetNamespace: "apps",
 		WaitTimeout:     30 * time.Minute,
+		// Set, so the check below shows a preview ignores it.
+		CreateNamespace: true,
 	})
 	wantContains := []string{
 		// The helm-diff plugin is installed (idempotently) before the diff.

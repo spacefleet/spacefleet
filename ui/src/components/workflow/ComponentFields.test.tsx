@@ -37,6 +37,7 @@ function Harness({
   disabled,
   cloudCredentials = [],
   clusters = [],
+  appName,
 }: {
   initial: EditableComponent;
   onComponent: (c: EditableComponent) => void;
@@ -44,6 +45,7 @@ function Harness({
   disabled?: boolean;
   cloudCredentials?: CloudCredential[];
   clusters?: Cluster[];
+  appName?: string;
 }) {
   const [component, setComponent] = useState(initial);
   return (
@@ -60,6 +62,7 @@ function Harness({
       githubEnabled={false}
       upstreamOutputs={upstreamOutputs}
       disabled={disabled}
+      appName={appName}
     />
   );
 }
@@ -128,17 +131,17 @@ describe("outputs reference helper", () => {
       />,
     );
 
-    // One insert button under the values textarea, one under the namespace.
+    // One insert button under the namespace (Target), one under the values.
     const buttons = screen.getAllByRole("button", { name: "infra" });
     expect(buttons).toHaveLength(2);
 
     await userEvent.click(buttons[0]);
+    expect(last?.target_namespace).toBe("apps-${{ components.infra.outputs. }}");
+
+    await userEvent.click(screen.getAllByRole("button", { name: "infra" })[1]);
     expect(last?.config.values).toBe(
       "replicaCount: 2\n${{ components.infra.outputs. }}",
     );
-
-    await userEvent.click(screen.getAllByRole("button", { name: "infra" })[1]);
-    expect(last?.target_namespace).toBe("apps-${{ components.infra.outputs. }}");
   });
 
   it("renders nothing without upstream OpenTofu components or for a viewer", () => {
@@ -453,5 +456,88 @@ describe("manifest fields", () => {
     expect(latest!.target_cluster_id).toBe("k-prod");
     await user.selectOptions(screen.getByLabelText("Target cluster"), "");
     expect(latest!.target_cluster_id).toBeNull();
+  });
+});
+
+describe("helm fields", () => {
+  it("groups the chart, target, and values into sections", async () => {
+    const user = userEvent.setup();
+    let latest: EditableComponent | null = null;
+    render(
+      <Harness
+        initial={makeComponent({
+          type: "helm",
+          name: "web",
+          config: { chart_source: "http_repo" },
+          requires_approval: false,
+        })}
+        onComponent={(c) => {
+          latest = c;
+        }}
+        clusters={[{ id: "k-prod", name: "prod" } as Cluster]}
+        appName="shop"
+      />,
+    );
+    expect(
+      screen.getAllByRole("heading").map((h) => h.textContent),
+    ).toEqual(["General", "Chart", "Target", "Values", "Approval"]);
+
+    await user.type(screen.getByPlaceholderText("nginx"), "redis");
+    expect(latest!.config.chart).toBe("redis");
+    await user.selectOptions(screen.getByLabelText("Target cluster"), "k-prod");
+    expect(latest!.target_cluster_id).toBe("k-prod");
+    await user.type(screen.getByPlaceholderText("apps"), "cache");
+    expect(latest!.target_namespace).toBe("cache");
+    // Creating the namespace is on by default, stored as no key; off is "false".
+    const createNs = screen.getByRole("checkbox", {
+      name: "Create the namespace if it doesn't exist",
+    });
+    expect(createNs).toBeChecked();
+    await user.click(createNs);
+    expect(latest!.config.create_namespace).toBe("false");
+    await user.click(createNs);
+    expect(latest!.config.create_namespace).toBe("");
+    // The release name's placeholder is the name it defaults to.
+    expect(
+      screen.getByPlaceholderText("(defaults to shop-web)"),
+    ).toBeInTheDocument();
+  });
+
+  it("clears the old source's settings and the chart credential on a source switch", async () => {
+    const user = userEvent.setup();
+    let latest: EditableComponent | null = null;
+    render(
+      <Harness
+        initial={makeComponent({
+          type: "helm",
+          config: {
+            chart_source: "http_repo",
+            repo_url: "https://charts.example.com",
+            chart: "nginx",
+            version: "1.2.3",
+            values: "replicaCount: 2\n",
+          },
+          chart_credential_id: "cred-1",
+        })}
+        onComponent={(c) => {
+          latest = c;
+        }}
+      />,
+    );
+    expect(screen.getByLabelText("Chart credential")).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Chart source"), "git");
+    expect(latest!.config).toMatchObject({
+      chart_source: "git",
+      repo_url: "",
+      chart: "",
+      version: "",
+      // Values aren't the source's — they stay.
+      values: "replicaCount: 2\n",
+    });
+    expect(latest!.chart_credential_id).toBeNull();
+    // A git chart takes no credential.
+    expect(screen.queryByLabelText("Chart credential")).toBeNull();
+    expect(screen.getByPlaceholderText("(repository root)")).toHaveValue("");
   });
 });

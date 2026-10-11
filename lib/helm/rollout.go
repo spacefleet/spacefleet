@@ -288,6 +288,14 @@ type Rollout struct {
 	// `kubectl rollout restart` — so pods cycle as if there had been a diff.
 	// Ignored for uninstall (nothing to roll) and preview (it must not mutate).
 	Force bool
+	// CreateNamespace creates the target namespace on install when it doesn't
+	// exist (`--create-namespace`). Off is for a target identity that may deploy
+	// into a namespace but not create one: helm's create tolerates only "already
+	// exists", and Kubernetes answers "forbidden" before checking existence, so
+	// the first install would fail even with the namespace in place. Helm never
+	// deletes a namespace it created. Ignored for uninstall and preview (it must
+	// not mutate).
+	CreateNamespace bool
 }
 
 // Script renders the shell script the rollout step runs. A deploy/upgrade
@@ -411,7 +419,11 @@ func Script(r Rollout) string {
 		if version != "" {
 			fmt.Fprintf(&b, " --version %s", shQuote(version))
 		}
-		fmt.Fprintf(&b, " -n %s --create-namespace --wait --timeout %s", shQuote(ns), shQuote(timeout))
+		fmt.Fprintf(&b, " -n %s", shQuote(ns))
+		if r.CreateNamespace {
+			b.WriteString(" --create-namespace")
+		}
+		fmt.Fprintf(&b, " --wait --timeout %s", shQuote(timeout))
 		addValueFlags()
 	}
 

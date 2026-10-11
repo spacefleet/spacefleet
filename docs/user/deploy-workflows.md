@@ -26,9 +26,11 @@ the services onto it, then a **Verify** stage with a smoke test.
      hyphens). Other components refer to it by this name.
    - For a **Helm** component, where the chart comes from (an HTTP Helm
      repository, an OCI registry, or a Git repository), the chart name and
-     version, the release name, and the **values** to install it with. For a
-     private chart in an HTTP repository or OCI registry, attach a chart
-     credential.
+     version, the release name (by default, the application's name and the
+     component's, joined by a hyphen), and the **values** to install it with.
+     For a private chart in an HTTP repository or OCI registry, attach a chart
+     credential. Switching the chart source clears the previous source's
+     settings and credential.
    - For a **Manifest** component, the Git repository, branch or tag, and the
      path to the manifests to apply.
    - For an **OpenTofu** component, the Git repository, branch or tag, and the
@@ -43,7 +45,11 @@ the services onto it, then a **Verify** stage with a smoke test.
      through the connection to the account that owns it.
    - **Target cluster** and **target namespace** — where a Helm release is
      installed (both required), or the cluster a Manifest component applies to.
-     OpenTofu components have no deploy target.
+     OpenTofu components have no deploy target. A Helm deploy creates the
+     namespace if it doesn't exist; uninstalling the release leaves the
+     namespace in place. If the cluster's credentials can't create namespaces,
+     turn off **Create the namespace if it doesn't exist**. The namespace must
+     then exist before the first deploy, or the deploy fails.
    - **Continue on failure** — when on, a failure of this component does not
      stop the later stages; the overall run finishes as **partial** instead of
      failed. Leave it off for a component that later stages truly require.

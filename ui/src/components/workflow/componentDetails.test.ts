@@ -88,6 +88,18 @@ describe("componentDetails", () => {
       "Chart credential": "None (public chart)",
       "On failure": "Later stages still run",
     });
+    // Creating the namespace is the default, so it gets no row.
+    expect(rows).not.toHaveProperty("Create namespace");
+  });
+
+  it("says when a Helm deploy won't create its namespace", () => {
+    const rows = asMap(
+      component({
+        type: "helm",
+        config: { chart_source: "oci", repo_url: "oci://ghcr.io/acme/charts", create_namespace: "false" },
+      }),
+    );
+    expect(rows["Create namespace"]).toBe("No — it must already exist");
   });
 
   it("summarizes an approval policy", () => {

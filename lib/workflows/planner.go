@@ -22,12 +22,14 @@ import (
 // Component helm-config keys that live alongside the chart-source keys
 // (helm.Config*) and chart_source (helmConfigChartSource) in a helm component's
 // flat config map. They carry the per-component values, the git values sources,
-// and an optional explicit release name — the workflow analogue of the columns
-// the single-helm Application stored directly.
+// an optional explicit release name — the workflow analogue of the columns the
+// single-helm Application stored directly — and whether a deploy creates the
+// target namespace ("false" opts out; absent or "true" creates it).
 const (
-	helmConfigValues        = "values"
-	helmConfigValuesSources = "values_sources"
-	helmConfigReleaseName   = "release_name"
+	helmConfigValues          = "values"
+	helmConfigValuesSources   = "values_sources"
+	helmConfigReleaseName     = "release_name"
+	helmConfigCreateNamespace = "create_namespace"
 )
 
 // planComponent builds the run plan for one workflow node, given the application
@@ -717,6 +719,9 @@ func (w *WorkflowRunWorker) planHelm(ctx context.Context, app *ent.Application, 
 		// both. Off by default keeps a plain deploy an idempotent `helm upgrade
 		// --install` that doesn't churn pods when the rendered manifests are unchanged.
 		Force: force && helmAction == helm.ActionDeploy,
+		// On unless the component opts out — what every deploy did before the
+		// setting existed.
+		CreateNamespace: node.Config[helmConfigCreateNamespace] != "false",
 	})
 
 	return tekton.RunRequest{

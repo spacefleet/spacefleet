@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import type { components } from "../../api/schema";
 import { CHART_SOURCES } from "../chartSources";
 import { parseBackendConfig } from "./backendConfig";
+import { defaultReleaseName } from "./componentDetails";
 import {
   TOFU_DEFAULT_VERSION,
   TOFU_VERSIONS,
@@ -71,6 +72,8 @@ interface ComponentFieldsProps {
   // The references the ${{ }} autocomplete may complete on the helm interpolable
   // fields (variable names, upstream component names, known output keys).
   refContext?: RefContext;
+  // The application's name, which a Helm release is named after by default.
+  appName?: string;
 }
 
 // EMPTY_REF_CONTEXT is the default when a caller doesn't supply one (e.g. a
@@ -83,11 +86,10 @@ const EMPTY_REF_CONTEXT: RefContext = {
 
 // ComponentFields renders the editable form for one workflow node, independent
 // of any container (it was extracted from the old side panel so the full-page
-// NodeEditor can reuse it). Type-specific config (helm: chart source +
-// repo/chart/version/git + values + a values-sources editor; manifest:
-// repo/ref/path), continue-on-failure, target overrides, and
-// credential/installation pickers. Client-side validation is intentionally light
-// — the server (PUT /workflow) is the source of truth.
+// NodeEditor can reuse it): General (name, continue-on-failure), the type's own
+// sections (HelmConfig, ManifestConfig, TerraformConfig), then Approval.
+// Client-side validation is intentionally light — the server (PUT /workflow) is
+// the source of truth.
 export function ComponentFields({
   component,
   onChange,
@@ -99,6 +101,7 @@ export function ComponentFields({
   disabled = false,
   upstreamOutputs = [],
   refContext = EMPTY_REF_CONTEXT,
+  appName,
 }: ComponentFieldsProps) {
   function set<K extends keyof EditableComponent>(
     key: K,
@@ -118,6 +121,20 @@ export function ComponentFields({
 
   const chartSource =
     (component.config.chart_source as ChartSource) || "http_repo";
+  // Switching chart sources clears the old source's settings (a repository URL
+  // means something different to each) and the chart credential (a git chart
+  // takes none) — in one change, so none is lost.
+  function setChartSource(next: ChartSource) {
+    onChange({
+      ...component,
+      config: {
+        ...component.config,
+        ...Object.fromEntries(CHART_SOURCE_KEYS.map((k) => [k, ""])),
+        chart_source: next,
+      },
+      chart_credential_id: null,
+    });
+  }
 
   // A repository can be picked when the GitHub App is configured and the org has
   // at least one installation; otherwise the user types the URL by hand.
@@ -181,12 +198,17 @@ export function ComponentFields({
 
       {component.type === "helm" ? (
         <HelmConfig
-          config={component.config}
-          chartSource={chartSource}
+          component={component}
+          set={set}
           setConfig={setConfig}
+          chartSource={chartSource}
+          setChartSource={setChartSource}
+          clusters={clusters}
+          credentials={credentials}
           repoUrlPicker={repoUrlPicker}
           canPickRepo={canPickRepo}
           onPickValuesSourceRepo={pickValuesSourceRepo}
+          appName={appName}
           disabled={disabled}
           upstreamOutputs={upstreamOutputs}
           refContext={refContext}
@@ -216,73 +238,6 @@ export function ComponentFields({
           }
           disabled={disabled}
         />
-      )}
-
-      {/* Credentials. Helm http_repo/oci take a chart credential; a private git
-          source needs none here — the server attaches the GitHub installation
-          on the repository's account when the workflow is saved. */}
-      {component.type === "helm" &&
-        (chartSource === "http_repo" || chartSource === "oci") && (
-          <Field
-            label="Chart credential"
-            help="Optional — only for a private repo/registry."
-          >
-            <select
-              className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
-              value={component.chart_credential_id ?? ""}
-              onChange={(e) =>
-                set("chart_credential_id", e.target.value || null)
-              }
-              disabled={disabled}
-            >
-              <option value="">None (public chart)</option>
-              {credentials.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-        )}
-
-      {/* Targeting. A helm release deploys to a cluster + namespace (both
-          required). A manifest's cluster sits in its own Target section, and
-          terraform manages cloud infra with no cluster target. */}
-      {component.type === "helm" && (
-        <Field
-          label="Target cluster"
-          help="The cluster this component deploys into."
-        >
-          <ClusterSelect
-            clusters={clusters}
-            value={component.target_cluster_id}
-            onChange={(id) => set("target_cluster_id", id)}
-            disabled={disabled}
-          />
-        </Field>
-      )}
-
-      {component.type === "helm" && (
-        <Field
-          label="Target namespace"
-          help="The namespace this release deploys into. Supports ${{ }} references, e.g. an upstream output like ${{ components.infra.outputs.namespace }}."
-        >
-          <RefAutocompleteField
-            as="input"
-            className="w-full border border-neutral-700 px-3 py-2 text-sm"
-            value={component.target_namespace}
-            onChange={(v) => set("target_namespace", v)}
-            context={refContext}
-            disabled={disabled}
-          />
-          <OutputRefButtons
-            names={upstreamOutputs}
-            disabled={disabled}
-            onInsert={(snippet) =>
-              set("target_namespace", component.target_namespace + snippet)
-            }
-          />
-        </Field>
       )}
 
       <Section title="Approval">
@@ -437,115 +392,205 @@ function ApprovalPolicyFields({
   );
 }
 
+// HelmConfig edits a helm node in sections, like the Manifest and OpenTofu
+// ones: the Chart (where it comes from, and the credential a private repo or
+// registry is pulled with), the Target (the release's name, the cluster and
+// namespace it installs into, and whether a deploy creates that namespace), and
+// the Values it installs with. A private git
+// chart needs no credential here — the server attaches the GitHub installation
+// on the repository's account when the workflow is saved.
 function HelmConfig({
-  config,
-  chartSource,
+  component,
+  set,
   setConfig,
+  chartSource,
+  setChartSource,
+  clusters,
+  credentials,
   repoUrlPicker,
   canPickRepo,
   onPickValuesSourceRepo,
+  appName,
   disabled,
   upstreamOutputs,
   refContext,
 }: {
-  config: Record<string, string>;
-  chartSource: ChartSource;
+  component: EditableComponent;
+  set: <K extends keyof EditableComponent>(
+    key: K,
+    value: EditableComponent[K],
+  ) => void;
   setConfig: (key: string, value: string) => void;
+  chartSource: ChartSource;
+  setChartSource: (next: ChartSource) => void;
+  clusters: Cluster[];
+  credentials: ChartCredential[];
   repoUrlPicker: ReactNode;
   canPickRepo: boolean;
   onPickValuesSourceRepo: (serialized: string, repo: GitHubRepository) => void;
+  appName?: string;
   disabled: boolean;
   upstreamOutputs: string[];
   refContext: RefContext;
 }) {
+  const config = component.config;
   const source =
     CHART_SOURCES.find((s) => s.value === chartSource) ?? CHART_SOURCES[0];
   return (
     <>
-      <Field label="Chart source">
-        <select
-          className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
-          value={chartSource}
-          onChange={(e) => setConfig("chart_source", e.target.value)}
-          disabled={disabled}
-        >
-          {CHART_SOURCES.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-      </Field>
-
-      {source.fields.map((field) => (
-        <Field key={field.key} label={field.label} help={field.help}>
-          {/* The git source's repository URL gets the picker; other sources
-              (http_repo/oci) point at registries the picker doesn't enumerate. */}
-          <WithPicker
-            picker={
-              field.key === "repo_url" && chartSource === "git"
-                ? repoUrlPicker
-                : null
-            }
+      <Section title="Chart">
+        <Field label="Chart source">
+          <select
+            aria-label="Chart source"
+            className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+            value={chartSource}
+            onChange={(e) => setChartSource(e.target.value as ChartSource)}
+            disabled={disabled}
           >
+            {CHART_SOURCES.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {source.fields.map((field) => (
+          <Field key={field.key} label={field.label} help={field.help}>
+            {/* The git source's repository URL gets the picker; other sources
+                (http_repo/oci) point at registries the picker doesn't enumerate. */}
+            <WithPicker
+              picker={
+                field.key === "repo_url" && chartSource === "git"
+                  ? repoUrlPicker
+                  : null
+              }
+            >
+              <input
+                type="text"
+                className="w-full border border-neutral-700 px-3 py-2 text-sm"
+                placeholder={field.placeholder}
+                value={config[field.key] ?? ""}
+                onChange={(e) => setConfig(field.key, e.target.value)}
+                disabled={disabled}
+              />
+            </WithPicker>
+          </Field>
+        ))}
+
+        {chartSource !== "git" && (
+          <Field label="Chart credential">
+            <select
+              aria-label="Chart credential"
+              className="w-full border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+              value={component.chart_credential_id ?? ""}
+              onChange={(e) =>
+                set("chart_credential_id", e.target.value || null)
+              }
+              disabled={disabled}
+            >
+              <option value="">None (public chart)</option>
+              {credentials.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+      </Section>
+
+      <Section title="Target">
+        <Field label="Release name">
+          <RefAutocompleteField
+            as="input"
+            className="w-full border border-neutral-700 px-3 py-2 text-sm"
+            placeholder={`(defaults to ${defaultReleaseName(component.name || "<component>", appName)})`}
+            value={config.release_name ?? ""}
+            onChange={(v) => setConfig("release_name", v)}
+            context={refContext}
+            disabled={disabled}
+          />
+        </Field>
+        <Field label="Target cluster">
+          <ClusterSelect
+            clusters={clusters}
+            value={component.target_cluster_id}
+            onChange={(id) => set("target_cluster_id", id)}
+            disabled={disabled}
+          />
+        </Field>
+        <Field
+          label="Target namespace"
+          help="Supports ${{ }} references, like an upstream output: ${{ components.infra.outputs.namespace }}."
+        >
+          <RefAutocompleteField
+            as="input"
+            className="w-full border border-neutral-700 px-3 py-2 text-sm"
+            placeholder="apps"
+            value={component.target_namespace}
+            onChange={(v) => set("target_namespace", v)}
+            context={refContext}
+            disabled={disabled}
+          />
+          <OutputRefButtons
+            names={upstreamOutputs}
+            disabled={disabled}
+            onInsert={(snippet) =>
+              set("target_namespace", component.target_namespace + snippet)
+            }
+          />
+        </Field>
+        {/* On by default (stored as no key); off is stored as "false". */}
+        <Field help="Turn off if the cluster's credentials can't create namespaces. Uninstalling never deletes the namespace.">
+          <label className="flex items-center gap-2 text-sm text-neutral-300">
             <input
-              type="text"
-              className="w-full border border-neutral-700 px-3 py-2 text-sm"
-              placeholder={field.placeholder}
-              value={config[field.key] ?? ""}
-              onChange={(e) => setConfig(field.key, e.target.value)}
+              type="checkbox"
+              className="h-4 w-4 accent-white"
+              checked={config.create_namespace !== "false"}
+              onChange={(e) =>
+                setConfig("create_namespace", e.target.checked ? "" : "false")
+              }
               disabled={disabled}
             />
-          </WithPicker>
+            Create the namespace if it doesn't exist
+          </label>
         </Field>
-      ))}
+      </Section>
 
-      <Field
-        label="Release name"
-        help="Defaults to <application>-<component>. Set to override."
-      >
-        <RefAutocompleteField
-          as="input"
-          className="w-full border border-neutral-700 px-3 py-2 text-sm"
-          placeholder="(defaults to <app>-<component>)"
-          value={config.release_name ?? ""}
-          onChange={(v) => setConfig("release_name", v)}
-          context={refContext}
-          disabled={disabled}
-        />
-      </Field>
-
-      <Field
-        label="Values (values.yaml)"
-        help={
-          "Optional inline overrides. Supports ${{ vars.NAME }}, run context like ${{ run.git_sha_short }}, and upstream OpenTofu outputs like ${{ components.infra.outputs.namespace }} — substituted when a run starts."
-        }
-      >
-        <RefAutocompleteField
-          as="textarea"
-          className="h-32 w-full border border-neutral-700 px-3 py-2 font-mono text-xs"
-          placeholder={"replicaCount: 2\n"}
-          value={config.values ?? ""}
-          onChange={(v) => setConfig("values", v)}
-          context={refContext}
-          disabled={disabled}
-        />
-        <OutputRefButtons
-          names={upstreamOutputs}
-          disabled={disabled}
-          onInsert={(snippet) =>
-            setConfig("values", (config.values ?? "") + snippet)
+      <Section title="Values">
+        <Field
+          label="Inline values"
+          help={
+            "Applied over the chart's defaults and any values from Git. Supports ${{ vars.NAME }}, run context like ${{ run.git_sha_short }}, and upstream OpenTofu outputs like ${{ components.infra.outputs.namespace }} — substituted when a run starts."
           }
-        />
-      </Field>
+        >
+          <RefAutocompleteField
+            as="textarea"
+            className="h-32 w-full border border-neutral-700 px-3 py-2 font-mono text-xs"
+            placeholder={"replicaCount: 2\n"}
+            value={config.values ?? ""}
+            onChange={(v) => setConfig("values", v)}
+            context={refContext}
+            disabled={disabled}
+          />
+          <OutputRefButtons
+            names={upstreamOutputs}
+            disabled={disabled}
+            onInsert={(snippet) =>
+              setConfig("values", (config.values ?? "") + snippet)
+            }
+          />
+        </Field>
 
-      <ValuesSourcesEditor
-        value={config.values_sources}
-        onChange={(v) => setConfig("values_sources", v)}
-        canPickRepo={canPickRepo}
-        onPickRepo={onPickValuesSourceRepo}
-        disabled={disabled}
-      />
+        <ValuesSourcesEditor
+          value={config.values_sources}
+          onChange={(v) => setConfig("values_sources", v)}
+          canPickRepo={canPickRepo}
+          onPickRepo={onPickValuesSourceRepo}
+          disabled={disabled}
+        />
+      </Section>
     </>
   );
 }
@@ -1198,6 +1243,12 @@ function OutputRefButtons({
   );
 }
 
+// CHART_SOURCE_KEYS are the config keys any chart source sets — what
+// switching sources clears.
+const CHART_SOURCE_KEYS = [
+  ...new Set(CHART_SOURCES.flatMap((s) => s.fields.map((f) => f.key))),
+];
+
 // BACKEND_PROVIDER maps a state backend to the cloud-credential provider that
 // authenticates to it (the same credential also serves the module's providers
 // for that cloud).
@@ -1429,8 +1480,8 @@ function ValuesSourcesEditor({
         Values from Git
       </p>
       <p className="mb-2 text-xs text-neutral-400">
-        Optional value files pulled from Git, applied in order before the inline
-        values above.
+        Value files pulled from Git, applied in order before the inline values
+        above.
       </p>
       {rows.length === 0 ? (
         <p className="text-xs text-neutral-400">No git values sources.</p>
@@ -1438,7 +1489,7 @@ function ValuesSourcesEditor({
         <ol className="space-y-2">
           {rows.map((src, i) => (
             <li key={i} className="border border-neutral-800 bg-neutral-800/50 p-2">
-              <div className="mb-1 flex items-center justify-between">
+              <div className="mb-2 flex items-center justify-between">
                 <span className="text-xs font-medium text-neutral-400">
                   Source {i + 1}
                 </span>
@@ -1452,47 +1503,56 @@ function ValuesSourcesEditor({
                   </button>
                 )}
               </div>
-              <div className="mb-1">
-                <WithPicker
-                  picker={
-                    canPickRepo && !disabled ? (
-                      <RepositoryPicker
-                        label="Select repository"
-                        onSelect={(repo) => pickRepo(i, repo)}
-                      />
-                    ) : null
-                  }
-                >
-                  <input
-                    type="text"
-                    aria-label={`Source ${i + 1} repository URL`}
-                    className="w-full border border-neutral-700 px-2 py-1 text-xs"
-                    placeholder="https://github.com/org/config.git"
-                    value={src.repo_url}
-                    onChange={(e) => update(i, "repo_url", e.target.value)}
-                    disabled={disabled}
-                  />
-                </WithPicker>
-              </div>
-              <div className="flex gap-1">
-                <input
-                  type="text"
-                  aria-label={`Source ${i + 1} branch or tag`}
-                  className="w-1/3 border border-neutral-700 px-2 py-1 text-xs"
-                  placeholder="ref"
-                  value={src.git_ref ?? ""}
-                  onChange={(e) => update(i, "git_ref", e.target.value)}
-                  disabled={disabled}
-                />
-                <input
-                  type="text"
-                  aria-label={`Source ${i + 1} values file path`}
-                  className="flex-1 border border-neutral-700 px-2 py-1 text-xs"
-                  placeholder="envs/prod/values.yaml"
-                  value={src.path}
-                  onChange={(e) => update(i, "path", e.target.value)}
-                  disabled={disabled}
-                />
+              <div className="space-y-2">
+                <div>
+                  <span className={SOURCE_LABEL}>Repository URL</span>
+                  <WithPicker
+                    picker={
+                      canPickRepo && !disabled ? (
+                        <RepositoryPicker
+                          label="Select repository"
+                          onSelect={(repo) => pickRepo(i, repo)}
+                        />
+                      ) : null
+                    }
+                  >
+                    <input
+                      type="text"
+                      aria-label={`Source ${i + 1} repository URL`}
+                      className="w-full border border-neutral-700 px-2 py-1 text-xs"
+                      placeholder="https://github.com/org/config.git"
+                      value={src.repo_url}
+                      onChange={(e) => update(i, "repo_url", e.target.value)}
+                      disabled={disabled}
+                    />
+                  </WithPicker>
+                </div>
+                <div className="flex gap-2 *:min-w-0">
+                  <div className="w-1/3">
+                    <span className={SOURCE_LABEL}>Branch or tag</span>
+                    <input
+                      type="text"
+                      aria-label={`Source ${i + 1} branch or tag`}
+                      className="w-full border border-neutral-700 px-2 py-1 text-xs"
+                      placeholder="(default branch)"
+                      value={src.git_ref ?? ""}
+                      onChange={(e) => update(i, "git_ref", e.target.value)}
+                      disabled={disabled}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <span className={SOURCE_LABEL}>Values file</span>
+                    <input
+                      type="text"
+                      aria-label={`Source ${i + 1} values file path`}
+                      className="w-full border border-neutral-700 px-2 py-1 text-xs"
+                      placeholder="envs/prod/values.yaml"
+                      value={src.path}
+                      onChange={(e) => update(i, "path", e.target.value)}
+                      disabled={disabled}
+                    />
+                  </div>
+                </div>
               </div>
             </li>
           ))}
@@ -1510,6 +1570,9 @@ function ValuesSourcesEditor({
     </div>
   );
 }
+
+// SOURCE_LABEL is the small caption over each field of a values source row.
+const SOURCE_LABEL = "mb-1 block text-xs text-neutral-400";
 
 // WithPicker sets a repository URL input beside its picker button, or renders
 // the input alone when the picker isn't available.

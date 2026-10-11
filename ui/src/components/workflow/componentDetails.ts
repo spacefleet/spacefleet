@@ -79,14 +79,9 @@ export function componentDetails(
       for (const f of source.fields) {
         rows.push({
           label: f.label,
-          value: cfg[f.key] || (f.key === "version" ? "Latest" : ""),
+          value: cfg[f.key] || HELM_FIELD_DEFAULTS[f.key] || "",
         });
       }
-      rows.push(
-        { label: "Release name", value: helmReleaseName(c, lookups.appName) },
-        { label: "Target cluster", value: cluster(c.target_cluster_id) },
-        { label: "Target namespace", value: c.target_namespace },
-      );
       if (source.value !== "git") {
         rows.push({
           label: "Chart credential",
@@ -94,6 +89,18 @@ export function componentDetails(
             ? (lookups.chartCredentialName(c.chart_credential_id) ??
               c.chart_credential_id)
             : "None (public chart)",
+        });
+      }
+      rows.push(
+        { label: "Release name", value: helmReleaseName(c, lookups.appName) },
+        { label: "Target cluster", value: cluster(c.target_cluster_id) },
+        { label: "Target namespace", value: c.target_namespace },
+      );
+      // Only the non-default is worth a row.
+      if (cfg.create_namespace === "false") {
+        rows.push({
+          label: "Create namespace",
+          value: "No — it must already exist",
         });
       }
       break;
@@ -141,10 +148,23 @@ export function stateLocation(backend: string, raw: string | undefined): string 
   }
 }
 
+// What an unset Helm chart setting means, as the editor's placeholders say it.
+const HELM_FIELD_DEFAULTS: Record<string, string> = {
+  version: "Latest",
+  git_ref: "Default branch",
+  git_path: "Repository root",
+};
+
 // helmReleaseName is the release a Helm component installs: its own setting,
-// or "<application>-<component>" by default.
+// or the default (defaultReleaseName).
 export function helmReleaseName(c: EditableComponent, appName?: string): string {
-  return c.config.release_name || `${appName ?? "<application>"}-${c.name}`;
+  return c.config.release_name || defaultReleaseName(c.name, appName);
+}
+
+// defaultReleaseName is the release a Helm component installs when it names
+// none: "<application>-<component>".
+export function defaultReleaseName(name: string, appName?: string): string {
+  return `${appName ?? "<application>"}-${name}`;
 }
 
 // approvalSummary describes the gate: off, or on with whatever its policy

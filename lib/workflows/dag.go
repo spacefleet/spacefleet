@@ -92,6 +92,11 @@ func validateHelmConfig(n ComponentInput) error {
 	default:
 		return fmt.Errorf("%w: node %q (helm) has unknown %s %q", ErrInvalidConfig, n.Name, helmConfigChartSource, source)
 	}
+	switch n.Config[helmConfigCreateNamespace] {
+	case "", "true", "false":
+	default:
+		return fmt.Errorf("%w: node %q (helm) %s must be \"true\" or \"false\"", ErrInvalidConfig, n.Name, helmConfigCreateNamespace)
+	}
 	if err := validateValuesSources(n); err != nil {
 		return err
 	}

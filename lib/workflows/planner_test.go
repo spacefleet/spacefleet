@@ -500,6 +500,33 @@ func TestPlanHelmInterpolation(t *testing.T) {
 	}
 }
 
+// TestPlanHelmCreateNamespace: a deploy creates the target namespace unless
+// the component's create_namespace is "false".
+func TestPlanHelmCreateNamespace(t *testing.T) {
+	t.Parallel()
+	app := &ent.Application{ID: uuid.New(), OrganizationID: uuid.New(), RunnerClusterID: uuid.New()}
+	w := helmInterpolationWorker(
+		map[string]string{"CUSTOMER_ID": "acme"},
+		map[string]string{"DB_PASSWORD": "s3cret"},
+	)
+	for _, tc := range []struct {
+		setting string
+		want    bool
+	}{{"", true}, {"true", true}, {"false", false}} {
+		node := helmInterpolationNode()
+		if tc.setting != "" {
+			node.Config[helmConfigCreateNamespace] = tc.setting
+		}
+		req, err := w.planHelm(context.Background(), app, node, ActionDeploy, false, "", uuid.New(), nil)
+		if err != nil {
+			t.Fatalf("planHelm(%q): %v", tc.setting, err)
+		}
+		if got := strings.Contains(req.Spec.Script, "--create-namespace"); got != tc.want {
+			t.Errorf("create_namespace %q: --create-namespace in script = %v, want %v", tc.setting, got, tc.want)
+		}
+	}
+}
+
 // TestPlanHelmInterpolationPreview: a preview renders the same fields — the
 // diff must show what a deploy would deploy, sentinels included.
 func TestPlanHelmInterpolationPreview(t *testing.T) {
