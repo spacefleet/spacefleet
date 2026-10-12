@@ -7,6 +7,7 @@ import type { components } from "../api/schema";
 import { RunStatusBadge } from "../components/workflow/status";
 import { runActionLabel } from "../components/workflow/runAction";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
+import { unresolvedFailures } from "../lib/needsAttention";
 
 type Application = components["schemas"]["Application"];
 type Cluster = components["schemas"]["Cluster"];
@@ -17,8 +18,9 @@ const RECENT = 8;
 
 // Home is the organization dashboard: the counts that matter (applications,
 // clusters, runs in flight), the runs that need a person — parked at an
-// approval gate or recently failed — and the latest runs across every
-// application. Everything links into the pages that act on it.
+// approval gate, or failed with no newer run that has since covered the same
+// work — and the latest runs across every application. Everything links into
+// the pages that act on it.
 export function Home() {
   const { currentOrg, currentRole } = useOrg();
   useDocumentTitle("Overview");
@@ -57,9 +59,7 @@ export function Home() {
 
   const inFlight = runs.filter((r) => IN_FLIGHT.has(r.status));
   const awaiting = runs.filter((r) => r.status === "awaiting_approval");
-  const failed = runs
-    .filter((r) => r.status === "failed" || r.status === "partial")
-    .slice(0, 5);
+  const failed = unresolvedFailures(runs).slice(0, 5);
   const recent = runs.slice(0, RECENT);
 
   return (

@@ -58,6 +58,16 @@ describe("Home", () => {
     expect(await screen.findByText("run page")).toBeInTheDocument();
   });
 
+  it("leaves out a failure a newer run has since fixed", async () => {
+    mockAll([
+      { id: "r4", application_id: "a2", action: "preview", status: "succeeded", created_at: "2026-09-08T11:00:00Z" },
+      ...runs,
+    ]);
+    renderHome();
+    expect(await screen.findByText("waiting for approval")).toBeInTheDocument();
+    expect(screen.queryByText("workflow failed")).not.toBeInTheDocument();
+  });
+
   it("points a fresh organization at creating an application", async () => {
     mockGet.mockImplementation((path: string) => {
       if (path === "/api/runs") return Promise.resolve({ data: { runs: [] }, error: undefined });
